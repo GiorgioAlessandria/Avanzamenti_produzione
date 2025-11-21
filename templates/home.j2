@@ -1,0 +1,21 @@
+{% extends "base.j2" %}
+
+
+{% block content %}
+{% if current_user.has_permission('home') and current_user.has_reparto('carpenteria') %}
+{% include "/partials/_home_carpenteria.html" %}
+
+
+{% elif current_user.has_permission('home') and current_user.has_reparto('collaudo') %}
+{% include "/partials/_home_collaudo.html" %}
+
+{% elif current_user.has_permission('home') and current_user.has_reparto('montaggio') %}
+{% include "/partials/_home_montaggio.html" %}
+
+{% elif current_user.has_permission('home') and current_user.has_reparto('officina') %}
+{% include '/partials/_home_officina.html' %}
+
+{% else %}
+{% include "page_vuota.j2" %}
+{% endif %}
+{% endblock %}

@@ -46,7 +46,7 @@ class Role(db.Model):
         "Permission",
         secondary=roles_permission,
         backref=db.backref("roles", lazy="dynamic"),
-        lazy="dinamic",
+        lazy="dynamic",
     )
 
     def add_permission(self, permission: "Permission"):
@@ -90,7 +90,7 @@ class Reparto(db.Model):
     )
 
     def __repr__(self):
-        return f"<Reparto {self.codice}>"
+        return f"{self.codice}"
 
 
 class User(UserMixin, db.Model):
@@ -105,9 +105,8 @@ class User(UserMixin, db.Model):
     )
     username = db.Column(db.String, unique=True, nullable=False)
     active = db.Column(db.Boolean, nullable=False, default=True)
-
-    # preference TEXT nel DB: lo uso come JSON
     preference = db.Column(db.Text)
+    genere = db.Column(db.Text)
 
     roles = db.relationship(
         "Role",
@@ -134,6 +133,13 @@ class User(UserMixin, db.Model):
         except json.JSONDecodeError:
             return {}
 
+    @property
+    def reparto_label(self) -> str:
+        """Restituisce il nome del reparto principale da mostrare in UI."""
+        if self.reparti:
+            return self.reparti[0].descrizione
+        return "Produzione"
+
     @preferences.setter
     def preferences(self, value: dict):
         self.preference = json.dumps(value or {})
@@ -154,11 +160,11 @@ class User(UserMixin, db.Model):
     def has_permission(self, code: str) -> bool:
         return any(r.has_permission(code) for r in self.roles)
 
-    def allowed_reparti_ids(self) -> list[int]:
-        return [r.id for r in self.reparti]
+    def has_reparto(self, reparto_name: str) -> bool:
+        return any(r.codice == reparto_name for r in self.reparti)
 
     def allowed_reparti_codici(self) -> list[str]:
-        return [r.codice for r in self.reparti]
+        return [r.descrizione for r in self.reparti]
 
     def __repr__(self):
-        return f"<User {self.username}>"
+        return f"{self.username}"
