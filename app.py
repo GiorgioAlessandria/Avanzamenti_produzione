@@ -12,7 +12,7 @@ except:
 
 def create_app():
     app = Flask(__name__, instance_relative_config=True,
-                static_folder='static', template_folder='templates')
+                static_folder='static', template_folder='templates', instance_path='instance')
 
     # chiave segreta per sessioni e Flask-Login
     app.config["SECRET_KEY"] = "cambia-questa-chiave-super-segreta"
