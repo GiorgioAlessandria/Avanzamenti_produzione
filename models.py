@@ -35,6 +35,22 @@ user_reparti = db.Table(
 # --- RBAC ---
 
 
+class ordini_produzione(db.Model):
+    id = db.Column(db.String, unique=True, nullable=False,
+                   primary_key=True, autoincrement=True)
+    ordine = db.Column(db.String, nullable=False)
+    codice = db.Column(db.String, nullable=False)
+    quantita_in = db.Column(db.String, nullable=False)
+    descrizione = db.Column(db.String)
+    lavorazione = db.Column(db.String)
+    reparto = db.Column(db.String, nullable=False)
+    stato = db.Column(db.String)
+    creato_il = db.Column(db.String)
+    consegna = db.Column(db.String)
+    priorita = db.Column(db.String, default='0')
+    quantita_prd = db.Column(db.String)
+
+
 class Role(db.Model):
     __tablename__ = "roles"
 
@@ -168,19 +184,3 @@ class User(UserMixin, db.Model):
 
     def __repr__(self):
         return f"{self.username}"
-
-
-class ordini_produzione(db.Model):
-    id = db.Column(db.String, unique=True, nullable=False,
-                   primary_key=True, autoincrement=True)
-    ordine = db.Column(db.String, nullable=False)
-    codice = db.Column(db.String, nullable=False)
-    quantita_in = db.Column(db.String, nullable=False)
-    descrizione = db.Column(db.String)
-    lavorazione = db.Column(db.String)
-    reparto = db.Column(db.String, nullable=False)
-    stato = db.Column(db.String)
-    creato_il = db.Column(db.String)
-    consegna = db.Column(db.String)
-    priorita = db.Column(db.String, default='0')
-    quantita_prd = db.Column(db.String)

@@ -1,0 +1,41 @@
+[Elementi_selezionati]
+seleziona_stato = "Pianificata"
+[Elementi_esclusi]
+escludi_risorse = ["01", "02", "03"]
+escludi_magazzini = ["2", "4", "5", "8", "9", "12", "13"]
+escludi_reparti = ["50", "60"] #da inserire anche il 40?
+escludi_lavorazioni = [
+    "COS",
+    "DEN",
+    "ELE",
+    "INC",
+    "LOG",
+    "OSS",
+    "PAL",
+    "PVD",
+    "TAG",
+    "VER",
+]
+escludi_famiglie = [
+    "PNT",
+    "BRA",
+    "BRI",
+    "BRR",
+    "LAV",
+    "RIC",
+    "ATT",
+    "BEV",
+    "CAF",
+    "ESI",
+    "KIT",
+    "MER",
+    "SCOMM",
+    "SSV",
+] #da controllare realmente quali mantenere
+escludi_macrofamiglie = ["BBLAB", "BRR", "ESS"]
+escludi_articoli = [
+    "",
+    "RDMU18",
+    "RDMU19",
+    "RDMU20",
+] #lasciare l'ulitima voce vuota per rimuovere i valori vuoti

@@ -90,12 +90,13 @@
                                 data-quatita_in="{{ordini_produzione.quatita_in}}"
                                 data-consegna="{{ordini_produzione.consegna}}"
                                 data-lavorazione="{{ordini_produzione.lavorazione}}">
-                                <td>1</td>
-                                <td>2025.1.517 </td>
-                                <td><span style="color: rgb(52, 58, 64);">SCB101005</span></td>
-                                <td>SERBATOIO ALLUMINIO LD202 Y10 CECCATO </td>
-                                <td>25/10/2025 </td>
-                                <td>Saldatura </td>
+                                <td>{{ ordini_produzione.priorita }}</td>
+                                <td>{{ordini_produzione.ordine}}</td>
+                                <td>{{ordini_produzione.codice}}</td>
+                                <td>{{ordini_produzione.descrizione}}</td>
+                                <td>{{ordini_produzione.quatita_in}}</td>
+                                <td>{{ordini_produzione.consegna}}</td>
+                                <td>{{ordini_produzione.lavorazione}}</td>
                             </tr>
                         </tbody>
                     </table>
@@ -127,14 +128,14 @@
                                 data-quatita_prd="{{ordini_produzione.quatita_prd}}"
                                 data-lavorazione="{{ordini_produzione.lavorazione}}"
                                 data-stato="{{ordini_produzione.stato}}">
-                                <td>2025.1.517 </td>
-                                <td><span style="color: rgb(52, 58, 64);">SCB101005</span></td>
-                                <td>SERBATOIO ALLUMINIO LD202 Y10 CECCATO </td>
-                                <td>25/10/2025 </td>
-                                <td>250</td>
-                                <td>21</td>
-                                <td>Saldatura </td>
-                                <td>In corso</td>
+                                <td>{{ordini_produzione.ordine}}</td>
+                                <td>{{ordini_produzione.codice}}</td>
+                                <td>{{ordini_produzione.descrizione}}</td>
+                                <td>{{ordini_produzione.lavorazione}}</td>
+                                <td>{{ordini_produzione.quatita_in}}</td>
+                                <td>{{ordini_produzione.quatita_prd}}</td>
+                                <td>{{ordini_produzione.lavorazione}}</td>
+                                <td>{{ordini_produzione.stato}}</td>
                             </tr>
                     </table>
                 </div>
