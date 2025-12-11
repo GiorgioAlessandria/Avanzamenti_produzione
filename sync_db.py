@@ -1,13 +1,12 @@
-# sync_sqlserver_to_appdb.py
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import Session
-import urllib.parse
-from sqlalchemy import create_engine
-import pandas as pd
-from pathlib import Path
-import time
 
 import tomllib
+import time
+from pathlib import Path
+import pandas as pd
+from sqlalchemy import create_engine
+import functools as ft
+import urllib.parse
+from sqlalchemy import create_engine
 try:
     from icecream import ic
 except:
@@ -23,7 +22,7 @@ def load_config() -> dict:
     :return: Ritorna un dizionario con le configurazioni
     :rtype: dict[Any, Any]
     '''
-    with CONFIG_PATH.open("rb") as f:  # tomllib vuole il file in binario
+    with CONFIG_PATH.open("rb") as f:
         return tomllib.load(f)
 
 
@@ -49,181 +48,33 @@ engine_sqlserver = create_engine(
 )
 
 
-def leggi_view_odp() -> pd.DataFrame:
+def leggi_view(table: str, colonna_filtro_esclusi: str, colonna_filtro_stato: str) -> pd.DataFrame:
     '''
-    Acquisizione dei dati sulla vista vwESOdP
+    Lettura della view
 
-    :return: DataFrame della vista con filtro su StatoOrdine e rimozione degli articoli non necessari
-    :rtype: pd.DataFrame
+    Legge la view in base ai parametri e da la view filtrata
+
+    :param table: Nome della tabella
+    :type table: str
+    :param colonna_filtro_esclusi: Nome del filtro da richiamare (filtri di esclusione)
+    :type colonna_filtro_esclusi: str
+    :param colonna_filtro_stato: Nome del filtro da richiamare (filtri di inclusione)
+    :type colonna_filtro_stato: str
+    :return: Dataframe filtrato della view selezionata
+    :rtype: DataFrame
     '''
-    query = f"""SELECT * FROM BernardiProd.dbo.vwESOdP"""
+    query = f"""SELECT * FROM BernardiProd.dbo.{table}"""
     df = pd.read_sql(query, engine_sqlserver)
-    df_filtro = df[df['StatoOrdine'] ==
-                   config["Elementi_selezionati"]["seleziona_stato"]]
-    df_filtro_articoli = df_filtro[~df_filtro["CodArt"].isin(
-        config["Elementi_esclusi"]["escludi_articoli"])]
-    df_filtro_articoli = df_filtro_articoli.reset_index(drop=True)
-    return df_filtro_articoli
+    if colonna_filtro_esclusi != "":
+        df = df[~df[colonna_filtro_esclusi].isin(
+            config["Elementi_esclusi"][colonna_filtro_esclusi])]
+    if colonna_filtro_stato != "":
+        df = df[df[colonna_filtro_stato] ==
+                config["Elementi_selezionati"][colonna_filtro_stato]]
 
-
-def leggi_view_odpfasi() -> pd.DataFrame:
-    '''
-    Acquisizione dei dati sulla vista vwESOdPFasi con filtro su CodRisorsaProd
-
-    :return: DataFrame della vista
-    :rtype: pd.DataFrame
-    '''
-    query = f"""SELECT * FROM BernardiProd.dbo.vwESOdPFasi"""
-    df = pd.read_sql(query, engine_sqlserver)
-    df_filtrato = df[~df["CodRisorsaProd"].isin(
-        config["Elementi_esclusi"]["escludi_risorse"])]
-    return df_filtrato
-
-
-def leggi_view_odpcomponenti() -> pd.DataFrame:
-    '''
-    Acquisizione dei dati sulla vista vwESOdPComponenti
-
-    :return: DataFrame della vista
-    :rtype: pd.DataFrame
-    '''
-    query = f"""SELECT * FROM BernardiProd.dbo.vwESOdPComponenti"""
-
-    df = pd.read_sql(query, engine_sqlserver)
+    df = df.reset_index(drop=True)
 
     return df
-
-
-def leggi_view_lavorazioni() -> pd.DataFrame:
-    '''
-    Acquisizione dei dati sulla vista vwESLavorazioni
-
-    :return: DataFrame della vista\n
-    :rtype: pd.DataFrame
-    '''
-    query = f"""SELECT * FROM BernardiProd.dbo.vwESLavorazioni"""
-    df = pd.read_sql(query, engine_sqlserver)
-    df_filtrato = df[~df["CodLavorazione"].isin(
-        config["Elementi_esclusi"]["escludi_lavorazioni"])]
-    return df_filtrato
-
-
-def leggi_view_risorse() -> pd.DataFrame:
-    '''
-    Acquisizione dei dati sulla vista vwESRisorse
-
-    :return: DataFrame della vista
-    :rtype: pd.DataFrame
-    '''
-    query = f"""SELECT * FROM BernardiProd.dbo.vwESRisorse"""
-    df = pd.read_sql(query, engine_sqlserver)
-    df_filtrato = df[~df["CodRisorsaProd"].isin(
-        config["Elementi_esclusi"]["escludi_risorse"])]
-    return df_filtrato
-
-
-def leggi_view_reparti() -> pd.DataFrame:
-    '''
-    Acquisizione dei dati sulla vista vwESReparti
-
-    :return: DataFrame della vista
-    :rtype: pd.DataFrame
-    '''
-    query = f"""SELECT * FROM BernardiProd.dbo.vwESReparti"""
-    df = pd.read_sql(query, engine_sqlserver)
-    df_filtrato = df[~df["CodReparto"].isin(
-        config["Elementi_esclusi"]["escludi_reparti"])]
-    return df_filtrato
-
-
-def leggi_view_causali() -> pd.DataFrame:
-    '''
-    Acquisizione dei dati sulla vista vwESCausaliAttivita
-
-    :return: DataFrame della vista
-    :rtype: pd.DataFrame
-    '''
-    query = f"""SELECT * FROM BernardiProd.dbo.vwESCausaliAttivita"""
-    df = pd.read_sql(query, engine_sqlserver)
-    return df
-
-
-def leggi_view_gicenzalotti() -> pd.DataFrame:
-    '''
-    Acquisizione dei dati sulla vista vwESGiacenzaLotti
-
-    :return: DataFrame della vista
-    :rtype: pd.DataFrame
-    '''
-    query = f"""SELECT * FROM BernardiProd.dbo.vwESGiacenzaLotti"""
-    df = pd.read_sql(query, engine_sqlserver)
-    return df
-
-
-def leggi_view_giacenza() -> pd.DataFrame:
-    '''
-    Acquisizione dei dati sulla vista vwESGiacenza
-
-    :return: DataFrame della vista
-    :rtype: pd.DataFrame
-    '''
-    query = f"""SELECT * FROM BernardiProd.dbo.vwESGiacenza"""
-    df = pd.read_sql(query, engine_sqlserver)
-    return df
-
-
-def leggi_view_magazzini() -> pd.DataFrame:
-    '''
-    Acquisizione dei dati sulla vista vwESMagazzino
-
-    :return: DataFrame della vista
-    :rtype: pd.DataFrame
-    '''
-    query = f"""SELECT * FROM BernardiProd.dbo.vwESMagazzini"""
-    df = pd.read_sql(query, engine_sqlserver)
-    df_filtrato = df[~df["CodMag"].isin(
-        config["Elementi_esclusi"]["escludi_magazzini"])]
-    return df_filtrato
-
-
-def leggi_view_articoli() -> pd.DataFrame:
-    '''
-    Acquisizione dei dati sulla vista vwESArticoli
-
-    :return: DataFrame della vista
-    :rtype: pd.DataFrame
-    '''
-    query = f"""SELECT * FROM BernardiProd.dbo.vwESArticoli"""
-    df = pd.read_sql(query, engine_sqlserver)
-    return df
-
-
-def leggi_view_macrofamiglia() -> pd.DataFrame:
-    '''
-    Acquisizione dei dati sulla vista vwESMacroFamiglia
-
-    :return: DataFrame della vista
-    :rtype: pd.DataFrame
-    '''
-    query = f"""SELECT * FROM BernardiProd.dbo.vwESMacroFamiglia"""
-    df = pd.read_sql(query, engine_sqlserver)
-    df_filtrato = df[~df["CodMacrofamiglia"].isin(
-        config["Elementi_esclusi"]["escludi_macrofamiglie"])]
-    return df_filtrato
-
-
-def leggi_view_famiglia() -> pd.DataFrame:
-    '''
-    Acquisizione dei dati sulla vista vwESFamiglia
-
-    :return: DataFrame della vista
-    :rtype: pd.DataFrame
-    '''
-    query = f"""SELECT * FROM BernardiProd.dbo.vwESFamiglia"""
-    df = pd.read_sql(query, engine_sqlserver)
-    df_filtrato = df[~df["CodFamiglia"].isin(
-        config["Elementi_esclusi"]["escludi_famiglie"])]
-    return df_filtrato
 
 
 def filtra_odpfasi_con_odp(df_odpfasi: pd.DataFrame, df_odp: pd.DataFrame) -> pd.DataFrame:
@@ -244,7 +95,8 @@ def filtra_odpfasi_con_odp(df_odpfasi: pd.DataFrame, df_odp: pd.DataFrame) -> pd
 
 def filtra_odpcomponenti_con_odp(df_odpcomponenti: pd.DataFrame, df_odp: pd.DataFrame) -> pd.DataFrame:
     '''
-    Incrocio dei dati per mantenere le linee di df_odpcomponenti che si trovano in IdDocumento e IdRiga di df_odp.\nIl filtro su df_odpcomponenti è ["IdDocumento", "IdRigaPadre"]
+    Incrocio dei dati per mantenere le linee di df_odpcomponenti che si trovano in IdDocumento e IdRiga di df_odp.
+    Il filtro su df_odpcomponenti è ["IdDocumento", "IdRigaPadre"]
 
     :rtype: pd.DataFrame
     :param df_odpcomponenti: dataframe con i componenti in base agli ordini di produzione
@@ -301,28 +153,32 @@ def unione_fasi_componenti(df_fasi: pd.DataFrame, df_componenti: pd.DataFrame) -
     return df_fasi_componenti
 
 
-def generazione_distinta(df_fasi_componenti: pd.DataFrame, CHIAVI: list[str]) -> pd.DataFrame:
+def generazione_dizionario(df: pd.DataFrame, CHIAVI: list[str], rename_col: str, list_columns: list[str]) -> pd.DataFrame:
     '''
-    Genera la distinta base per ogni ordine di produzione.
+    Genera un dizionario raggruppando le chiavi
 
-    Raggruppa in base alla costante CHIAVI (impostata nella funzione madre) e crea una lsita di elementi in cui ogni Codice della distinta viene raggruppato con la descrizione e la quantità
+    Raggruppa in base alla costante CHIAVI (impostata nella funzione madre) e crea una lista di elementi che verrà inserita con il nome della colonna rename_col
 
-    :param df_fasi_componenti: Dataframe con i componenti per fase
-    :type df_fasi_componenti: pd.DataFrame
+    :param df: Dataframe di input
+    :type df: pd.DataFrame
     :param CHIAVI: elenco delle colonne da raggruppare
     :type CHIAVI: list[str]
+    :param rename_col: Nome della colonna finale
+    :type rename_col: str
+    :param list_columns: Lista con le colonne da raggruppare
+    :type list_columns: list[str]
     :return: Dataframe raggruppati per Codice, descrizione e quantità
     :rtype: pd.DataFrame
     '''
 
-    df_fasi_componenti = df_fasi_componenti.set_index(CHIAVI)
+    df = df.set_index(CHIAVI)
     componenti_per_odp = (
-        df_fasi_componenti
+        df
         .groupby(CHIAVI)
         .apply(
-            (lambda g: g[["CodArt", "Quantita", "NumFase"]]
+            (lambda g: g[list_columns]
              .to_dict("records")))
-        .rename("DistintaMateriale")
+        .rename(rename_col)
         .reset_index()
     )
     return componenti_per_odp
@@ -350,84 +206,45 @@ def inserimento_distinta_in_odp(df_odp: pd.DataFrame, componenti_per_odp: pd.Dat
 
 
 def inserimento_dati_fasi_in_odp(df_odp: pd.DataFrame, df_odpfasi: pd.DataFrame, CHIAVI: list[str]) -> pd.DataFrame:
-    # df_odpfasi_fasi_raggruppate = df_odpfasi.set_index(
-    #     ["IdDocumento", "IdRiga"])
-    # ic(df_odpfasi_fasi_raggruppate)
-    # df_odp = df_odp.set_index(
-    #     ["IdDocumento", "IdRiga"])
-    NumFase_per_odp = pd.DataFrame(
-        df_odpfasi
-        .groupby(CHIAVI)
-        .apply(
-            (lambda g: g[["NumFase"]]
-             .to_dict("records")))
-        .rename("NumFase")
-        .reset_index()
-    ).set_index(["IdDocumento", "IdRiga"])
+    '''
+    Inserimento dei dati divisi per fase
 
-    codlavorazione_per_odp = pd.DataFrame(
-        df_odpfasi
-        .groupby(CHIAVI)
-        .apply(
-            (lambda g: g[["CodLavorazione"]]
-             .to_dict("records")))
-        .rename("CodLavorazione")
-        .reset_index()
-    ).set_index(["IdDocumento", "IdRiga"])
+    Inserisce i dati delle fasi divisi in dizionario, in questo modo posso avere l'elenco delle fasi e la divisione dei vari componenti nelle fasi
 
-    CodRisorsaProd_per_odp = pd.DataFrame(
-        df_odpfasi
-        .groupby(CHIAVI)
-        .apply(
-            (lambda g: g[["CodRisorsaProd"]]
-             .to_dict("records")))
-        .rename("CodRisorsaProd")
-        .reset_index()
-    ).set_index(["IdDocumento", "IdRiga"])
+    :param df_odp: Dataframe degli ordini di produzione
+    :type df_odp: pd.DataFrame
+    :param df_odpfasi: Dataframe con gli ordini di produzione con le fasi
+    :type df_odpfasi: pd.DataFrame
+    :param CHIAVI: Chiavi su cui vengono filtrati i dataframe
+    :type CHIAVI: list[str]
+    :return: dataframe con l'elenco delle fasi, i codici lavorazione, i codici risorsa, i codici reparto,
+    data inizio e fine schedulazione ed il tempo previsto di lavorazione divisi per fasi
+    :rtype: DataFrame
+    '''
 
-    CodReparto_per_odp = pd.DataFrame(
-        df_odpfasi
-        .groupby(CHIAVI)
-        .apply(
-            (lambda g: g[["CodReparto"]]
-             .to_dict("records")))
-        .rename("CodReparto")
-        .reset_index()
-    ).set_index(["IdDocumento", "IdRiga"])
+    numFase_per_odp = generazione_dizionario(
+        df=df_odpfasi, CHIAVI=CHIAVI, rename_col="NumFase", list_columns=["NumFase"]).set_index(["IdDocumento", "IdRiga"])
 
-    DataInizioSched_per_odp = pd.DataFrame(
-        df_odpfasi
-        .groupby(CHIAVI)
-        .apply(
-            (lambda g: g[["DataInizioSched"]]
-             .to_dict("records")))
-        .rename("DataInizioSched")
-        .reset_index()
-    ).set_index(["IdDocumento", "IdRiga"])
+    codlavorazione_per_odp = generazione_dizionario(
+        df=df_odpfasi, CHIAVI=CHIAVI, rename_col="CodLavorazione", list_columns=["CodLavorazione"]).set_index(["IdDocumento", "IdRiga"])
 
-    DataFineSched_per_odp = pd.DataFrame(
-        df_odpfasi
-        .groupby(CHIAVI)
-        .apply(
-            (lambda g: g[["DataFineSched"]]
-             .to_dict("records")))
-        .rename("DataFineSched")
-        .reset_index()
-    ).set_index(["IdDocumento", "IdRiga"])
+    codRisorsaProd_per_odp = generazione_dizionario(
+        df=df_odpfasi, CHIAVI=CHIAVI, rename_col="CodRisorsaProd", list_columns=["CodRisorsaProd"]).set_index(["IdDocumento", "IdRiga"])
 
-    TempoPrevistoLavoraz_per_odp = pd.DataFrame(
-        df_odpfasi
-        .groupby(CHIAVI)
-        .apply(
-            (lambda g: g[["TempoPrevistoLavoraz"]]
-             .to_dict("records")))
-        .rename("TempoPrevistoLavoraz")
-        .reset_index()
-    ).set_index(["IdDocumento", "IdRiga"])
+    codReparto_per_odp = generazione_dizionario(
+        df=df_odpfasi, CHIAVI=CHIAVI, rename_col="CodReparto", list_columns=["CodReparto"]).set_index(["IdDocumento", "IdRiga"])
 
-    df_dizionari = [NumFase_per_odp, codlavorazione_per_odp, CodRisorsaProd_per_odp,
-                    CodReparto_per_odp, DataInizioSched_per_odp, DataFineSched_per_odp, TempoPrevistoLavoraz_per_odp]
-    import functools as ft
+    dataInizioSched_per_odp = generazione_dizionario(
+        df=df_odpfasi, CHIAVI=CHIAVI, rename_col="DataInizioSched", list_columns=["DataInizioSched"]).set_index(["IdDocumento", "IdRiga"])
+
+    dataFineSched_per_odp = generazione_dizionario(
+        df=df_odpfasi, CHIAVI=CHIAVI, rename_col="DataFineSched", list_columns=["DataFineSched"]).set_index(["IdDocumento", "IdRiga"])
+
+    tempoPrevistoLavoraz_per_odp = generazione_dizionario(
+        df=df_odpfasi, CHIAVI=CHIAVI, rename_col="TempoPrevistoLavoraz", list_columns=["TempoPrevistoLavoraz"]).set_index(["IdDocumento", "IdRiga"])
+
+    df_dizionari = [numFase_per_odp, codlavorazione_per_odp, codRisorsaProd_per_odp,
+                    codReparto_per_odp, dataInizioSched_per_odp, dataFineSched_per_odp, tempoPrevistoLavoraz_per_odp]
     df_fasi_raggruppate = ft.reduce(lambda left, right: pd.merge(
         left, right, on=CHIAVI), df_dizionari)
 
@@ -438,38 +255,85 @@ def inserimento_dati_fasi_in_odp(df_odp: pd.DataFrame, df_odpfasi: pd.DataFrame,
     return df_odp
 
 
+def gestione_lotto_matricola_famiglia(df_odp: pd.DataFrame, df_articoli: pd.DataFrame) -> pd.DataFrame:
+    '''
+    Inserimento nel dataframe la gestione per lotto, matricola e la famiglia
+
+    Inserisce i dati per identificare se il codice deve essere gestito per lotto e/o con una matricola, inoltre inserisce anche la famiglia di appartenenza
+
+    :param df_odp: Dataframe con gli ordini di produzione
+    :type df_odp: pd.DataFrame
+    :param df_articoli: Dataframe con l'anagrafica degli articoli
+    :type df_articoli: pd.DataFrame
+    :return: Dataframe degli ordini arricchito con la gestione lotto, matricola e la famiglia di appartenenza
+    :rtype: DataFrame
+    '''
+    df_odp = df_odp.merge(
+        df_articoli[["CodArt", "GestioneLotto", "GestioneMatricola", "CodFamiglia"]], on="CodArt", how='left')
+    return df_odp
+
+
+def inserimento_famiglia(df_odp: pd.DataFrame, df_famiglia: pd.DataFrame) -> pd.DataFrame:
+    '''
+    Inserimento ne dataframe la macrofamiglia di appartenenza
+
+    Inserisce la macrofamiglia di appartenenza all'ordine di produzione
+
+    :param df_odp: Dataframe con gli ordini di produzione
+    :type df_odp: pd.DataFrame
+    :param df_famiglia: Dataframe con l'elenco delle macrofamiglie e famiglie associate
+    :type df_macrofamiglia: pd.DataFrame
+    :return: Dataframe con l'elenco degli ordini arricchito con la macrofamiglia
+    :rtype: DataFrame
+    '''
+    df_odp = df_odp.merge(df_famiglia[["CodFamiglia", "CodMacrofamiglia"]], on=[
+                          "CodFamiglia"], how='left')
+    return df_odp
+
+
 def elaborazione_dati():
     '''
-    Funzione per l'elaborazione dei dati
+    Funzione per la creazione della tabella input_odp da inserire a db
+
+    Manca l'aggiunta del Codice magazzino da Odp a input_odp ma sarà aggiunto automaticamente
     '''
     # pd.DataFrame(leggi_view_odp()).to_excel("excel//odp.xlsx")
-    df_odp = leggi_view_odp()
-    df_articoli = leggi_view_articoli()
-    df_odpfasi = (pd.DataFrame(leggi_view_odpfasi())
-                  .pipe(filtra_odpfasi_con_odp, df_odp=leggi_view_odp())
-                  .pipe(inserimento_reparto_da_risorsa, df_risorse=leggi_view_risorse()))
+    df_odp = leggi_view(
+        table="vwESOdP", colonna_filtro_esclusi="CodArt", colonna_filtro_stato="StatoOrdine")
+    df_odpfasi = (pd.DataFrame(leggi_view(table="vwESOdPFasi", colonna_filtro_esclusi="CodRisorsaProd", colonna_filtro_stato=""))
+                  .pipe(filtra_odpfasi_con_odp, df_odp=df_odp)
+                  .pipe(inserimento_reparto_da_risorsa, df_risorse=leggi_view("vwESRisorse", colonna_filtro_esclusi="CodRisorsaProd", colonna_filtro_stato="")))
     CHIAVI = ["IdDocumento", "IdRiga"]
     # df_odpfasi.to_excel("excel//odpfasi.xlsx")
-    df_odpcomponenti = (leggi_view_odpcomponenti()
+    df_odpcomponenti = (leggi_view("vwESOdPComponenti", colonna_filtro_esclusi="", colonna_filtro_stato="")
                         .pipe(filtra_odpcomponenti_con_odp, df_odp=df_odp))
     # df_odpcomponenti.to_excel("excel//odpcomponenti.xlsx")
-
     df_fasi_componenti = unione_fasi_componenti(df_odpfasi, df_odpcomponenti)
-    distinta_componenti = generazione_distinta(
-        df_fasi_componenti=df_fasi_componenti, CHIAVI=CHIAVI)
-    df_odp = (inserimento_distinta_in_odp(df_odp=df_odp, componenti_per_odp=distinta_componenti, CHIAVI=CHIAVI)
-              .pipe(inserimento_dati_fasi_in_odp, df_odpfasi=df_odpfasi, CHIAVI=CHIAVI))
-
-    df_odp.to_excel("excel//df_odp.xlsx")
+    distinta_componenti = generazione_dizionario(
+        df=df_fasi_componenti, CHIAVI=CHIAVI, rename_col="DistintaMateriale", list_columns=["CodArt", "Quantita", "NumFase"])
+    df_articoli = leggi_view(
+        "vwESArticoli", colonna_filtro_esclusi="", colonna_filtro_stato="")
+    input_odp = (inserimento_distinta_in_odp(df_odp=df_odp, componenti_per_odp=distinta_componenti, CHIAVI=CHIAVI)
+                 .pipe(inserimento_dati_fasi_in_odp, df_odpfasi=df_odpfasi, CHIAVI=CHIAVI)
+                 .pipe(gestione_lotto_matricola_famiglia, df_articoli=df_articoli)
+                 .pipe(inserimento_famiglia, df_famiglia=leggi_view("vwESFamiglia", colonna_filtro_esclusi="CodFamiglia", colonna_filtro_stato="")))
+    input_odp.to_excel("excel//df_odp.xlsx")
     return
-    #   .pipe(inserimento_descrizione_lavorazioni, df_lavorazioni=leggi_view_lavorazioni())
-    #   .pipe(inserimento_descrizione_articoli, df_articoli=df_articoli)
-    #   .pipe(inserimento_descrizione_articoli, df_articoli=df_articoli))
-    # df_joined = comp_indexed.join(
-    #     fasi_indexed,
-    #     how="left",
-    #     rsuffix="_fase",
-    # )
+
+    leggi_view("vwESOdP", "CodArt", "StatoOrdne")
+    leggi_view("vwESOdPFasi", "CodRisorsaProd")
+    leggi_view("vwESOdPComponenti")
+    leggi_view("vwESLavorazioni", "CodLavorazione")
+    leggi_view("vwESRisorse", "CodRisorsaProd")
+    leggi_view("vwESReparti", "CodReparto")
+    leggi_view("vwESCausaliAttivita")
+    leggi_view("vwESGiacenzaLotti")
+    leggi_view("vwESGiacenza")
+    leggi_view("vwESMagazzini", "CodMag")
+    leggi_view("vwESArticoli")
+    leggi_view("vwESMacroFamiglia", "CodMacrofamiglia")
+    leggi_view("vwESArticoli", "CodMag")
+    leggi_view("vwESFamiglia", "CodFamiglia")
 
     # # Rimetti l'indice come colonne
     # # df_joined = df_joined.reset_index()
