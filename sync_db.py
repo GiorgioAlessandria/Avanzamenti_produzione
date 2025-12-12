@@ -1,4 +1,6 @@
-
+import json
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+import sqlite3 as sq
 import tomllib
 import time
 from pathlib import Path
@@ -68,12 +70,29 @@ def leggi_view(table: str, colonna_filtro_esclusi: str, colonna_filtro_stato: st
     if colonna_filtro_esclusi != "":
         df = df[~df[colonna_filtro_esclusi].isin(
             config["Elementi_esclusi"][colonna_filtro_esclusi])]
+        df = df.dropna(subset=[colonna_filtro_esclusi], how='any')
     if colonna_filtro_stato != "":
         df = df[df[colonna_filtro_stato] ==
                 config["Elementi_selezionati"][colonna_filtro_stato]]
+        df = df.dropna(subset=[colonna_filtro_esclusi], how='any')
 
     df = df.reset_index(drop=True)
 
+    return df
+
+
+def drop_na(df: pd.DataFrame, colonna: str | list[str]) -> pd.DataFrame:
+    '''
+    Rimozione NaN dalla colonna o lista di colonne del dataframe in ingresso
+
+    :param df: Dataframe input
+    :type df: pd.DataFrame
+    :param colonna: Nome o lista di nomi delle colonne da controllare
+    :type colonna: str | list[str]
+    :return: Dataframe senza Nan
+    :rtype: DataFrame
+    '''
+    df = df.dropna(subset=colonna, how='any')
     return df
 
 
@@ -126,6 +145,7 @@ def inserimento_reparto_da_risorsa(df_odpfasi: pd.DataFrame, df_risorse: pd.Data
     '''
     df_odpfasi_reparti = df_odpfasi.merge(df_risorse[["CodRisorsaProd", "CodReparto"]], on=[
         "CodRisorsaProd"], how='left')
+    df_odpfasi_reparti = drop_na(df=df_odpfasi_reparti, colonna="CodReparto")
 
     return df_odpfasi_reparti
 
@@ -153,7 +173,7 @@ def unione_fasi_componenti(df_fasi: pd.DataFrame, df_componenti: pd.DataFrame) -
     return df_fasi_componenti
 
 
-def generazione_dizionario(df: pd.DataFrame, CHIAVI: list[str], rename_col: str, list_columns: list[str]) -> pd.DataFrame:
+def generazione_dizionario(df: pd.DataFrame, CHIAVI: list[str], rename_col: str, list_columns: list[str], data_in='normale') -> pd.DataFrame:
     '''
     Genera un dizionario raggruppando le chiavi
 
@@ -172,6 +192,11 @@ def generazione_dizionario(df: pd.DataFrame, CHIAVI: list[str], rename_col: str,
     '''
 
     df = df.set_index(CHIAVI)
+    if data_in == 'data':
+        df[rename_col] = df[rename_col].dt.strftime(
+            '%d/%m/%Y %H:%M:%S')
+    else:
+        pass
     componenti_per_odp = (
         df
         .groupby(CHIAVI)
@@ -181,6 +206,8 @@ def generazione_dizionario(df: pd.DataFrame, CHIAVI: list[str], rename_col: str,
         .rename(rename_col)
         .reset_index()
     )
+    componenti_per_odp[rename_col] = componenti_per_odp[rename_col].apply(lambda x: json.dumps(
+        x) if isinstance(x, (list, tuple)) else None)
     return componenti_per_odp
 
 
@@ -235,10 +262,10 @@ def inserimento_dati_fasi_in_odp(df_odp: pd.DataFrame, df_odpfasi: pd.DataFrame,
         df=df_odpfasi, CHIAVI=CHIAVI, rename_col="CodReparto", list_columns=["CodReparto"]).set_index(["IdDocumento", "IdRiga"])
 
     dataInizioSched_per_odp = generazione_dizionario(
-        df=df_odpfasi, CHIAVI=CHIAVI, rename_col="DataInizioSched", list_columns=["DataInizioSched"]).set_index(["IdDocumento", "IdRiga"])
+        df=df_odpfasi, CHIAVI=CHIAVI, rename_col="DataInizioSched", list_columns=["DataInizioSched"], data_in="data").set_index(["IdDocumento", "IdRiga"])
 
     dataFineSched_per_odp = generazione_dizionario(
-        df=df_odpfasi, CHIAVI=CHIAVI, rename_col="DataFineSched", list_columns=["DataFineSched"]).set_index(["IdDocumento", "IdRiga"])
+        df=df_odpfasi, CHIAVI=CHIAVI, rename_col="DataFineSched", list_columns=["DataFineSched"], data_in="data").set_index(["IdDocumento", "IdRiga"])
 
     tempoPrevistoLavoraz_per_odp = generazione_dizionario(
         df=df_odpfasi, CHIAVI=CHIAVI, rename_col="TempoPrevistoLavoraz", list_columns=["TempoPrevistoLavoraz"]).set_index(["IdDocumento", "IdRiga"])
@@ -270,12 +297,14 @@ def gestione_lotto_matricola_famiglia(df_odp: pd.DataFrame, df_articoli: pd.Data
     '''
     df_odp = df_odp.merge(
         df_articoli[["CodArt", "GestioneLotto", "GestioneMatricola", "CodFamiglia"]], on="CodArt", how='left')
+    df_odp = drop_na(df=df_odp, colonna=[
+                     "GestioneLotto", "GestioneMatricola", "CodFamiglia"])
     return df_odp
 
 
-def inserimento_famiglia(df_odp: pd.DataFrame, df_famiglia: pd.DataFrame) -> pd.DataFrame:
+def inserimento_macrofamiglia(df_odp: pd.DataFrame, df_famiglia: pd.DataFrame) -> pd.DataFrame:
     '''
-    Inserimento ne dataframe la macrofamiglia di appartenenza
+    Inserimento nel dataframe la macrofamiglia di appartenenza
 
     Inserisce la macrofamiglia di appartenenza all'ordine di produzione
 
@@ -288,7 +317,33 @@ def inserimento_famiglia(df_odp: pd.DataFrame, df_famiglia: pd.DataFrame) -> pd.
     '''
     df_odp = df_odp.merge(df_famiglia[["CodFamiglia", "CodMacrofamiglia"]], on=[
                           "CodFamiglia"], how='left')
+    df_odp = drop_na(df=df_odp, colonna=[
+                     "CodMacrofamiglia"])
     return df_odp
+
+
+def inserisci_o_ignora(sqltable, conn, keys, data_iter):
+    """
+    Usato da pandas.to_sql per eseguire INSERT OR IGNORE.
+    Richiede che la tabella abbia una PRIMARY KEY o UNIQUE constraint
+    sulle colonne che definiscono l'univocità (es. IdDocumento, IdRiga).
+    """
+    # sqltable è un pandas.io.sql.SQLTable, prendo la vera Table SQLAlchemy:
+    table = sqltable.table
+
+    # Converto l'iteratore di righe in lista di dict
+    rows = list(data_iter)
+    if not rows:
+        return
+
+    data = [dict(zip(keys, row)) for row in rows]
+
+    # Costruisco l'INSERT per SQLite
+    stmt = sqlite_insert(table).values(data)
+    # Aggiungo la parte "OR IGNORE"
+    stmt = stmt.prefix_with("OR IGNORE")
+
+    conn.execute(stmt)
 
 
 def elaborazione_dati():
@@ -316,8 +371,17 @@ def elaborazione_dati():
     input_odp = (inserimento_distinta_in_odp(df_odp=df_odp, componenti_per_odp=distinta_componenti, CHIAVI=CHIAVI)
                  .pipe(inserimento_dati_fasi_in_odp, df_odpfasi=df_odpfasi, CHIAVI=CHIAVI)
                  .pipe(gestione_lotto_matricola_famiglia, df_articoli=df_articoli)
-                 .pipe(inserimento_famiglia, df_famiglia=leggi_view("vwESFamiglia", colonna_filtro_esclusi="CodFamiglia", colonna_filtro_stato="")))
-    input_odp.to_excel("excel//df_odp.xlsx")
+                 .pipe(inserimento_macrofamiglia, df_famiglia=leggi_view("vwESFamiglia", colonna_filtro_esclusi="CodFamiglia", colonna_filtro_stato=""))
+                 .drop(columns=["DataInizioProduzione"]))
+    try:
+        input_odp.to_sql(name="staging_input_odp",
+                         con=engine_app,
+                         if_exists='append',
+                         index=False,
+                         method=inserisci_o_ignora)
+    except sq.IntegrityError:
+        print("Tutte le celle sono uguali")
+    # input_odp.to_excel("excel//df_odp.xlsx")
     return
 
     leggi_view("vwESOdP", "CodArt", "StatoOrdne")
@@ -382,35 +446,36 @@ if __name__ == "__main__":
     # df_famiglia = f_famiglia()
 
 
-def inserimento_descrizione_lavorazioni(df_odpfasi: pd.DataFrame, df_lavorazioni: pd.DataFrame) -> pd.DataFrame:
-    '''
-    NON PIù IN USO
-    Inserimento delle descrizioni associate al codice lavorazione
+# def inserimento_descrizione_lavorazioni(df_odpfasi: pd.DataFrame, df_lavorazioni: pd.DataFrame) -> pd.DataFrame:
+#     '''
+#     NON PIù IN USO
+#     Inserimento delle descrizioni associate al codice lavorazione
 
-    :param df_odpfasi: dataframe con le fasi degli ordini di produzione
-    :type df_odpfasi: pd.DataFrame
-    :param df_lavorazioni: dataframe con il codice lavorazion e la descrizione associata
-    :type df_lavorazioni: pd.DataFrame
-    :return: Dataframe df_odpfasi con aggiunta della descrizione della lavorazione
-    :rtype: DataFrame
-    '''
-    df_odpfasi_merged = df_odpfasi.merge(
-        df_lavorazioni[['CodLavorazione', 'DesLavorazione']], on='CodLavorazione', how='left')
-    return df_odpfasi_merged
+#     :param df_odpfasi: dataframe con le fasi degli ordini di produzione
+#     :type df_odpfasi: pd.DataFrame
+#     :param df_lavorazioni: dataframe con il codice lavorazion e la descrizione associata
+#     :type df_lavorazioni: pd.DataFrame
+#     :return: Dataframe df_odpfasi con aggiunta della descrizione della lavorazione
+#     :rtype: DataFrame
+#     '''
+#     df_odpfasi_merged = df_odpfasi.merge(
+#         df_lavorazioni[['CodLavorazione', 'DesLavorazione']], on='CodLavorazione', how='left')
+
+#     return df_odpfasi_merged
 
 
-def inserimento_descrizione_articoli(df_input: pd.DataFrame, df_articoli: pd.DataFrame) -> pd.DataFrame:
-    '''
-    NON PIù IN USO
-    Inserimento descrizione articolo (DesArt) acquisito dal df_articoli ed inserito  nel df di input
+# def inserimento_descrizione_articoli(df_input: pd.DataFrame, df_articoli: pd.DataFrame) -> pd.DataFrame:
+#     '''
+#     NON PIù IN USO
+#     Inserimento descrizione articolo (DesArt) acquisito dal df_articoli ed inserito  nel df di input
 
-    :param df_input: Dataframe di input con la colonna codici articolo (CodArt)
-    :type df_input: pd.DataFrame
-    :param df_articoli: Acquisizione degli articoli dal db iniziale
-    :type df_articoli: pd.DataFrame
-    :return: Ritorno del df df_fasi_articolo con la descrizione del materiale
-    :rtype: pd.DataFrame
-    '''
-    df_output = df_input.merge(
-        df_articoli[["CodArt", "DesArt"]], on=["CodArt"], how="left")
-    return df_output
+#     :param df_input: Dataframe di input con la colonna codici articolo (CodArt)
+#     :type df_input: pd.DataFrame
+#     :param df_articoli: Acquisizione degli articoli dal db iniziale
+#     :type df_articoli: pd.DataFrame
+#     :return: Ritorno del df df_fasi_articolo con la descrizione del materiale
+#     :rtype: pd.DataFrame
+#     '''
+#     df_output = df_input.merge(
+#         df_articoli[["CodArt", "DesArt"]], on=["CodArt"], how="left")
+#     return df_output
