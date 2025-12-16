@@ -17,15 +17,7 @@ try:
 except:
     pass
 
-ALLOWED_WEEKDAYS = {0, 1, 2, 3, 4, 5}
-START_H = 7
-END_H = 18
 CONFIG_PATH = Path("static//filtri_sync.toml")
-TZ = ZoneInfo("Europe/Rome")
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)s | %(message)s"
-)
 
 
 def load_config() -> dict:
@@ -61,23 +53,24 @@ engine_sqlserver = create_engine(
 )
 
 
-def leggi_view(table: Literal["vwESRisorse", "vwESOdP", "vwESOdPFasi", "vwESLavorazioni", "vwESOdPComponenti",
-                              "vwESRisorse", "vwESReparti", "vwESCausaliAttivita", "vwESGiacenza", "vwESGiacenzaLotti",
-                              "vwESArticoli", "vwESMagazzini", "vwESFamiglia", "vwESMacroFamiglia"],
-               colonna_filtro_esclusi: Optional[str] = "",
-               colonna_filtro_stato: Optional[str] = ""
-               ) -> pd.DataFrame:
+def leggi_view(
+    table: Literal["vwESRisorse", "vwESOdP", "vwESOdPFasi", "vwESLavorazioni", "vwESOdPComponenti",
+                   "vwESRisorse", "vwESReparti", "vwESCausaliAttivita", "vwESGiacenza", "vwESGiacenzaLotti",
+                   "vwESArticoli", "vwESMagazzini", "vwESFamiglia", "vwESMacroFamiglia"],
+    colonna_filtro_esclusi: Optional[str] = "",
+    colonna_filtro_stato: Optional[str] = ""
+) -> pd.DataFrame:
     '''
     Lettura della view
 
-    Legge la view in base ai parametri e da la view filtrata
+    Legge ed esegue due filtri in base ai parametri di input
 
     :param table: Nome della tabella
-    :type table: str
-    :param colonna_filtro_esclusi: Nome del filtro da richiamare (filtri di esclusione)
-    :type colonna_filtro_esclusi: str
+    :type table: Literal["vwESRisorse", "vwESOdP", "vwESOdPFasi", "vwESLavorazioni", "vwESOdPComponenti", "vwESRisorse", "vwESReparti", "vwESCausaliAttivita", "vwESGiacenza", "vwESGiacenzaLotti", "vwESArticoli", "vwESMagazzini", "vwESFamiglia", "vwESMacroFamiglia"]
+    :param colonna_filtro_esclusi:  Nome del filtro da richiamare (filtri di esclusione) Opzionale
+    :type colonna_filtro_esclusi: Optional[str]
     :param colonna_filtro_stato: Nome del filtro da richiamare (filtri di inclusione)
-    :type colonna_filtro_stato: str
+    :type colonna_filtro_stato: Optional[str]
     :return: Dataframe filtrato della view selezionata
     :rtype: DataFrame
     '''
@@ -97,7 +90,12 @@ def leggi_view(table: Literal["vwESRisorse", "vwESOdP", "vwESOdPFasi", "vwESLavo
     return df
 
 
-def inserisci_o_ignora(sqltable, conn, keys, data_iter):
+def inserisci_o_ignora(
+    sqltable,
+    conn,
+    keys,
+    data_iter
+) -> None:
     """
     Inserimento delle righe a db se non già presenti altrimenti ignora
 
@@ -105,7 +103,6 @@ def inserisci_o_ignora(sqltable, conn, keys, data_iter):
     :param conn: connessione al db
     :param keys: colonne della table
     :param data_iter:
-
     """
     # sqltable è un pandas.io.sql.SQLTable, prendo la vera Table SQLAlchemy:
     table = sqltable.table
@@ -127,12 +124,8 @@ def inserisci_o_ignora(sqltable, conn, keys, data_iter):
 
 def elaborazione_dati() -> None:
     '''
-    Funzione per la creazione della tabella input_odp da inserire a db
-
-    Manca l'aggiunta del Codice magazzino da Odp a input_odp ma sarà aggiunto automaticamente
+    Funzione per l'inserimento dei dati nella tabella input_odp da inserire a db
     '''
-    # df_giacenza = leggi_view(table="vwESGiacenza")
-    # df_giacenzalotti = leggi_view(table="vwESGiacenzaLotti")
     df_famiglia = leggi_view(table="vwESFamiglia")
     df_famiglia = df_famiglia.rename(
         columns={"CodFamiglia": "Codice", "Des": "Descrizione"})
@@ -205,12 +198,8 @@ def elaborazione_dati() -> None:
         print("Tutte le celle sono uguali")
 
 
-def read_cycle():
-    elaborazione_dati()
-
-
 if __name__ == "__main__":
     start_all = time_mod.time()
-    read_cycle()
+    elaborazione_dati()
     end_all = time_mod.time()
     print(f"Tempo di funzionamento {(end_all - start_all):4.1f} s")

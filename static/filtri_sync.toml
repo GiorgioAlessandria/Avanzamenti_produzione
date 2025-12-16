@@ -1,11 +1,10 @@
 [Elementi_selezionati]
 StatoOrdine = "Pianificata"
 [Elementi_esclusi]
-CodRisorsaProd = ["", "01", "02", "03"]
-CodMag = ["", "2", "4", "5", "8", "9", "12", "13"]
-CodReparto = ["", "50", "60"] #da inserire anche il 40?
+CodRisorsaProd = ["01", "02", "03"]
+CodMag = ["2", "4", "5", "8", "9", "12", "13"]
+CodReparto = ["50", "60"] #da inserire anche il 40?
 CodLavorazione = [
-    "",
     "COS",
     "DEN",
     "ELE",
@@ -18,7 +17,6 @@ CodLavorazione = [
     "VER",
 ]
 CodFamiglia = [
-    "",
     "PNT",
     "BRA",
     "BRI",
@@ -34,9 +32,8 @@ CodFamiglia = [
     "SCOMM",
     "SSV",
 ] #da controllare realmente quali mantenere
-CodMacrofamiglia = ["", "BBLAB", "BRR", "ESS"]
+CodMacrofamiglia = ["BBLAB", "BRR", "ESS"]
 CodArt = [
-    "",
     "RDMU18",
     "RDMU19",
     "RDMU20",

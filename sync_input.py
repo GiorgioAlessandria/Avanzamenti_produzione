@@ -1,3 +1,7 @@
+# region LIBRERIE
+'''
+Programma per l'acquisizione dei dati dalle view di produzione verso il db
+'''
 import logging
 from typing import Optional, Literal
 import json
@@ -11,7 +15,6 @@ from sqlalchemy import create_engine
 import functools as ft
 from zoneinfo import ZoneInfo
 from datetime import datetime, time, timedelta
-
 import time as time_mod
 import urllib.parse
 
@@ -20,6 +23,8 @@ try:
     from icecream import ic
 except:
     pass
+# endregion
+# region COSTANTI
 
 ALLOWED_WEEKDAYS = {0, 1, 2, 3, 4, 5}
 START_H = 7
@@ -30,6 +35,8 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(message)s"
 )
+# endregion
+# region DB E CONFIG
 
 
 def load_config() -> dict:
@@ -63,20 +70,26 @@ params = urllib.parse.quote_plus(
 engine_sqlserver = create_engine(
     "mssql+pyodbc:///?odbc_connect=" + params
 )
+# endregion
+# region ACQUISIZIONE DATI
 
 
-def leggi_view(table: Literal["vwESRisorse", "vwESOdP", "vwESOdPFasi", "vwESLavorazioni", "vwESOdPComponenti", "vwESRisorse", "vwESReparti", "vwESCausaliAttivita", "vwESGiacenza", "vwESGiacenzaLotti", "vwESArticoli", "vwESMagazzini", "vwESFamiglia", "vwESMacroFamiglia"], colonna_filtro_esclusi: Optional[str] = "", colonna_filtro_stato: Optional[str] = "") -> pd.DataFrame:
+def leggi_view(
+    table: Literal["vwESRisorse", "vwESOdP", "vwESOdPFasi", "vwESLavorazioni", "vwESOdPComponenti", "vwESRisorse", "vwESReparti", "vwESCausaliAttivita", "vwESGiacenza", "vwESGiacenzaLotti", "vwESArticoli", "vwESMagazzini", "vwESFamiglia", "vwESMacroFamiglia"],
+    colonna_filtro_esclusi: Optional[str] = "",
+    colonna_filtro_stato: Optional[str] = ""
+) -> pd.DataFrame:
     '''
     Lettura della view
 
-    Legge la view in base ai parametri e da la view filtrata
+    Legge ed esegue due filtri in base ai parametri di input
 
     :param table: Nome della tabella
-    :type table: str
-    :param colonna_filtro_esclusi: Nome del filtro da richiamare (filtri di esclusione)
-    :type colonna_filtro_esclusi: str
+    :type table: Literal["vwESRisorse", "vwESOdP", "vwESOdPFasi", "vwESLavorazioni", "vwESOdPComponenti", "vwESRisorse", "vwESReparti", "vwESCausaliAttivita", "vwESGiacenza", "vwESGiacenzaLotti", "vwESArticoli", "vwESMagazzini", "vwESFamiglia", "vwESMacroFamiglia"]
+    :param colonna_filtro_esclusi:  Nome del filtro da richiamare (filtri di esclusione) Opzionale
+    :type colonna_filtro_esclusi: Optional[str]
     :param colonna_filtro_stato: Nome del filtro da richiamare (filtri di inclusione)
-    :type colonna_filtro_stato: str
+    :type colonna_filtro_stato: Optional[str]
     :return: Dataframe filtrato della view selezionata
     :rtype: DataFrame
     '''
@@ -96,7 +109,10 @@ def leggi_view(table: Literal["vwESRisorse", "vwESOdP", "vwESOdPFasi", "vwESLavo
     return df
 
 
-def filtra_odpfasi_con_odp(df_odpfasi: pd.DataFrame, df_odp: pd.DataFrame) -> pd.DataFrame:
+def filtra_odpfasi_con_odp(
+    df_odpfasi: pd.DataFrame,
+    df_odp: pd.DataFrame
+) -> pd.DataFrame:
     '''
     Incrocio dei dati per mantenere le linee di df_odpfasi che corrispondono a [IdDocumento, IdRiga] di df_odp
 
@@ -112,7 +128,10 @@ def filtra_odpfasi_con_odp(df_odpfasi: pd.DataFrame, df_odp: pd.DataFrame) -> pd
     return df_odpfasi_filtered
 
 
-def filtra_odpcomponenti_con_odp(df_odpcomponenti: pd.DataFrame, df_odp: pd.DataFrame) -> pd.DataFrame:
+def filtra_odpcomponenti_con_odp(
+    df_odpcomponenti: pd.DataFrame,
+    df_odp: pd.DataFrame
+) -> pd.DataFrame:
     '''
     Incrocio dei dati per mantenere le linee di df_odpcomponenti che si trovano in IdDocumento e IdRiga di df_odp.
     Il filtro su df_odpcomponenti è ["IdDocumento", "IdRigaPadre"]
@@ -132,7 +151,10 @@ def filtra_odpcomponenti_con_odp(df_odpcomponenti: pd.DataFrame, df_odp: pd.Data
     return df_odpcomponenti_filtered
 
 
-def inserimento_reparto_da_risorsa(df_odpfasi: pd.DataFrame, df_risorse: pd.DataFrame) -> pd.DataFrame:
+def inserimento_reparto_da_risorsa(
+    df_odpfasi: pd.DataFrame,
+    df_risorse: pd.DataFrame
+) -> pd.DataFrame:
     '''
     Inserimento del reparto in base alla risorsa richiamata
 
@@ -150,7 +172,10 @@ def inserimento_reparto_da_risorsa(df_odpfasi: pd.DataFrame, df_risorse: pd.Data
     return df_odpfasi_reparti
 
 
-def unione_fasi_componenti(df_fasi: pd.DataFrame, df_componenti: pd.DataFrame) -> pd.DataFrame:
+def unione_fasi_componenti(
+    df_fasi: pd.DataFrame,
+    df_componenti: pd.DataFrame
+) -> pd.DataFrame:
     '''
     Join tra il df delle fasi e quello dei componenti per fase. Al df_componenti vengono rinominate le righe IdRigaPadre e IdRiga rispettivamente in IdRiga e IdRigacomponente
 
@@ -173,7 +198,13 @@ def unione_fasi_componenti(df_fasi: pd.DataFrame, df_componenti: pd.DataFrame) -
     return df_fasi_componenti
 
 
-def generazione_dizionario(df: pd.DataFrame, CHIAVI: list[str], rename_col: str, list_columns: list[str], data_in='normale') -> pd.DataFrame:
+def generazione_dizionario(
+    df: pd.DataFrame,
+    CHIAVI: list[str],
+    rename_col: str,
+    list_columns: list[str],
+    data_in: Optional[str] = 'normale'
+) -> pd.DataFrame:
     '''
     Genera un dizionario raggruppando le chiavi
 
@@ -211,7 +242,11 @@ def generazione_dizionario(df: pd.DataFrame, CHIAVI: list[str], rename_col: str,
     return componenti_per_odp
 
 
-def inserimento_distinta_in_odp(df_odp: pd.DataFrame, componenti_per_odp: pd.DataFrame, CHIAVI: list[str]) -> pd.DataFrame:
+def inserimento_distinta_in_odp(
+    df_odp: pd.DataFrame,
+    componenti_per_odp: pd.DataFrame,
+    CHIAVI: list[str]
+) -> pd.DataFrame:
     '''
     Inserimento della distinta nella linea d'ordine
 
@@ -232,7 +267,11 @@ def inserimento_distinta_in_odp(df_odp: pd.DataFrame, componenti_per_odp: pd.Dat
     return df_odp
 
 
-def inserimento_dati_fasi_in_odp(df_odp: pd.DataFrame, df_odpfasi: pd.DataFrame, CHIAVI: list[str]) -> pd.DataFrame:
+def inserimento_dati_fasi_in_odp(
+    df_odp: pd.DataFrame,
+    df_odpfasi: pd.DataFrame,
+    CHIAVI: list[str]
+) -> pd.DataFrame:
     '''
     Inserimento dei dati divisi per fase
 
@@ -282,7 +321,10 @@ def inserimento_dati_fasi_in_odp(df_odp: pd.DataFrame, df_odpfasi: pd.DataFrame,
     return df_odp
 
 
-def gestione_lotto_matricola_famiglia(df_odp: pd.DataFrame, df_articoli: pd.DataFrame) -> pd.DataFrame:
+def gestione_lotto_matricola_famiglia(
+    df_odp: pd.DataFrame,
+    df_articoli: pd.DataFrame
+) -> pd.DataFrame:
     '''
     Inserimento nel dataframe la gestione per lotto, matricola e la famiglia
 
@@ -296,13 +338,16 @@ def gestione_lotto_matricola_famiglia(df_odp: pd.DataFrame, df_articoli: pd.Data
     :rtype: DataFrame
     '''
     df_odp = df_odp.merge(
-        df_articoli[["CodArt", "GestioneLotto", "GestioneMatricola", "CodFamiglia"]], on="CodArt", how='left')
+        df_articoli[["CodArt", "GestioneLotto", "GestioneMatricola", "CodFamiglia", "CodClassifTecnica"]], on="CodArt", how='left')
     df_odp = df_odp.dropna(subset=[
         "GestioneLotto", "GestioneMatricola", "CodFamiglia"])
     return df_odp
 
 
-def inserimento_macrofamiglia(df_odp: pd.DataFrame, df_famiglia: pd.DataFrame) -> pd.DataFrame:
+def inserimento_macrofamiglia(
+    df_odp: pd.DataFrame,
+    df_famiglia: pd.DataFrame
+) -> pd.DataFrame:
     '''
     Inserimento nel dataframe la macrofamiglia di appartenenza
 
@@ -321,20 +366,23 @@ def inserimento_macrofamiglia(df_odp: pd.DataFrame, df_famiglia: pd.DataFrame) -
     return df_odp
 
 
-def inserisci_o_ignora(sqltable, conn, keys, data_iter):
+def inserisci_o_ignora(
+    sqltable,
+    conn,
+    keys,
+    data_iter
+) -> None:
     """
     Inserimento delle righe a db se non già presenti altrimenti ignora
 
     :param sqltable: table sql
     :param conn: connessione al db
     :param keys: colonne della table
-    :param data_iter:
-
+    :param data_iter: lista di dati
     """
-    # sqltable è un pandas.io.sql.SQLTable, prendo la vera Table SQLAlchemy:
+
     table = sqltable.table
 
-    # Converto l'iteratore di righe in lista di dict
     rows = list(data_iter)
     if not rows:
         return
@@ -347,25 +395,22 @@ def inserisci_o_ignora(sqltable, conn, keys, data_iter):
     stmt = stmt.prefix_with("OR IGNORE")
 
     conn.execute(stmt)
+# endregion
+# region ELABORAZIONE
 
 
 def elaborazione_dati() -> None:
     '''
-    Funzione per la creazione della tabella input_odp da inserire a db
-
-    Manca l'aggiunta del Codice magazzino da Odp a input_odp ma sarà aggiunto automaticamente
+    Funzione per l'inserimento dei dati nella tabella input_odp da inserire a db
     '''
-    # pd.DataFrame(leggi_view_odp()).to_excel("excel//odp.xlsx")
     df_odp = leggi_view(
         table="vwESOdP", colonna_filtro_esclusi="CodArt", colonna_filtro_stato="StatoOrdine")
     df_odpfasi = (pd.DataFrame(leggi_view(table="vwESOdPFasi", colonna_filtro_esclusi="CodRisorsaProd"))
                   .pipe(filtra_odpfasi_con_odp, df_odp=df_odp)
                   .pipe(inserimento_reparto_da_risorsa, df_risorse=leggi_view("vwESRisorse", colonna_filtro_esclusi="CodRisorsaProd")))
     CHIAVI = ["IdDocumento", "IdRiga"]
-    # df_odpfasi.to_excel("excel//odpfasi.xlsx")
     df_odpcomponenti = (leggi_view("vwESOdPComponenti")
                         .pipe(filtra_odpcomponenti_con_odp, df_odp=df_odp))
-    # df_odpcomponenti.to_excel("excel//odpcomponenti.xlsx")
     df_fasi_componenti = unione_fasi_componenti(df_odpfasi, df_odpcomponenti)
     distinta_componenti = generazione_dizionario(
         df=df_fasi_componenti, CHIAVI=CHIAVI, rename_col="DistintaMateriale", list_columns=["CodArt", "Quantita", "NumFase"])
@@ -383,10 +428,27 @@ def elaborazione_dati() -> None:
                          method=inserisci_o_ignora)
     except sq.IntegrityError:
         print("Tutte le celle sono uguali")
+# endregion
+# region SCHEDULAZIONE
 
 
-def _in_time_window(now_t: time, start: time, end: time) -> bool:
-    """Gestisce anche finestre overnight (start > end)."""
+def _in_time_window(
+        now_t: time,
+        start: time,
+        end: time
+) -> bool:
+    '''
+    Calcola se il tempo attuale è in finestra lavorativa
+
+    :param now_t: tempo attuale
+    :type now_t: time
+    :param start: inizio finestra lavorativa
+    :type start: time
+    :param end: fine finestra lavorativa
+    :type end: time
+    :return: tempo attuale in finestra lavorativa
+    :rtype: bool
+    '''
     if start == end:
         return True  # finestra 24h
     if start < end:
@@ -395,14 +457,29 @@ def _in_time_window(now_t: time, start: time, end: time) -> bool:
     return (now_t >= start) or (now_t < end)
 
 
-def _is_allowed_datetime(now: datetime, start: time, end: time, allowed_weekdays: set[int]) -> bool:
-    # Caso non-overnight: basta che oggi sia allowed.
+def _is_allowed_datetime(
+        now: datetime,
+        start: time,
+        end: time,
+        allowed_weekdays: set[int]
+) -> bool:
+    '''
+    Calcola se il giono attuale è in finestra lavorativa
+
+    :param now: giorno attuale
+    :type now: datetime
+    :param start: giorno iniziale
+    :type start: time
+    :param end: giorno finale
+    :type end: time
+    :param allowed_weekdays: giorni settimanali lavorativi
+    :type allowed_weekdays: set[int]
+    :return: giorno attuale in finestra lavorativa
+    :rtype: bool
+    '''
     if start < end or start == end:
         return (now.weekday() in allowed_weekdays) and _in_time_window(now.timetz().replace(tzinfo=None), start, end)
 
-    # Caso overnight: 18->06
-    # - Se sono tra 18:00 e 23:59, conta il "giorno di inizio" (oggi)
-    # - Se sono tra 00:00 e 05:59, conta il "giorno di inizio" (ieri)
     now_t = now.timetz().replace(tzinfo=None)
     if now_t >= start:
         start_day = now.weekday()
@@ -418,13 +495,25 @@ def seconds_until_next_allowed(
     allowed_weekdays: set[int],
     tz: ZoneInfo = TZ,
     step_minutes: int = 1
-
 ) -> int:
-    """
+    '''
     Ritorna 0 se siamo dentro la schedulazione.
     Altrimenti ritorna i secondi fino al prossimo istante consentito.
     Cerca in avanti con granularità step_minutes (default 1 minuto).
-    """
+
+    :param start_h: ora inizio turno di lavoro
+    :type start_h: int
+    :param end_h: ora fine turno di lavoro
+    :type end_h: int
+    :param allowed_weekdays: giorni lavorativi permessi
+    :type allowed_weekdays: set[int]
+    :param tz: timezone
+    :type tz: ZoneInfo
+    :param step_minutes: minuti di step
+    :type step_minutes: int
+    :return: delta tempo in cui sopire il programma
+    :rtype: int
+    '''
     start = time(start_h, 0)
     end = time(end_h, 0)
 
@@ -432,7 +521,6 @@ def seconds_until_next_allowed(
     if _is_allowed_datetime(now, start, end, allowed_weekdays):
         return 0
 
-    # Scansione in avanti (max ~ 7 giorni) a step di 1 minuto: semplice e robusta.
     probe = now.replace(second=0, microsecond=0)
     limit = probe + timedelta(days=8)
     step = timedelta(minutes=step_minutes)
@@ -446,7 +534,21 @@ def seconds_until_next_allowed(
         "Impossibile trovare una prossima finestra: controlla parametri schedule.")
 
 
-def wait_if_not_allowed(start_h: int, end_h: int, allowed_weekdays: set[int]) -> None:
+def wait_if_not_allowed(
+        start_h: int,
+        end_h: int,
+        allowed_weekdays: set[int]
+) -> None:
+    '''
+    Logger per l'output
+
+    :param start_h: ora inizio turno
+    :type start_h: int
+    :param end_h: ora fine turno
+    :type end_h: int
+    :param allowed_weekdays: giorni lavorativi
+    :type allowed_weekdays: set[int]
+    '''
     s = seconds_until_next_allowed(start_h, end_h, allowed_weekdays)
     if s > 0:
         logging.info(
@@ -454,8 +556,17 @@ def wait_if_not_allowed(start_h: int, end_h: int, allowed_weekdays: set[int]) ->
         time_mod.sleep(s)
 
 
-def read_cycle(poll_seconds: int = 30):
+def read_cycle(
+        poll_seconds: int = 30
+) -> None:
+    '''
+    funzione per elaborazione dati e calcolo del tempo di attività dell'intero programma con polling a n secondo
+
+    :param poll_seconds: secondi di poll
+    :type poll_seconds: int
+    '''
     counter = 1
+    logging.info("Inizio programma")
     while True:
         wait_if_not_allowed(START_H, END_H, ALLOWED_WEEKDAYS)
         start = time_mod.time()
@@ -470,6 +581,8 @@ def read_cycle(poll_seconds: int = 30):
                      counter, elapsed, sleep_for)
         time_mod.sleep(sleep_for)
         counter += 1
+# endregion
+# region MAIN
 
 
 if __name__ == "__main__":
@@ -477,3 +590,4 @@ if __name__ == "__main__":
     read_cycle()
     end_all = time_mod.time()
     print(f"Tempo di funzionamento {(end_all - start_all):4.1f} s")
+# endregion
