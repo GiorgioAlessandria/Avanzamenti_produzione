@@ -2,7 +2,9 @@
 '''
 Programma per l'acquisizione dei dati dalle view di produzione verso il db
 '''
+from sqlalchemy.orm import Session
 import logging
+import statistics
 from typing import Optional, Literal
 import json
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
@@ -18,6 +20,7 @@ from datetime import datetime, time, timedelta
 import time as time_mod
 import urllib.parse
 
+from models import ChangeEvent
 from sqlalchemy import create_engine
 try:
     from icecream import ic
@@ -25,7 +28,7 @@ except:
     pass
 # endregion
 # region COSTANTI
-
+COUNTER_RIGHE = int(0)
 ALLOWED_WEEKDAYS = {0, 1, 2, 3, 4, 5}
 START_H = 7
 END_H = 18
@@ -54,6 +57,7 @@ config = load_config()
 
 engine_app = create_engine(
     "sqlite:///\\\\Serverspring02\\PythonDB\\Avanzamenti_produzione\\instance\\RBAC.db")
+
 
 params = urllib.parse.quote_plus(
     "DRIVER={ODBC Driver 18 for SQL Server};"
@@ -103,9 +107,7 @@ def leggi_view(
         df = df[df[colonna_filtro_stato] ==
                 config["Elementi_selezionati"][colonna_filtro_stato]]
         df = df.dropna(subset=[colonna_filtro_esclusi], how='any')
-
     df = df.reset_index(drop=True)
-
     return df
 
 
@@ -263,7 +265,7 @@ def inserimento_distinta_in_odp(
     '''
     df_odp = df_odp.merge(componenti_per_odp, on=CHIAVI, how="left")
     df_odp = df_odp.drop(columns=[
-                         "CodTipoDoc", "NumRegistraz", "DataRegistrazione", "UnitaMisura", "QtaResidua"])
+                         "NumRegistraz", "DataRegistrazione", "UnitaMisura", "QtaResidua"])
     return df_odp
 
 
@@ -371,7 +373,7 @@ def inserisci_o_ignora(
     conn,
     keys,
     data_iter
-) -> None:
+) -> int:
     """
     Inserimento delle righe a db se non già presenti altrimenti ignora
 
@@ -385,7 +387,7 @@ def inserisci_o_ignora(
 
     rows = list(data_iter)
     if not rows:
-        return
+        return int(0)
 
     data = [dict(zip(keys, row)) for row in rows]
 
@@ -395,14 +397,17 @@ def inserisci_o_ignora(
     stmt = stmt.prefix_with("OR IGNORE")
 
     conn.execute(stmt)
+    return len(data)
 # endregion
 # region ELABORAZIONE
 
 
-def elaborazione_dati() -> None:
+def elaborazione_dati(session) -> None:
     '''
     Funzione per l'inserimento dei dati nella tabella input_odp da inserire a db
     '''
+    global COUNTER_RIGHE
+    righe_inserite = int(0)
     df_odp = leggi_view(
         table="vwESOdP", colonna_filtro_esclusi="CodArt", colonna_filtro_stato="StatoOrdine")
     df_odpfasi = (pd.DataFrame(leggi_view(table="vwESOdPFasi", colonna_filtro_esclusi="CodRisorsaProd"))
@@ -421,11 +426,22 @@ def elaborazione_dati() -> None:
                  .pipe(inserimento_macrofamiglia, df_famiglia=leggi_view("vwESFamiglia", colonna_filtro_esclusi="CodFamiglia"))
                  .drop(columns=["DataInizioProduzione"]))
     try:
-        input_odp.to_sql(name="input_odp",
-                         con=engine_app,
-                         if_exists='append',
-                         index=False,
-                         method=inserisci_o_ignora)
+        righe_inserite = (input_odp.to_sql(name="input_odp",
+                                           con=engine_app,
+                                           if_exists='append',
+                                           index=False,
+                                           method=inserisci_o_ignora))
+        righe_inserite = int(righe_inserite or 0)
+
+        if COUNTER_RIGHE == 0:
+            COUNTER_RIGHE = righe_inserite
+            emit_event(session=session, topic="nuovo_ciclo")
+        if (righe_inserite != 0) and (righe_inserite != COUNTER_RIGHE):
+            str_scope = f"{COUNTER_RIGHE}-{COUNTER_RIGHE-righe_inserite}"
+            emit_event(session=session, topic="nuovo_ordine",
+                       payload_json=str_scope)
+            COUNTER_RIGHE = righe_inserite
+
     except sq.IntegrityError:
         print("Tutte le celle sono uguali")
 # endregion
@@ -556,38 +572,108 @@ def wait_if_not_allowed(
         time_mod.sleep(s)
 
 
-def read_cycle(
-        poll_seconds: int = 30
+def emit_event(
+        session,
+        topic: str,
+        scope: str | None = None,
+        payload_json: str | None = None
 ) -> None:
     '''
-    funzione per elaborazione dati e calcolo del tempo di attività dell'intero programma con polling a n secondo
+    Inserisce a db una stringa per identificare l'inserimento di un nuovo odp
+
+    :param session: Session database
+    :param topic: tipologia evento
+    :type topic: str
+    :param scope: non utilizzato
+    :type scope: str | None
+    :param payload_json: descrizione evento
+    :type payload_json: str | None
+    '''
+    try:
+        session.add(ChangeEvent(topic=topic, scope=scope,
+                                payload_json=payload_json))
+    except:
+        session.rollback()
+    else:
+        session.commit()
+
+
+def read_cycle(
+        poll_seconds: int = 2
+) -> None:
+    '''
+    funzione per elaborazione dati e calcolo del tempo di attività dell'intero programma con polling a n secondi
 
     :param poll_seconds: secondi di poll
     :type poll_seconds: int
     '''
-    counter = 1
+    counter = 0
     logging.info("Inizio programma")
-    while True:
-        wait_if_not_allowed(START_H, END_H, ALLOWED_WEEKDAYS)
-        start = time_mod.time()
+    list_elapsed = list()
+    list_sleep = list()
 
-        try:
-            elaborazione_dati()
-        except Exception as e:
-            logging.exception("Errore generico")
-        elapsed = time_mod.time() - start
-        sleep_for = max(0, poll_seconds - elapsed)
-        logging.info("Ciclo %i completato in %.2f s. Sleep %.2fs",
-                     counter, elapsed, sleep_for)
-        time_mod.sleep(sleep_for)
-        counter += 1
-# endregion
-# region MAIN
+    with Session(engine_app) as session:
+        session.begin()
+    try:
+        while True:
+            wait_if_not_allowed(START_H, END_H, ALLOWED_WEEKDAYS)
+            start = time_mod.time()
+
+            try:
+                elaborazione_dati(session=session)
+            except Exception as e:
+                logging.exception("Errore generico")
+
+            elapsed = time_mod.time() - start
+            sleep_for = max(0, poll_seconds - elapsed)
+            logging.info("Ciclo %i completato in %.2f s. Sleep %.2fs",
+                         counter, elapsed, sleep_for)
+            list_elapsed.append(elapsed)
+            list_sleep.append(sleep_for)
+            time_mod.sleep(sleep_for)
+            counter += 1
+
+            if counter % 1000 == 0:
+                media_tempo_ciclo = statistics.mean(
+                    list_elapsed[-1000:len(list_elapsed)])
+                logging.info(
+                    "Media tempo ciclo ultimi 1000 cicli %.3f", media_tempo_ciclo)
+                media_riposo = statistics.mean(
+                    list_sleep[-1000:len(list_sleep)])
+                logging.info(
+                    "Media tempo riposo 1000 cicli %.3f", media_riposo)
+
+            elif counter % 500 == 0:
+                media_tempo_ciclo = statistics.mean(
+                    list_elapsed[-500:len(list_elapsed)])
+                logging.info(
+                    "Media tempo ciclo ultimi 500 cicli %.3f", media_tempo_ciclo)
+                media_riposo = statistics.mean(
+                    list_sleep[-500:len(list_sleep)])
+                logging.info("Media tempo riposo 500 cicli %.3f", media_riposo)
+
+            elif counter % 100 == 0:
+                media_tempo_ciclo = statistics.mean(
+                    list_elapsed[-100:len(list_elapsed)])
+                logging.info(
+                    "Media tempo ciclo ultimi 100 cicli %.3f", media_tempo_ciclo)
+                media_riposo = statistics.mean(
+                    list_sleep[-100:len(list_sleep)])
+                logging.info("Media tempo riposo 100 cicli %.3f", media_riposo)
+
+    except KeyboardInterrupt:
+        media_tempo_ciclo = statistics.mean(list_elapsed)
+        logging.info("Media tempo ciclo %.5f", media_tempo_ciclo)
+        media_riposo = statistics.mean(list_sleep)
+        logging.info("Media tempo riposo %.5f", media_riposo)
+        # endregion
+        # region MAIN
 
 
 if __name__ == "__main__":
     start_all = time_mod.time()
     read_cycle()
     end_all = time_mod.time()
-    print(f"Tempo di funzionamento {(end_all - start_all):4.1f} s")
+
+    logging.info("Tempo di funzionamento %4.1f s", ((end_all - start_all)/60))
 # endregion

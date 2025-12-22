@@ -1,3 +1,7 @@
+from __future__ import annotations
+from sqlalchemy.orm import declarative_base
+from sqlalchemy import Column, DateTime, Integer, String, Text
+from datetime import datetime, timezone
 # models.py
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
@@ -184,3 +188,17 @@ class User(UserMixin, db.Model):
 
     def __repr__(self):
         return f"{self.username}"
+
+
+Base = declarative_base()
+
+
+class ChangeEvent(Base):
+    __tablename__ = "change_event"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    topic = Column(String(50), nullable=False)  # es: "ordini"
+    scope = Column(String(50), nullable=True)   # es: "all" o "stabilimento-A"
+    payload_json = Column(Text, nullable=True)  # opzionale: JSON string
+    created_at = Column(DateTime, nullable=False,
+                        default=lambda: datetime.now(timezone.utc))
