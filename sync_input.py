@@ -677,5 +677,5 @@ if __name__ == "__main__":
     read_cycle()
     end_all = time_mod.time()
 
-    logging.info("Tempo di funzionamento %4.1f s", ((end_all - start_all)/60))
+    logging.info("Tempo di funzionamento %4.1f m", ((end_all - start_all)/60))
 # endregion

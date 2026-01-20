@@ -1,7 +1,8 @@
 from __future__ import annotations
 from sqlalchemy.orm import declarative_base
 from sqlalchemy import Column, DateTime, Integer, String, Text
-from datetime import datetime, timezone
+from datetime import datetime
+from zoneinfo import ZoneInfo
 # models.py
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
@@ -201,4 +202,4 @@ class ChangeEvent(Base):
     scope = Column(String(50), nullable=True)   # es: "all" o "stabilimento-A"
     payload_json = Column(Text, nullable=True)  # opzionale: JSON string
     created_at = Column(DateTime, nullable=False,
-                        default=lambda: datetime.now(timezone.utc))
+                        default=lambda: datetime.now().astimezone(ZoneInfo("Europe/Rome")))
