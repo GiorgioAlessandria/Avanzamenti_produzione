@@ -1,0 +1,42 @@
+[Elementi_selezionati]
+StatoOrdine = "Pianificata"
+[Elementi_esclusi]
+CodRisorsaProd = ["01", "02", "03"]
+CodMag = ["2", "4", "5", "8", "9", "12", "13"]
+CodReparto = ["50", "60"] #da inserire anche il 40?
+CodLavorazione = [
+    "COS",
+    "DEN",
+    "ELE",
+    "INC",
+    "LOG",
+    "OSS",
+    "PAL",
+    "PVD",
+    "TAG",
+    "VER",
+]
+CodFamiglia = [
+    "PNT",
+    "BRA",
+    "BRI",
+    "BRR",
+    "LAV",
+    "RIC",
+    "ATT",
+    "BEV",
+    "CAF",
+    "ESI",
+    "KIT",
+    "MER",
+    "SCOMM",
+    "SSV",
+] #da controllare realmente quali mantenere
+CodMacrofamiglia = ["BBLAB", "BRR", "ESS"]
+CodArt = [
+    "RDMU18",
+    "RDMU19",
+    "RDMU20",
+] #lasciare la voce vuota per rimuovere i valori vuoti
+[Percorsi]
+percorso_db = "//Serverspring02/PythonDB/Avanzamenti_produzione/instance/RBAC.db"

@@ -32,7 +32,7 @@ COUNTER_RIGHE = int(0)
 ALLOWED_WEEKDAYS = {0, 1, 2, 3, 4, 5}
 START_H = 7
 END_H = 18
-CONFIG_PATH = Path("static//filtri_sync.toml")
+CONFIG_PATH = Path("static//config.toml")
 TZ = ZoneInfo("Europe/Rome")
 logging.basicConfig(
     level=logging.INFO,
@@ -42,22 +42,20 @@ logging.basicConfig(
 # region DB E CONFIG
 
 
-def load_config() -> dict:
+def load_config(config: Path) -> dict:
     '''
     Caricamento e lettura file configurazioni
 
     :return: Ritorna un dizionario con le configurazioni
     :rtype: dict[Any, Any]
     '''
-    with CONFIG_PATH.open("rb") as f:
+    with config.open("rb") as f:
         return tomllib.load(f)
 
 
-config = load_config()
-
+config = load_config(CONFIG_PATH)
 engine_app = create_engine(
-    "sqlite:///\\\\Serverspring02\\PythonDB\\Avanzamenti_produzione\\instance\\RBAC.db")
-
+    f"sqlite:///{config['Percorsi']['percorso_db']}")
 
 params = urllib.parse.quote_plus(
     "DRIVER={ODBC Driver 18 for SQL Server};"
@@ -666,8 +664,12 @@ def read_cycle(
         logging.info("Media tempo ciclo %.5f", media_tempo_ciclo)
         media_riposo = statistics.mean(list_sleep)
         logging.info("Media tempo riposo %.5f", media_riposo)
-        # endregion
-        # region MAIN
+
+
+def ServerSystemEvent():
+    pass
+    # endregion
+    # region MAIN
 
 
 if __name__ == "__main__":
