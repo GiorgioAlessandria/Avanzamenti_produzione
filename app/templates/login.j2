@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html class="vw-100 h-auto" data-bs-theme="light" lang="it">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, shrink-to-fit=no">
+    <title>Avanzamenti di produzione</title>
+    <meta property="og:type" content="website">
+    <meta name="description" content="Templates bootstrap studio per gli avanzamenti di produzione">
+    <link rel="stylesheet" href="{{ url_for('static', filename='/assets/bootstrap/css/bootstrap.min.css')}}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='/assets/css/Login-Form-Basic-icons.css')}}">
+</head>
+
+<body class="w-100 h-auto">
+    <h1 class="d-flex justify-content-end mt-1 mx-2" style="width: auto;height: auto;"><img class="img-fluid"
+            width="250" height="89" src="{{ url_for('static', filename='/assets/img/logo.jpg')}}"></h1>
+    <main style="width: auto;height: auto;">
+        <section class="position-relative py-4 py-xl-5" style="width: auto;height: auto;">
+            <div class="container">
+                <div class="row mb-5">
+                    <div class="col-md-8 col-xl-6 text-center mx-auto">
+                        <h2>Log in ordini di produzione</h2>
+                    </div>
+                </div>
+                <div class="row d-flex justify-content-center">
+                    <div class="col-md-6 col-xl-4">
+                        <div class="card mb-5">
+                            <div class="card-body d-flex flex-column align-items-center">
+                                <div class="bs-icon-xl bs-icon-circle bs-icon-primary my-4 bs-icon"><svg
+                                        xmlns="http://www.w3.org/2000/svg" enable-background="new 0 0 24 24"
+                                        height="1em" viewBox="0 0 24 24" width="1em" fill="currentColor">
+                                        <g>
+                                            <rect fill="none" height="24" width="24"></rect>
+                                        </g>
+                                        <g>
+                                            <path
+                                                d="M22,10v12H2V10l7-3v2l5-2l0,0l0,3H22z M17.2,8.5L18,2h3l0.8,6.5H17.2z M11,18h2v-4h-2V18z M7,18h2v-4H7V18z M17,14h-2v4h2 V14z">
+                                            </path>
+                                        </g>
+                                    </svg>
+                                </div>
+                                <form class="text-center" method="post">
+                                    <div class="mb-3">
+                                        <select id="username" name="username" class="form-select form-select-lg"
+                                            placeholder="Nome utente" readonly="True" required>
+                                            <option value="" disabled {% if not default_user_id %}selected{% endif %}>
+                                                -- Scegli un utente --
+                                            </option>
+
+                                            {% for user in users %}
+                                            <option value="{{ user.id }}" {% if default_user_id and
+                                                user.id==default_user_id %}selected{% endif %}>
+                                                {{ user.username }}
+                                            </option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                    <input class="btn btn-lg btn-primary w-100 h-100" type="submit"
+                                        style="width: auto;height: auto;" name="Login" value="Login" />
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+    <script src="{{ url_for('static', filename='assets/js/jquery.min.js')}}"></script>
+    <script src="{{ url_for('static', filename='assets/bootstrap/js/bootstrap.min.js')}}"></script>
+    <script src="{{ url_for('static', filename='assets/js/bs-init.js')}}"></script>
+</body>
+
+</html>
