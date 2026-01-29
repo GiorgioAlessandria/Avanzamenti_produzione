@@ -6,7 +6,6 @@ try:
     from icecream import ic
 except:
     pass
-
 auth_bp = Blueprint("auth", __name__)
 
 
@@ -15,16 +14,14 @@ def load_user(user_id):
 
 
 def user_in() -> list[str]:
-    list_user = list(str())
-    users = list(User.query.order_by(
-        User.username).filter_by(active=True).all())
-    list_user = list(str())
-    for user in users:
-        if str(user).lower() == 'admin':
-            pass
-        else:
-            list_user.append(user)
-    return list_user
+    users = (
+        User.query
+        .filter_by(active=True)
+        .order_by(User.username)
+        .all()
+    )
+
+    return [u for u in users if u.username.lower() != "admin"]
 
 
 @auth_bp.route("/login", methods=["GET", "POST"])
@@ -32,16 +29,14 @@ def login():
     active_users = user_in()
     if request.method == "POST":
         username = request.form.get("username")
-        if not username:
+        if username == None or not username:
             return render_template("login.j2", users=active_users, error="Seleziona un utente")
-
         user = User.query.filter_by(id=username, active=True).first()
         if user:
             login_user(user)
             return redirect(url_for("main.home"))
         else:
             return render_template("login.j2", users=active_users, error="Utente non valido")
-
     return render_template("login.j2", users=active_users)
 
 

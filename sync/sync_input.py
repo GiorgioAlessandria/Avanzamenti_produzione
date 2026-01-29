@@ -21,14 +21,14 @@ from datetime import datetime, time, timedelta
 import time as time_mod
 import urllib.parse
 
-from models import ChangeEvent, input_odp
+from app.models import ChangeEvent, InputOdp
 try:
     from icecream import ic
 except:
     pass
 # endregion
 # region COSTANTI
-CONFIG_PATH = Path("static//config.toml")
+CONFIG_PATH = Path("app//static//config.toml")
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(message)s"
@@ -189,6 +189,29 @@ def unione_fasi_componenti(
     return df_fasi_componenti
 
 
+def generazione_lista(
+    df: pd.DataFrame,
+    CHIAVI: list[str],
+    rename_col: str,
+    list_columns: list[str],
+    dumps_json: bool = True,
+) -> pd.DataFrame:
+
+    tmp = df.copy()
+
+    componenti_per_odp = (
+        tmp.groupby(CHIAVI, dropna=False)[list_columns]
+        .apply(lambda g: [tuple(r) for r in g.to_numpy()])
+        .rename(rename_col)
+        .reset_index()
+    )
+
+    if dumps_json:
+        componenti_per_odp[rename_col] = componenti_per_odp[rename_col].apply(
+            lambda x: json.dumps(x, ensure_ascii=False, default=str) if isinstance(x, list) else None)
+    return componenti_per_odp
+
+
 def generazione_dizionario(
     df: pd.DataFrame,
     CHIAVI: list[str],
@@ -219,6 +242,7 @@ def generazione_dizionario(
             '%d/%m/%Y %H:%M:%S')
     else:
         pass
+    ic(df)
     componenti_per_odp = (
         df
         .groupby(CHIAVI)
@@ -279,25 +303,25 @@ def inserimento_dati_fasi_in_odp(
     :rtype: DataFrame
     '''
 
-    numFase_per_odp = generazione_dizionario(
+    numFase_per_odp = generazione_lista(
         df=df_odpfasi, CHIAVI=CHIAVI, rename_col="NumFase", list_columns=["NumFase"]).set_index(["IdDocumento", "IdRiga"])
 
-    codlavorazione_per_odp = generazione_dizionario(
+    codlavorazione_per_odp = generazione_lista(
         df=df_odpfasi, CHIAVI=CHIAVI, rename_col="CodLavorazione", list_columns=["CodLavorazione"]).set_index(["IdDocumento", "IdRiga"])
 
-    codRisorsaProd_per_odp = generazione_dizionario(
+    codRisorsaProd_per_odp = generazione_lista(
         df=df_odpfasi, CHIAVI=CHIAVI, rename_col="CodRisorsaProd", list_columns=["CodRisorsaProd"]).set_index(["IdDocumento", "IdRiga"])
 
-    codReparto_per_odp = generazione_dizionario(
+    codReparto_per_odp = generazione_lista(
         df=df_odpfasi, CHIAVI=CHIAVI, rename_col="CodReparto", list_columns=["CodReparto"]).set_index(["IdDocumento", "IdRiga"])
 
-    dataInizioSched_per_odp = generazione_dizionario(
-        df=df_odpfasi, CHIAVI=CHIAVI, rename_col="DataInizioSched", list_columns=["DataInizioSched"], data_in="data").set_index(["IdDocumento", "IdRiga"])
+    dataInizioSched_per_odp = generazione_lista(
+        df=df_odpfasi, CHIAVI=CHIAVI, rename_col="DataInizioSched", list_columns=["DataInizioSched"]).set_index(["IdDocumento", "IdRiga"])
 
-    dataFineSched_per_odp = generazione_dizionario(
-        df=df_odpfasi, CHIAVI=CHIAVI, rename_col="DataFineSched", list_columns=["DataFineSched"], data_in="data").set_index(["IdDocumento", "IdRiga"])
+    dataFineSched_per_odp = generazione_lista(
+        df=df_odpfasi, CHIAVI=CHIAVI, rename_col="DataFineSched", list_columns=["DataFineSched"]).set_index(["IdDocumento", "IdRiga"])
 
-    tempoPrevistoLavoraz_per_odp = generazione_dizionario(
+    tempoPrevistoLavoraz_per_odp = generazione_lista(
         df=df_odpfasi, CHIAVI=CHIAVI, rename_col="TempoPrevistoLavoraz", list_columns=["TempoPrevistoLavoraz"]).set_index(["IdDocumento", "IdRiga"])
 
     df_dizionari = [numFase_per_odp, codlavorazione_per_odp, codRisorsaProd_per_odp,
@@ -419,6 +443,7 @@ def elaborazione_dati(
                     .pipe(gestione_lotto_matricola_famiglia, df_articoli=df_articoli)
                     .pipe(inserimento_macrofamiglia, df_famiglia=leggi_view("vwESFamiglia", colonna_filtro_esclusi="CodFamiglia"))
                     .drop(columns=["DataInizioProduzione"]))
+    # ic(df_input_odp['NumFase'])
     try:
         righe_inserite = (df_input_odp.to_sql(name="input_odp",
                                               con=engine_app,
@@ -615,8 +640,8 @@ def read_cycle(
     with Session(engine_app) as session:
         session.begin()
     try:
-        while True:
-            # while counter < 2:
+        # while True:
+        while counter < 1:
             wait_if_not_allowed(START_H, END_H, ALLOWED_WEEKDAYS)
             start = time_mod.time()
 

@@ -2,17 +2,17 @@
 
 
 {% block content %}
-{% if current_user.has_permission('home') and current_user.has_reparto('carpenteria') %}
+{% if current_user.has_permission('home') and current_user.has_reparto('30') %}
 {% include "/partials/_home_carpenteria.html" %}
 
 
-{% elif current_user.has_permission('home') and current_user.has_reparto('collaudo') %}
+{% elif current_user.has_permission('home') and current_user.has_reparto('40') %}
 {% include "/partials/_home_collaudo.html" %}
 
-{% elif current_user.has_permission('home') and current_user.has_reparto('montaggio') %}
+{% elif current_user.has_permission('home') and current_user.has_reparto('10') %}
 {% include "/partials/_home_montaggio.html" %}
 
-{% elif current_user.has_permission('home') and current_user.has_reparto('officina') %}
+{% elif current_user.has_permission('home') and current_user.has_reparto('20') %}
 {% include '/partials/_home_officina.html' %}
 
 {% else %}
