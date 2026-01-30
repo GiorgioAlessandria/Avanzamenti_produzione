@@ -21,14 +21,14 @@ from datetime import datetime, time, timedelta
 import time as time_mod
 import urllib.parse
 
-from app.models import ChangeEvent, InputOdp
+from app_odp.models import ChangeEvent, InputOdp
 try:
     from icecream import ic
 except:
     pass
 # endregion
 # region COSTANTI
-CONFIG_PATH = Path("app//static//config.toml")
+CONFIG_PATH = Path("app_odp//static//config.toml")
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(message)s"
@@ -242,7 +242,6 @@ def generazione_dizionario(
             '%d/%m/%Y %H:%M:%S')
     else:
         pass
-    ic(df)
     componenti_per_odp = (
         df
         .groupby(CHIAVI)
@@ -452,20 +451,32 @@ def elaborazione_dati(
                                               method=inserisci_o_ignora))
 
         righe_inserite = int(righe_inserite or 0)
+        # ic(righe_inserite)
 
         if COUNTER_RIGHE == 0:
-            COUNTER_RIGHE = righe_inserite
+            # COUNTER_RIGHE = righe_inserite
             emit_event(session=session, topic="nuovo_ciclo")
         if (righe_inserite != 0) and (righe_inserite != COUNTER_RIGHE):
             df_input_odp = df_input_odp.sort_values(
                 ["IdDocumento", "IdRiga"], ascending=False)
-            righe_payload = df_input_odp[["IdDocumento", "IdRiga"]].iloc[:righe_inserite].to_dict(
-                orient="tight", index=False)
+
+            righe_payload = df_input_odp[[
+                "IdDocumento", "IdRiga"]].iloc[:righe_inserite]
+            payload = pd.DataFrame({
+                "data": righe_payload["IdDocumento"].astype(str) + "," + righe_payload["IdRiga"].astype(str)
+            }, columns=["data"])
             righe_scope_reparti = df_input_odp[
                 "CodReparto"].to_list()[:righe_inserite]
             emit_event(session=session, topic="nuovo_ordine",
-                       scope=str(righe_scope_reparti), payload_json=str(righe_payload['data']))
-            COUNTER_RIGHE = righe_inserite
+                       scope=str(righe_scope_reparti), payload_json=str(payload["data"].tolist()))
+        #     df_stato_odp = df_input_odp[[
+        #         "IdDocumento", "IdRiga"]].iloc[:righe_inserite].copy(deep=True).to_sql(name="stato_odp",
+        #                                                                                con=engine_app,
+        #                                                                                if_exists='append',
+        #                                                                                index=False,
+        #                                                                                method=inserisci_o_ignora)
+
+        COUNTER_RIGHE = righe_inserite
 
     except sq.IntegrityError:
         print("Tutte le celle sono uguali")

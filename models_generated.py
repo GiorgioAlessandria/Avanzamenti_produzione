@@ -212,6 +212,27 @@ class Roles(db.Model):
     def __repr__(self):
         return f"<Roles {self.__dict__}>"
 
+class StatoOdp(db.Model):
+    __tablename__ = 'stato_odp'
+
+    id = db.Column(db.Integer, primary_key=True)
+    IdDocumento = db.Column(db.Text)
+    IdRiga = db.Column(db.Text)
+    stato = db.Column(db.Text, server_default=db.text("'Pianificato'"))
+    fase = db.Column(db.Text)
+
+    def __repr__(self):
+        return f"<StatoOdp {self.__dict__}>"
+
+class TipologieStato(db.Model):
+    __tablename__ = 'tipologie_stato'
+
+    id = db.Column(db.Integer, primary_key=True)
+    tipo = db.Column(db.Integer)
+
+    def __repr__(self):
+        return f"<TipologieStato {self.__dict__}>"
+
 class Users(db.Model):
     __tablename__ = 'users'
 

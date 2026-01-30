@@ -204,6 +204,6 @@ db = SQLAlchemy()
 if __name__ == "__main__":
     # Esempio: sqlite:////absolute/path/to/tuo.db  (4 slash per path assoluto)
     generate_models(
-        db_url="sqlite:///app/instance/RBAC.db",
+        db_url="sqlite:///app_odp/instance/RBAC.db",
         out_path=Path("models_generated.py"),
     )
