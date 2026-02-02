@@ -1,7 +1,7 @@
-# region LIBRERIE
-'''
+﻿# region LIBRERIE
+"""
 Programma per l'acquisizione dei dati dalle view di produzione verso il db
-'''
+"""
 import logging
 import statistics
 from typing import Optional, Literal
@@ -9,19 +9,17 @@ import json
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 import sqlite3 as sq
 import tomllib
-import time
 from pathlib import Path
 import pandas as pd
 from sqlalchemy.orm import Session
-from sqlalchemy import create_engine, desc
-from sqlalchemy.sql.expression import func
+from sqlalchemy import create_engine
 import functools as ft
 from zoneinfo import ZoneInfo
 from datetime import datetime, time, timedelta
 import time as time_mod
 import urllib.parse
 
-from app_odp.models import ChangeEvent, InputOdp
+from app_odp.models import ChangeEvent
 try:
     from icecream import ic
 except:
@@ -38,18 +36,18 @@ logging.basicConfig(
 
 
 def load_config(config: Path) -> dict:
-    '''
+    """
     Caricamento e lettura file configurazioni
 
     :return: Ritorna un dizionario con le configurazioni
     :rtype: dict[Any, Any]
-    '''
+    """
     with config.open("rb") as f:
         return tomllib.load(f)
 
 
 config = load_config(CONFIG_PATH)
-engine_app = create_engine(
+sqlite_engine_app = create_engine(
     f"sqlite:///{config['Percorsi']['percorso_db']}")
 
 COUNTER_RIGHE = config['sync_config']['counter_righe']
@@ -59,10 +57,8 @@ END_H = config['sync_config']['ora_fine']
 TZ = ZoneInfo(config['sync_config']['time_zone'])
 
 params = urllib.parse.quote_plus(config['sync_config']['sql_params'])
-
-engine_sqlserver = create_engine(
-    "mssql+pyodbc:///?odbc_connect=" + params
-)
+sqlserver_engine_app = create_engine(
+    "mssql+pyodbc:///?odbc_connect=" + params)
 # endregion
 # region ACQUISIZIONE DATI
 
@@ -72,7 +68,7 @@ def leggi_view(
     colonna_filtro_esclusi: Optional[str] = "",
     colonna_filtro_stato: Optional[str] = ""
 ) -> pd.DataFrame:
-    '''
+    """
     Lettura della view
 
     Legge ed esegue due filtri in base ai parametri di input
@@ -85,9 +81,9 @@ def leggi_view(
     :type colonna_filtro_stato: Optional[str]
     :return: Dataframe filtrato della view selezionata
     :rtype: DataFrame
-    '''
-    query = f"""SELECT * FROM BernardiProd.dbo.{table}"""
-    df = pd.read_sql(query, engine_sqlserver)
+    """
+    query = f"SELECT * FROM BernardiProd.dbo.{table}"
+    df = pd.read_sql(query, sqlserver_engine_app)
     if colonna_filtro_esclusi != "":
         df = df[~df[colonna_filtro_esclusi].isin(
             config["Elementi_esclusi"][colonna_filtro_esclusi])]
@@ -104,70 +100,73 @@ def filtra_odpfasi_con_odp(
     df_odpfasi: pd.DataFrame,
     df_odp: pd.DataFrame
 ) -> pd.DataFrame:
-    '''
+    """
     Incrocio dei dati per mantenere le linee di df_odpfasi che corrispondono a [IdDocumento, IdRiga] di df_odp
 
     :param df_odpfasi: dataframe con le fasi degli ordini di produzione
     :type df_odpfasi: pd.DataFrame
     :param df_odp: dataframe con gli ordini di produzione
     :type df_odp: pd.DataFrame
-    :return: DataFrame filtrato per IdDocumento e IdRiga di df_odp
+    :return: DataFrame filtrato per IdDocumento e IdRiga di df_odpkssk
     :rtype: pd.DataFrame
-    '''
+    """
     df_odpfasi_filtered = df_odpfasi.merge(df_odp[["IdDocumento", "IdRiga"]], on=[
                                            "IdDocumento", "IdRiga"], how='right')
     return df_odpfasi_filtered
 
 
-def filtra_odpcomponenti_con_odp(
-    df_odpcomponenti: pd.DataFrame,
+def filtra_odp_componenti_con_odp(
+    df_odp_componenti: pd.DataFrame,
     df_odp: pd.DataFrame
 ) -> pd.DataFrame:
-    '''
-    Incrocio dei dati per mantenere le linee di df_odpcomponenti che si trovano in IdDocumento e IdRiga di df_odp.
-    Il filtro su df_odpcomponenti è ["IdDocumento", "IdRigaPadre"]
+    """
+    Incrocio dei dati per mantenere le linee di df_odp_componenti che si trovano in IdDocumento e IdRiga di df_odp.
+    Il filtro su df_odp_componenti è ["IdDocumento", "IdRigaPadre"]
 
     :rtype: pd.DataFrame
-    :param df_odpcomponenti: dataframe con i componenti in base agli ordini di produzione
-    :type df_odpcomponenti: pd.DataFrame
-    :param df_odp: dataframe con gli ordini di produzione
+    :param df_odp_componenti: DataFrame con i componenti in base agli ordini di produzione
+    :type df_odp_componenti: pd.DataFrame
+    :param df_odp: DataFrame con gli ordini di produzione
     :type df_odp: pd.DataFrame
     :return: DataFrame filtrato IdDocumento e IdRiga di df_odp
     :rtype: pd.DataFrame
-    '''
-    df_odpcomponenti_filtered = df_odpcomponenti.merge(df_odp[["IdDocumento", "IdRiga"]], left_on=[
+    """
+    df_odp_componenti_filtered = df_odp_componenti.merge(df_odp[["IdDocumento", "IdRiga"]], left_on=[
         "IdDocumento", "IdRigaPadre"], how='right', right_on=["IdDocumento", "IdRiga"], suffixes=["", "_y"])
-    df_odpcomponenti_filtered = df_odpcomponenti_filtered.drop(
-        columns=["IdRiga_y"])
-    return df_odpcomponenti_filtered
+    colonne_con_y = df_odp_componenti_filtered.columns.tolist()
+    colonne_con_y = [colonna for colonna in colonne_con_y if colonna.endswith("_y")]
+
+    df_odp_componenti_filtered = df_odp_componenti_filtered.drop(
+        columns=colonne_con_y)
+    return df_odp_componenti_filtered
 
 
 def inserimento_reparto_da_risorsa(
-    df_odpfasi: pd.DataFrame,
+    df_odp_fasi: pd.DataFrame,
     df_risorse: pd.DataFrame
 ) -> pd.DataFrame:
-    '''
+    """
     Inserimento del reparto in base alla risorsa richiamata
 
-    :param df_odpfasi: dataframe con le fasi degli ordini di produzione
-    :type df_odpfasi: pd.DataFrame
+    :param df_odp_fasi: dataframe con le fasi degli ordini di produzione
+    :type df_odp_fasi: pd.DataFrame
     :param df_risorse: dataframe con risorse e reparti associati
     :type df_risorse: pd.DataFrame
     :return: Dataframe con i reparti in CodReparto associati al codice risorsa
     :rtype: pd.DataFrame
-    '''
-    df_odpfasi_reparti = df_odpfasi.merge(df_risorse[["CodRisorsaProd", "CodReparto"]], on=[
+    """
+    df_odp_fasi_reparti = df_odp_fasi.merge(df_risorse[["CodRisorsaProd", "CodReparto"]], on=[
         "CodRisorsaProd"], how='left')
-    df_odpfasi_reparti = df_odpfasi_reparti.dropna(
+    df_odp_fasi_reparti = df_odp_fasi_reparti.dropna(
         subset="CodReparto", how='any')
-    return df_odpfasi_reparti
+    return df_odp_fasi_reparti
 
 
 def unione_fasi_componenti(
     df_fasi: pd.DataFrame,
     df_componenti: pd.DataFrame
 ) -> pd.DataFrame:
-    '''
+    """
     Join tra il df delle fasi e quello dei componenti per fase. Al df_componenti vengono rinominate le righe IdRigaPadre e IdRiga rispettivamente in IdRiga e IdRigacomponente
 
     :param df_fasi: dataframe fasi
@@ -176,7 +175,7 @@ def unione_fasi_componenti(
     :type df_componenti: pd.DataFrame
     :return: Dataframe composto dai codici articolo (CodArt) divisi per fase con le quantità di materiale necessario a codice per fase
     :rtype: pd.DataFrame
-    '''
+    """
     df_componenti = df_componenti.rename(
         columns={"IdRiga": "IdRigacomponente", "IdRigaPadre": "IdRiga"})
     fasi_indexed = df_fasi.set_index(
@@ -184,14 +183,14 @@ def unione_fasi_componenti(
     comp_indexed = df_componenti.set_index(
         ["IdDocumento", "IdRiga", "NumFase"], drop=True)
     df_fasi_componenti = fasi_indexed.join(comp_indexed, on=[
-        "IdDocumento", "IdRiga", "NumFase"], validate="1:m", how="left", lsuffix="l_")
+        "IdDocumento", "IdRiga", "NumFase"], validate="1:m", how="left")
     df_fasi_componenti = df_fasi_componenti.reset_index(drop=False)
     return df_fasi_componenti
 
 
 def generazione_lista(
     df: pd.DataFrame,
-    CHIAVI: list[str],
+    chiavi: list[str],
     rename_col: str,
     list_columns: list[str],
     dumps_json: bool = True,
@@ -200,7 +199,7 @@ def generazione_lista(
     tmp = df.copy()
 
     componenti_per_odp = (
-        tmp.groupby(CHIAVI, dropna=False)[list_columns]
+        tmp.groupby(chiavi, dropna=False)[list_columns]
         .apply(lambda g: [tuple(r) for r in g.to_numpy()])
         .rename(rename_col)
         .reset_index()
@@ -214,29 +213,31 @@ def generazione_lista(
 
 def generazione_dizionario(
     df: pd.DataFrame,
-    CHIAVI: list[str],
+    chiavi: list[str],
     rename_col: str,
     list_columns: list[str],
     data_in: Optional[str] = 'normale'
 ) -> pd.DataFrame:
-    '''
+    """
     Genera un dizionario raggruppando le chiavi
 
     Raggruppa in base alla costante CHIAVI (impostata nella funzione madre) e crea una lista di elementi che verrà inserita con il nome della colonna rename_col
 
+    :param data_in: Specifica se la colonna contiene dati di tipo data o normale
+    :type data_in: Optional[str]
     :param df: Dataframe di input
     :type df: pd.DataFrame
-    :param CHIAVI: elenco delle colonne da raggruppare
-    :type CHIAVI: list[str]
+    :param chiavi: elenco delle colonne da raggruppare
+    :type chiavi: list[str]
     :param rename_col: Nome della colonna finale
     :type rename_col: str
     :param list_columns: Lista con le colonne da raggruppare
     :type list_columns: list[str]
     :return: Dataframe raggruppati per Codice, descrizione e quantità
     :rtype: pd.DataFrame
-    '''
+    """
 
-    df = df.set_index(CHIAVI)
+    df = df.set_index(chiavi)
     if data_in == 'data':
         df[rename_col] = df[rename_col].dt.strftime(
             '%d/%m/%Y %H:%M:%S')
@@ -244,7 +245,7 @@ def generazione_dizionario(
         pass
     componenti_per_odp = (
         df
-        .groupby(CHIAVI)
+        .groupby(chiavi)
         .apply(
             (lambda g: g[list_columns]
              .to_dict("records")))
@@ -259,9 +260,9 @@ def generazione_dizionario(
 def inserimento_distinta_in_odp(
     df_odp: pd.DataFrame,
     componenti_per_odp: pd.DataFrame,
-    CHIAVI: list[str]
+    chiavi: list[str]
 ) -> pd.DataFrame:
-    '''
+    """
     Inserimento della distinta nella linea d'ordine
 
     Inserisce nella linea d'ordine la distinta per l'ordine di produzione. rimuove le colonne non necessarie al database di ingresso
@@ -270,23 +271,23 @@ def inserimento_distinta_in_odp(
     :type df_odp: pd.DataFrame
     :param componenti_per_odp: Dataframe con la distinta base
     :type componenti_per_odp: pd.DataFrame
-    :param CHIAVI: elenco delle colonne su cui unire i due df
-    :type CHIAVI: list[str]
+    :param chiavi: elenco delle colonne su cui unire i due df
+    :type chiavi: list[str]
     :return: dataframe con gli ordini e la distinta
     :rtype: pd.DataFrame
-    '''
-    df_odp = df_odp.merge(componenti_per_odp, on=CHIAVI, how="left")
+    """
+    df_odp = df_odp.merge(componenti_per_odp, on=chiavi, how= "left")
     df_odp = df_odp.drop(columns=[
-                         "NumRegistraz", "DataRegistrazione", "UnitaMisura", "QtaResidua"])
+                         "NumRegistraz", "DataRegistrazione", "UnitaMisura", "QtaResidua"], errors = "ignore")
     return df_odp
 
 
 def inserimento_dati_fasi_in_odp(
     df_odp: pd.DataFrame,
     df_odpfasi: pd.DataFrame,
-    CHIAVI: list[str]
+    chiavi: list[str]
 ) -> pd.DataFrame:
-    '''
+    """
     Inserimento dei dati divisi per fase
 
     Inserisce i dati delle fasi divisi in dizionario, in questo modo posso avere l'elenco delle fasi e la divisione dei vari componenti nelle fasi
@@ -295,38 +296,38 @@ def inserimento_dati_fasi_in_odp(
     :type df_odp: pd.DataFrame
     :param df_odpfasi: Dataframe con gli ordini di produzione con le fasi
     :type df_odpfasi: pd.DataFrame
-    :param CHIAVI: Chiavi su cui vengono filtrati i dataframe
-    :type CHIAVI: list[str]
+    :param chiavi: Chiavi su cui vengono filtrati i dataframe
+    :type chiavi: list[str]
     :return: dataframe con l'elenco delle fasi, i codici lavorazione, i codici risorsa, i codici reparto,
     data inizio e fine schedulazione ed il tempo previsto di lavorazione divisi per fasi
     :rtype: DataFrame
-    '''
+    """
 
-    numFase_per_odp = generazione_lista(
-        df=df_odpfasi, CHIAVI=CHIAVI, rename_col="NumFase", list_columns=["NumFase"]).set_index(["IdDocumento", "IdRiga"])
+    num_fase_per_odp = generazione_lista(
+        df=df_odpfasi, chiavi =chiavi, rename_col= "NumFase", list_columns=["NumFase"]).set_index(["IdDocumento", "IdRiga"])
 
-    codlavorazione_per_odp = generazione_lista(
-        df=df_odpfasi, CHIAVI=CHIAVI, rename_col="CodLavorazione", list_columns=["CodLavorazione"]).set_index(["IdDocumento", "IdRiga"])
+    cod_lavorazione_per_odp = generazione_lista(
+        df=df_odpfasi, chiavi =chiavi, rename_col= "CodLavorazione", list_columns=["CodLavorazione"]).set_index(["IdDocumento", "IdRiga"])
 
-    codRisorsaProd_per_odp = generazione_lista(
-        df=df_odpfasi, CHIAVI=CHIAVI, rename_col="CodRisorsaProd", list_columns=["CodRisorsaProd"]).set_index(["IdDocumento", "IdRiga"])
+    cod_risorsa_prod_per_odp = generazione_lista(
+        df=df_odpfasi, chiavi =chiavi, rename_col= "CodRisorsaProd", list_columns=["CodRisorsaProd"]).set_index(["IdDocumento", "IdRiga"])
 
-    codReparto_per_odp = generazione_lista(
-        df=df_odpfasi, CHIAVI=CHIAVI, rename_col="CodReparto", list_columns=["CodReparto"]).set_index(["IdDocumento", "IdRiga"])
+    cod_reparto_per_odp = generazione_lista(
+        df=df_odpfasi, chiavi =chiavi, rename_col= "CodReparto", list_columns=["CodReparto"]).set_index(["IdDocumento", "IdRiga"])
 
-    dataInizioSched_per_odp = generazione_lista(
-        df=df_odpfasi, CHIAVI=CHIAVI, rename_col="DataInizioSched", list_columns=["DataInizioSched"]).set_index(["IdDocumento", "IdRiga"])
+    data_inizio_sched_per_odp = generazione_lista(
+        df=df_odpfasi, chiavi =chiavi, rename_col= "DataInizioSched", list_columns=["DataInizioSched"]).set_index(["IdDocumento", "IdRiga"])
 
-    dataFineSched_per_odp = generazione_lista(
-        df=df_odpfasi, CHIAVI=CHIAVI, rename_col="DataFineSched", list_columns=["DataFineSched"]).set_index(["IdDocumento", "IdRiga"])
+    data_fine_sched_per_odp = generazione_lista(
+        df=df_odpfasi, chiavi =chiavi, rename_col= "DataFineSched", list_columns=["DataFineSched"]).set_index(["IdDocumento", "IdRiga"])
 
-    tempoPrevistoLavoraz_per_odp = generazione_lista(
-        df=df_odpfasi, CHIAVI=CHIAVI, rename_col="TempoPrevistoLavoraz", list_columns=["TempoPrevistoLavoraz"]).set_index(["IdDocumento", "IdRiga"])
+    tempo_previsto_lavoraz_per_odp = generazione_lista(
+        df=df_odpfasi, chiavi =chiavi, rename_col= "TempoPrevistoLavoraz", list_columns=["TempoPrevistoLavoraz"]).set_index(["IdDocumento", "IdRiga"])
 
-    df_dizionari = [numFase_per_odp, codlavorazione_per_odp, codRisorsaProd_per_odp,
-                    codReparto_per_odp, dataInizioSched_per_odp, dataFineSched_per_odp, tempoPrevistoLavoraz_per_odp]
+    df_dizionari = [num_fase_per_odp, cod_lavorazione_per_odp, cod_risorsa_prod_per_odp,
+                    cod_reparto_per_odp, data_inizio_sched_per_odp, data_fine_sched_per_odp, tempo_previsto_lavoraz_per_odp]
     df_fasi_raggruppate = ft.reduce(lambda left, right: pd.merge(
-        left, right, on=CHIAVI), df_dizionari)
+        left, right, on=chiavi), df_dizionari)
 
     df_odp = df_odp.set_index(["IdDocumento", "IdRiga"])
     df_odp = df_odp.join(
@@ -339,7 +340,7 @@ def gestione_lotto_matricola_famiglia(
     df_odp: pd.DataFrame,
     df_articoli: pd.DataFrame
 ) -> pd.DataFrame:
-    '''
+    """
     Inserimento nel dataframe la gestione per lotto, matricola e la famiglia
 
     Inserisce i dati per identificare se il codice deve essere gestito per lotto e/o con una matricola, inoltre inserisce anche la famiglia di appartenenza
@@ -350,7 +351,7 @@ def gestione_lotto_matricola_famiglia(
     :type df_articoli: pd.DataFrame
     :return: Dataframe degli ordini arricchito con la gestione lotto, matricola e la famiglia di appartenenza
     :rtype: DataFrame
-    '''
+    """
     df_odp = df_odp.merge(
         df_articoli[["CodArt", "GestioneLotto", "GestioneMatricola", "CodFamiglia", "CodClassifTecnica"]], on="CodArt", how='left')
     df_odp = df_odp.dropna(subset=[
@@ -362,7 +363,7 @@ def inserimento_macrofamiglia(
     df_odp: pd.DataFrame,
     df_famiglia: pd.DataFrame
 ) -> pd.DataFrame:
-    '''
+    """
     Inserimento nel dataframe la macrofamiglia di appartenenza
 
     Inserisce la macrofamiglia di appartenenza all'ordine di produzione
@@ -370,10 +371,10 @@ def inserimento_macrofamiglia(
     :param df_odp: Dataframe con gli ordini di produzione
     :type df_odp: pd.DataFrame
     :param df_famiglia: Dataframe con l'elenco delle macrofamiglie e famiglie associate
-    :type df_macrofamiglia: pd.DataFrame
+    :type df_famiglia: pd.DataFrame
     :return: Dataframe con l'elenco degli ordini arricchito con la macrofamiglia
     :rtype: DataFrame
-    '''
+    """
     df_odp = df_odp.merge(df_famiglia[["CodFamiglia", "CodMacrofamiglia"]], on=[
                           "CodFamiglia"], how='left')
     df_odp = df_odp.dropna(subset=["CodMacrofamiglia"])
@@ -403,15 +404,15 @@ def inserisci_o_ignora(
 
     data = [dict(zip(keys, row)) for row in rows]
 
-    # Costruisco l'INSERT per SQLite
+    # Costruisco insert per SQLite
     stmt = sqlite_insert(table).values(data)
     # Aggiungo la parte "OR IGNORE"
     stmt = stmt.prefix_with("OR IGNORE")
 
     conn.execute(stmt)
     return len(data)
-    # endregion
-    # region ELABORAZIONE
+# endregion
+# region ELABORAZIONE
 
 
 def elaborazione_dati(
@@ -424,28 +425,28 @@ def elaborazione_dati(
     :type session: Session
     """
     global COUNTER_RIGHE
-    righe_inserite = int(0)
+    # righe_inserite = int(0)
     df_odp = leggi_view(
         table="vwESOdP", colonna_filtro_esclusi="CodArt", colonna_filtro_stato="StatoOrdine")
     df_odpfasi = (pd.DataFrame(leggi_view(table="vwESOdPFasi", colonna_filtro_esclusi="CodRisorsaProd"))
                   .pipe(filtra_odpfasi_con_odp, df_odp=df_odp)
                   .pipe(inserimento_reparto_da_risorsa, df_risorse=leggi_view("vwESRisorse", colonna_filtro_esclusi="CodRisorsaProd")))
-    CHIAVI = ["IdDocumento", "IdRiga"]
+    chiavi = ["IdDocumento", "IdRiga"]
     df_odpcomponenti = (leggi_view("vwESOdPComponenti")
-                        .pipe(filtra_odpcomponenti_con_odp, df_odp=df_odp))
+                        .pipe(filtra_odp_componenti_con_odp, df_odp=df_odp))
     df_fasi_componenti = unione_fasi_componenti(df_odpfasi, df_odpcomponenti)
     distinta_componenti = generazione_dizionario(
-        df=df_fasi_componenti, CHIAVI=CHIAVI, rename_col="DistintaMateriale", list_columns=["CodArt", "Quantita", "NumFase"])
+        df=df_fasi_componenti, chiavi =chiavi, rename_col= "DistintaMateriale", list_columns=["CodArt", "Quantita", "NumFase"])
     df_articoli = leggi_view("vwESArticoli")
-    df_input_odp = (inserimento_distinta_in_odp(df_odp=df_odp, componenti_per_odp=distinta_componenti, CHIAVI=CHIAVI)
-                    .pipe(inserimento_dati_fasi_in_odp, df_odpfasi=df_odpfasi, CHIAVI=CHIAVI)
+    df_input_odp = (inserimento_distinta_in_odp(df_odp=df_odp, componenti_per_odp=distinta_componenti, chiavi =chiavi)
+                    .pipe(inserimento_dati_fasi_in_odp, df_odpfasi=df_odpfasi, chiavi=chiavi)
                     .pipe(gestione_lotto_matricola_famiglia, df_articoli=df_articoli)
                     .pipe(inserimento_macrofamiglia, df_famiglia=leggi_view("vwESFamiglia", colonna_filtro_esclusi="CodFamiglia"))
                     .drop(columns=["DataInizioProduzione"]))
     # ic(df_input_odp['NumFase'])
     try:
         righe_inserite = (df_input_odp.to_sql(name="input_odp",
-                                              con=engine_app,
+                                              con=sqlite_engine_app,
                                               if_exists='append',
                                               index=False,
                                               method=inserisci_o_ignora))
@@ -489,7 +490,7 @@ def _in_time_window(
         start: time,
         end: time
 ) -> bool:
-    '''
+    """
     Calcola se il tempo attuale è in finestra lavorativa
 
     :param now_t: tempo attuale
@@ -500,7 +501,7 @@ def _in_time_window(
     :type end: time
     :return: tempo attuale in finestra lavorativa
     :rtype: bool
-    '''
+    """
     if start == end:
         return True  # finestra 24h
     if start < end:
@@ -515,8 +516,8 @@ def _is_allowed_datetime(
         end: time,
         allowed_weekdays: set[int]
 ) -> bool:
-    '''
-    Calcola se il giono attuale è in finestra lavorativa
+    """
+    Calcola se il giorno attuale è in finestra lavorativa
 
     :param now: giorno attuale
     :type now: datetime
@@ -528,7 +529,7 @@ def _is_allowed_datetime(
     :type allowed_weekdays: set[int]
     :return: giorno attuale in finestra lavorativa
     :rtype: bool
-    '''
+    """
     if start < end or start == end:
         return (now.weekday() in allowed_weekdays) and _in_time_window(now.timetz().replace(tzinfo=None), start, end)
 
@@ -548,7 +549,7 @@ def seconds_until_next_allowed(
     tz: ZoneInfo = TZ,
     step_minutes: int = 1
 ) -> int:
-    '''
+    """
     Ritorna 0 se siamo dentro la schedulazione.
     Altrimenti ritorna i secondi fino al prossimo istante consentito.
     Cerca in avanti con granularità step_minutes (default 1 minuto).
@@ -565,7 +566,11 @@ def seconds_until_next_allowed(
     :type step_minutes: int
     :return: delta tempo in cui sopire il programma
     :rtype: int
-    '''
+    """
+    if step_minutes <= 0:
+        logging.warning("step_minutes=%s non valido: imposto a 1", step_minutes)
+        step_minutes = 1
+
     start = time(start_h, 0)
     end = time(end_h, 0)
 
@@ -591,7 +596,7 @@ def wait_if_not_allowed(
         end_h: int,
         allowed_weekdays: set[int]
 ) -> None:
-    '''
+    """
     Logger per l'output
 
     :param start_h: ora inizio turno
@@ -600,7 +605,7 @@ def wait_if_not_allowed(
     :type end_h: int
     :param allowed_weekdays: giorni lavorativi
     :type allowed_weekdays: set[int]
-    '''
+    """
     s = seconds_until_next_allowed(start_h, end_h, allowed_weekdays)
     if s > 0:
         logging.info(
@@ -614,7 +619,7 @@ def emit_event(
         scope: str | None = None,
         payload_json: str | None = None
 ) -> None:
-    '''
+    """
     Inserisce a db una stringa per identificare l'inserimento di un nuovo odp
 
     :param session: Session database
@@ -624,7 +629,7 @@ def emit_event(
     :type scope: str | None
     :param payload_json: descrizione evento
     :type payload_json: str | None
-    '''
+    """
     try:
         session.add(ChangeEvent(topic=topic, scope=scope,
                                 payload_json=payload_json))
@@ -637,22 +642,22 @@ def emit_event(
 def read_cycle(
         poll_seconds: int
 ) -> None:
-    '''
+    """
     funzione per elaborazione dati e calcolo del tempo di attività dell'intero programma con polling a n secondi
 
     :param poll_seconds: secondi di poll
     :type poll_seconds: int
-    '''
+    """
     counter = 0
     logging.info("Inizio programma")
     list_elapsed = list()
     list_sleep = list()
 
-    with Session(engine_app) as session:
+    with Session(sqlite_engine_app) as session:
         session.begin()
     try:
-        # while True:
-        while counter < 1:
+        while True:
+        # while counter < 1:
             wait_if_not_allowed(START_H, END_H, ALLOWED_WEEKDAYS)
             start = time_mod.time()
 
@@ -662,7 +667,7 @@ def read_cycle(
                 logging.exception("Errore generico")
 
             elapsed = time_mod.time() - start
-            sleep_for = max(0, poll_seconds - elapsed)
+            sleep_for = max(0, poll_seconds - int(elapsed))
             logging.info("Ciclo %i completato in %.2f s. Sleep %.2fs",
                          counter, elapsed, sleep_for)
             list_elapsed.append(elapsed)
@@ -705,7 +710,7 @@ def read_cycle(
         logging.info("Media tempo riposo %.5f", media_riposo)
 
 
-def ServerSystemEvent():
+def server_system_event():
     pass
     # endregion
     # region MAIN

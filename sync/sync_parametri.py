@@ -17,7 +17,7 @@ try:
 except:
     pass
 
-CONFIG_PATH = Path("static//filtri_sync.toml")
+CONFIG_PATH = Path("app_odp//static//config.toml")
 
 
 def load_config() -> dict:
