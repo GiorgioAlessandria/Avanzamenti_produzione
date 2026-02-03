@@ -11,6 +11,7 @@ import sqlite3 as sq
 import tomllib
 from pathlib import Path
 import pandas as pd
+import sqlalchemy as sa
 from sqlalchemy.orm import Session
 from sqlalchemy import create_engine
 import functools as ft
@@ -18,7 +19,9 @@ from zoneinfo import ZoneInfo
 from datetime import datetime, time, timedelta
 import time as time_mod
 import urllib.parse
-
+import pathlib
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.engine import Connection as SAConnection
 from app_odp.models import ChangeEvent
 try:
     from icecream import ic
@@ -26,14 +29,72 @@ except:
     pass
 # endregion
 # region COSTANTI
-CONFIG_PATH = Path("app_odp//static//config.toml")
+CONFIG = None
+config = None
+sqlite_engine_app = None
+sqlserver_engine_app = None
+
+COUNTER_RIGHE = 0
+ALLOWED_WEEKDAYS = None
+START_H = None
+END_H = None
+TIMEZONE = None
+POLL_SECONDS_DEFAULT = None
+ELEMENTI_ESCLUSI = None
+ELEMENTI_SELEZIONATI = None
+_INITIALIZED = False
+# endregion
+# region DB E CONFIG
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(message)s"
 )
-# endregion
-# region DB E CONFIG
+def init(config_path: str | pathlib.Path = None, *, force: bool = False):
+    """
+    Inizializza configurazione + connessioni DB + parametri globali.
+    - config_path: percorso del config.toml
+    - force: se True reinizializza anche se era già stato fatto
+    """
+    global CONFIG, config, sqlite_engine_app, sqlserver_engine_app
+    global COUNTER_RIGHE, ALLOWED_WEEKDAYS, START_H, END_H, TIMEZONE, POLL_SECONDS_DEFAULT
+    global ELEMENTI_ESCLUSI, ELEMENTI_SELEZIONATI
+    global _INITIALIZED
 
+    if _INITIALIZED and not force:
+        return
+
+    if config_path is None:
+        # default vicino al modulo (o dove vuoi)
+        config_path = Path("app_odp//static//config.toml")
+
+    CONFIG = load_config(config_path)
+
+    # estrazione campi
+    percorsi = CONFIG["Percorsi"]
+    sync_cfg = CONFIG["sync_config"]
+    ELEMENTI_ESCLUSI = CONFIG["Elementi_esclusi"]
+    ELEMENTI_SELEZIONATI = CONFIG["Elementi_selezionati"]
+
+    COUNTER_RIGHE = int(sync_cfg.get("counter_righe", 0))
+    ALLOWED_WEEKDAYS = set(sync_cfg["giorni_settimanali"])
+    START_H = int(sync_cfg["ora_inizio"])
+    END_H = int(sync_cfg["ora_fine"])
+    TIMEZONE = sync_cfg.get("time_zone", "Europe/Rome")
+    POLL_SECONDS_DEFAULT = float(sync_cfg.get("tempo_polling", 5))
+    params = urllib.parse.quote_plus(sync_cfg.get('sql_params'))
+
+    # Engine
+    sqlite_engine_app = create_engine(f"sqlite:///{percorsi['percorso_db']}")
+    if sqlserver_engine_app is None:
+        sqlserver_engine_app = create_engine(
+        "mssql+pyodbc:///?odbc_connect=" + params)
+
+    _INITIALIZED = True
+
+def ensure_init():
+    """Helper: garantisce che init() sia stata chiamata."""
+    if not _INITIALIZED:
+        init()
 
 def load_config(config: Path) -> dict:
     """
@@ -44,21 +105,6 @@ def load_config(config: Path) -> dict:
     """
     with config.open("rb") as f:
         return tomllib.load(f)
-
-
-config = load_config(CONFIG_PATH)
-sqlite_engine_app = create_engine(
-    f"sqlite:///{config['Percorsi']['percorso_db']}")
-
-COUNTER_RIGHE = config['sync_config']['counter_righe']
-ALLOWED_WEEKDAYS = config['sync_config']['giorni_settimanali']
-START_H = config['sync_config']['ora_inizio']
-END_H = config['sync_config']['ora_fine']
-TZ = ZoneInfo(config['sync_config']['time_zone'])
-
-params = urllib.parse.quote_plus(config['sync_config']['sql_params'])
-sqlserver_engine_app = create_engine(
-    "mssql+pyodbc:///?odbc_connect=" + params)
 # endregion
 # region ACQUISIZIONE DATI
 
@@ -82,16 +128,16 @@ def leggi_view(
     :return: Dataframe filtrato della view selezionata
     :rtype: DataFrame
     """
+    ensure_init()
     query = f"SELECT * FROM BernardiProd.dbo.{table}"
     df = pd.read_sql(query, sqlserver_engine_app)
     if colonna_filtro_esclusi != "":
         df = df[~df[colonna_filtro_esclusi].isin(
-            config["Elementi_esclusi"][colonna_filtro_esclusi])]
+            ELEMENTI_ESCLUSI[colonna_filtro_esclusi])]
         df = df.dropna(subset=[colonna_filtro_esclusi], how='any')
     if colonna_filtro_stato != "":
-        df = df[df[colonna_filtro_stato] ==
-                config["Elementi_selezionati"][colonna_filtro_stato]]
-        df = df.dropna(subset=[colonna_filtro_esclusi], how='any')
+        df = df[df[colonna_filtro_stato] == ELEMENTI_SELEZIONATI[colonna_filtro_stato]]
+        df = df.dropna(subset = [colonna_filtro_stato], how = "any")
     df = df.reset_index(drop=True)
     return df
 
@@ -381,38 +427,59 @@ def inserimento_macrofamiglia(
     return df_odp
 
 
-def inserisci_o_ignora(
-    sqltable,
-    conn,
-    keys,
-    data_iter
-) -> int:
+def inserisci_o_ignora(sqltable, conn, keys, data_iter) -> int:
     """
-    Inserimento delle righe a db se non già presenti altrimenti ignora
-
-    :param sqltable: table sql
-    :param conn: connessione al db
-    :param keys: colonne della table
-    :param data_iter: lista di dati
+    Inserimento delle righe a db se non già presenti altrimenti ignora.
+    Ritorna il numero di righe realmente inserite quando possibile.
     """
-
     table = sqltable.table
-
     rows = list(data_iter)
     if not rows:
-        return int(0)
-
+        return 0
     data = [dict(zip(keys, row)) for row in rows]
-
-    # Costruisco insert per SQLite
-    stmt = sqlite_insert(table).values(data)
-    # Aggiungo la parte "OR IGNORE"
-    stmt = stmt.prefix_with("OR IGNORE")
-
+    stmt = sqlite_insert(table).values(data).prefix_with("OR IGNORE")
     conn.execute(stmt)
+    if isinstance(conn, SAConnection):
+        try:
+            res = conn.execute(sa.text("SELECT changes()"))
+            # SQLAlchemy 1.4/2.x: scalar() o scalar_one()
+            if hasattr(res, "scalar_one"):
+                n = res.scalar_one()
+            else:
+                n = res.scalar()
+            return int(n or 0)
+        except Exception:
+            # fallback prudente
+            return len(data)
     return len(data)
+
 # endregion
 # region ELABORAZIONE
+
+def _chunked(seq, size: int):
+    for i in range(0, len(seq), size):
+        yield seq[i:i+size]
+
+def _fetch_existing_pks(engine, pk_tuples, pk_cols=("IdDocumento", "IdRiga")) -> set[tuple]:
+    """
+    Ritorna un set di PK (IdDocumento, IdRiga) già presenti in input_odp.
+    Chunking per evitare limiti di parametri SQLite.
+    """
+    if not pk_tuples:
+        return set()
+
+    md = sa.MetaData()
+    t = sa.Table("input_odp", md, autoload_with=engine)
+    tpl = sa.tuple_(t.c[pk_cols[0]], t.c[pk_cols[1]])
+
+    existing = set()
+    # chunk conservativo (SQLite ha limiti, 400-500 tuple è ok in genere)
+    for chunk in _chunked(pk_tuples, 400):
+        q = sa.select(t.c[pk_cols[0]], t.c[pk_cols[1]]).where(tpl.in_(chunk))
+        with engine.connect() as conn:
+            existing.update(conn.execute(q).fetchall())
+    return existing
+
 
 
 def elaborazione_dati(
@@ -424,6 +491,7 @@ def elaborazione_dati(
     :param session: sessione Sqlalchemy ORM
     :type session: Session
     """
+    ensure_init()
     global COUNTER_RIGHE
     # righe_inserite = int(0)
     df_odp = leggi_view(
@@ -443,44 +511,47 @@ def elaborazione_dati(
                     .pipe(gestione_lotto_matricola_famiglia, df_articoli=df_articoli)
                     .pipe(inserimento_macrofamiglia, df_famiglia=leggi_view("vwESFamiglia", colonna_filtro_esclusi="CodFamiglia"))
                     .drop(columns=["DataInizioProduzione"]))
-    # ic(df_input_odp['NumFase'])
+    pk_cols = ["IdDocumento", "IdRiga"]
+
+    # 1) dedup PK nel batch (e normalizza tipo)
+    df_pk = df_input_odp[pk_cols].astype(str).drop_duplicates()
+    pk_tuples = list(map(tuple, df_pk.to_numpy()))
+
+    # 2) chiavi già presenti
+    existing = _fetch_existing_pks(sqlite_engine_app, pk_tuples, tuple(pk_cols))
+
+    # 3) filtra nuove righe + dedup finale PK
+    mask_new = [tuple(x) not in existing for x in df_input_odp[pk_cols].astype(str).to_numpy()]
+    df_new = df_input_odp.loc[mask_new].copy().drop_duplicates(subset = pk_cols)
+
+    # 4) nuovo_ciclo deve essere PRIMA (quando counter==0)
+    if COUNTER_RIGHE == 0:
+        emit_event(session = session, topic = "nuovo_ciclo")
+
+    # 5) inserimento (None->0) + catch IntegrityError
     try:
-        righe_inserite = (df_input_odp.to_sql(name="input_odp",
-                                              con=sqlite_engine_app,
-                                              if_exists='append',
-                                              index=False,
-                                              method=inserisci_o_ignora))
-
-        righe_inserite = int(righe_inserite or 0)
-        # ic(righe_inserite)
-
-        if COUNTER_RIGHE == 0:
-            # COUNTER_RIGHE = righe_inserite
-            emit_event(session=session, topic="nuovo_ciclo")
-        if (righe_inserite != 0) and (righe_inserite != COUNTER_RIGHE):
-            df_input_odp = df_input_odp.sort_values(
-                ["IdDocumento", "IdRiga"], ascending=False)
-
-            righe_payload = df_input_odp[[
-                "IdDocumento", "IdRiga"]].iloc[:righe_inserite]
-            payload = pd.DataFrame({
-                "data": righe_payload["IdDocumento"].astype(str) + "," + righe_payload["IdRiga"].astype(str)
-            }, columns=["data"])
-            righe_scope_reparti = df_input_odp[
-                "CodReparto"].to_list()[:righe_inserite]
-            emit_event(session=session, topic="nuovo_ordine",
-                       scope=str(righe_scope_reparti), payload_json=str(payload["data"].tolist()))
-        #     df_stato_odp = df_input_odp[[
-        #         "IdDocumento", "IdRiga"]].iloc[:righe_inserite].copy(deep=True).to_sql(name="stato_odp",
-        #                                                                                con=engine_app,
-        #                                                                                if_exists='append',
-        #                                                                                index=False,
-        #                                                                                method=inserisci_o_ignora)
-
-        COUNTER_RIGHE = righe_inserite
-
+        righe_inserite = int(
+                df_new.to_sql(
+                        name = "input_odp",
+                        con = sqlite_engine_app,
+                        if_exists = "append",
+                        index = False,
+                        method = inserisci_o_ignora,
+                        ) or 0
+                )
     except sq.IntegrityError:
         print("Tutte le celle sono uguali")
+        righe_inserite = 0
+
+    # 6) nuovo_ordine SOLO se cambia rispetto al counter
+    if (righe_inserite != 0) and (righe_inserite != COUNTER_RIGHE):
+        df_ev = df_new.sort_values(["IdDocumento", "IdRiga"], ascending = False).head(righe_inserite)
+        payload = (df_ev["IdDocumento"].astype(str) + "," + df_ev["IdRiga"].astype(str)).tolist()
+        scope = df_ev["CodReparto"].tolist()
+        emit_event(session = session, topic = "nuovo_ordine", scope = json.dumps(scope), payload_json = json.dumps(payload))
+
+    COUNTER_RIGHE = righe_inserite
+
 # endregion
 # region SCHEDULAZIONE
 
@@ -546,7 +617,7 @@ def seconds_until_next_allowed(
     start_h: int,
     end_h: int,
     allowed_weekdays: set[int],
-    tz: ZoneInfo = TZ,
+    tz: ZoneInfo = ZoneInfo("Europe/Rome"),
     step_minutes: int = 1
 ) -> int:
     """
@@ -639,41 +710,35 @@ def emit_event(
         session.commit()
 
 
-def read_cycle(
-        poll_seconds: int
-) -> None:
+def read_cycle() -> None:
     """
     funzione per elaborazione dati e calcolo del tempo di attività dell'intero programma con polling a n secondi
-
-    :param poll_seconds: secondi di poll
-    :type poll_seconds: int
     """
+    ensure_init()
     counter = 0
     logging.info("Inizio programma")
-    list_elapsed = list()
-    list_sleep = list()
-
-    with Session(sqlite_engine_app) as session:
-        session.begin()
+    list_elapsed = []
+    list_sleep = []
     try:
-        while True:
-        # while counter < 1:
-            wait_if_not_allowed(START_H, END_H, ALLOWED_WEEKDAYS)
-            start = time_mod.time()
+        with Session(sqlite_engine_app) as session:
+            while True:
+                wait_if_not_allowed(START_H, END_H, ALLOWED_WEEKDAYS)
+                start = time_mod.time()
 
-            try:
-                elaborazione_dati(session=session)
-            except Exception as e:
-                logging.exception("Errore generico")
+                try:
+                    elaborazione_dati(session=session)
+                except Exception:
+                    logging.exception("Errore generico")
 
-            elapsed = time_mod.time() - start
-            sleep_for = max(0, poll_seconds - int(elapsed))
-            logging.info("Ciclo %i completato in %.2f s. Sleep %.2fs",
-                         counter, elapsed, sleep_for)
-            list_elapsed.append(elapsed)
-            list_sleep.append(sleep_for)
-            time_mod.sleep(sleep_for)
-            counter += 1
+                elapsed = time_mod.time() - start
+                sleep_for = max(0.0, float(POLL_SECONDS_DEFAULT) - elapsed)  # meglio senza int()
+                logging.info("Ciclo %i completato in %.2f s. Sleep %.2fs",
+                             counter, elapsed, sleep_for)
+
+                list_elapsed.append(elapsed)
+                list_sleep.append(sleep_for)
+                time_mod.sleep(sleep_for)
+                counter += 1
 
             if counter % 1000 == 0:
                 media_tempo_ciclo = statistics.mean(
@@ -703,11 +768,13 @@ def read_cycle(
                     list_sleep[-100:len(list_sleep)])
                 logging.info("Media tempo riposo 100 cicli %.3f", media_riposo)
 
+
     except KeyboardInterrupt:
-        media_tempo_ciclo = statistics.mean(list_elapsed)
-        logging.info("Media tempo ciclo %.5f", media_tempo_ciclo)
-        media_riposo = statistics.mean(list_sleep)
-        logging.info("Media tempo riposo %.5f", media_riposo)
+        if list_elapsed:
+            logging.info("Media tempo ciclo %.5f", statistics.mean(list_elapsed))
+
+        if list_sleep:
+            logging.info("Media tempo riposo %.5f", statistics.mean(list_sleep))
 
 
 def server_system_event():
@@ -718,7 +785,7 @@ def server_system_event():
 
 if __name__ == "__main__":
     start_all = time_mod.time()
-    read_cycle(config['sync_config']['tempo_polling'])
+    read_cycle()
     end_all = time_mod.time()
 
     logging.info("Tempo di funzionamento %4.1f m", ((end_all - start_all)/60))
