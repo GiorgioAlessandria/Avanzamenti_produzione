@@ -4,8 +4,6 @@ from sqlalchemy.orm import declarative_base
 from sqlalchemy import Column, DateTime, Integer, String, Text, PrimaryKeyConstraint
 from datetime import datetime
 from zoneinfo import ZoneInfo
-# models.py
-from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
 import uuid
 import json
