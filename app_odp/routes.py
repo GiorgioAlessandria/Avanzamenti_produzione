@@ -30,11 +30,18 @@ def odp_filtri_rbac(odp: pd.DataFrame, user):
     # if user.is_admin:
     #     return odp
     # else:
-    reparti_utente = [r.codice for r in user.reparti]
+    ruolo_utente = user.roles[0]  # assumendo un solo ruolo per utente, altrimenti va gestito diversamente
+    reparto = ruolo_utente.reparti
+    risorse = ruolo_utente.risorse
+    lavorazioni = ruolo_utente.lavorazioni
+    famiglia = ruolo_utente.famiglia
+    magazzini = ruolo_utente.magazzini
+    macrofamiglia = ruolo_utente.macrofamiglia
+    ic(ruolo_utente, reparto, risorse, lavorazioni, famiglia, magazzini, macrofamiglia)
 
-    ic(odp)
-    odp.to_excel("temp/odp.xlsx", index=False)
-    odp = odp[odp["CodReparto"].isin(reparti_utente)]
+
+    #odp.to_excel("temp/odp.xlsx", index=False)
+    #odp = odp[odp["CodReparto"].isin(reparti_utente)]
 
     # return odp_filtrati
 
@@ -52,20 +59,3 @@ def home():
         df_odp = pd.read_sql(stmt, conn)
     odp_filtrati = odp_filtri_rbac(df_odp, current_user)
     return render_template("home.j2", ordini_produzione=odp_filtrati)
-
-
-# routes.py
-
-
-# @main_bp.route("/api/ordini")
-# @login_required
-# def api_ordini():
-#     """
-#
-#     """
-#     q = input_odp.query
-#     allowed = [r.codice for r in current_user.reparti]  # o per ruolo/permesso
-#     if allowed:
-#         q = q.filter(input_odp.CodReparto.in_(allowed))
-#     # meglio serializzare solo i campi necessari
-#     return {"rows": [r.__dict__ for r in q.all()]}

@@ -8,45 +8,51 @@ db = SQLAlchemy()
 
 # --- Tabelle di associazione ---
 
+roles_famiglia = db.Table(
+    'roles_famiglia',
+    db.Column('roles_id', db.Integer, db.ForeignKey('roles.id', ondelete='CASCADE'), primary_key=True),
+    db.Column('famiglia_id', db.Integer, db.ForeignKey('famiglia.id', ondelete='CASCADE'), primary_key=True),
+)
+
+roles_ineritance = db.Table(
+    'roles_ineritance',
+    db.Column('role_id', db.Integer, db.ForeignKey('roles.id'), primary_key=True),
+    db.Column('included_role', db.Integer, db.ForeignKey('roles.id'), primary_key=True),
+)
+
+roles_lavorazioni = db.Table(
+    'roles_lavorazioni',
+    db.Column('roles_id', db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), primary_key=True),
+    db.Column('lavorazioni_id', db.Integer, db.ForeignKey('lavorazioni.id', ondelete='CASCADE'), primary_key=True),
+)
+
+roles_macrofamiglia = db.Table(
+    'roles_macrofamiglia',
+    db.Column('roles_id', db.Integer, db.ForeignKey('roles.id', ondelete='CASCADE'), primary_key=True),
+    db.Column('macrofamiglia_id', db.Integer, db.ForeignKey('macrofamiglia.id', ondelete='CASCADE'), primary_key=True),
+)
+
+roles_magazzini = db.Table(
+    'roles_magazzini',
+    db.Column('roles_id', db.Integer, db.ForeignKey('roles.id', ondelete='CASCADE'), primary_key=True),
+    db.Column('magazzini_id', db.Integer, db.ForeignKey('magazzini.id', ondelete='CASCADE'), primary_key=True),
+)
+
 roles_permission = db.Table(
     'roles_permission',
     db.Column('role_id', db.Integer, db.ForeignKey('roles.id', ondelete='CASCADE'), primary_key=True),
     db.Column('permission_id', db.Integer, db.ForeignKey('permissions.id', ondelete='CASCADE'), primary_key=True),
 )
 
-user_famiglia = db.Table(
-    'user_famiglia',
-    db.Column('user_id', db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), primary_key=True),
-    db.Column('famiglia_id', db.Integer, db.ForeignKey('famiglia.id', ondelete='CASCADE'), primary_key=True),
-)
-
-user_lavorazioni = db.Table(
-    'user_lavorazioni',
-    db.Column('user_id', db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), primary_key=True),
-    db.Column('lavorazioni_id', db.Integer, db.ForeignKey('lavorazioni.id', ondelete='CASCADE'), primary_key=True),
-)
-
-user_macrofamiglia = db.Table(
-    'user_macrofamiglia',
-    db.Column('user_id', db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), primary_key=True),
-    db.Column('macrofamiglia_id', db.Integer, db.ForeignKey('macrofamiglia.id', ondelete='CASCADE'), primary_key=True),
-)
-
-user_magazzini = db.Table(
-    'user_magazzini',
-    db.Column('user_id', db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), primary_key=True),
-    db.Column('magazzini_id', db.Integer, db.ForeignKey('magazzini.id', ondelete='CASCADE'), primary_key=True),
-)
-
-user_reparti = db.Table(
-    'user_reparti',
-    db.Column('user_id', db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), primary_key=True),
+roles_reparti = db.Table(
+    'roles_reparti',
+    db.Column('roles_id', db.Integer, db.ForeignKey('roles.id', ondelete='CASCADE'), primary_key=True),
     db.Column('reparto_id', db.Integer, db.ForeignKey('reparti.id', ondelete='CASCADE'), primary_key=True),
 )
 
-user_risorse = db.Table(
-    'user_risorse',
-    db.Column('user_id', db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), primary_key=True),
+roles_risorse = db.Table(
+    'roles_risorse',
+    db.Column('roles_id', db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), primary_key=True),
     db.Column('risorse_id', db.Integer, db.ForeignKey('risorse.id', ondelete='CASCADE'), primary_key=True),
 )
 
@@ -54,6 +60,12 @@ user_roles = db.Table(
     'user_roles',
     db.Column('user_id', db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), primary_key=True),
     db.Column('role_id', db.Integer, db.ForeignKey('roles.id', ondelete='CASCADE'), primary_key=True),
+)
+
+users_lavorazioni = db.Table(
+    'users_lavorazioni',
+    db.Column('user_id', db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), primary_key=True),
+    db.Column('lavorazioni_id', db.Integer, db.ForeignKey('lavorazioni.id', ondelete='CASCADE'), primary_key=True),
 )
 
 # --- Modelli ---
@@ -219,7 +231,7 @@ class StatoOdp(db.Model):
     IdDocumento = db.Column(db.Text)
     IdRiga = db.Column(db.Text)
     stato = db.Column(db.Text, server_default=db.text("'Pianificato'"))
-    fase = db.Column(db.Text)
+    fase = db.Column(db.Text, server_default=db.text('1'))
 
     def __repr__(self):
         return f"<StatoOdp {self.__dict__}>"

@@ -4,7 +4,7 @@ from flask_login import login_user, logout_user, login_required
 from app_odp.models import User
 try:
     from icecream import ic
-except:
+finally:
     pass
 auth_bp = Blueprint("auth", __name__)
 
@@ -29,7 +29,7 @@ def login():
     active_users = user_in()
     if request.method == "POST":
         username = request.form.get("username")
-        if username == None or not username:
+        if username is None or not username:
             return render_template("login.j2", users=active_users, error="Seleziona un utente")
         user = User.query.filter_by(id=username, active=True).first()
         if user:
