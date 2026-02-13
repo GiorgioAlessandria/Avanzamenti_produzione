@@ -7,7 +7,6 @@
     <title>Avanzamenti di produzione</title>
     <meta property="og:type" content="website">
     <meta name="description" content="Templates bootstrap studio per gli avanzamenti di produzione">
-    <meta property="og:image" content="http://app02.bernardi.local/assets/img/logo.jpg">
     <script type="application/ld+json">
         {
             "@context": "http://schema.org",
@@ -16,9 +15,9 @@
             "url": "http://app02.bernardi.local"
         }
     </script>
-    <link rel="stylesheet" href="assets/bootstrap/css/bootstrap.min.css">
-    <link rel="stylesheet" href="assets/fonts/ionicons.min.css">
-    <link rel="stylesheet" href="assets/css/Login-Form-Basic-icons.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='assets/bootstrap/css/bootstrap.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='assets/fonts/ionicons.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='assets/css/Login-Form-Basic-icons.css') }}">
 </head>
 
 <body class="d-flex w-100 h-100 flex-column justify-content-center align-items-center" style="width: auto;height: auto;">
@@ -87,9 +86,11 @@
         </div>
     </header>
     <main class="d-flex w-100 h-100 justify-content-center ms-3 me-2 mt-3 mb-3" style="width: fit-content;height: fit-content;"></main>
-    <script src="assets/js/jquery.min.js"></script>
-    <script src="assets/bootstrap/js/bootstrap.min.js"></script>
-    <script src="assets/js/bs-init.js"></script>
 </body>
+{% block content %}{% endblock %}
+<script src="{{ url_for('static', filename='assets/js/jquery.min.js') }}"></script>
+<script src="{{ url_for('static', filename='assets/bootstrap/js/bootstrap.min.js') }}"></script>
+<script src="{{ url_for('static', filename='assets/js/bs-init.js') }}"></script>
+{% block extra_js %}{% endblock %}
 
 </html>

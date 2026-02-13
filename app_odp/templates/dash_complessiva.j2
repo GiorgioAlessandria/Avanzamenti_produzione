@@ -7,88 +7,150 @@
     <title>Avanzamenti di produzione</title>
     <meta property="og:type" content="website">
     <meta name="description" content="Templates bootstrap studio per gli avanzamenti di produzione">
-    <meta property="og:image" content="http://app02.bernardi.local/assets/img/logo.jpg">
-    <link rel="stylesheet" href="assets/bootstrap/css/bootstrap.min.css">
-    <link rel="stylesheet" href="assets/fonts/ionicons.min.css">
-    <link rel="stylesheet" href="assets/css/Login-Form-Basic-icons.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='assets/bootstrap/css/bootstrap.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='assets/fonts/ionicons.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='assets/css/Login-Form-Basic-icons.css') }}">
 </head>
 
-<body class="d-flex w-100 h-100 flex-column justify-content-center align-items-center" style="width: auto;height: auto;">
-    <div class="offcanvas offcanvas-start h-100" tabindex="-1" id="offcanvas-2">
-        <div class="offcanvas-header ps-4">
-            <h5 class="offcanvas-title" style="font-size: 30px;">Schede utente</h5><button class="btn-close" type="button" aria-label="Close" data-bs-dismiss="offcanvas" data-bs-target="#offcanvas-2"></button>
-        </div>
-        <div class="offcanvas-body d-flex flex-row justify-content-start align-items-start ps-4">
-            <section class="d-flex justify-content-end align-items-end"></section>
-            <div class="container ms-2 ps-3 me-0" style="width: auto;height: auto;">
-                <div class="row d-flex w-100 h-100 justify-content-start align-items-center ms-0 me-0 mb-0 pb-0">
-                    <div class="col-md-12 text-start d-flex justify-content-start align-items-center ps-0 pe-0" style="width: auto;height: auto;"><svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icon-tabler-home" style="font-size: 25px;">
-                            <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-                            <path d="M5 12l-2 0l9 -9l9 9l-2 0"></path>
-                            <path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-7"></path>
-                            <path d="M9 21v-6a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v6"></path>
-                        </svg><a href="home_carpenteria.html" style="color: rgb(0,0,0);font-size: 25px;">Home</a></div>
-                </div>
-                <div class="row d-flex w-100 h-100 justify-content-start align-items-center ms-0 me-0 mb-0" style="font-size: 25px;">
-                    <div class="col-md-12 text-start d-flex justify-content-start align-items-center ps-0 pe-0" style="width: auto;height: auto;font-size: 25px;"><svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icon-tabler-clipboard-list d-flex justify-content-center align-items-center" style="font-size: 25px;">
-                            <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-                            <path d="M9 5h-2a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-12a2 2 0 0 0 -2 -2h-2"></path>
-                            <path d="M9 3m0 2a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v0a2 2 0 0 1 -2 2h-2a2 2 0 0 1 -2 -2z"></path>
-                            <path d="M9 12l.01 0"></path>
-                            <path d="M13 12l2 0"></path>
-                            <path d="M9 16l.01 0"></path>
-                            <path d="M13 16l2 0"></path>
-                        </svg><a href="controllo_qualità.html" style="color: rgb(0,0,0);font-size: 25px;"><span style="color: rgb(33, 37, 41);">Controllo qualità</span></a></div>
-                </div>
-                <div class="row d-flex w-100 h-100 justify-content-start align-items-center ms-0 me-0 mb-0" style="width: auto;height: auto;font-size: 25px;">
-                    <div class="col-md-12 text-start d-flex justify-content-start align-items-center ps-0 pe-0" style="width: auto;height: auto;font-size: 25px;"><svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" fill="currentColor" viewBox="0 0 16 16" class="bi bi-gear" style="font-size: 25px;">
-                            <path d="M8 4.754a3.246 3.246 0 1 0 0 6.492 3.246 3.246 0 0 0 0-6.492zM5.754 8a2.246 2.246 0 1 1 4.492 0 2.246 2.246 0 0 1-4.492 0z"></path>
-                            <path d="M9.796 1.343c-.527-1.79-3.065-1.79-3.592 0l-.094.319a.873.873 0 0 1-1.255.52l-.292-.16c-1.64-.892-3.433.902-2.54 2.541l.159.292a.873.873 0 0 1-.52 1.255l-.319.094c-1.79.527-1.79 3.065 0 3.592l.319.094a.873.873 0 0 1 .52 1.255l-.16.292c-.892 1.64.901 3.434 2.541 2.54l.292-.159a.873.873 0 0 1 1.255.52l.094.319c.527 1.79 3.065 1.79 3.592 0l.094-.319a.873.873 0 0 1 1.255-.52l.292.16c1.64.893 3.434-.902 2.54-2.541l-.159-.292a.873.873 0 0 1 .52-1.255l.319-.094c1.79-.527 1.79-3.065 0-3.592l-.319-.094a.873.873 0 0 1-.52-1.255l.16-.292c.893-1.64-.902-3.433-2.541-2.54l-.292.159a.873.873 0 0 1-1.255-.52l-.094-.319zm-2.633.283c.246-.835 1.428-.835 1.674 0l.094.319a1.873 1.873 0 0 0 2.693 1.115l.291-.16c.764-.415 1.6.42 1.184 1.185l-.159.292a1.873 1.873 0 0 0 1.116 2.692l.318.094c.835.246.835 1.428 0 1.674l-.319.094a1.873 1.873 0 0 0-1.115 2.693l.16.291c.415.764-.42 1.6-1.185 1.184l-.291-.159a1.873 1.873 0 0 0-2.693 1.116l-.094.318c-.246.835-1.428.835-1.674 0l-.094-.319a1.873 1.873 0 0 0-2.692-1.115l-.292.16c-.764.415-1.6-.42-1.184-1.185l.159-.291A1.873 1.873 0 0 0 1.945 8.93l-.319-.094c-.835-.246-.835-1.428 0-1.674l.319-.094A1.873 1.873 0 0 0 3.06 4.377l-.16-.292c-.415-.764.42-1.6 1.185-1.184l.292.159a1.873 1.873 0 0 0 2.692-1.115l.094-.319z"></path>
-                        </svg><a href="impostazioni.html" style="color: rgb(0,0,0);font-size: 25px;"><span style="color: rgb(33, 37, 41);">Impostazioni</span></a></div>
-                </div>
-                <div class="row d-flex w-100 h-100 justify-content-start align-items-center ms-0 me-0 mb-0" style="width: auto;height: auto;font-size: 25px;">
-                    <div class="col-md-12 text-start d-flex justify-content-start align-items-center ps-0 pe-0" style="width: auto;height: auto;font-size: 25px;"><svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" style="font-size: 25px;">
-                            <path d="M16.2427 5.24264L14.8285 6.65685L13 4.82839L13.0001 9.24268H17.0001V11.2427H7.00012V9.24268H11.0001L11 4.82846L9.17161 6.65685L7.75739 5.24264L12 1L16.2427 5.24264Z" fill="currentColor"></path>
-                            <path d="M7 15.2527V13.2527H17V15.2527H13.0001L13 19.6669L14.8284 17.8385L16.2426 19.2527L12 23.4954L7.75732 19.2527L9.17154 17.8385L11 19.667V15.2527L7 15.2527Z" fill="currentColor"></path>
-                        </svg><a href="priorità.html" style="color: rgb(0,0,0);font-size: 25px;">Imposta priorità</a></div>
-                </div>
-                <div class="row d-flex w-100 h-100 justify-content-start align-items-center ms-0 me-0 mb-0" style="width: auto;height: auto;font-size: 25px;">
-                    <div class="col-md-12 text-start d-flex justify-content-start align-items-center ps-0 pe-0" style="width: auto;height: auto;font-size: 25px;"><i class="icon ion-speedometer" style="font-size: 25px;"></i><a href="dash_reparto.html" style="color: rgb(0,0,0);font-size: 25px;">Dashboard reparto</a></div>
-                </div>
-                <div class="row d-flex w-100 h-100 justify-content-start align-items-center ms-0 me-0 mb-0" style="width: auto;height: auto;font-size: 25px;">
-                    <div class="col-md-12 text-start d-flex justify-content-start align-items-center ps-0 pe-0" style="width: auto;height: auto;font-size: 25px;"><svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" style="font-size: 25px;">
-                            <path d="M8.51428 20H4.51428C3.40971 20 2.51428 19.1046 2.51428 18V6C2.51428 4.89543 3.40971 4 4.51428 4H8.51428V6H4.51428V18H8.51428V20Z" fill="currentColor"></path>
-                            <path d="M13.8418 17.385L15.262 15.9768L11.3428 12.0242L20.4857 12.0242C21.038 12.0242 21.4857 11.5765 21.4857 11.0242C21.4857 10.4719 21.038 10.0242 20.4857 10.0242L11.3236 10.0242L15.304 6.0774L13.8958 4.6572L7.5049 10.9941L13.8418 17.385Z" fill="currentColor"></path>
-                        </svg><a href="login.html" style="color: rgb(0,0,0);font-size: 25px;">LogIn</a></div>
-                </div>
-            </div>
-        </div>
-        <footer class="d-flex w-100 justify-content-end align-items-center" style="font-size: 25px;">
-            <div class="dropend" style="color: rgb(255,255,255);width: auto;height: auto;font-size: 30px;"><a class="btn btn-primary btn-lg dropdown-toggle fs-5 fw-semibold text-decoration-underline lh-lg text-start" aria-expanded="false" data-bs-toggle="dropdown" role="button" style="color: rgb(0,0,0);background: rgba(13,110,253,0);border-style: hidden;font-size: 30px;">Cambio utente</a>
-                <div class="dropdown-menu" style="font-size: 30px;"><a class="dropdown-item" href="#" style="font-size: 22px;text-align: left;">Utente 1</a><a class="dropdown-item" href="#" style="font-size: 22px;text-align: left;">Utente 2</a><a class="dropdown-item" href="#" style="font-size: 22px;text-align: left;">Utente 3</a></div>
-            </div>
-        </footer>
+<body class="d-flex w-100 h-100 flex-column justify-content-center align-items-center"
+      style="width: auto;height: auto;">
+<div class="offcanvas offcanvas-start h-100" tabindex="-1" id="offcanvas-2">
+    <div class="offcanvas-header ps-4">
+        <h5 class="offcanvas-title" style="font-size: 30px;">Schede utente</h5>
+        <button class="btn-close" type="button" aria-label="Close" data-bs-dismiss="offcanvas"
+                data-bs-target="#offcanvas-2"></button>
     </div>
-    <header class="text-center min-vw-100 mh-100 m-auto mx-0" style="width: auto;height: auto;">
-        <div class="container-fluid text-center d-flex w-100 h-100 flex-shrink-0 flex-fill justify-content-center align-items-center" style="width: auto;height: auto;">
-            <div class="row d-inline-flex w-100 h-100 justify-content-center align-items-center align-self-center ms-0 me-0" style="width: auto;height: auto;">
-                <div class="col-md-4 d-flex w-auto flex-grow-1 justify-content-start align-items-center pe-0" style="width: auto;height: auto;"><button class="btn btn-primary btn-lg text-center bg-light d-flex justify-content-center align-items-center" type="button" data-bs-target="#offcanvas-2" data-bs-toggle="offcanvas"><svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icon-tabler-menu-2 text-center text-black text-bg-light d-flex justify-content-center align-items-center" style="font-size: 40px;">
-                            <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-                            <path d="M4 6l16 0"></path>
-                            <path d="M4 12l16 0"></path>
-                            <path d="M4 18l16 0"></path>
-                        </svg></button></div>
-                <div class="col-md-4 d-flex w-auto flex-grow-1 justify-content-center align-items-center" style="width: auto;height: auto;">
-                    <h2 class="mb-0">Dashboard complessiva - Benvenuto {{Nome utente}}</h2>
-                </div>
-                <div class="col-md-4 d-flex w-auto flex-grow-1 justify-content-end align-items-center" style="width: auto;height: auto;"><img class="img-fluid justify-content-end align-items-center order-first" width="250" height="89" src="assets/img/logo.jpg" style="text-align: right;" alt="Bernardi"></div>
+    <div class="offcanvas-body d-flex flex-row justify-content-start align-items-start ps-4">
+        <section class="d-flex justify-content-end align-items-end"></section>
+        <div class="container ms-2 ps-3 me-0" style="width: auto;height: auto;">
+            <div class="row d-flex w-100 h-100 justify-content-start align-items-center ms-0 me-0 mb-0 pb-0">
+                <div class="col-md-12 text-start d-flex justify-content-start align-items-center ps-0 pe-0"
+                     style="width: auto;height: auto;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24"
+                         stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round"
+                         stroke-linejoin="round" class="icon icon-tabler icon-tabler-home" style="font-size: 25px;">
+                        <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
+                        <path d="M5 12l-2 0l9 -9l9 9l-2 0"></path>
+                        <path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-7"></path>
+                        <path d="M9 21v-6a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v6"></path>
+                    </svg>
+                    <a href="home_carpenteria.html" style="color: rgb(0,0,0);font-size: 25px;">Home</a></div>
+            </div>
+            <div class="row d-flex w-100 h-100 justify-content-start align-items-center ms-0 me-0 mb-0"
+                 style="font-size: 25px;">
+                <div class="col-md-12 text-start d-flex justify-content-start align-items-center ps-0 pe-0"
+                     style="width: auto;height: auto;font-size: 25px;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24"
+                         stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round"
+                         stroke-linejoin="round"
+                         class="icon icon-tabler icon-tabler-clipboard-list d-flex justify-content-center align-items-center"
+                         style="font-size: 25px;">
+                        <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
+                        <path d="M9 5h-2a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-12a2 2 0 0 0 -2 -2h-2"></path>
+                        <path d="M9 3m0 2a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v0a2 2 0 0 1 -2 2h-2a2 2 0 0 1 -2 -2z"></path>
+                        <path d="M9 12l.01 0"></path>
+                        <path d="M13 12l2 0"></path>
+                        <path d="M9 16l.01 0"></path>
+                        <path d="M13 16l2 0"></path>
+                    </svg>
+                    <a href="controllo_qualità.html" style="color: rgb(0,0,0);font-size: 25px;"><span
+                            style="color: rgb(33, 37, 41);">Controllo qualità</span></a></div>
+            </div>
+            <div class="row d-flex w-100 h-100 justify-content-start align-items-center ms-0 me-0 mb-0"
+                 style="width: auto;height: auto;font-size: 25px;">
+                <div class="col-md-12 text-start d-flex justify-content-start align-items-center ps-0 pe-0"
+                     style="width: auto;height: auto;font-size: 25px;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" fill="currentColor"
+                         viewBox="0 0 16 16" class="bi bi-gear" style="font-size: 25px;">
+                        <path d="M8 4.754a3.246 3.246 0 1 0 0 6.492 3.246 3.246 0 0 0 0-6.492zM5.754 8a2.246 2.246 0 1 1 4.492 0 2.246 2.246 0 0 1-4.492 0z"></path>
+                        <path d="M9.796 1.343c-.527-1.79-3.065-1.79-3.592 0l-.094.319a.873.873 0 0 1-1.255.52l-.292-.16c-1.64-.892-3.433.902-2.54 2.541l.159.292a.873.873 0 0 1-.52 1.255l-.319.094c-1.79.527-1.79 3.065 0 3.592l.319.094a.873.873 0 0 1 .52 1.255l-.16.292c-.892 1.64.901 3.434 2.541 2.54l.292-.159a.873.873 0 0 1 1.255.52l.094.319c.527 1.79 3.065 1.79 3.592 0l.094-.319a.873.873 0 0 1 1.255-.52l.292.16c1.64.893 3.434-.902 2.54-2.541l-.159-.292a.873.873 0 0 1 .52-1.255l.319-.094c1.79-.527 1.79-3.065 0-3.592l-.319-.094a.873.873 0 0 1-.52-1.255l.16-.292c.893-1.64-.902-3.433-2.541-2.54l-.292.159a.873.873 0 0 1-1.255-.52l-.094-.319zm-2.633.283c.246-.835 1.428-.835 1.674 0l.094.319a1.873 1.873 0 0 0 2.693 1.115l.291-.16c.764-.415 1.6.42 1.184 1.185l-.159.292a1.873 1.873 0 0 0 1.116 2.692l.318.094c.835.246.835 1.428 0 1.674l-.319.094a1.873 1.873 0 0 0-1.115 2.693l.16.291c.415.764-.42 1.6-1.185 1.184l-.291-.159a1.873 1.873 0 0 0-2.693 1.116l-.094.318c-.246.835-1.428.835-1.674 0l-.094-.319a1.873 1.873 0 0 0-2.692-1.115l-.292.16c-.764.415-1.6-.42-1.184-1.185l.159-.291A1.873 1.873 0 0 0 1.945 8.93l-.319-.094c-.835-.246-.835-1.428 0-1.674l.319-.094A1.873 1.873 0 0 0 3.06 4.377l-.16-.292c-.415-.764.42-1.6 1.185-1.184l.292.159a1.873 1.873 0 0 0 2.692-1.115l.094-.319z"></path>
+                    </svg>
+                    <a href="impostazioni.html" style="color: rgb(0,0,0);font-size: 25px;"><span
+                            style="color: rgb(33, 37, 41);">Impostazioni</span></a></div>
+            </div>
+            <div class="row d-flex w-100 h-100 justify-content-start align-items-center ms-0 me-0 mb-0"
+                 style="width: auto;height: auto;font-size: 25px;">
+                <div class="col-md-12 text-start d-flex justify-content-start align-items-center ps-0 pe-0"
+                     style="width: auto;height: auto;font-size: 25px;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none"
+                         style="font-size: 25px;">
+                        <path d="M16.2427 5.24264L14.8285 6.65685L13 4.82839L13.0001 9.24268H17.0001V11.2427H7.00012V9.24268H11.0001L11 4.82846L9.17161 6.65685L7.75739 5.24264L12 1L16.2427 5.24264Z"
+                              fill="currentColor"></path>
+                        <path d="M7 15.2527V13.2527H17V15.2527H13.0001L13 19.6669L14.8284 17.8385L16.2426 19.2527L12 23.4954L7.75732 19.2527L9.17154 17.8385L11 19.667V15.2527L7 15.2527Z"
+                              fill="currentColor"></path>
+                    </svg>
+                    <a href="priorità.html" style="color: rgb(0,0,0);font-size: 25px;">Imposta priorità</a></div>
+            </div>
+            <div class="row d-flex w-100 h-100 justify-content-start align-items-center ms-0 me-0 mb-0"
+                 style="width: auto;height: auto;font-size: 25px;">
+                <div class="col-md-12 text-start d-flex justify-content-start align-items-center ps-0 pe-0"
+                     style="width: auto;height: auto;font-size: 25px;"><i class="icon ion-speedometer"
+                                                                          style="font-size: 25px;"></i><a
+                        href="dash_reparto.html" style="color: rgb(0,0,0);font-size: 25px;">Dashboard reparto</a></div>
+            </div>
+            <div class="row d-flex w-100 h-100 justify-content-start align-items-center ms-0 me-0 mb-0"
+                 style="width: auto;height: auto;font-size: 25px;">
+                <div class="col-md-12 text-start d-flex justify-content-start align-items-center ps-0 pe-0"
+                     style="width: auto;height: auto;font-size: 25px;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none"
+                         style="font-size: 25px;">
+                        <path d="M8.51428 20H4.51428C3.40971 20 2.51428 19.1046 2.51428 18V6C2.51428 4.89543 3.40971 4 4.51428 4H8.51428V6H4.51428V18H8.51428V20Z"
+                              fill="currentColor"></path>
+                        <path d="M13.8418 17.385L15.262 15.9768L11.3428 12.0242L20.4857 12.0242C21.038 12.0242 21.4857 11.5765 21.4857 11.0242C21.4857 10.4719 21.038 10.0242 20.4857 10.0242L11.3236 10.0242L15.304 6.0774L13.8958 4.6572L7.5049 10.9941L13.8418 17.385Z"
+                              fill="currentColor"></path>
+                    </svg>
+                    <a href="login.html" style="color: rgb(0,0,0);font-size: 25px;">LogIn</a></div>
             </div>
         </div>
-    </header>
-    <main class="d-flex w-100 h-100 justify-content-center ms-3 me-2 mt-3 mb-3" style="width: fit-content;height: fit-content;"></main>
-    <script src="assets/js/jquery.min.js"></script>
-    <script src="assets/bootstrap/js/bootstrap.min.js"></script>
-    <script src="assets/js/bs-init.js"></script>
+    </div>
+    <footer class="d-flex w-100 justify-content-end align-items-center" style="font-size: 25px;">
+        <div class="dropend" style="color: rgb(255,255,255);width: auto;height: auto;font-size: 30px;"><a
+                class="btn btn-primary btn-lg dropdown-toggle fs-5 fw-semibold text-decoration-underline lh-lg text-start"
+                aria-expanded="false" data-bs-toggle="dropdown" role="button"
+                style="color: rgb(0,0,0);background: rgba(13,110,253,0);border-style: hidden;font-size: 30px;">Cambio
+            utente</a>
+            <div class="dropdown-menu" style="font-size: 30px;"><a class="dropdown-item" href="#"
+                                                                   style="font-size: 22px;text-align: left;">Utente
+                1</a><a class="dropdown-item" href="#" style="font-size: 22px;text-align: left;">Utente 2</a><a
+                    class="dropdown-item" href="#" style="font-size: 22px;text-align: left;">Utente 3</a></div>
+        </div>
+    </footer>
+</div>
+<header class="text-center min-vw-100 mh-100 m-auto mx-0" style="width: auto;height: auto;">
+    <div class="container-fluid text-center d-flex w-100 h-100 flex-shrink-0 flex-fill justify-content-center align-items-center"
+         style="width: auto;height: auto;">
+        <div class="row d-inline-flex w-100 h-100 justify-content-center align-items-center align-self-center ms-0 me-0"
+             style="width: auto;height: auto;">
+            <div class="col-md-4 d-flex w-auto flex-grow-1 justify-content-start align-items-center pe-0"
+                 style="width: auto;height: auto;">
+                <button class="btn btn-primary btn-lg text-center bg-light d-flex justify-content-center align-items-center"
+                        type="button" data-bs-target="#offcanvas-2" data-bs-toggle="offcanvas">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24"
+                         stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round"
+                         stroke-linejoin="round"
+                         class="icon icon-tabler icon-tabler-menu-2 text-center text-black text-bg-light d-flex justify-content-center align-items-center"
+                         style="font-size: 40px;">
+                        <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
+                        <path d="M4 6l16 0"></path>
+                        <path d="M4 12l16 0"></path>
+                        <path d="M4 18l16 0"></path>
+                    </svg>
+                </button>
+            </div>
+            <div class="col-md-4 d-flex w-auto flex-grow-1 justify-content-center align-items-center"
+                 style="width: auto;height: auto;">
+                <h2 class="mb-0">Dashboard complessiva - Benvenuto {{ Nome.utente }}</h2>
+            </div>
+        </div>
+    </div>
+</header>
+<main class="d-flex w-100 h-100 justify-content-center ms-3 me-2 mt-3 mb-3"
+      style="width: fit-content;height: fit-content;"></main>
 </body>
+{% block content %}{% endblock %}
+<script src="{{ url_for('static', filename='assets/js/jquery.min.js') }}"></script>
+<script src="{{ url_for('static', filename='assets/bootstrap/js/bootstrap.min.js') }}"></script>
+<script src="{{ url_for('static', filename='assets/js/bs-init.js') }}"></script>
+{% block extra_js %}{% endblock %}
 
 </html>

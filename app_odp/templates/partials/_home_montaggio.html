@@ -1,122 +1,142 @@
-<!DOCTYPE html>
-<html class="vw-100 h-auto" data-bs-theme="light" lang="it" style="width: auto;height: auto;">
 <div class="toast lh-lg hide" role="alert" data-bs-animation="false" data-bs-autohide="false" data-bs-delay=""
-    id="toast-1" style="width: max-content;height: max-content;position: absolute;opacity: 1;filter: blur(0px);">
+     id="toast-1" style="width: max-content;height: max-content;position: absolute;opacity: 1;filter: blur(0px);">
     <div class="toast-header"><strong class="me-auto" style="font-size: 25px;">Sospensione dell'ordine:
-            {{Ordine}}</strong><button class="btn-close ms-2 mb-1 close" type="button" aria-label="Close"
-            data-bs-dismiss="toast" style="font-size: 25px;"></button></div>
+        {{ Ordine }}</strong>
+        <button class="btn-close ms-2 mb-1 close" type="button" aria-label="Close"
+                data-bs-dismiss="toast" style="font-size: 25px;"></button>
+    </div>
     <div class="toast-body d-flex flex-column justify-content-center align-items-center" role="alert"
-        style="opacity: 1;width: auto;height: auto;">
+         style="opacity: 1;width: auto;height: auto;">
         <p style="font-size: 20px;">Stai sospendendo un ordine attivo, indica il numero di componenti prodotti fino
             ad adesso e il numero di scarti prodotti</p>
         <form class="d-flex flex-column justify-content-center align-items-center" style="width: auto;height: auto;"
-            method="post">
+              method="post">
             <div class="container" style="width: auto;height: auto;">
                 <div class="row" style="width: auto;height: auto;">
                     <div class="col-md-4" style="width: auto;height: auto;"><label class="form-label w-auto h-auto mb-0"
-                            for="Comp_prod" style="font-size: 20px;">Componenti prodotti</label><input
+                                                                                   for="Comp_prod"
+                                                                                   style="font-size: 20px;">Componenti
+                        prodotti</label><input
                             class="form-control w-auto h-auto" type="text" name="Comp_prod" required=""></div>
                     <div class="ps-0 pe-0" style="width: auto;height: auto;"><label class="col-form-label"
-                            style="width: auto;height: auto;font-size: 61px;">/</label></div>
+                                                                                    style="width: auto;height: auto;font-size: 61px;">/</label>
+                    </div>
                     <div class="col-md-4" style="width: auto;height: auto;"><label
                             class="form-label w-auto h-auto ms-2 mb-0" for="Comp_tot"
                             style="font-size: 20px;">Componenti totali</label><input class="form-control w-auto h-auto"
-                            type="text" name="Comp_tot" readonly="" required="">
+                                                                                     type="text" name="Comp_tot"
+                                                                                     readonly="" required="">
                     </div>
                     <div class="col-md-4" style="width: auto;height: auto;"><label
                             class="form-label w-auto h-auto ms-2 mb-0 pb-0" for="Scarti"
                             style="font-size: 20px;">Scarti</label><input class="form-control w-auto h-auto" type="text"
-                            name="Scarti" required=""></div>
+                                                                          name="Scarti" required=""></div>
                 </div>
-            </div><input class="btn btn-primary d-flex w-25 justify-content-center m-2" type="submit" name="Inserimento"
-                value="Sospensione" required="" style="font-size: 20px;">
+            </div>
+            <input class="btn btn-primary d-flex w-25 justify-content-center m-2" type="submit" name="Inserimento"
+                   value="Sospensione" required="" style="font-size: 20px;">
         </form>
     </div>
 </div>
 <div class="toast lh-lg hide" role="alert" data-bs-animation="false" data-bs-autohide="false" data-bs-delay=""
-    id="toast-2" style="width: max-content;height: max-content;position: absolute;opacity: 1;filter: blur(0px);">
+     id="toast-2" style="width: max-content;height: max-content;position: absolute;opacity: 1;filter: blur(0px);">
     <div class="toast-header"><strong class="me-auto" style="font-size: 25px;">Chiusura dell'ordine:
-            {{Ordine}}</strong><button class="btn-close ms-2 mb-1 close" type="button" aria-label="Close"
-            data-bs-dismiss="toast" style="font-size: 25px;"></button></div>
+        {{ Ordine }}</strong>
+        <button class="btn-close ms-2 mb-1 close" type="button" aria-label="Close"
+                data-bs-dismiss="toast" style="font-size: 25px;"></button>
+    </div>
     <div class="toast-body d-flex flex-column justify-content-center align-items-center" role="alert"
-        style="opacity: 1;width: auto;height: auto;">
+         style="opacity: 1;width: auto;height: auto;">
         <p style="font-size: 20px;">Stai chiudendo un ordine attivo, indica il numero di componenti prodotti e il
             numero di scarti</p>
         <form class="d-flex flex-column justify-content-center align-items-center" style="width: auto;height: auto;"
-            method="post">
+              method="post">
             <div class="container" style="width: auto;height: auto;">
                 <div class="row" style="width: auto;height: auto;">
                     <div class="col-md-4" style="width: auto;height: auto;"><label class="form-label w-auto h-auto mb-0"
-                            for="Comp_prod" style="font-size: 20px;">Componenti prodotti</label><input
+                                                                                   for="Comp_prod"
+                                                                                   style="font-size: 20px;">Componenti
+                        prodotti</label><input
                             class="form-control w-auto h-auto" type="text" name="Comp_prod" required=""></div>
                     <div class="ps-0 pe-0" style="width: auto;height: auto;"><label class="col-form-label"
-                            style="width: auto;height: auto;font-size: 61px;">/</label></div>
+                                                                                    style="width: auto;height: auto;font-size: 61px;">/</label>
+                    </div>
                     <div class="col-md-4" style="width: auto;height: auto;"><label
                             class="form-label w-auto h-auto ms-2 mb-0" for="Comp_tot"
                             style="font-size: 20px;">Componenti totali</label><input class="form-control w-auto h-auto"
-                            type="text" name="Comp_tot" readonly="" required="">
+                                                                                     type="text" name="Comp_tot"
+                                                                                     readonly="" required="">
                     </div>
                     <div class="col-md-4" style="width: auto;height: auto;"><label
                             class="form-label w-auto h-auto ms-2 mb-0 pb-0" for="Scarti"
                             style="font-size: 20px;">Scarti</label><input class="form-control w-auto h-auto" type="text"
-                            name="Scarti" required=""></div>
+                                                                          name="Scarti" required=""></div>
                 </div>
-            </div><input class="btn btn-primary d-flex w-25 flex-column justify-content-center align-items-center m-2"
-                type="submit" name="Inserimento" value="Chiusura" required="" style="font-size: 20px;">
+            </div>
+            <input class="btn btn-primary d-flex w-25 flex-column justify-content-center align-items-center m-2"
+                   type="submit" name="Inserimento" value="Chiusura" required="" style="font-size: 20px;">
         </form>
     </div>
 </div>
 <div class="toast lh-lg hide" role="alert" data-bs-animation="false" data-bs-autohide="false" data-bs-delay=""
-    id="toast-3" style="width: max-content;height: max-content;position: absolute;opacity: 1;filter: blur(0px);">
+     id="toast-3" style="width: max-content;height: max-content;position: absolute;opacity: 1;filter: blur(0px);">
     <div class="toast-header"><strong class="me-auto" style="font-size: 25px;">Riattivazione dell'ordine:
-            {{Ordine}}</strong><button class="btn-close ms-2 mb-1 close" type="button" aria-label="Close"
-            data-bs-dismiss="toast" style="font-size: 25px;"></button></div>
+        {{ Ordine }}</strong>
+        <button class="btn-close ms-2 mb-1 close" type="button" aria-label="Close"
+                data-bs-dismiss="toast" style="font-size: 25px;"></button>
+    </div>
     <div class="toast-body d-flex flex-column justify-content-center align-items-center" role="alert"
-        style="opacity: 1;width: auto;height: auto;">
+         style="opacity: 1;width: auto;height: auto;">
         <p style="font-size: 20px;">Stai riattivando un ordine sospeso</p>
         <form method="post"><input class="btn btn-lg btn-primary" type="submit" name="Inserimento" value="Riattiva"
-                style="font-size: 25px;"></form>
+                                   style="font-size: 25px;"></form>
     </div>
     <div class="toast lh-lg hide" role="alert" data-bs-animation="false" data-bs-autohide="false" id="toast-4"
-        style="width: max-content;height: max-content;position: absolute;opacity: 1;filter: blur(0px);">
+         style="width: max-content;height: max-content;position: absolute;opacity: 1;filter: blur(0px);">
         <div class="toast-header"><strong class="me-auto" style="font-size: 25px;">Riattivazione dell'ordine:
-                {{Ordine}}</strong><button class="btn-close ms-2 mb-1 close" type="button" aria-label="Close"
-                data-bs-dismiss="toast" style="font-size: 25px;"></button></div>
+            {{ Ordine }}</strong>
+            <button class="btn-close ms-2 mb-1 close" type="button" aria-label="Close"
+                    data-bs-dismiss="toast" style="font-size: 25px;"></button>
+        </div>
         <div class="toast-body d-flex flex-column justify-content-center align-items-center" role="alert"
-            style="opacity: 1;width: auto;height: auto;">
+             style="opacity: 1;width: auto;height: auto;">
             <p style="font-size: 20px;">Stai riattivando un ordine sospeso</p>
             <form method="post"><input class="btn btn-lg btn-primary" type="submit" name="Inserimento" value="Riattiva"
-                    style="font-size: 25px;"></form>
+                                       style="font-size: 25px;"></form>
         </div>
     </div>
 </div>
 <div class="toast lh-lg hide" role="alert" data-bs-animation="false" data-bs-autohide="false" data-bs-delay=""
-    id="toast-5" style="width: max-content;height: max-content;position: absolute;opacity: 1;filter: blur(0px);">
+     id="toast-5" style="width: max-content;height: max-content;position: absolute;opacity: 1;filter: blur(0px);">
     <div class="toast-header"><strong class="me-auto" style="font-size: 25px;">Presa in carico dell'ordine:
-            {{Ordine}}</strong><button class="btn-close ms-2 mb-1 close" type="button" aria-label="Close"
-            data-bs-dismiss="toast" style="font-size: 25px;"></button></div>
+        {{ Ordine }}</strong>
+        <button class="btn-close ms-2 mb-1 close" type="button" aria-label="Close"
+                data-bs-dismiss="toast" style="font-size: 25px;"></button>
+    </div>
     <div class="toast-body d-flex flex-column justify-content-center align-items-center" role="alert"
-        style="opacity: 1;width: auto;height: auto;">
+         style="opacity: 1;width: auto;height: auto;">
         <p style="font-size: 20px;">Stai prendendo in carico un nuovo ordine</p>
         <form method="post"><input class="btn btn-lg btn-primary" type="submit" name="Inserimento"
-                value="Preso in carico" style="font-size: 25px;"></form>
+                                   value="Preso in carico" style="font-size: 25px;"></form>
     </div>
 </div>
 <main class="text-center d-flex w-100 h-100 flex-column justify-content-center ms-3 me-2 mt-3 mb-3"
-    style="width: fit-content;height: fit-content;">
+      style="width: fit-content;height: fit-content;">
     <div class="container-fluid w-100 h-100 ps-0 pe-0 mx-0" style="width: auto;height: auto;">
         <div class="toast lh-lg hide" role="alert" data-bs-animation="false" data-bs-autohide="false" data-bs-delay=""
-            id="toast-1"
-            style="width: max-content;height: max-content;position: absolute;opacity: 1;filter: blur(0px);">
+             id="toast-1"
+             style="width: max-content;height: max-content;position: absolute;opacity: 1;filter: blur(0px);">
             <div class="toast-header"><strong class="me-auto" style="font-size: 25px;">Sospensione dell'ordine:
-                    {{Ordine}}</strong><button class="btn-close ms-2 mb-1 close" type="button" aria-label="Close"
-                    data-bs-dismiss="toast" style="font-size: 25px;"></button></div>
+                {{ Ordine }}</strong>
+                <button class="btn-close ms-2 mb-1 close" type="button" aria-label="Close"
+                        data-bs-dismiss="toast" style="font-size: 25px;"></button>
+            </div>
             <div class="toast-body d-flex flex-column justify-content-center align-items-center" role="alert"
-                style="opacity: 1;width: auto;height: auto;">
+                 style="opacity: 1;width: auto;height: auto;">
                 <p style="font-size: 20px;">Stai sospendendo un ordine attivo, indica il numero di componenti prodotti
                     fino ad adesso e il numero di scarti prodotti</p>
                 <form class="d-flex flex-column justify-content-center align-items-center"
-                    style="width: auto;height: auto;" method="post">
+                      style="width: auto;height: auto;" method="post">
                     <div class="container" style="width: auto;height: auto;">
                         <div class="row" style="width: auto;height: auto;">
                             <div class="col-md-4" style="width: auto;height: auto;"><label
@@ -124,7 +144,8 @@
                                     style="font-size: 20px;">Componenti prodotti</label><input
                                     class="form-control w-auto h-auto" type="text" name="Comp_prod" required=""></div>
                             <div class="ps-0 pe-0" style="width: auto;height: auto;"><label class="col-form-label"
-                                    style="width: auto;height: auto;font-size: 61px;">/</label></div>
+                                                                                            style="width: auto;height: auto;font-size: 61px;">/</label>
+                            </div>
                             <div class="col-md-4" style="width: auto;height: auto;"><label
                                     class="form-label w-auto h-auto ms-2 mb-0" for="Comp_tot"
                                     style="font-size: 20px;">Componenti totali</label><input
@@ -133,25 +154,29 @@
                             <div class="col-md-4" style="width: auto;height: auto;"><label
                                     class="form-label w-auto h-auto ms-2 mb-0 pb-0" for="Scarti"
                                     style="font-size: 20px;">Scarti</label><input class="form-control w-auto h-auto"
-                                    type="text" name="Scarti" required=""></div>
+                                                                                  type="text" name="Scarti" required="">
+                            </div>
                         </div>
-                    </div><input class="btn btn-primary d-flex w-25 justify-content-center m-2" type="submit"
-                        name="Inserimento" value="Sospensione" required="" style="font-size: 20px;">
+                    </div>
+                    <input class="btn btn-primary d-flex w-25 justify-content-center m-2" type="submit"
+                           name="Inserimento" value="Sospensione" required="" style="font-size: 20px;">
                 </form>
             </div>
         </div>
         <div class="toast lh-lg hide" role="alert" data-bs-animation="false" data-bs-autohide="false" data-bs-delay=""
-            id="toast-2"
-            style="width: max-content;height: max-content;position: absolute;opacity: 1;filter: blur(0px);">
+             id="toast-2"
+             style="width: max-content;height: max-content;position: absolute;opacity: 1;filter: blur(0px);">
             <div class="toast-header"><strong class="me-auto" style="font-size: 25px;">Chiusura dell'ordine:
-                    {{Ordine}}</strong><button class="btn-close ms-2 mb-1 close" type="button" aria-label="Close"
-                    data-bs-dismiss="toast" style="font-size: 25px;"></button></div>
+                {{ Ordine }}</strong>
+                <button class="btn-close ms-2 mb-1 close" type="button" aria-label="Close"
+                        data-bs-dismiss="toast" style="font-size: 25px;"></button>
+            </div>
             <div class="toast-body d-flex flex-column justify-content-center align-items-center" role="alert"
-                style="opacity: 1;width: auto;height: auto;">
+                 style="opacity: 1;width: auto;height: auto;">
                 <p style="font-size: 20px;">Stai chiudendo un ordine attivo, indica il numero di componenti prodotti e
                     il numero di scarti</p>
                 <form class="d-flex flex-column justify-content-center align-items-center"
-                    style="width: auto;height: auto;" method="post">
+                      style="width: auto;height: auto;" method="post">
                     <div class="container" style="width: auto;height: auto;">
                         <div class="row" style="width: auto;height: auto;">
                             <div class="col-md-4" style="width: auto;height: auto;"><label
@@ -159,7 +184,8 @@
                                     style="font-size: 20px;">Componenti prodotti</label><input
                                     class="form-control w-auto h-auto" type="text" name="Comp_prod" required=""></div>
                             <div class="ps-0 pe-0" style="width: auto;height: auto;"><label class="col-form-label"
-                                    style="width: auto;height: auto;font-size: 61px;">/</label></div>
+                                                                                            style="width: auto;height: auto;font-size: 61px;">/</label>
+                            </div>
                             <div class="col-md-4" style="width: auto;height: auto;"><label
                                     class="form-label w-auto h-auto ms-2 mb-0" for="Comp_tot"
                                     style="font-size: 20px;">Componenti totali</label><input
@@ -168,149 +194,179 @@
                             <div class="col-md-4" style="width: auto;height: auto;"><label
                                     class="form-label w-auto h-auto ms-2 mb-0 pb-0" for="Scarti"
                                     style="font-size: 20px;">Scarti</label><input class="form-control w-auto h-auto"
-                                    type="text" name="Scarti" required=""></div>
+                                                                                  type="text" name="Scarti" required="">
+                            </div>
                         </div>
-                    </div><input
-                        class="btn btn-primary d-flex w-25 flex-column justify-content-center align-items-center m-2"
-                        type="submit" name="Inserimento" value="Chiusura" required="" style="font-size: 20px;">
+                    </div>
+                    <input
+                            class="btn btn-primary d-flex w-25 flex-column justify-content-center align-items-center m-2"
+                            type="submit" name="Inserimento" value="Chiusura" required="" style="font-size: 20px;">
                 </form>
             </div>
         </div>
         <div class="toast lh-lg hide" role="alert" data-bs-animation="false" data-bs-autohide="false" data-bs-delay=""
-            id="toast-3"
-            style="width: max-content;height: max-content;position: absolute;opacity: 1;filter: blur(0px);">
+             id="toast-3"
+             style="width: max-content;height: max-content;position: absolute;opacity: 1;filter: blur(0px);">
             <div class="toast-header"><strong class="me-auto" style="font-size: 25px;">Riattivazione dell'ordine:
-                    {{Ordine}}</strong><button class="btn-close ms-2 mb-1 close" type="button" aria-label="Close"
-                    data-bs-dismiss="toast" style="font-size: 25px;"></button></div>
+                {{ Ordine }}</strong>
+                <button class="btn-close ms-2 mb-1 close" type="button" aria-label="Close"
+                        data-bs-dismiss="toast" style="font-size: 25px;"></button>
+            </div>
             <div class="toast-body d-flex flex-column justify-content-center align-items-center" role="alert"
-                style="opacity: 1;width: auto;height: auto;">
+                 style="opacity: 1;width: auto;height: auto;">
                 <p style="font-size: 20px;">Stai riattivando un ordine sospeso</p>
                 <form method="post"><input class="btn btn-lg btn-primary" type="submit" name="Inserimento"
-                        value="Riattiva" style="font-size: 25px;"></form>
+                                           value="Riattiva" style="font-size: 25px;"></form>
             </div>
             <div class="toast lh-lg hide" role="alert" data-bs-animation="false" data-bs-autohide="false" id="toast-4"
-                style="width: max-content;height: max-content;position: absolute;opacity: 1;filter: blur(0px);">
+                 style="width: max-content;height: max-content;position: absolute;opacity: 1;filter: blur(0px);">
                 <div class="toast-header"><strong class="me-auto" style="font-size: 25px;">Riattivazione dell'ordine:
-                        {{Ordine}}</strong><button class="btn-close ms-2 mb-1 close" type="button" aria-label="Close"
-                        data-bs-dismiss="toast" style="font-size: 25px;"></button></div>
+                    {{ Ordine }}</strong>
+                    <button class="btn-close ms-2 mb-1 close" type="button" aria-label="Close"
+                            data-bs-dismiss="toast" style="font-size: 25px;"></button>
+                </div>
                 <div class="toast-body d-flex flex-column justify-content-center align-items-center" role="alert"
-                    style="opacity: 1;width: auto;height: auto;">
+                     style="opacity: 1;width: auto;height: auto;">
                     <p style="font-size: 20px;">Stai riattivando un ordine sospeso</p>
                     <form method="post"><input class="btn btn-lg btn-primary" type="submit" name="Inserimento"
-                            value="Riattiva" style="font-size: 25px;"></form>
+                                               value="Riattiva" style="font-size: 25px;"></form>
                 </div>
             </div>
         </div>
         <div class="toast lh-lg hide" role="alert" data-bs-animation="false" data-bs-autohide="false" data-bs-delay=""
-            id="toast-5"
-            style="width: max-content;height: max-content;position: absolute;opacity: 1;filter: blur(0px);">
+             id="toast-5"
+             style="width: max-content;height: max-content;position: absolute;opacity: 1;filter: blur(0px);">
             <div class="toast-header"><strong class="me-auto" style="font-size: 25px;">Presa in carico dell'ordine:
-                    {{Ordine}}</strong><button class="btn-close ms-2 mb-1 close" type="button" aria-label="Close"
-                    data-bs-dismiss="toast" style="font-size: 25px;"></button></div>
+                {{ Ordine }}</strong>
+                <button class="btn-close ms-2 mb-1 close" type="button" aria-label="Close"
+                        data-bs-dismiss="toast" style="font-size: 25px;"></button>
+            </div>
             <div class="toast-body d-flex flex-column justify-content-center align-items-center" role="alert"
-                style="opacity: 1;width: auto;height: auto;">
+                 style="opacity: 1;width: auto;height: auto;">
                 <p style="font-size: 20px;">Stai prendendo in carico un nuovo ordine</p>
                 <form method="post"><input class="btn btn-lg btn-primary" type="submit" name="Inserimento"
-                        value="Preso in carico" style="font-size: 25px;"></form>
+                                           value="Preso in carico" style="font-size: 25px;"></form>
             </div>
         </div>
         <div class="row text-center w-100 h-100 align-items-start" style="width: auto;height: auto;">
             <div class="col w-100 h-100 ms-2 me-0" style="width: auto;height: auto;border-color: rgb(0,0,0);">
                 <h2 class="w-100 h-100 mb-3" style="width: auto;height: auto;">Ordini semilavorati da eseguire</h2>
                 <div class="table-responsive text-capitalize fw-semibold text-center w-100 h-100 justify-content-start align-items-start mb-0 pb-0"
-                    style="width: auto;height: auto;color: rgb(0,0,0);border-color: rgb(0,0,0);border-top-color: #000000;display: block;">
+                     style="width: auto;height: auto;color: rgb(0,0,0);border-color: rgb(0,0,0);border-top-color: #000000;display: block;">
                     <table class="table table-striped table-hover table-sm table-bordered" id="ordini_da_eseguire">
                         <thead style="background: var(--bs-info);">
-                            <tr>
-                                <th>Priorità</th>
-                                <th>Ordine</th>
-                                <th>Codice</th>
-                                <th>Descrizione</th>
-                                <th>Quantità</th>
-                                <th>Data consegna</th>
-                                <th>Lavorazione</th>
-                            </tr>
+                        <tr>
+                            <th>Ordine</th>
+                            <th>Codice</th>
+                            <th>Descrizione</th>
+                            <th>Quantità</th>
+                            <th>Fase</th>
+                            <th>Data consegna</th>
+                            <th>Lavorazione</th>
+                            <th>Risorsa di produzione</th>
+                        </tr>
                         </thead>
                         <tbody>
-                            <tr data-priorità="{{ ordini_produzione.priorita }}"
-                                data-numero="{{ordini_produzione.ordine}}" data-codice="{{ordini_produzione.codice}}"
-                                data-descrizione="{{ordini_produzione.descrizione}}"
-                                data-quatita_in="{{ordini_produzione.quatita_in}}"
-                                data-consegna="{{ordini_produzione.consegna}}"
-                                data-lavorazione="{{ordini_produzione.lavorazione}}">
-                                <td></td>
-                                <td></td>
-                                <td></td>
-                                <td></td>
-                                <td></td>
-                                <td></td>
-                            </tr>
+                        <tr data-ordine="{{ odp.RifRegistraz }}"
+                            data-codice="{{ odp.CodArt }}"
+                            data-descrizione="{{ odp.DesArt }}"
+                            data-quantità="{{ odp.Quantita }}"
+                            data-fase="{{ odp.NumFase }}"
+                            data-datacons="{{ odp.DataFineSched }}"
+                            data-lavorazione="{{ odp.CodLavorazione }}"
+                            data-risorsaprod="{{ odp.CodRisorsaProd }}"
+                        >
+                            <td>{{ odp.RifRegistraz }}</td>
+                            <td>{{ odp.CodArt }}</td>
+                            <td>{{ odp.Descr }}</td>
+                            <td>{{ odp.Quantita }}</td>
+                            <td>{{ odp.NumFase }}</td>
+                            <td>{{ odp.DataFineSched }}</td>
+                            <td>{{ odp.CodLavorazione }}</td>
+                            <td>{{ odp.CodRisorsaProd }}</td>
+                        </tr>
                         </tbody>
                     </table>
-                </div><button class="btn btn-primary m-2" type="button" data-bs-target="#toast-5"
-                    data-bs-toggle="toast">Attiva ordine</button>
+                </div>
+                <button class="btn btn-primary m-2" type="button" data-bs-target="#toast-5"
+                        data-bs-toggle="toast">Attiva ordine
+                </button>
             </div>
             <div class="col w-100 h-100 ms-0" style="width: auto;height: auto;">
                 <h2 class="w-100 h-100 mb-3" style="width: auto;height: auto;">Ordini attivi</h2>
                 <div class="table-responsive text-capitalize fw-semibold text-center w-100 h-100 justify-content-start align-items-start"
-                    style="width: auto;height: auto;color: rgb(0,0,0);border-color: rgb(0,0,0);border-top-color: #000000;display: block;">
+                     style="width: auto;height: auto;color: rgb(0,0,0);border-color: rgb(0,0,0);border-top-color: #000000;display: block;">
                     <table class="table table-striped table-hover table-sm table-bordered" id="ordini_in_corso">
-                        <thead>
-                            <tr>
-                                <th>Ordine</th>
-                                <th>Codice</th>
-                                <th>Descrizione</th>
-                                <th>Data</th>
-                                <th>Quantità da produrre</th>
-                                <th>Quantità prodotta</th>
-                                <th>Lavorazione</th>
-                                <th>Stato</th>
-                            </tr>
+                        <thead style="background: var(--bs-info);">
+                        <tr>
+                            <th>Ordine</th>
+                            <th>Codice</th>
+                            <th>Descrizione</th>
+                            <th>Quantità</th>
+                            <th>Fase</th>
+                            <th>Data consegna</th>
+                            <th>Lavorazione</th>
+                            <th>Risorsa di produzione</th>
+                        </tr>
                         </thead>
                         <tbody>
-                            <tr data-numero="{{ordini_produzione.ordine}}" data-codice="{{ordini_produzione.codice}}"
-                                data-descrizione="{{ordini_produzione.descrizione}}"
-                                data-lavorazione="{{ordini_produzione.lavorazione}}"
-                                data-quatita_in="{{ordini_produzione.quatita_in}}"
-                                data-quatita_prd="{{ordini_produzione.quatita_prd}}"
-                                data-lavorazione="{{ordini_produzione.lavorazione}}"
-                                data-stato="{{ordini_produzione.stato}}">
-                                <td></td>
-                                <td><span style="color: rgb(52, 58, 64);"></span></td>
-                                <td></td>
-                                <td></td>
-                                <td></td>
-                                <td></td>
-                                <td></td>
-                                <td></td>
-                            </tr>
+                        <tr data-ordine="{{ odp.RifRegistraz }}"
+                            data-codice="{{ odp.CodArt }}"
+                            data-descrizione="{{ odp.DesArt }}"
+                            data-quantità="{{ odp.Quantita }}"
+                            data-fase="{{ odp.NumFase }}"
+                            data-datacons="{{ odp.DataFineSched }}"
+                            data-lavorazione="{{ odp.CodLavorazione }}"
+                            data-risorsaprod="{{ odp.CodRisorsaProd }}"
+                        >
+                            <td>{{ odp.RifRegistraz }}</td>
+                            <td>{{ odp.CodArt }}</td>
+                            <td>{{ odp.Descr }}</td>
+                            <td>{{ odp.Quantita }}</td>
+                            <td>{{ odp.NumFase }}</td>
+                            <td>{{ odp.DataFineSched }}</td>
+                            <td>{{ odp.CodLavorazione }}</td>
+                            <td>{{ odp.CodRisorsaProd }}</td>
+                        </tr>
+                        </tbody>
                     </table>
                 </div>
                 <section class="text-center d-flex w-100 h-100 align-items-center" style="width: auto;height: auto;">
                     <section class="d-flex flex-grow-1 justify-content-start m-2"
-                        style="width: fit-content;height: fit-content;"><button class="btn btn-primary mx-2"
-                            type="button" style="margin: 1px;" data-bs-target="#toast-1" data-bs-toggle="toast">Sospendi
-                            ordine</button><button class="btn btn-primary disabled mx-2" type="button"
-                            style="margin: 1px;" disabled="">Riattiva ordine</button></section>
+                             style="width: fit-content;height: fit-content;">
+                        <button class="btn btn-primary mx-2"
+                                type="button" style="margin: 1px;" data-bs-target="#toast-1" data-bs-toggle="toast">
+                            Sospendi
+                            ordine
+                        </button>
+                        <button class="btn btn-primary disabled mx-2" type="button"
+                                style="margin: 1px;" disabled="">Riattiva ordine
+                        </button>
+                    </section>
                     <section class="text-end d-flex flex-grow-1 justify-content-end m-2"
-                        style="width: auto;height: auto;"><button class="btn btn-primary" type="button">Chiudi
-                            ordine</button></section>
+                             style="width: auto;height: auto;">
+                        <button class="btn btn-primary" type="button">Chiudi
+                            ordine
+                        </button>
+                    </section>
                 </section>
             </div>
         </div>
     </div>
     <div class="container-fluid w-100 h-100 ps-0 pe-0 mx-0" style="width: auto;height: auto;">
         <div class="toast lh-lg hide" role="alert" data-bs-animation="false" data-bs-delay="" id="toast-6"
-            style="width: max-content;height: max-content;position: absolute;opacity: 1;filter: blur(0px);">
+             style="width: max-content;height: max-content;position: absolute;opacity: 1;filter: blur(0px);">
             <div class="toast-header"><strong class="me-auto" style="font-size: 25px;">Sospensione dell'ordine:
-                    {{Ordine}}</strong><button class="btn-close ms-2 mb-1 close" type="button" aria-label="Close"
-                    data-bs-dismiss="toast" style="font-size: 25px;"></button></div>
+                {{ Ordine }}</strong>
+                <button class="btn-close ms-2 mb-1 close" type="button" aria-label="Close"
+                        data-bs-dismiss="toast" style="font-size: 25px;"></button>
+            </div>
             <div class="toast-body d-flex flex-column justify-content-center align-items-center" role="alert"
-                style="opacity: 1;width: auto;height: auto;">
+                 style="opacity: 1;width: auto;height: auto;">
                 <p style="font-size: 20px;">Stai sospendendo un ordine attivo, indica il numero di componenti prodotti
                     fino ad adesso e il numero di scarti prodotti</p>
                 <form class="d-flex flex-column justify-content-center align-items-center"
-                    style="width: auto;height: auto;" method="post">
+                      style="width: auto;height: auto;" method="post">
                     <div class="container" style="width: auto;height: auto;">
                         <div class="row" style="width: auto;height: auto;">
                             <div class="col-md-4" style="width: auto;height: auto;"><label
@@ -318,7 +374,8 @@
                                     style="font-size: 20px;">Componenti prodotti</label><input
                                     class="form-control w-auto h-auto" type="text" name="Comp_prod" required=""></div>
                             <div class="ps-0 pe-0" style="width: auto;height: auto;"><label class="col-form-label"
-                                    style="width: auto;height: auto;font-size: 61px;">/</label></div>
+                                                                                            style="width: auto;height: auto;font-size: 61px;">/</label>
+                            </div>
                             <div class="col-md-4" style="width: auto;height: auto;"><label
                                     class="form-label w-auto h-auto ms-2 mb-0" for="Comp_tot"
                                     style="font-size: 20px;">Componenti totali</label><input
@@ -327,25 +384,29 @@
                             <div class="col-md-4" style="width: auto;height: auto;"><label
                                     class="form-label w-auto h-auto ms-2 mb-0 pb-0" for="Scarti"
                                     style="font-size: 20px;">Scarti</label><input class="form-control w-auto h-auto"
-                                    type="text" name="Scarti" required=""></div>
+                                                                                  type="text" name="Scarti" required="">
+                            </div>
                         </div>
-                    </div><input class="btn btn-primary d-flex w-25 justify-content-center m-2" type="submit"
-                        name="Inserimento" value="Sospensione" required="" style="font-size: 20px;">
+                    </div>
+                    <input class="btn btn-primary d-flex w-25 justify-content-center m-2" type="submit"
+                           name="Inserimento" value="Sospensione" required="" style="font-size: 20px;">
                 </form>
             </div>
         </div>
         <div class="toast lh-lg hide" role="alert" data-bs-animation="false" data-bs-autohide="false" data-bs-delay=""
-            id="toast-7"
-            style="width: max-content;height: max-content;position: absolute;opacity: 1;filter: blur(0px);">
+             id="toast-7"
+             style="width: max-content;height: max-content;position: absolute;opacity: 1;filter: blur(0px);">
             <div class="toast-header"><strong class="me-auto" style="font-size: 25px;">Chiusura dell'ordine:
-                    {{Ordine}}</strong><button class="btn-close ms-2 mb-1 close" type="button" aria-label="Close"
-                    data-bs-dismiss="toast" style="font-size: 25px;"></button></div>
+                {{ Ordine }}</strong>
+                <button class="btn-close ms-2 mb-1 close" type="button" aria-label="Close"
+                        data-bs-dismiss="toast" style="font-size: 25px;"></button>
+            </div>
             <div class="toast-body d-flex flex-column justify-content-center align-items-center" role="alert"
-                style="opacity: 1;width: auto;height: auto;">
+                 style="opacity: 1;width: auto;height: auto;">
                 <p style="font-size: 20px;">Stai chiudendo un ordine attivo, indica il numero di componenti prodotti e
                     il numero di scarti</p>
                 <form class="d-flex flex-column justify-content-center align-items-center"
-                    style="width: auto;height: auto;" method="post">
+                      style="width: auto;height: auto;" method="post">
                     <div class="container" style="width: auto;height: auto;">
                         <div class="row" style="width: auto;height: auto;">
                             <div class="col-md-4" style="width: auto;height: auto;"><label
@@ -353,7 +414,8 @@
                                     style="font-size: 20px;">Componenti prodotti</label><input
                                     class="form-control w-auto h-auto" type="text" name="Comp_prod" required=""></div>
                             <div class="ps-0 pe-0" style="width: auto;height: auto;"><label class="col-form-label"
-                                    style="width: auto;height: auto;font-size: 61px;">/</label></div>
+                                                                                            style="width: auto;height: auto;font-size: 61px;">/</label>
+                            </div>
                             <div class="col-md-4" style="width: auto;height: auto;"><label
                                     class="form-label w-auto h-auto ms-2 mb-0" for="Comp_tot"
                                     style="font-size: 20px;">Componenti totali</label><input
@@ -362,138 +424,156 @@
                             <div class="col-md-4" style="width: auto;height: auto;"><label
                                     class="form-label w-auto h-auto ms-2 mb-0 pb-0" for="Scarti"
                                     style="font-size: 20px;">Scarti</label><input class="form-control w-auto h-auto"
-                                    type="text" name="Scarti" required=""></div>
+                                                                                  type="text" name="Scarti" required="">
+                            </div>
                         </div>
-                    </div><input
-                        class="btn btn-primary d-flex w-25 flex-column justify-content-center align-items-center m-2"
-                        type="submit" name="Inserimento" value="Chiusura" required="" style="font-size: 20px;">
+                    </div>
+                    <input
+                            class="btn btn-primary d-flex w-25 flex-column justify-content-center align-items-center m-2"
+                            type="submit" name="Inserimento" value="Chiusura" required="" style="font-size: 20px;">
                 </form>
             </div>
         </div>
         <div class="toast lh-lg hide" role="alert" data-bs-animation="false" data-bs-autohide="false" data-bs-delay=""
-            id="toast-8"
-            style="width: max-content;height: max-content;position: absolute;opacity: 1;filter: blur(0px);">
+             id="toast-8"
+             style="width: max-content;height: max-content;position: absolute;opacity: 1;filter: blur(0px);">
             <div class="toast-header"><strong class="me-auto" style="font-size: 25px;">Riattivazione dell'ordine:
-                    {{Ordine}}</strong><button class="btn-close ms-2 mb-1 close" type="button" aria-label="Close"
-                    data-bs-dismiss="toast" style="font-size: 25px;"></button></div>
+                {{ Ordine }}</strong>
+                <button class="btn-close ms-2 mb-1 close" type="button" aria-label="Close"
+                        data-bs-dismiss="toast" style="font-size: 25px;"></button>
+            </div>
             <div class="toast-body d-flex flex-column justify-content-center align-items-center" role="alert"
-                style="opacity: 1;width: auto;height: auto;">
+                 style="opacity: 1;width: auto;height: auto;">
                 <p style="font-size: 20px;">Stai riattivando un ordine sospeso</p>
                 <form method="post"><input class="btn btn-lg btn-primary" type="submit" name="Inserimento"
-                        value="Riattiva" style="font-size: 25px;"></form>
+                                           value="Riattiva" style="font-size: 25px;"></form>
             </div>
             <div class="toast lh-lg hide" role="alert" data-bs-animation="false" data-bs-autohide="false" id="toast-9"
-                style="width: max-content;height: max-content;position: absolute;opacity: 1;filter: blur(0px);">
+                 style="width: max-content;height: max-content;position: absolute;opacity: 1;filter: blur(0px);">
                 <div class="toast-header"><strong class="me-auto" style="font-size: 25px;">Riattivazione dell'ordine:
-                        {{Ordine}}</strong><button class="btn-close ms-2 mb-1 close" type="button" aria-label="Close"
-                        data-bs-dismiss="toast" style="font-size: 25px;"></button></div>
+                    {{ Ordine }}</strong>
+                    <button class="btn-close ms-2 mb-1 close" type="button" aria-label="Close"
+                            data-bs-dismiss="toast" style="font-size: 25px;"></button>
+                </div>
                 <div class="toast-body d-flex flex-column justify-content-center align-items-center" role="alert"
-                    style="opacity: 1;width: auto;height: auto;">
+                     style="opacity: 1;width: auto;height: auto;">
                     <p style="font-size: 20px;">Stai riattivando un ordine sospeso</p>
                     <form method="post"><input class="btn btn-lg btn-primary" type="submit" name="Inserimento"
-                            value="Riattiva" style="font-size: 25px;"></form>
+                                               value="Riattiva" style="font-size: 25px;"></form>
                 </div>
             </div>
         </div>
         <div class="toast lh-lg hide" role="alert" data-bs-animation="false" data-bs-autohide="false" data-bs-delay=""
-            id="toast-10"
-            style="width: max-content;height: max-content;position: absolute;opacity: 1;filter: blur(0px);">
+             id="toast-10"
+             style="width: max-content;height: max-content;position: absolute;opacity: 1;filter: blur(0px);">
             <div class="toast-header"><strong class="me-auto" style="font-size: 25px;">Presa in carico dell'ordine:
-                    {{Ordine}}</strong><button class="btn-close ms-2 mb-1 close" type="button" aria-label="Close"
-                    data-bs-dismiss="toast" style="font-size: 25px;"></button></div>
+                {{ Ordine }}</strong>
+                <button class="btn-close ms-2 mb-1 close" type="button" aria-label="Close"
+                        data-bs-dismiss="toast" style="font-size: 25px;"></button>
+            </div>
             <div class="toast-body d-flex flex-column justify-content-center align-items-center" role="alert"
-                style="opacity: 1;width: auto;height: auto;">
+                 style="opacity: 1;width: auto;height: auto;">
                 <p style="font-size: 20px;">Stai prendendo in carico un nuovo ordine</p>
                 <form method="post"><input class="btn btn-lg btn-primary" type="submit" name="Inserimento"
-                        value="Preso in carico" style="font-size: 25px;"></form>
+                                           value="Preso in carico" style="font-size: 25px;"></form>
             </div>
         </div>
         <div class="row text-center w-100 h-100 align-items-start" style="width: auto;height: auto;">
             <div class="col w-100 h-100 ms-2 me-0" style="width: auto;height: auto;border-color: rgb(0,0,0);">
                 <h2 class="w-100 h-100 mb-3" style="width: auto;height: auto;">Ordini macchina da eseguire</h2>
                 <div class="table-responsive text-capitalize fw-semibold text-center w-100 h-100 justify-content-start align-items-start mb-0 pb-0"
-                    style="width: auto;height: auto;color: rgb(0,0,0);border-color: rgb(0,0,0);border-top-color: #000000;display: block;">
+                     style="width: auto;height: auto;color: rgb(0,0,0);border-color: rgb(0,0,0);border-top-color: #000000;display: block;">
                     <table class="table table-striped table-hover table-sm table-bordered" id="ordini_da_eseguire">
                         <thead style="background: var(--bs-info);">
-                            <tr>
-                                <th>Priorità</th>
-                                <th>Ordine</th>
-                                <th>Codice</th>
-                                <th>Descrizione</th>
-                                <th>Quantità</th>
-                                <th>Data consegna</th>
-                                <th>Lavorazione</th>
-                            </tr>
+                        <tr>
+                            <th>Priorità</th>
+                            <th>Ordine</th>
+                            <th>Codice</th>
+                            <th>Descrizione</th>
+                            <th>Quantità</th>
+                            <th>Data consegna</th>
+                            <th>Lavorazione</th>
+                        </tr>
                         </thead>
                         <tbody>
-                            <tr data-priorità="{{ ordini_produzione.priorita }}"
-                                data-numero="{{ordini_produzione.ordine}}" data-codice="{{ordini_produzione.codice}}"
-                                data-descrizione="{{ordini_produzione.descrizione}}"
-                                data-quatita_in="{{ordini_produzione.quatita_in}}"
-                                data-consegna="{{ordini_produzione.consegna}}"
-                                data-lavorazione="{{ordini_produzione.lavorazione}}">
-                                <td></td>
-                                <td></td>
-                                <td><span style="color: rgb(52, 58, 64);"></span></td>
-                                <td></td>
-                                <td></td>
-                                <td></td>
-                            </tr>
+                        <tr data-priorità="{{ odp.priorita }}"
+                            data-numero="{{ odp.ordine }}" data-codice="{{ odp.codice }}"
+                            data-descrizione="{{ odp.descrizione }}"
+                            data-quatita_in="{{ odp.quatita_in }}"
+                            data-consegna="{{ odp.consegna }}"
+                            data-lavorazione="{{ odp.lavorazione }}">
+                            <td></td>
+                            <td></td>
+                            <td><span style="color: rgb(52, 58, 64);"></span></td>
+                            <td></td>
+                            <td></td>
+                            <td></td>
+                        </tr>
                         </tbody>
                     </table>
-                </div><button class="btn btn-primary m-2" type="button" data-bs-target="#toast-5"
-                    data-bs-toggle="toast">Attiva ordine</button>
+                </div>
+                <button class="btn btn-primary m-2" type="button" data-bs-target="#toast-5"
+                        data-bs-toggle="toast">Attiva ordine
+                </button>
             </div>
             <div class="col w-100 h-100 ms-0" style="width: auto;height: auto;">
                 <h2 class="w-100 h-100 mb-3" style="width: auto;height: auto;">Ordini attivi</h2>
                 <div class="table-responsive text-capitalize fw-semibold text-center w-100 h-100 justify-content-start align-items-start"
-                    style="width: auto;height: auto;color: rgb(0,0,0);border-color: rgb(0,0,0);border-top-color: #000000;display: block;">
+                     style="width: auto;height: auto;color: rgb(0,0,0);border-color: rgb(0,0,0);border-top-color: #000000;display: block;">
                     <table class="table table-striped table-hover table-sm table-bordered" id="ordini_in_corso">
                         <thead>
-                            <tr>
-                                <th>Ordine</th>
-                                <th>Codice</th>
-                                <th>Descrizione</th>
-                                <th>Data</th>
-                                <th>Quantità da produrre</th>
-                                <th>Quantità prodotta</th>
-                                <th>Lavorazione</th>
-                                <th>Stato</th>
-                            </tr>
+                        <tr>
+                            <th>Ordine</th>
+                            <th>Codice</th>
+                            <th>Descrizione</th>
+                            <th>Data</th>
+                            <th>Quantità da produrre</th>
+                            <th>Quantità prodotta</th>
+                            <th>Lavorazione</th>
+                            <th>Stato</th>
+                        </tr>
                         </thead>
                         <tbody>
-                            <tr data-numero="{{ordini_produzione.ordine}}" data-codice="{{ordini_produzione.codice}}"
-                                data-descrizione="{{ordini_produzione.descrizione}}"
-                                data-lavorazione="{{ordini_produzione.lavorazione}}"
-                                data-quatita_in="{{ordini_produzione.quatita_in}}"
-                                data-quatita_prd="{{ordini_produzione.quatita_prd}}"
-                                data-lavorazione="{{ordini_produzione.lavorazione}}"
-                                data-stato="{{ordini_produzione.stato}}">
-                                <td></td>
-                                <td><span style="color: rgb(52, 58, 64);"></span></td>
-                                <td></td>
-                                <td></td>
-                                <td></td>
-                                <td></td>
-                                <td></td>
-                                <td></td>
-                            </tr>
+                        <tr data-numero="{{ odp.ordine }}" data-codice="{{ odp.codice }}"
+                            data-descrizione="{{ odp.descrizione }}"
+                            data-lavorazione="{{ odp.lavorazione }}"
+                            data-quatita_in="{{ odp.quatita_in }}"
+                            data-quatita_prd="{{ odp.quatita_prd }}"
+                            data-lavorazione="{{ odp.lavorazione }}"
+                            data-stato="{{ odp.stato }}">
+                            <td></td>
+                            <td><span style="color: rgb(52, 58, 64);"></span></td>
+                            <td></td>
+                            <td></td>
+                            <td></td>
+                            <td></td>
+                            <td></td>
+                            <td></td>
+                        </tr>
                     </table>
                 </div>
                 <section class="text-center d-flex w-100 h-100 align-items-center" style="width: auto;height: auto;">
                     <section class="d-flex flex-grow-1 justify-content-start m-2"
-                        style="width: fit-content;height: fit-content;"><button class="btn btn-primary mx-2"
-                            type="button" style="margin: 1px;" data-bs-target="#toast-6" data-bs-toggle="toast">Sospendi
-                            ordine</button><button class="btn btn-primary disabled mx-2" type="button"
-                            style="margin: 1px;" disabled="" data-bs-target="#toast-8" data-bs-toggle="toast">Riattiva
-                            ordine</button></section>
+                             style="width: fit-content;height: fit-content;">
+                        <button class="btn btn-primary mx-2"
+                                type="button" style="margin: 1px;" data-bs-target="#toast-6" data-bs-toggle="toast">
+                            Sospendi
+                            ordine
+                        </button>
+                        <button class="btn btn-primary disabled mx-2" type="button"
+                                style="margin: 1px;" disabled="" data-bs-target="#toast-8" data-bs-toggle="toast">
+                            Riattiva
+                            ordine
+                        </button>
+                    </section>
                     <section class="text-end d-flex flex-grow-1 justify-content-end m-2"
-                        style="width: auto;height: auto;"><button class="btn btn-primary" type="button"
-                            data-bs-target="#toast-7" data-bs-toggle="toast">Chiudi ordine</button></section>
+                             style="width: auto;height: auto;">
+                        <button class="btn btn-primary" type="button"
+                                data-bs-target="#toast-7" data-bs-toggle="toast">Chiudi ordine
+                        </button>
+                    </section>
                 </section>
             </div>
         </div>
     </div>
 </main>
-
-</html>

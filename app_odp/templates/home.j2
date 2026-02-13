@@ -1,21 +1,22 @@
 {% extends "base.j2" %}
 
-
 {% block content %}
-{% if current_user.has_permission('home') and current_user.has_reparto('30') %}
-{% include "/partials/_home_carpenteria.html" %}
+    {% if current_user.has_permission('home') and '30' in policy.allowed_reparti %}
+        {% include "/partials/_home_carpenteria.html" %}
 
+    {% elif current_user.has_permission('home') and '10' in policy.allowed_reparti and current_user.has_permission('controllo_qualita') %}
+        {% include "/partials/_home_collaudo.html" %}
 
-{% elif current_user.has_permission('home') and current_user.has_reparto('40') %}
-{% include "/partials/_home_collaudo.html" %}
+    {% elif current_user.has_permission('home') and '10' in policy.allowed_reparti %}
+        {% include "/partials/_home_montaggio.html" %}
 
-{% elif current_user.has_permission('home') and current_user.has_reparto('10') %}
-{% include "/partials/_home_montaggio.html" %}
+    {% elif current_user.has_permission('home') and '20' in policy.allowed_reparti %}
+        {% include '/partials/_home_officina.html' %}
 
-{% elif current_user.has_permission('home') and current_user.has_reparto('20') %}
-{% include '/partials/_home_officina.html' %}
+    {% elif current_user.has_permission('home') and policy.allowed_reparti|length == 3 %}
+        {% include '/partials/_home_resp_reparto.html' %}
 
-{% else %}
-{% include "page_vuota.j2" %}
-{% endif %}
+    {% else %}
+        {% include "page_vuota.j2" %}
+    {% endif %}
 {% endblock %}

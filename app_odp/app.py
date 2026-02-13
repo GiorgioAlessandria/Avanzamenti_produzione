@@ -1,11 +1,16 @@
-from flask import Flask, redirect, url_for
-from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
-from flask_migrate import Migrate
+from flask import Flask, request, g
+from flask_login import LoginManager
+
 from app_odp.models import db, User
 from app_odp.auth import auth_bp
 from app_odp.routes import main_bp
 import tomllib
+from flask_login import current_user
+from app_odp.RBAC.policy import RbacPolicy
 from pathlib import Path
+import logging
+from uuid import uuid4
+
 try:
     from icecream import ic
 finally:
@@ -27,16 +32,48 @@ def load_config(config: Path) -> dict:
 configurazione = load_config(CONFIG_PATH)
 
 
+def setup_request_logging(app):
+    # livello log
+    app.logger.setLevel(logging.INFO)
+
+    @app.before_request
+    def _log_request():
+        g.rid = uuid4().hex[:8]  # request id breve
+        app.logger.info(
+            "[%s] %s %s endpoint=%s blueprint=%s ref=%s ip=%s ua=%s",
+            g.rid,
+            request.method,
+            request.full_path,
+            request.endpoint,
+            request.blueprint,
+            request.headers.get("Referer"),
+            request.headers.get("X-Forwarded-For", request.remote_addr),
+            (request.headers.get("User-Agent") or "")[:120],
+        )
+
+    @app.after_request
+    def _log_response(resp):
+        app.logger.info("[%s] -> %s %s", g.rid, resp.status_code, resp.mimetype)
+        return resp
+
+
 def create_app():
-    app = Flask(__name__, instance_relative_config=True,
-                static_folder='static', template_folder='templates')
+    app = Flask(
+        __name__,
+        instance_relative_config=True,
+        static_folder="static",
+        template_folder="templates",
+    )
+    # setup_request_logging(app)
     app.debug = True
 
     # chiave segreta per sessioni e Flask-Login
     app.config["SECRET_KEY"] = "Berserk"
 
     # DB SQLite dentro instance
-    app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{configurazione['Percorsi']['percorso_db']}"
+    app.config["SQLALCHEMY_DATABASE_URI"] = (
+        f"sqlite:///{configurazione['Percorsi']['percorso_db']}"
+    )
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
     # inizializza estensioni
@@ -48,6 +85,12 @@ def create_app():
     @login_manager.user_loader
     def load_user(user_id: str):
         return User.query.get(int(user_id))
+
+    @app.context_processor
+    def inject_policy():
+        if current_user.is_authenticated:
+            return {"policy": RbacPolicy(current_user)}
+        return {"policy": None}
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(main_bp)
