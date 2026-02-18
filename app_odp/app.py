@@ -1,5 +1,6 @@
 from flask import Flask, request, g
 from flask_login import LoginManager
+from .filters import register_filters
 
 from app_odp.models import db, User
 from app_odp.auth import auth_bp
@@ -78,6 +79,7 @@ def create_app():
 
     # inizializza estensioni
     db.init_app(app)
+    register_filters(app)
     login_manager = LoginManager()
     login_manager.init_app(app)
     login_manager.login_view = "auth.login"

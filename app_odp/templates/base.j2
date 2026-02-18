@@ -2,18 +2,26 @@
 <!doctype html>
 <html lang="it">
 {% block head %}
-    <link rel="stylesheet" href="{{ url_for('static', filename='assets/bootstrap/css/bootstrap.min.css') }}">
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1">
     <meta charset="utf-8">
     <title>{% block title %}Avanzamenti produzione{% endblock %}</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="icon" href="{{ url_for('static', filename='assets/img/logo.ico') }}">
-
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    {% block styles %}
+        <link rel="stylesheet"
+              href="{{ url_for('static', filename='assets/bootstrap/css/bootstrap.min.css') }}">
+        <link rel="icon"
+              href="{{ url_for('static', filename='assets/img/logo.ico') }}">
+        <link rel="stylesheet"
+              href="{{ url_for('static', filename='assets/css/table.css') }}">
+        <link rel="stylesheet"
+              href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    {% endblock %}
 {% endblock head %}
 
 
 <body>
-<header class="text-center min-vw-100 mh-100 m-auto mx-0" style="width: auto;height: auto;">
+<header class="text-center min-vw-100 mh-100 m-auto mx-0"
+        style="width: auto;height: auto;">
     <div class="container-fluid text-center d-flex w-100 h-100 flex-shrink-0 flex-fill justify-content-center align-items-center"
          style="width: auto;height: auto;">
         <div class="row d-inline-flex w-100 h-100 justify-content-center align-items-center align-self-center ms-0 me-0"
@@ -22,13 +30,24 @@
                  style="width: auto;height: auto;">
                 <button
                         class="btn btn-primary btn-lg text-center bg-light d-flex justify-content-center align-items-center"
-                        type="button" data-bs-target="#offcanvas-2" data-bs-toggle="offcanvas">
+                        type="button"
+                        data-bs-target="#offcanvas-2"
+                        data-bs-toggle="offcanvas">
                     <svg
                             class="icon icon-tabler icon-tabler-menu-2 text-center text-black text-bg-light d-flex justify-content-center align-items-center"
-                            xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24"
-                            stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round"
-                            stroke-linejoin="round" style="font-size: 40px;">
-                        <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
+                            xmlns="http://www.w3.org/2000/svg"
+                            width="1em"
+                            height="1em"
+                            viewBox="0 0 24 24"
+                            stroke-width="2"
+                            stroke="currentColor"
+                            fill="none"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            style="font-size: 40px;">
+                        <path stroke="none"
+                              d="M0 0h24v24H0z"
+                              fill="none"></path>
                         <path d="M4 6l16 0"></path>
                         <path d="M4 12l16 0"></path>
                         <path d="M4 18l16 0"></path>
@@ -42,27 +61,59 @@
                 {% elif current_user.genere == "f" %}
                     {% set genere = 'a' %}
                 {% endif %}
-                {% if current_user.is_authenticated and (policy.allowed_reparti_descr|length) == 1 %}
+                {% if current_user.is_authenticated and current_user.has_role('responsabile_produzione') == False %}
                     <h1 class="mb-0">{{ policy.allowed_reparti_descr[0] }}
                         - Benvenut{{ genere }} {{ current_user.username }}</h1>
-                {% elif current_user.is_authenticated and (policy.allowed_reparti_descr|length) == 3 %}
-                    <h1 class="mb-0">Responsabile di produzione
-                        - Benvenut{{ genere }} {{ current_user.username }}</h1>
-                    <label for="cars">Choose a car:</label>
-                    {% for  %}
-                    <select name="cars" id="cars">
-                        <option value="volvo">Volvo</option>
-                        <option value="saab">Saab</option>
-                        <option value="mercedes">Mercedes</option>
-                        <option value="audi">Audi</option>
-                    </select>
 
+                {% elif current_user.is_authenticated and current_user.has_role('responsabile_qualita') %}
+                    <h1 class="mb-0">{{ policy.allowed_reparti_descr[0] }}
+                        - Benvenut{{ genere }} {{ current_user.username }}</h1>
+                    <div class="btn-group dropup d-flex"
+                         style="margin: 10px;">
+
+                        <button class=" dropdown-toggle btn-lg text-center d-flex w-100 h-100 flex-column justify-content-center ms-2
+                                me-2 mt-4 mb-4"
+                                data-bs-toggle="dropdown"
+                                type="button">
+                            Cambia pagina
+                        </button>
+
+                        <ul class="dropdown-menu">
+                            {% for it in home_switch_items %}
+                                <li><h4><a class="dropdown-item"
+                                           href="{{ it.url }}">{{ it.label }}</a></h4></li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+
+                {% elif current_user.is_authenticated and current_user.has_role('responsabile_produzione') %}
+                    <h1 class="mb-0">Responsabile di produzione
+                                     - Benvenut{{ genere }} {{ current_user.username }}</h1>
+                    <div class="btn-group dropup d-flex"
+                         style="margin: 10px;">
+
+                        <button class=" dropdown-toggle btn-lg text-center d-flex w-100 h-100 flex-column justify-content-center ms-2
+                                me-2 mt-4 mb-4"
+                                data-bs-toggle="dropdown"
+                                type="button">
+                            Cambia pagina
+                        </button>
+
+                        <ul class="dropdown-menu">
+                            {% for it in home_switch_items %}
+                                <li><h4><a class="dropdown-item"
+                                           href="{{ it.url }}">{{ it.label }}</a></h4></li>
+                            {% endfor %}
+                        </ul>
+                    </div>
                 {% endif %}
             </div>
             <div class="col-md-4 d-flex w-auto flex-grow-1 justify-content-end align-items-center"
                  style="width: auto;height: auto;">
                 <img
-                        class="img-fluid justify-content-end align-items-center order-first" width="250" height="89"
+                        class="img-fluid justify-content-end align-items-center order-first"
+                        width="250"
+                        height="89"
                         src="{{ url_for('static', filename='assets/img/logo_completo.jpg') }}"
                         style="text-align: right;"
                         alt="logo_completo"
@@ -72,11 +123,81 @@
     </div>
 </header>
 {% include "partials/_nav_offcanvas.html" %}
+{% block extra_js %}
+    <script>
+        (() => {
+            function selectRow(tr) {
+                const table = tr.closest('table');
+                if (!table) return;
+
+                // una sola riga selezionata per tabella
+                table.querySelectorAll('tbody tr.row-selected').forEach(r => r.classList.remove('row-selected'));
+                tr.classList.add('row-selected');
+            }
+
+            function getSelectedRow(table) {
+                return table?.querySelector('tbody tr.row-selected') || null;
+            }
+
+            // Click su riga: seleziona
+            document.addEventListener('click', (e) => {
+                const tr = e.target.closest('table.table-selectable tbody tr');
+                if (!tr) return;
+                selectRow(tr);
+            });
+
+            // Pulsanti: acquisisci dati dalla riga selezionata e riempi il target
+            document.addEventListener('click', (e) => {
+                const btn = e.target.closest('[data-use-selected]');
+                if (!btn) return;
+
+                const tableSelector = btn.getAttribute('data-use-selected') || 'table.table-selectable';
+                const table = document.querySelector(tableSelector);
+                const tr = getSelectedRow(table);
+
+                if (!table) {
+                    console.warn('Tabella non trovata per selector:', tableSelector);
+                    return;
+                }
+                if (!tr) {
+                    // qui puoi anche mostrare un toast invece dell'alert
+                    alert('Seleziona prima una riga nella tabella.');
+                    return;
+                }
+
+                // Dove scrivere i dati (form/toast/section)
+                const targetSelector = btn.getAttribute('data-fill-target');
+                if (!targetSelector) return;
+
+                const target = document.querySelector(targetSelector);
+                if (!target) {
+                    console.warn('Target non trovato per selector:', targetSelector);
+                    return;
+                }
+
+                // Riempie:
+                // - elementi con data-bind="chiave" => value (input/select/textarea) o textContent (altri)
+                // - elementi con data-bind-text="chiave" => textContent
+                target.querySelectorAll('[data-bind]').forEach(el => {
+                    const key = el.getAttribute('data-bind');
+                    const val = tr.dataset[key] ?? '';
+                    if (el.matches('input, textarea, select')) el.value = val;
+                    else el.textContent = val;
+                });
+
+                target.querySelectorAll('[data-bind-text]').forEach(el => {
+                    const key = el.getAttribute('data-bind-text');
+                    el.textContent = tr.dataset[key] ?? '';
+                });
+            });
+        })();
+    </script>
+{% endblock %}
+
 </body>
 {% block content %}{% endblock %}
 <script src="{{ url_for('static', filename='assets/js/jquery.min.js') }}"></script>
 <script src="{{ url_for('static', filename='assets/bootstrap/js/bootstrap.min.js') }}"></script>
 <script src="{{ url_for('static', filename='assets/js/bs-init.js') }}"></script>
-{% block extra_js %}{% endblock %}
 
 </html>

@@ -122,9 +122,6 @@ class RbacPolicy:
             .join(Reparti, Reparti.id == roles_reparti.c.reparto_id)
             .where(roles_reparti.c.roles_id.in_(self.role_ids))
         )
-        from icecream import ic
-
-        print(db.session.execute(stmt).scalars().all()[0] == "30")
         return set(db.session.execute(stmt).scalars().all())
 
     @cached_property
@@ -219,6 +216,18 @@ class RbacPolicy:
             return q  # nessun filtro -> vedi tutto
 
         return q.filter(*conds)  # AND implicito
+
+    @cached_property
+    def allowed_reparti_menu(self) -> list[tuple[str, str]]:
+        stmt = (
+            select(Reparti.Codice, Reparti.Descrizione)
+            .distinct()
+            .select_from(roles_reparti)
+            .join(Reparti, Reparti.id == roles_reparti.c.reparto_id)
+            .where(roles_reparti.c.roles_id.in_(self.role_ids))
+            .order_by(Reparti.Codice)
+        )
+        return list(db.session.execute(stmt).all())
 
     # def filter_input_odp(self, q):
     #    """

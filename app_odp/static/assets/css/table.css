@@ -1,0 +1,16 @@
+/* Tabella con righe selezionabili */
+table.table-selectable tbody tr {
+    cursor: pointer;
+    user-select: none;
+}
+
+/* Hover più evidente */
+table.table-selectable tbody tr:hover {
+    filter: brightness(0.97);
+}
+
+/* Riga selezionata */
+table.table-selectable tbody tr.row-selected {
+    outline: 2px solid #0d6efd;
+    outline-offset: -2px;
+}
