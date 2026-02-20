@@ -48,42 +48,43 @@
                 <h2 class="w-100 h-100 mb-3"
                     style="width: auto;height: auto;">Ordini da eseguire</h2>
                 <div class="table-responsive text-capitalize fw-semibold text-center w-100 h-100 justify-content-start align-items-start mb-0 pb-0"
-                     style="width: auto;height: auto;color: rgb(0,0,0);border-color: rgb(0,0,0);border-top-color: #000000;display: block;overflow: auto;max-height: 730px">
-                    <table class="table table-selectable table-striped table-hover table-sm table-bordered"
+                     style="width: auto;height: auto;color: rgb(0,0,0);border-color: rgb(0,0,0);border-top-color: #000000;display: block;overflow: auto;max-height: 690px">
+                    <table class="table table-striped table-sortable table-hover table-selectable table-responsive table-sticky-wrap text-capitalize fw-semibold text-center justify-content-start align-items-start"
                            id="tbl-da-eseguire">
 
                         <thead style="background: var(--bs-info);">
                         <tr>
-                            <th>Ordine</th>
-                            <th>Codice</th>
-                            <th>Descrizione</th>
-                            <th>Quantità</th>
-                            <th>Fase</th>
-                            <th>Consegna</th>
-                            <th>Lavorazione</th>
-                            <th>Risorsa</th>
+                            <th data-sort="text">Ordine</th>
+                            <th data-sort="text">Codice</th>
+                            <th data-sort="text">Descrizione</th>
+                            <th data-sort="num">Quantità</th>
+                            <th data-sort="date"
+                                data-date-format="dd/mm/yyyy">Consegna
+                            </th>
+                            <th data-sort="text">Lavorazione</th>
+                            <th data-sort="text">Risorsa</th>
                         </tr>
                         </thead>
                         <tbody>
                         {% for singolo_odp in odp %}
-                            <tr data-ordine="{{ singolo_odp.RifRegistraz }}"
-                                data-codice="{{ singolo_odp.CodArt }}"
-                                data-descrizione="{{ singolo_odp.DesArt }}"
-                                data-quantita="{{ singolo_odp.Quantita }}"
-                                data-fase="{{ singolo_odp.NumFase }}"
-                                data-datacons="{{ singolo_odp.DataFineSched }}"
-                                data-lavorazione="{{ singolo_odp.CodLavorazione }}"
-                                data-risorsaprod="{{ singolo_odp.CodRisorsaProd }}"
-                            >
-                                <td>{{ singolo_odp.RifRegistraz }}</td>
-                                <td>{{ singolo_odp.CodArt }}</td>
-                                <td>{{ singolo_odp.DesArt }}</td>
-                                <td>{{ singolo_odp.Quantita }}</td>
-                                <td>{{ singolo_odp.NumFase.strip("[").strip("]") }}</td>
-                                <td>{{ singolo_odp.DataFineSched.strip('["').strip('"]') }}</td>
-                                <td>{{ singolo_odp.CodLavorazione.strip('["').strip('"]') }}</td>
-                                <td>{{ singolo_odp.CodRisorsaProd.strip('["').strip('"]') }}</td>
-                            </tr>
+                            {% if singolo_odp.StatoOrdine == "Pianificata" %}
+                                <tr data-ordine="{{ singolo_odp.RifRegistraz }}"
+                                    data-codice="{{ singolo_odp.CodArt }}"
+                                    data-descrizione="{{ singolo_odp.DesArt }}"
+                                    data-quantita="{{ singolo_odp.Quantita }}"
+                                    data-datacons="{{ singolo_odp.DataFineSched }}"
+                                    data-lavorazione="{{ singolo_odp.CodLavorazione }}"
+                                    data-risorsaprod="{{ singolo_odp.CodRisorsaProd }}"
+                                >
+                                    <td>{{ singolo_odp.RifRegistraz }}</td>
+                                    <td>{{ singolo_odp.CodArt }}</td>
+                                    <td>{{ singolo_odp.DesArt }}</td>
+                                    <td>{{ singolo_odp.Quantita }}</td>
+                                    <td>{{ singolo_odp.DataFineSched | db_date("%Y-%m-%d %H:%M:%S","%d/%m/%Y") }}</td>
+                                    <td>{{ singolo_odp.CodLavorazione | db_list_display }}</td>
+                                    <td>{{ singolo_odp.CodRisorsaProd | db_list_display }}</td>
+                                </tr>
+                            {% endif %}
                         {% endfor %}
                         </tbody>
                     </table>
@@ -101,40 +102,46 @@
                 <h2 class="w-100 h-100 mb-3"
                     style="width: auto;height: auto;">Ordini attivi</h2>
                 <div class="table-responsive text-capitalize fw-semibold text-center w-100 h-100 justify-content-start align-items-start"
-                     style="width: auto;height: auto;color: rgb(0,0,0);border-color: rgb(0,0,0);border-top-color: #000000;display: block;overflow: auto;max-height: 730px">
-                    <table class="table table-striped table-hover table-sm table-bordered"
+                     style="width: auto;height: auto;color: rgb(0,0,0);border-color: rgb(0,0,0);border-top-color: #000000;display: block;overflow: auto;max-height: 700px">
+                    <table class="table table-striped table-state-rowcolor table-sortable table-hover table-responsive table-selectable table-sticky-wrap text-capitalize fw-semibold text-center w-100 h-100 justify-content-start align-items-start"
                            id="ordini_in_corso">
                         <thead style="background: var(--bs-info);">
                         <tr>
-                            <th>Ordine</th>
-                            <th>Codice</th>
-                            <th>Descrizione</th>
-                            <th>Quantità</th>
-                            <th>Fase</th>
-                            <th>Data consegna</th>
-                            <th>Lavorazione</th>
-                            <th>Risorsa di produzione</th>
+                            <th data-sort="text">Ordine</th>
+                            <th data-sort="text">Codice</th>
+                            <th data-sort="text">Descrizione</th>
+                            <th data-sort="num">Quantità</th>
+                            <th data-sort="date"
+                                data-date-format="dd/mm/yyyy">Consegna
+                            </th>
+                            <th data-sort="text">Lavorazione</th>
+                            <th data-sort="text">Risorsa</th>
+                            <th data-sort="text">Stato</th>
                         </tr>
                         </thead>
                         <tbody>
-                        <tr data-ordine="{{ odp.RifRegistraz }}"
-                            data-codice="{{ odp.CodArt }}"
-                            data-descrizione="{{ odp.DesArt }}"
-                            data-quantità="{{ odp.Quantita }}"
-                            data-fase="{{ odp.NumFase }}"
-                            data-datacons="{{ odp.DataFineSched }}"
-                            data-lavorazione="{{ odp.CodLavorazione }}"
-                            data-risorsaprod="{{ odp.CodRisorsaProd }}"
-                        >
-                            <td>{{ odp.RifRegistraz }}</td>
-                            <td>{{ odp.CodArt }}</td>
-                            <td>{{ odp.Descr }}</td>
-                            <td>{{ odp.Quantita }}</td>
-                            <td>{{ odp.NumFase }}</td>
-                            <td>{{ odp.DataFineSched }}</td>
-                            <td>{{ odp.CodLavorazione }}</td>
-                            <td>{{ odp.CodRisorsaProd }}</td>
-                        </tr>
+                        {% for singolo_odp in odp %}
+                            {% if singolo_odp.StatoOrdine != "Pianificata" %}
+                                <tr data-ordine="{{ singolo_odp.RifRegistraz }}"
+                                    data-codice="{{ singolo_odp.CodArt }}"
+                                    data-descrizione="{{ singolo_odp.DesArt }}"
+                                    data-quantità="{{ singolo_odp.Quantita }}"
+                                    data-datacons="{{ singolo_odp.DataFineSched }}"
+                                    data-lavorazione="{{ singolo_odp.CodLavorazione }}"
+                                    data-risorsaprod="{{ singolo_odp.CodRisorsaProd }}"
+                                    data-statoordine="{{ singolo_odp.StatoOrdine }}"
+                                >
+                                    <td>{{ singolo_odp.RifRegistraz }}</td>
+                                    <td>{{ singolo_odp.CodArt }}</td>
+                                    <td>{{ singolo_odp.DesArt }}</td>
+                                    <td>{{ singolo_odp.Quantita }}</td>
+                                    <td>{{ singolo_odp.DataFineSched | db_date("%Y-%m-%d %H:%M:%S","%d/%m/%Y") }}</td>
+                                    <td>{{ singolo_odp.CodLavorazione | db_list_display }}</td>
+                                    <td>{{ singolo_odp.CodRisorsaProd | db_list_display }}</td>
+                                    <td data-col="stato">{{ singolo_odp.StatoOrdine }}</td>
+                                </tr>
+                            {% endif %}
+                        {% endfor %}
                         </tbody>
                     </table>
                 </div>

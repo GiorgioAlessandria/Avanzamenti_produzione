@@ -126,6 +126,175 @@
 {% block extra_js %}
     <script>
         (() => {
+            function norm(s) {
+                return String(s || '')
+                    .trim()
+                    .toLowerCase()
+                    .replace(/\s+/g, ' ');
+            }
+
+            function applyStateRowColors(table) {
+                table.querySelectorAll('tbody tr').forEach(tr => {
+                    tr.classList.remove('row-state-attivo', 'row-state-sospeso');
+
+                    const td = tr.querySelector('td[data-col="stato"]');
+                    if (!td) return;
+
+                    const v = norm(td.textContent);
+
+                    if (v === 'Attivo' || v === 'attivi') tr.classList.add('row-state-attivo');
+                    else if (v === 'In Sospeso' || v === 'sospeso' || v === 'sospesi') tr.classList.add('row-state-sospeso');
+                });
+            }
+
+            function applyAll() {
+                document.querySelectorAll('table.table-state-rowcolor').forEach(applyStateRowColors);
+            }
+
+            document.addEventListener('DOMContentLoaded', applyAll);
+
+            // Se rigeneri tbody via JS/AJAX, richiama questo:
+            window.applyStateRowColorsAll = applyAll;
+        })();
+    </script>
+    <script>
+        (() => {
+            function parseDateDDMMYYYY(s) {
+                // accetta "dd/mm/yyyy" o "dd/mm/yyyy hh:mm"
+                const m = String(s).trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?/);
+                if (!m) return NaN;
+                const dd = Number(m[1]), mm = Number(m[2]) - 1, yyyy = Number(m[3]);
+                const hh = m[4] ? Number(m[4]) : 0;
+                const mi = m[5] ? Number(m[5]) : 0;
+                return new Date(yyyy, mm, dd, hh, mi).getTime();
+            }
+
+            function guessType(value) {
+                const v = String(value).trim().replace(/\./g, '').replace(',', '.');
+                if (v === '') return 'text';
+                if (!isNaN(Number(v))) return 'num';
+                // tenta data dd/mm/yyyy
+                if (!isNaN(parseDateDDMMYYYY(value))) return 'date';
+                return 'text';
+            }
+
+            function cellValue(tr, colIndex) {
+                const td = tr.children[colIndex];
+                return td ? td.textContent.trim() : '';
+            }
+
+            function compareFactory(type, desc, colIndex) {
+                return (a, b) => {
+                    const avRaw = cellValue(a, colIndex);
+                    const bvRaw = cellValue(b, colIndex);
+
+                    // vuoti sempre in fondo
+                    if (avRaw === '' && bvRaw === '') return 0;
+                    if (avRaw === '') return 1;
+                    if (bvRaw === '') return -1;
+
+                    let res = 0;
+
+                    if (type === 'num') {
+                        const av = Number(avRaw.replace(/\./g, '').replace(',', '.'));
+                        const bv = Number(bvRaw.replace(/\./g, '').replace(',', '.'));
+                        res = av - bv;
+                    } else if (type === 'date') {
+                        const av = parseDateDDMMYYYY(avRaw);
+                        const bv = parseDateDDMMYYYY(bvRaw);
+                        res = av - bv;
+                    } else {
+                        res = avRaw.localeCompare(bvRaw, undefined, {numeric: true, sensitivity: 'base'});
+                    }
+
+                    return desc ? -res : res;
+                };
+            }
+
+            function sortTableByTh(th) {
+                const table = th.closest('table.table-sortable');
+                if (!table) return;
+
+                const thead = table.tHead;
+                const tbody = table.tBodies[0];
+                if (!thead || !tbody) return;
+
+                const colIndex = th.cellIndex;
+
+                // stato sort: default DESC al primo click
+                const current = th.getAttribute('data-sort-dir'); // "asc"|"desc"|null
+                const nextDir = (current === 'desc') ? 'asc' : 'desc';
+                const desc = (nextDir === 'desc');
+
+                // reset stato su altri th
+                thead.querySelectorAll('th').forEach(x => {
+                    if (x !== th) x.removeAttribute('data-sort-dir');
+                });
+                th.setAttribute('data-sort-dir', nextDir);
+
+                // tipo colonna
+                let type = (th.getAttribute('data-sort') || '').toLowerCase();
+                if (!type) {
+                    // “guess” dal primo valore non vuoto
+                    const rows = Array.from(tbody.rows);
+                    const sample = rows.map(r => cellValue(r, colIndex)).find(v => v !== '') || '';
+                    type = guessType(sample);
+                }
+
+                // preserva eventuale riga selezionata (table-selectable)
+                const selected = tbody.querySelector('tr.row-selected');
+                const selectedKey = selected ? selected.getAttribute('data-row-key') : null;
+
+                // ordina
+                const rowsArr = Array.from(tbody.rows);
+                rowsArr.sort(compareFactory(type, desc, colIndex));
+                rowsArr.forEach(r => tbody.appendChild(r));
+
+                // ripristina selezione se usi una chiave stabile
+                // (opzionale) imposta data-row-key="IdDocumento,IdRiga" sulle righe
+                if (selectedKey) {
+                    const found = tbody.querySelector(`tr[data-row-key="${CSS.escape(selectedKey)}"]`);
+                    if (found) found.classList.add('row-selected');
+                }
+            }
+
+            document.addEventListener('click', (e) => {
+                const th = e.target.closest('table.table-sortable thead th');
+                if (!th) return;
+                sortTableByTh(th);
+            });
+        })();
+    </script>
+    <script>
+        (function () {
+            function normalize(s) {
+                return (s || "").toString().trim().toLowerCase();
+            }
+
+            function applyRowColors(root = document) {
+                const tables = root.querySelectorAll("table.table-state-rowcolor");
+                tables.forEach((table) => {
+                    table.querySelectorAll("tbody tr").forEach((tr) => {
+                        tr.classList.remove("row-state-attivo", "row-state-sospeso");
+
+                        const statoCell = tr.querySelector('td[data-col="stato"]');
+                        const stato = normalize(statoCell ? statoCell.textContent : "");
+
+                        // match “attivo” / “sospeso” anche se hai varianti (es: “Ordine Attivo”)
+                        if (stato.includes("attiv")) tr.classList.add("row-state-attivo");
+                        else if (stato.includes("sosp")) tr.classList.add("row-state-sospeso");
+                    });
+                });
+            }
+
+            document.addEventListener("DOMContentLoaded", () => applyRowColors());
+
+            // Se aggiorni le tabelle via fetch/AJAX in futuro:
+            window.applyRowColors = applyRowColors;
+        })();
+    </script>
+    <script>
+        (() => {
             function selectRow(tr) {
                 const table = tr.closest('table');
                 if (!table) return;

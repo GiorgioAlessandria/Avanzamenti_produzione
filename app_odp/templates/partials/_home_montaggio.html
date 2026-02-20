@@ -82,30 +82,37 @@
          style="width: auto;height: auto;border-color: rgb(0,0,0);">
         <h2 class="w-100 h-100 mb-3"
             style="width: auto;height: auto;">Ordini semilavorati da eseguire</h2>
+        <div class="rif-filter-bar"
+             data-filter-tables="#tbl-da-eseguire-sl,#ordini_in_corso_sl">
+            <input type="text"
+                   class="form-control form-control-sm"
+                   placeholder="Filtra per Ordine"
+                   data-filter-input="rif">
+        </div>
         <div class="table-responsive text-capitalize fw-semibold text-center w-100 h-100 justify-content-start align-items-start mb-0 pb-0"
-             style="width: auto;height: auto;color: rgb(0,0,0);border-color: rgb(0,0,0);border-top-color: #000000;display: block;overflow: auto;max-height: 275px">
-            <table class="table table-selectable table-striped table-hover table-sm table-bordered"
+             style="width: auto;height: auto;color: rgb(0,0,0);display: block;overflow: auto;max-height: 275px">
+            <table class="table table-striped table-sortable table-hover table-selectable table-responsive table-sticky-wrap text-capitalize fw-semibold text-center justify-content-start align-items-start"
                    id="tbl-da-eseguire-sl">
-                <thead style="background: var(--bs-info);">
+                <thead>
                 <tr>
-                    <th>Ordine</th>
-                    <th>Codice</th>
-                    <th>Descrizione</th>
-                    <th>Quantità</th>
-                    <th>Fase</th>
-                    <th>Consegna</th>
-                    <th>Lavorazione</th>
-                    <th>Risorsa</th>
+                    <th data-sort="text">Ordine</th>
+                    <th data-sort="text">Codice</th>
+                    <th data-sort="text">Descrizione</th>
+                    <th data-sort="num">Quantità</th>
+                    <th data-sort="date"
+                        data-date-format="dd/mm/yyyy">Consegna
+                    </th>
+                    <th data-sort="text">Lavorazione</th>
+                    <th data-sort="text">Risorsa</th>
                 </tr>
                 </thead>
                 <tbody>
                 {% for singolo_odp in odp %}
-                    {% if singolo_odp.CodMatricola == None %}
+                    {% if singolo_odp.CodMatricola == None and singolo_odp.StatoOrdine == "Pianificata" %}
                         <tr data-ordine="{{ singolo_odp.RifRegistraz }}"
                             data-codice="{{ singolo_odp.CodArt }}"
                             data-descrizione="{{ singolo_odp.DesArt }}"
                             data-quantita="{{ singolo_odp.Quantita }}"
-                            data-fase="{{ singolo_odp.NumFase }}"
                             data-datacons="{{ singolo_odp.DataFineSched }}"
                             data-lavorazione="{{ singolo_odp.CodLavorazione }}"
                             data-risorsaprod="{{ singolo_odp.CodRisorsaProd }}"
@@ -114,13 +121,11 @@
                         <td>{{ singolo_odp.CodArt }}</td>
                         <td>{{ singolo_odp.DesArt }}</td>
                         <td>{{ singolo_odp.Quantita }}</td>
-                        <td>{{ singolo_odp.NumFase.strip("[").strip("]") }}</td>
-                        <td>{{ singolo_odp.DataFineSched.strip('["').strip('"]') }}</td>
-                        <td>{{ singolo_odp.CodLavorazione.strip('["').strip('"]') }}</td>
-                        <td>{{ singolo_odp.CodRisorsaProd.strip('["').strip('"]') }}</td>
+                        <td>{{ singolo_odp.DataFineSched | db_date("%Y-%m-%d %H:%M:%S","%d/%m/%Y") }}</td>
+                        <td>{{ singolo_odp.CodLavorazione | db_list_display }}</td>
+                        <td>{{ singolo_odp.CodRisorsaProd | db_list_display }}</td>
                     {% endif %}
                 {% endfor %}
-                </tr>
                 </tbody>
             </table>
         </div>
@@ -137,41 +142,46 @@
         <h2 class="w-100 h-100 mb-3"
             style="width: auto;height: auto;">Ordini attivi</h2>
         <div class="table-responsive text-capitalize fw-semibold text-center w-100 h-100 justify-content-start align-items-start"
-             style="width: auto;height: auto;color: rgb(0,0,0);border-color: rgb(0,0,0);border-top-color: #000000;display: block;overflow: auto;max-height: 275px">
-            <table class="table table-striped table-hover table-sm table-bordered"
-                   id="ordini_in_corso">
-                <thead style="background: var(--bs-info);">
+             style="width: auto;height: auto;color: rgb(0,0,0);display: block;max-height: 275px">
+            <table class="table table-striped table-state-rowcolor table-sortable table-hover table-responsive table-selectable table-sticky-wrap text-capitalize fw-semibold text-center w-100 h-100 justify-content-start align-items-start"
+                   id="ordini_in_corso_sl">
+                <thead>
                 <tr>
-                    <th>Ordine</th>
-                    <th>Codice</th>
-                    <th>Descrizione</th>
-                    <th>Quantità</th>
-                    <th>Fase</th>
-                    <th>Data consegna</th>
-                    <th>Lavorazione</th>
-                    <th>Risorsa di produzione</th>
+                    <th data-sort="text">Ordine</th>
+                    <th data-sort="text">Codice</th>
+                    <th data-sort="text">Descrizione</th>
+                    <th data-sort="num">Quantità</th>
+                    <th data-sort="date"
+                        data-date-format="dd/mm/yyyy">Consegna
+                    </th>
+                    <th data-sort="text">Lavorazione</th>
+                    <th data-sort="text">Risorsa</th>
+                    <th data-sort="text">Stato</th>
                 </tr>
                 </thead>
                 <tbody>
-                <tr>
-                    <!--tr data-ordine="{{ odp.RifRegistraz }}"
-                            data-codice="{{ odp.CodArt }}"
-                            data-descrizione="{{ odp.DesArt }}"
-                            data-quantita="{{ odp.Quantita }}"
-                            data-fase="{{ odp.NumFase }}"
-                            data-datacons="{{ odp.DataFineSched }}"
-                            data-lavorazione="{{ odp.CodLavorazione }}"
-                            data-risorsaprod="{{ odp.CodRisorsaProd }}"
-                        -->
-                    <td></td>
-                    <td></td>
-                    <td></td>
-                    <td></td>
-                    <td></td>
-                    <td></td>
-                    <td></td>
-                    <td></td>
-                </tr>
+                {% for singolo_odp in odp %}
+                    {% if singolo_odp.CodMatricola == None and singolo_odp.StatoOrdine != "Pianificata" %}
+                        <tr data-ordine="{{ singolo_odp.RifRegistraz }}"
+                            data-codice="{{ singolo_odp.CodArt }}"
+                            data-descrizione="{{ singolo_odp.DesArt }}"
+                            data-quantita="{{ singolo_odp.Quantita }}"
+                            data-datacons="{{ singolo_odp.DataFineSched }}"
+                            data-lavorazione="{{ singolo_odp.CodLavorazione }}"
+                            data-risorsaprod="{{ singolo_odp.CodRisorsaProd }}"
+                            data-statoordine="{{ singolo_odp.StatoOrdine }}"
+                        >
+                            <td>{{ singolo_odp.RifRegistraz }}</td>
+                            <td>{{ singolo_odp.CodArt }}</td>
+                            <td>{{ singolo_odp.DesArt }}</td>
+                            <td>{{ singolo_odp.Quantita }}</td>
+                            <td>{{ singolo_odp.DataFineSched | db_date("%Y-%m-%d %H:%M:%S","%d/%m/%Y") }}</td>
+                            <td>{{ singolo_odp.CodLavorazione | db_list_display }}</td>
+                            <td>{{ singolo_odp.CodRisorsaProd | db_list_display }}</td>
+                            <td data-col="stato">{{ singolo_odp.StatoOrdine }}</td>
+                        </tr>
+                    {% endif %}
+                {% endfor %}
                 </tbody>
             </table>
         </div>
@@ -209,25 +219,27 @@
         <div class="row text-center w-100 h-100 align-items-start"
              style="width: auto;height: auto;">
             <div class="col w-100 h-100 ms-2 me-0"
-                 style="width: auto;height: auto;border-color: rgb(0,0,0);">
+                 style="width: auto;height: auto;">
                 <h2 class="w-100 h-100 mb-3"
                     style="width: auto;height: auto;">Ordini macchina da eseguire</h2>
-                <div class="table-responsive text-capitalize fw-semibold text-center w-100 h-100 justify-content-start align-items-start mb-0 pb-0"
-                     style="width: auto;height: auto;color: rgb(0,0,0);border-color: rgb(0,0,0);border-top-color: #000000;display: block;overflow: auto;max-height: 275px">
-                    <table class="table table-selectable table-striped table-hover table-sm table-bordered"
+                <div class="table-responsive text-capitalize fw-semibold text-center justify-content-start align-items-center mb-0 pb-0"
+                     style="width: auto;height: auto;display: block;max-height: 275px">
+                    <table class="table table-striped table-sortable table-selectable table-hover table-responsive table-sticky-wrap text-capitalize fw-semibold text-center w-100 h-100 justify-content-start align-items-start"
                            id="tbl-da-eseguire-m">
                         <thead style="background: var(--bs-info);">
                         <tr>
-                            <th>Ordine</th>
-                            <th>Codice</th>
-                            <th>Descrizione</th>
-                            <th>Matricola</th>
-                            <th>Consegna</th>
+                            <th data-sort="text">Ordine</th>
+                            <th data-sort="text">Codice</th>
+                            <th data-sort="text">Descrizione</th>
+                            <th data-sort="text">Matricola</th>
+                            <th data-sort="date"
+                                data-date-format="dd/mm/yyyy">Consegna
+                            </th>
                         </tr>
                         </thead>
                         <tbody>
                         {% for singolo_odp in odp %}
-                            {% if singolo_odp.CodMatricola != None %}
+                            {% if singolo_odp.CodMatricola != None and singolo_odp.StatoOrdine == "Pianificata" %}
                                 <tr data-ordine="{{ singolo_odp.RifRegistraz }}"
                                     data-codice="{{ singolo_odp.CodArt }}"
                                     data-descrizione="{{ singolo_odp.DesArt }}"
@@ -238,7 +250,7 @@
                                     <td>{{ singolo_odp.CodArt }}</td>
                                     <td>{{ singolo_odp.DesArt }}</td>
                                     <td>{{ singolo_odp.CodMatricola }}</td>
-                                    <td>{{ singolo_odp.DataFineSched.strip('["').strip('"]') }}</td>
+                                    <td>{{ singolo_odp.DataFineSched | db_date("%Y-%m-%d %H:%M:%S","%d/%m/%Y") }}</td>
                                 </tr>
                             {% endif %}
                         {% endfor %}
@@ -258,45 +270,39 @@
                 <h2 class="w-100 h-100 mb-3"
                     style="width: auto;height: auto;">Ordini attivi</h2>
                 <div class="table-responsive text-capitalize fw-semibold text-center w-100 h-100 justify-content-start align-items-start"
-                     style="width: auto;height: auto;color: rgb(0,0,0);border-color: rgb(0,0,0);border-top-color: #000000;display: block;overflow: auto;max-height: 275px">
-                    <table class="table table-striped table-hover table-sm table-bordered"
-                           id="ordini_in_corso">
+                     style="width: auto;height: auto;color: rgb(0,0,0);display: block;max-height: 275px">
+                    <table class="table table-striped table-state-rowcolor table-sortable table-hover table-selectable table-responsive table-sticky-wrap text-capitalize fw-semibold text-center w-100 h-100 justify-content-start align-items-start"
+                           id="ordini_in_corso_m">
                         <thead>
                         <tr>
-                            <th>Ordine</th>
-                            <th>Codice</th>
-                            <th>Descrizione</th>
-                            <th>Quantità</th>
-                            <th>Fase</th>
-                            <th>Consegna</th>
-                            <th>Lavorazione</th>
-                            <th>Risorsa</th>
+                            <th data-sort="text">Ordine</th>
+                            <th data-sort="text">Codice</th>
+                            <th data-sort="text">Descrizione</th>
+                            <th data-sort="text">Matricola</th>
+                            <th data-sort="date"
+                                data-date-format="dd/mm/yyyy">Consegna
+                            <th data-sort="text">Stato</th>
                         </tr>
                         </thead>
                         <tbody>
-                        <tr>
-                            {% for singolo_odp in odp %}
-                                {% if singolo_odp.CodMatricola == None %}
-                                    <!--tr data-ordine="{{ singolo_odp.RifRegistraz }}"
-                                            data-codice="{{ singolo_odp.CodArt }}"
-                                            data-descrizione="{{ singolo_odp.DesArt }}"
-                                            data-quantita="{{ singolo_odp.Quantita }}"
-                                            data-fase="{{ singolo_odp.NumFase }}"
-                                            data-datacons="{{ singolo_odp.DataFineSched }}"
-                                            data-lavorazione="{{ singolo_odp.CodLavorazione }}"
-                                            data-risorsaprod="{{ singolo_odp.CodRisorsaProd }}"
-                                        -->
-                                {% endif %}
-                            {% endfor %}
-                            <td></td>
-                            <td></td>
-                            <td></td>
-                            <td></td>
-                            <td></td>
-                            <td></td>
-                            <td></td>
-                            <td></td>
-                        </tr>
+                        {% for singolo_odp in odp %}
+                            {% if singolo_odp.CodMatricola != None and singolo_odp.StatoOrdine != "Pianificata" %}
+                                <tr data-ordine="{{ singolo_odp.RifRegistraz }}"
+                                    data-codice="{{ singolo_odp.CodArt }}"
+                                    data-descrizione="{{ singolo_odp.DesArt }}"
+                                    data-matricola="{{ singolo_odp.CodMatricola }}"
+                                    data-datacons="{{ singolo_odp.DataFineSched }}"
+                                    data-stato="{{ singolo_odp.StatoOrdine }}"
+                                >
+                                    <td>{{ singolo_odp.RifRegistraz }}</td>
+                                    <td>{{ singolo_odp.CodArt }}</td>
+                                    <td>{{ singolo_odp.DesArt }}</td>
+                                    <td>{{ singolo_odp.CodMatricola }}</td>
+                                    <td>{{ singolo_odp.DataFineSched | db_date("%Y-%m-%d %H:%M:%S","%d/%m/%Y") }}</td>
+                                    <td data-col="stato">{{ singolo_odp.StatoOrdine }}</td>
+                                </tr>
+                            {% endif %}
+                        {% endfor %}
                         </tbody>
 
                     </table>

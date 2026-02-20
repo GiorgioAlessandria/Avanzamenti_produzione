@@ -1,16 +1,73 @@
-/* Tabella con righe selezionabili */
-table.table-selectable tbody tr {
+.table-responsive {
+    overflow-y: auto; /* assicurati */
+}
+
+table {
+    border-collapse: separate;
+    border-spacing: 0px;
+    border-color: #ff6c6c
+}
+
+table thead {
+    --bs-table-bg: var(--bs-info);
+    --bs-table-color: #000;
+    --bs-table-border-color: #000000;
+}
+
+table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+
+    background-color: var(--bs-table-bg); /* evita bianco/trasparenze */
+    color: var(--bs-table-color);
+
+
+    box-shadow: inset 0 -1px 0 #000, inset 0 1px 0 #000;
+}
+
+/* Riga selezionata */
+.table-selectable tbody tr.row-selected {
+    outline: 3px solid #c0823e;
+    outline-offset: -2px;
+}
+
+table.table-sortable thead th {
     cursor: pointer;
     user-select: none;
 }
 
-/* Hover più evidente */
-table.table-selectable tbody tr:hover {
-    filter: brightness(0.97);
+/* indicatore semplice */
+table.table-sortable thead th[data-sort-dir="asc"]::after {
+    font-size: 0.5em;
+    content: "▲";
 }
 
-/* Riga selezionata */
-table.table-selectable tbody tr.row-selected {
-    outline: 2px solid #0d6efd;
-    outline-offset: -2px;
+table.table-sortable thead th[data-sort-dir="desc"]::after {
+    font-size: 0.5em;
+    content: "▼";
+}
+
+.table-selectable tbody tr.row-selected > td {
+    background-color: rgb(255, 225, 148);
+}
+
+/* Colora TUTTA la riga in base allo stato */
+.table-state-rowcolor tbody tr.row-state-attivo > td {
+    background-color: rgba(42, 229, 137, 0.78); /* verde */
+}
+
+.table-state-rowcolor tbody tr.row-state-sospeso > td {
+    background-color: rgba(255, 193, 7, 0.71); /* arancio */
+}
+
+/* Facoltativo: testo un po’ più leggibile */
+.table-state-rowcolor tbody tr.row-state-attivo,
+table.table-state-rowcolor tbody tr.row-state-sospeso {
+    font-weight: 600;
+}
+
+/* Se usi anche la selezione riga, rendila prioritaria */
+.table-state-rowcolor tbody tr.row-selected > td {
+    box-shadow: inset 0 0 0 9999px rgba(13, 110, 253, 0.47);
 }

@@ -1,8 +1,11 @@
 # filters.py (o dentro create_app)
 import json
+from datetime import datetime, date
+from icecream import ic
 
 
 def register_filters(app):
+
     @app.template_filter("db_json")
     def db_json(value):
         """
@@ -38,3 +41,19 @@ def register_filters(app):
         if isinstance(obj, list) and all(isinstance(x, (str, int, float)) for x in obj):
             return ", ".join(str(x) for x in obj)
         return ""
+
+    @app.template_filter("db_date")
+    def db_date(value, in_fmt: str, out_fmt: str) -> str:
+        if value in (None, ""):
+            return ""
+        value = db_list_display(value)
+        if isinstance(value, date) and not isinstance(value, datetime):
+            d = value
+        elif isinstance(value, datetime):
+            d = value.date()
+        else:
+            try:
+                d = datetime.strptime(str(value), in_fmt).date()
+            except ValueError:
+                return ""
+        return d.strftime(out_fmt)
