@@ -20,7 +20,7 @@
 
 
 <body>
-<header class="text-center min-vw-100 mh-100 m-auto mx-0"
+<header class="text-center w-100 mh-100 m-auto mx-0"
         style="width: auto;height: auto;">
     <div class="container-fluid text-center d-flex w-100 h-100 flex-shrink-0 flex-fill justify-content-center align-items-center"
          style="width: auto;height: auto;">
@@ -123,7 +123,79 @@
     </div>
 </header>
 {% include "partials/_nav_offcanvas.html" %}
+
 {% block extra_js %}
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            const allFilters = document.querySelectorAll(".js-table-filter");
+
+            allFilters.forEach((input) => {
+                input.addEventListener("input", () => {
+                    const tableId = input.dataset.targetTable;
+                    if (tableId) applyFiltersToTable(tableId);
+                });
+            });
+
+            function applyFiltersToTable(tableId) {
+                const table = document.getElementById(tableId);
+                if (!table) return;
+
+                const tbody = table.querySelector("tbody");
+                if (!tbody) return;
+
+                const rows = tbody.querySelectorAll("tr");
+
+                // Prende TUTTI i filtri che puntano a questa tabella
+                const filtersForTable = document.querySelectorAll(
+                    `.js-table-filter[data-target-table="${cssEscape(tableId)}"]`
+                );
+
+                rows.forEach((row) => {
+                    // La riga resta visibile solo se passa TUTTI i filtri valorizzati
+                    let visible = true;
+
+                    for (const filterInput of filtersForTable) {
+                        const filterValue = (filterInput.value || "").trim().toLowerCase();
+
+                        // Se il filtro è vuoto, non blocca nulla
+                        if (!filterValue) continue;
+
+                        const mode = filterInput.dataset.filterMode || "rowtext"; // dataset | column | rowtext
+                        const key = filterInput.dataset.filterKey || "";
+                        const columnIndex = parseInt(filterInput.dataset.filterColumn ?? "-1", 10);
+
+                        let textToCheck = "";
+
+                        if (mode === "dataset") {
+                            textToCheck = (row.dataset[key] || "").toLowerCase();
+
+                        } else if (mode === "column") {
+                            const cell = row.cells[columnIndex];
+                            textToCheck = (cell ? cell.textContent : "").trim().toLowerCase();
+
+                        } else {
+                            textToCheck = row.textContent.toLowerCase();
+                        }
+
+                        if (!textToCheck.includes(filterValue)) {
+                            visible = false;
+                            break;
+                        }
+                    }
+
+                    row.style.display = visible ? "" : "none";
+                });
+            }
+
+            // Utility per ID con caratteri speciali (robusto)
+            function cssEscape(value) {
+                if (window.CSS && typeof window.CSS.escape === "function") {
+                    return window.CSS.escape(value);
+                }
+                return String(value).replace(/"/g, '\\"');
+            }
+        });
+    </script>
     <script>
         (() => {
             function norm(s) {

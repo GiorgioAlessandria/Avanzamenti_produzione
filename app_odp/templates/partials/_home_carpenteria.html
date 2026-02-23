@@ -37,7 +37,7 @@
         </form>
     </div>
 </div>
-<main class="d-flex w-100 h-100 justify-content-center ms-3 me-2 mt-3 mb-3"
+<main class="d-flex flex-column w-100 mt-3 mb-3"
       style="height: fit-content;width: fit-content;">
     <div class="container-fluid w-100 h-100 ps-0 pe-0 mx-0"
          style="width: auto;height: auto;">
@@ -47,8 +47,33 @@
                  style="width: auto;height: auto;border-color: rgb(0,0,0);">
                 <h2 class="w-100 h-100 mb-3"
                     style="width: auto;height: auto;">Ordini da eseguire</h2>
+                <div class="row mb-1">
+                    <div class="col">
+                        <input
+
+                                type="text"
+                                class="js-table-filter form-control form-control-sm"
+                                placeholder="Filtra per ordine..."
+                                data-target-table="ordini_da_eseguire"
+                                data-filter-mode="dataset"
+                                data-filter-key="ordine"
+                                autocomplete="off"
+                        >
+                    </div>
+                    <div class="col">
+                        <input
+                                type="text"
+                                class="js-table-filter form-control form-control-sm"
+                                placeholder="Filtra per articolo..."
+                                data-target-table="ordini_da_eseguire"
+                                data-filter-mode="dataset"
+                                data-filter-key="codice"
+                                autocomplete="off"
+                        >
+                    </div>
+                </div>
                 <div class="table-responsive text-capitalize fw-semibold text-center w-100 h-100 justify-content-start align-items-start mb-0 pb-0"
-                     style="width: auto;height: auto;color: rgb(0,0,0);border-color: rgb(0,0,0);border-top-color: #000000;display: block;overflow: auto;max-height: 690px">
+                     style="width: auto;height: auto;color: rgb(0,0,0);border-color: rgb(0,0,0);border-top-color: #000000;display: block;overflow: auto;max-height: 640px">
                     <table class="table table-striped table-sortable table-hover table-selectable table-responsive table-sticky-wrap text-capitalize fw-semibold text-center justify-content-start align-items-start"
                            id="ordini_da_eseguire">
                         <thead>
@@ -100,9 +125,36 @@
                  style="width: auto;height: auto;">
                 <h2 class="w-100 h-100 mb-3"
                     style="width: auto;height: auto;">Ordini attivi</h2>
+                <div class="row mb-1">
+                    <div class="col">
+                        <input
+
+                                type="text"
+                                class="js-table-filter form-control form-control-sm"
+                                placeholder="Filtra per ordine..."
+                                data-target-table="ordini_in_corso"
+                                data-filter-mode="dataset"
+                                data-filter-key="ordine"
+                                autocomplete="off"
+                        >
+                    </div>
+                    <div class="col">
+                        <input
+                                type="text"
+                                class="js-table-filter form-control form-control-sm"
+                                placeholder="Filtra per articolo..."
+                                data-target-table="ordini_in_corso"
+                                data-filter-mode="dataset"
+                                data-filter-key="codice"
+                                autocomplete="off"
+                        >
+                    </div>
+                </div>
                 <div class="table-responsive text-capitalize fw-semibold text-center w-100 h-100 justify-content-start align-items-start"
-                     style="width: auto;height: auto;color: rgb(0,0,0);border-color: rgb(0,0,0);border-top-color: #000000;display: block;overflow: auto;max-height: 690px">
-                    <table class="table table-striped table-state-rowcolor table-sortable table-hover table-responsive table-selectable table-sticky-wrap text-capitalize fw-semibold text-center w-100 h-100 justify-content-start align-items-start"
+                     style="width: auto;height: auto;color: rgb(0,0,0);border-color: rgb(0,0,0);border-top-color: #000000;display: block;overflow: auto;max-height: 640px">
+                    <table class="table table-striped table-state-rowcolor table-sortable table-hover table-responsive
+                    table-selectable table-sticky-wrap text-capitalize fw-semibold text-center w-100 h-100
+                    justify-content-start align-items-start"
                            id="ordini_in_corso">
                         <thead>
                         <tr>
