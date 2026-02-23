@@ -1,0 +1,209 @@
+from __future__ import annotations
+
+import re
+from pathlib import Path
+from typing import Iterable
+
+from sqlalchemy import MetaData, Table, create_engine
+from sqlalchemy.engine import Engine
+
+
+TYPE_MAP = {
+    "INTEGER": "db.Integer",
+    "INT": "db.Integer",
+    "BIGINT": "db.BigInteger",
+    "SMALLINT": "db.SmallInteger",
+    "TEXT": "db.Text",
+    "CLOB": "db.Text",
+    "VARCHAR": "db.String",
+    "CHAR": "db.String",
+    "STRING": "db.String",
+    "REAL": "db.Float",
+    "FLOAT": "db.Float",
+    "DOUBLE": "db.Float",
+    "NUMERIC": "db.Numeric",
+    "DECIMAL": "db.Numeric",
+    "BOOLEAN": "db.Boolean",
+    "BLOB": "db.LargeBinary",
+    "DATETIME": "db.DateTime",
+    "DATE": "db.Date",
+    "TIME": "db.Time",
+}
+
+
+def _sanitize_identifier(name: str) -> str:
+    name = re.sub(r"\W+", "_", name).strip("_")
+    if not name:
+        return "field"
+    if name[0].isdigit():
+        name = f"f_{name}"
+    return name
+
+
+def _camel(name: str) -> str:
+    parts = re.split(r"[_\W]+", name)
+    return "".join(p.capitalize() for p in parts if p) or "Model"
+
+
+def _sa_type_to_flasksa(col) -> str:
+    # col.type è un oggetto SQLAlchemy, ma su SQLite spesso deriva da "type affinity"
+    t = str(col.type).upper()
+    for k, v in TYPE_MAP.items():
+        if k in t:
+            return v
+    return "db.String"
+
+
+def _is_association_table(table: Table) -> bool:
+    # Heuristica: solo colonne PK che sono tutte FK, nessuna colonna extra
+    # Tipico: 2 colonne (o più) che sono FK e anche PK (composite)
+    cols = list(table.columns)
+    if len(cols) < 2:
+        return False
+
+    if any(not c.primary_key for c in cols):
+        return False
+
+    fk_cols = [c for c in cols if c.foreign_keys]
+    if len(fk_cols) != len(cols):
+        return False
+
+    # niente unique/extra constraint particolari oltre a PK
+    return True
+
+
+def _render_fk(col) -> str | None:
+    fks = list(col.foreign_keys)
+    if not fks:
+        return None
+    fk = fks[0]  # in SQLite di solito 1 FK per colonna
+    # fk.target_fullname es: "roles.id"
+    args = [repr(fk.target_fullname)]
+    ondelete = fk.constraint.ondelete
+    onupdate = fk.constraint.onupdate
+    if ondelete:
+        args.append(f"ondelete={ondelete!r}")
+    if onupdate:
+        args.append(f"onupdate={onupdate!r}")
+    return f"db.ForeignKey({', '.join(args)})"
+
+
+def _render_column(table: Table, col) -> str:
+    col_name = _sanitize_identifier(col.name)
+    coltype = _sa_type_to_flasksa(col)
+
+    args: list[str] = [coltype]
+
+    fk_expr = _render_fk(col)
+    if fk_expr:
+        args.append(fk_expr)
+
+    kwargs: list[str] = []
+    if col.primary_key and len(table.primary_key.columns) == 1:
+        kwargs.append("primary_key=True")
+    if not col.nullable and not col.primary_key:
+        kwargs.append("nullable=False")
+
+    # default / server_default: in SQLite spesso è stringa raw; lo lasciamo come commento
+    if col.server_default is not None:
+        kwargs.append(
+            f"server_default=db.text({str(col.server_default.arg)!r})")
+
+    args_joined = ", ".join(args)
+    kw_joined = (", " + ", ".join(kwargs)) if kwargs else ""
+    return f"    {col_name} = db.Column({args_joined}{kw_joined})"
+
+
+def _render_table_dbtable(table: Table) -> str:
+    lines: list[str] = []
+    var_name = _sanitize_identifier(table.name)
+    lines.append(f"{var_name} = db.Table(")
+    lines.append(f"    {table.name!r},")
+    for col in table.columns:
+        fk_expr = _render_fk(col)
+        coltype = _sa_type_to_flasksa(col)
+        args = [repr(col.name), coltype]
+        if fk_expr:
+            args.append(fk_expr)
+
+        # PK in association
+        args.append("primary_key=True")
+        lines.append(f"    db.Column({', '.join(args)}),")
+    lines.append(")\n")
+    return "\n".join(lines)
+
+
+def _render_model_class(table: Table) -> str:
+    class_name = _camel(table.name)
+    lines: list[str] = []
+    lines.append(f"class {class_name}(db.Model):")
+    lines.append(f"    __tablename__ = {table.name!r}\n")
+
+    for col in table.columns:
+        lines.append(_render_column(table, col))
+
+    # PK composita
+    if len(table.primary_key.columns) > 1:
+        pk_cols = ", ".join(repr(c.name) for c in table.primary_key.columns)
+        lines.append("")
+        lines.append("    __table_args__ = (")
+        lines.append(f"        db.PrimaryKeyConstraint({pk_cols}),")
+        lines.append("    )")
+
+    lines.append("")
+    lines.append("    def __repr__(self):")
+    lines.append(f"        return f\"<{class_name} {{self.__dict__}}>\"")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def generate_models(db_url: str, out_path: Path) -> None:
+    engine: Engine = create_engine(db_url)
+    metadata = MetaData()
+    metadata.reflect(bind=engine)
+
+    # ordinamento stabile
+    tables: Iterable[Table] = (metadata.tables[name]
+                               for name in sorted(metadata.tables.keys()))
+
+    header = """\
+# Generated by tools/generate_models.py
+from __future__ import annotations
+
+from flask_sqlalchemy import SQLAlchemy
+
+db = SQLAlchemy()
+
+"""
+
+    body_lines: list[str] = [header]
+
+    # 1) association tables
+    assoc_tables: list[Table] = []
+    model_tables: list[Table] = []
+    for t in tables:
+        if _is_association_table(t):
+            assoc_tables.append(t)
+        else:
+            model_tables.append(t)
+
+    if assoc_tables:
+        body_lines.append("# --- Tabelle di associazione ---\n")
+        for t in assoc_tables:
+            body_lines.append(_render_table_dbtable(t))
+
+    # 2) models
+    if model_tables:
+        body_lines.append("# --- Modelli ---\n")
+        for t in model_tables:
+            body_lines.append(_render_model_class(t))
+
+    out_path.write_text("\n".join(body_lines), encoding="utf-8")
+
+
+if __name__ == "__main__":
+    # Esempio: sqlite:////absolute/path/to/tuo.db  (4 slash per path assoluto)
+    generate_models(
+        db_url="sqlite:///app_odp/instance/RBAC.db",
+        out_path=Path("models_generated.py"),
+    )

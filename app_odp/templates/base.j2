@@ -1,0 +1,444 @@
+{# templates/base.html #}
+<!doctype html>
+<html lang="it">
+{% block head %}
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1">
+    <meta charset="utf-8">
+    <title>{% block title %}Avanzamenti produzione{% endblock %}</title>
+    {% block styles %}
+        <link rel="stylesheet"
+              href="{{ url_for('static', filename='assets/bootstrap/css/bootstrap.min.css') }}">
+        <link rel="icon"
+              href="{{ url_for('static', filename='assets/img/logo.ico') }}">
+        <link rel="stylesheet"
+              href="{{ url_for('static', filename='assets/css/table.css') }}">
+        <link rel="stylesheet"
+              href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    {% endblock %}
+{% endblock head %}
+
+
+<body>
+<header class="text-center w-100 mh-100 m-auto mx-0"
+        style="width: auto;height: auto;">
+    <div class="container-fluid text-center d-flex w-100 h-100 flex-shrink-0 flex-fill justify-content-center align-items-center"
+         style="width: auto;height: auto;">
+        <div class="row d-inline-flex w-100 h-100 justify-content-center align-items-center align-self-center ms-0 me-0"
+             style="width: auto;height: auto;">
+            <div class="col-md-4 d-flex w-auto flex-grow-1 justify-content-start align-items-center pe-0"
+                 style="width: auto;height: auto;">
+                <button
+                        class="btn btn-primary btn-lg text-center bg-light d-flex justify-content-center align-items-center"
+                        type="button"
+                        data-bs-target="#offcanvas-2"
+                        data-bs-toggle="offcanvas">
+                    <svg
+                            class="icon icon-tabler icon-tabler-menu-2 text-center text-black text-bg-light d-flex justify-content-center align-items-center"
+                            xmlns="http://www.w3.org/2000/svg"
+                            width="1em"
+                            height="1em"
+                            viewBox="0 0 24 24"
+                            stroke-width="2"
+                            stroke="currentColor"
+                            fill="none"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            style="font-size: 40px;">
+                        <path stroke="none"
+                              d="M0 0h24v24H0z"
+                              fill="none"></path>
+                        <path d="M4 6l16 0"></path>
+                        <path d="M4 12l16 0"></path>
+                        <path d="M4 18l16 0"></path>
+                    </svg>
+                </button>
+            </div>
+            <div class="col-md-4 d-flex w-auto flex-grow-1 justify-content-center align-items-center"
+                 style="width: auto;height: auto;">
+                {% if current_user.genere == "m" %}
+                    {% set genere = 'o' %}
+                {% elif current_user.genere == "f" %}
+                    {% set genere = 'a' %}
+                {% endif %}
+                {% if current_user.is_authenticated and current_user.has_role('responsabile_produzione') == False %}
+                    <h1 class="mb-0">{{ policy.allowed_reparti_descr[0] }}
+                        - Benvenut{{ genere }} {{ current_user.username }}</h1>
+
+                {% elif current_user.is_authenticated and current_user.has_role('responsabile_qualita') %}
+                    <h1 class="mb-0">{{ policy.allowed_reparti_descr[0] }}
+                        - Benvenut{{ genere }} {{ current_user.username }}</h1>
+                    <div class="btn-group dropup d-flex"
+                         style="margin: 10px;">
+
+                        <button class=" dropdown-toggle btn-lg text-center d-flex w-100 h-100 flex-column justify-content-center ms-2
+                                me-2 mt-4 mb-4"
+                                data-bs-toggle="dropdown"
+                                type="button">
+                            Cambia pagina
+                        </button>
+
+                        <ul class="dropdown-menu">
+                            {% for it in home_switch_items %}
+                                <li><h4><a class="dropdown-item"
+                                           href="{{ it.url }}">{{ it.label }}</a></h4></li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+
+                {% elif current_user.is_authenticated and current_user.has_role('responsabile_produzione') %}
+                    <h1 class="mb-0">Responsabile di produzione
+                                     - Benvenut{{ genere }} {{ current_user.username }}</h1>
+                    <div class="btn-group dropup d-flex"
+                         style="margin: 10px;">
+
+                        <button class=" dropdown-toggle btn-lg text-center d-flex w-100 h-100 flex-column justify-content-center ms-2
+                                me-2 mt-4 mb-4"
+                                data-bs-toggle="dropdown"
+                                type="button">
+                            Cambia pagina
+                        </button>
+
+                        <ul class="dropdown-menu">
+                            {% for it in home_switch_items %}
+                                <li><h4><a class="dropdown-item"
+                                           href="{{ it.url }}">{{ it.label }}</a></h4></li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                {% endif %}
+            </div>
+            <div class="col-md-4 d-flex w-auto flex-grow-1 justify-content-end align-items-center"
+                 style="width: auto;height: auto;">
+                <img
+                        class="img-fluid justify-content-end align-items-center order-first"
+                        width="250"
+                        height="89"
+                        src="{{ url_for('static', filename='assets/img/logo_completo.jpg') }}"
+                        style="text-align: right;"
+                        alt="logo_completo"
+                />
+            </div>
+        </div>
+    </div>
+</header>
+{% include "partials/_nav_offcanvas.html" %}
+
+{% block extra_js %}
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            const allFilters = document.querySelectorAll(".js-table-filter");
+
+            allFilters.forEach((input) => {
+                input.addEventListener("input", () => {
+                    const tableId = input.dataset.targetTable;
+                    if (tableId) applyFiltersToTable(tableId);
+                });
+            });
+
+            function applyFiltersToTable(tableId) {
+                const table = document.getElementById(tableId);
+                if (!table) return;
+
+                const tbody = table.querySelector("tbody");
+                if (!tbody) return;
+
+                const rows = tbody.querySelectorAll("tr");
+
+                // Prende TUTTI i filtri che puntano a questa tabella
+                const filtersForTable = document.querySelectorAll(
+                    `.js-table-filter[data-target-table="${cssEscape(tableId)}"]`
+                );
+
+                rows.forEach((row) => {
+                    // La riga resta visibile solo se passa TUTTI i filtri valorizzati
+                    let visible = true;
+
+                    for (const filterInput of filtersForTable) {
+                        const filterValue = (filterInput.value || "").trim().toLowerCase();
+
+                        // Se il filtro è vuoto, non blocca nulla
+                        if (!filterValue) continue;
+
+                        const mode = filterInput.dataset.filterMode || "rowtext"; // dataset | column | rowtext
+                        const key = filterInput.dataset.filterKey || "";
+                        const columnIndex = parseInt(filterInput.dataset.filterColumn ?? "-1", 10);
+
+                        let textToCheck = "";
+
+                        if (mode === "dataset") {
+                            textToCheck = (row.dataset[key] || "").toLowerCase();
+
+                        } else if (mode === "column") {
+                            const cell = row.cells[columnIndex];
+                            textToCheck = (cell ? cell.textContent : "").trim().toLowerCase();
+
+                        } else {
+                            textToCheck = row.textContent.toLowerCase();
+                        }
+
+                        if (!textToCheck.includes(filterValue)) {
+                            visible = false;
+                            break;
+                        }
+                    }
+
+                    row.style.display = visible ? "" : "none";
+                });
+            }
+
+            // Utility per ID con caratteri speciali (robusto)
+            function cssEscape(value) {
+                if (window.CSS && typeof window.CSS.escape === "function") {
+                    return window.CSS.escape(value);
+                }
+                return String(value).replace(/"/g, '\\"');
+            }
+        });
+    </script>
+    <script>
+        (() => {
+            function norm(s) {
+                return String(s || '')
+                    .trim()
+                    .toLowerCase()
+                    .replace(/\s+/g, ' ');
+            }
+
+            function applyStateRowColors(table) {
+                table.querySelectorAll('tbody tr').forEach(tr => {
+                    tr.classList.remove('row-state-attivo', 'row-state-sospeso');
+
+                    const td = tr.querySelector('td[data-col="stato"]');
+                    if (!td) return;
+
+                    const v = norm(td.textContent);
+
+                    if (v === 'Attivo' || v === 'attivi') tr.classList.add('row-state-attivo');
+                    else if (v === 'In Sospeso' || v === 'sospeso' || v === 'sospesi') tr.classList.add('row-state-sospeso');
+                });
+            }
+
+            function applyAll() {
+                document.querySelectorAll('table.table-state-rowcolor').forEach(applyStateRowColors);
+            }
+
+            document.addEventListener('DOMContentLoaded', applyAll);
+
+            // Se rigeneri tbody via JS/AJAX, richiama questo:
+            window.applyStateRowColorsAll = applyAll;
+        })();
+    </script>
+    <script>
+        (() => {
+            function parseDateDDMMYYYY(s) {
+                // accetta "dd/mm/yyyy" o "dd/mm/yyyy hh:mm"
+                const m = String(s).trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?/);
+                if (!m) return NaN;
+                const dd = Number(m[1]), mm = Number(m[2]) - 1, yyyy = Number(m[3]);
+                const hh = m[4] ? Number(m[4]) : 0;
+                const mi = m[5] ? Number(m[5]) : 0;
+                return new Date(yyyy, mm, dd, hh, mi).getTime();
+            }
+
+            function guessType(value) {
+                const v = String(value).trim().replace(/\./g, '').replace(',', '.');
+                if (v === '') return 'text';
+                if (!isNaN(Number(v))) return 'num';
+                // tenta data dd/mm/yyyy
+                if (!isNaN(parseDateDDMMYYYY(value))) return 'date';
+                return 'text';
+            }
+
+            function cellValue(tr, colIndex) {
+                const td = tr.children[colIndex];
+                return td ? td.textContent.trim() : '';
+            }
+
+            function compareFactory(type, desc, colIndex) {
+                return (a, b) => {
+                    const avRaw = cellValue(a, colIndex);
+                    const bvRaw = cellValue(b, colIndex);
+
+                    // vuoti sempre in fondo
+                    if (avRaw === '' && bvRaw === '') return 0;
+                    if (avRaw === '') return 1;
+                    if (bvRaw === '') return -1;
+
+                    let res = 0;
+
+                    if (type === 'num') {
+                        const av = Number(avRaw.replace(/\./g, '').replace(',', '.'));
+                        const bv = Number(bvRaw.replace(/\./g, '').replace(',', '.'));
+                        res = av - bv;
+                    } else if (type === 'date') {
+                        const av = parseDateDDMMYYYY(avRaw);
+                        const bv = parseDateDDMMYYYY(bvRaw);
+                        res = av - bv;
+                    } else {
+                        res = avRaw.localeCompare(bvRaw, undefined, {numeric: true, sensitivity: 'base'});
+                    }
+
+                    return desc ? -res : res;
+                };
+            }
+
+            function sortTableByTh(th) {
+                const table = th.closest('table.table-sortable');
+                if (!table) return;
+
+                const thead = table.tHead;
+                const tbody = table.tBodies[0];
+                if (!thead || !tbody) return;
+
+                const colIndex = th.cellIndex;
+
+                // stato sort: default DESC al primo click
+                const current = th.getAttribute('data-sort-dir'); // "asc"|"desc"|null
+                const nextDir = (current === 'desc') ? 'asc' : 'desc';
+                const desc = (nextDir === 'desc');
+
+                // reset stato su altri th
+                thead.querySelectorAll('th').forEach(x => {
+                    if (x !== th) x.removeAttribute('data-sort-dir');
+                });
+                th.setAttribute('data-sort-dir', nextDir);
+
+                // tipo colonna
+                let type = (th.getAttribute('data-sort') || '').toLowerCase();
+                if (!type) {
+                    // “guess” dal primo valore non vuoto
+                    const rows = Array.from(tbody.rows);
+                    const sample = rows.map(r => cellValue(r, colIndex)).find(v => v !== '') || '';
+                    type = guessType(sample);
+                }
+
+                // preserva eventuale riga selezionata (table-selectable)
+                const selected = tbody.querySelector('tr.row-selected');
+                const selectedKey = selected ? selected.getAttribute('data-row-key') : null;
+
+                // ordina
+                const rowsArr = Array.from(tbody.rows);
+                rowsArr.sort(compareFactory(type, desc, colIndex));
+                rowsArr.forEach(r => tbody.appendChild(r));
+
+                // ripristina selezione se usi una chiave stabile
+                // (opzionale) imposta data-row-key="IdDocumento,IdRiga" sulle righe
+                if (selectedKey) {
+                    const found = tbody.querySelector(`tr[data-row-key="${CSS.escape(selectedKey)}"]`);
+                    if (found) found.classList.add('row-selected');
+                }
+            }
+
+            document.addEventListener('click', (e) => {
+                const th = e.target.closest('table.table-sortable thead th');
+                if (!th) return;
+                sortTableByTh(th);
+            });
+        })();
+    </script>
+    <script>
+        (function () {
+            function normalize(s) {
+                return (s || "").toString().trim().toLowerCase();
+            }
+
+            function applyRowColors(root = document) {
+                const tables = root.querySelectorAll("table.table-state-rowcolor");
+                tables.forEach((table) => {
+                    table.querySelectorAll("tbody tr").forEach((tr) => {
+                        tr.classList.remove("row-state-attivo", "row-state-sospeso");
+
+                        const statoCell = tr.querySelector('td[data-col="stato"]');
+                        const stato = normalize(statoCell ? statoCell.textContent : "");
+
+                        // match “attivo” / “sospeso” anche se hai varianti (es: “Ordine Attivo”)
+                        if (stato.includes("attiv")) tr.classList.add("row-state-attivo");
+                        else if (stato.includes("sosp")) tr.classList.add("row-state-sospeso");
+                    });
+                });
+            }
+
+            document.addEventListener("DOMContentLoaded", () => applyRowColors());
+
+            // Se aggiorni le tabelle via fetch/AJAX in futuro:
+            window.applyRowColors = applyRowColors;
+        })();
+    </script>
+    <script>
+        (() => {
+            function selectRow(tr) {
+                const table = tr.closest('table');
+                if (!table) return;
+
+                // una sola riga selezionata per tabella
+                table.querySelectorAll('tbody tr.row-selected').forEach(r => r.classList.remove('row-selected'));
+                tr.classList.add('row-selected');
+            }
+
+            function getSelectedRow(table) {
+                return table?.querySelector('tbody tr.row-selected') || null;
+            }
+
+            // Click su riga: seleziona
+            document.addEventListener('click', (e) => {
+                const tr = e.target.closest('table.table-selectable tbody tr');
+                if (!tr) return;
+                selectRow(tr);
+            });
+
+            // Pulsanti: acquisisci dati dalla riga selezionata e riempi il target
+            document.addEventListener('click', (e) => {
+                const btn = e.target.closest('[data-use-selected]');
+                if (!btn) return;
+
+                const tableSelector = btn.getAttribute('data-use-selected') || 'table.table-selectable';
+                const table = document.querySelector(tableSelector);
+                const tr = getSelectedRow(table);
+
+                if (!table) {
+                    console.warn('Tabella non trovata per selector:', tableSelector);
+                    return;
+                }
+                if (!tr) {
+                    // qui puoi anche mostrare un toast invece dell'alert
+                    alert('Seleziona prima una riga nella tabella.');
+                    return;
+                }
+
+                // Dove scrivere i dati (form/toast/section)
+                const targetSelector = btn.getAttribute('data-fill-target');
+                if (!targetSelector) return;
+
+                const target = document.querySelector(targetSelector);
+                if (!target) {
+                    console.warn('Target non trovato per selector:', targetSelector);
+                    return;
+                }
+
+                // Riempie:
+                // - elementi con data-bind="chiave" => value (input/select/textarea) o textContent (altri)
+                // - elementi con data-bind-text="chiave" => textContent
+                target.querySelectorAll('[data-bind]').forEach(el => {
+                    const key = el.getAttribute('data-bind');
+                    const val = tr.dataset[key] ?? '';
+                    if (el.matches('input, textarea, select')) el.value = val;
+                    else el.textContent = val;
+                });
+
+                target.querySelectorAll('[data-bind-text]').forEach(el => {
+                    const key = el.getAttribute('data-bind-text');
+                    el.textContent = tr.dataset[key] ?? '';
+                });
+            });
+        })();
+    </script>
+{% endblock %}
+
+</body>
+{% block content %}{% endblock %}
+<script src="{{ url_for('static', filename='assets/js/jquery.min.js') }}"></script>
+<script src="{{ url_for('static', filename='assets/bootstrap/js/bootstrap.min.js') }}"></script>
+<script src="{{ url_for('static', filename='assets/js/bs-init.js') }}"></script>
+
+</html>
