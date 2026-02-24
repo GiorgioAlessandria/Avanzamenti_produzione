@@ -86,8 +86,7 @@
                 style="width: auto;height: auto;">Ordini semilavorati da eseguire</h2>
             <div class="row mb-1">
                 <div class="col mb-1">
-                    <input
-
+                    <label><input
                             type="text"
                             class="js-table-filter form-control form-control-sm"
                             placeholder="Filtra per ordine..."
@@ -95,10 +94,10 @@
                             data-filter-mode="dataset"
                             data-filter-key="ordine"
                             autocomplete="off"
-                    >
+                    ></label>
                 </div>
                 <div class="col mb-1">
-                    <input
+                    <label><input
                             type="text"
                             class="js-table-filter form-control form-control-sm"
                             placeholder="Filtra per articolo..."
@@ -106,7 +105,7 @@
                             data-filter-mode="dataset"
                             data-filter-key="codice"
                             autocomplete="off"
-                    >
+                    ></label>
                 </div>
             </div>
             <div class="table-responsive text-capitalize fw-semibold text-center w-100 h-100 justify-content-start align-items-start mb-0 pb-0"
@@ -164,7 +163,7 @@
                 style="width: auto;height: auto;">Ordini semilavorati attivi</h2>
             <div class="row mb-1">
                 <div class="col mb-1">
-                    <input
+                    <label><input
 
                             type="text"
                             class="js-table-filter form-control form-control-sm"
@@ -173,10 +172,10 @@
                             data-filter-mode="dataset"
                             data-filter-key="ordine"
                             autocomplete="off"
-                    >
+                    ></label>
                 </div>
                 <div class="col mb-1">
-                    <input
+                    <label><input
                             type="text"
                             class="js-table-filter form-control form-control-sm"
                             placeholder="Filtra per articolo..."
@@ -184,7 +183,7 @@
                             data-filter-mode="dataset"
                             data-filter-key="codice"
                             autocomplete="off"
-                    >
+                    ></label>
                 </div>
             </div>
             <div class="table-responsive text-capitalize fw-semibold text-center w-100 h-100 justify-content-start align-items-start"
@@ -267,7 +266,7 @@
                 style="width: auto;height: auto;">Ordini macchina da eseguire</h2>
             <div class="row mb-1">
                 <div class="col mb-1">
-                    <input
+                    <label><input
                             type="text"
                             class="js-table-filter form-control form-control-sm"
                             placeholder="Filtra per ordine..."
@@ -275,10 +274,10 @@
                             data-filter-mode="dataset"
                             data-filter-key="ordine"
                             autocomplete="off"
-                    >
+                    ></label>
                 </div>
                 <div class="col mb-1">
-                    <input
+                    <label><input
                             type="text"
                             class="js-table-filter form-control form-control-sm"
                             placeholder="Filtra per articolo..."
@@ -286,7 +285,7 @@
                             data-filter-mode="dataset"
                             data-filter-key="codice"
                             autocomplete="off"
-                    >
+                    ></label>
                 </div>
             </div>
             <div class="table-responsive text-capitalize fw-semibold text-center justify-content-start align-items-center mb-0 pb-0"
@@ -312,14 +311,14 @@
                                 data-codice="{{ singolo_odp.CodArt }}"
                                 data-descrizione="{{ singolo_odp.DesArt }}"
                                 data-matricola="{{ singolo_odp.CodMatricola }}"
-                                data-cliente="{{ singolo_odp.NumFase }}"
+                                data-fase="{{ singolo_odp.FaseAttiva }}"
                                 data-datacons="{{ singolo_odp.DataFineSched }}"
                             >
                                 <td>{{ singolo_odp.RifRegistraz }}</td>
                                 <td>{{ singolo_odp.CodArt }}</td>
                                 <td>{{ singolo_odp.DesArt }}</td>
                                 <td>{{ singolo_odp.CodMatricola }}</td>
-                                <td>{{ singolo_odp.NumFase }}</td>
+                                <td>{{ singolo_odp.FaseAttiva }}</td>
                                 <td>{{ singolo_odp.DataFineSched | db_date("%Y-%m-%d %H:%M:%S","%d/%m/%Y") }}</td>
                             </tr>
                         {% endif %}
@@ -341,7 +340,7 @@
                 style="width: auto;height: auto;">Ordini macchina attivi</h2>
             <div class="row mb-1">
                 <div class="col mb-1">
-                    <input
+                    <label><input
                             type="text"
                             class="js-table-filter form-control form-control-sm"
                             placeholder="Filtra per ordine..."
@@ -349,10 +348,10 @@
                             data-filter-mode="dataset"
                             data-filter-key="ordine"
                             autocomplete="off"
-                    >
+                    ></label>
                 </div>
                 <div class="col mb-1">
-                    <input
+                    <label><input
                             type="text"
                             class="js-table-filter form-control form-control-sm"
                             placeholder="Filtra per articolo..."
@@ -360,7 +359,7 @@
                             data-filter-mode="dataset"
                             data-filter-key="codice"
                             autocomplete="off"
-                    >
+                    ></label>
                 </div>
             </div>
             <div class="table-responsive text-capitalize fw-semibold text-center w-100 h-100 justify-content-start align-items-start"
@@ -375,6 +374,7 @@
                         <th data-sort="text">Matricola</th>
                         <th data-sort="date"
                             data-date-format="dd/mm/yyyy">Consegna
+                        <th data-sort="text">Fase</th>
                         <th data-sort="text">Stato</th>
                     </tr>
                     </thead>
@@ -386,6 +386,7 @@
                                 data-descrizione="{{ singolo_odp.DesArt }}"
                                 data-matricola="{{ singolo_odp.CodMatricola }}"
                                 data-datacons="{{ singolo_odp.DataFineSched }}"
+                                data-faseattiva="{{ singolo_odp.FaseAttiva }}"
                                 data-stato="{{ singolo_odp.StatoOrdine }}"
                             >
                                 <td>{{ singolo_odp.RifRegistraz }}</td>
@@ -393,6 +394,8 @@
                                 <td>{{ singolo_odp.DesArt }}</td>
                                 <td>{{ singolo_odp.CodMatricola }}</td>
                                 <td>{{ singolo_odp.DataFineSched | db_date("%Y-%m-%d %H:%M:%S","%d/%m/%Y") }}</td>
+                                c
+                                <td>{{ singolo_odp.FaseAttiva | db_list_display }}</td>
                                 <td data-col="stato">{{ singolo_odp.StatoOrdine }}</td>
                             </tr>
                         {% endif %}

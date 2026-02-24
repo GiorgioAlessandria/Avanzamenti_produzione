@@ -49,7 +49,7 @@
                     style="width: auto;height: auto;">Ordini da eseguire</h2>
                 <div class="row mb-1">
                     <div class="col">
-                        <input
+                        <label><input
 
                                 type="text"
                                 class="js-table-filter form-control form-control-sm"
@@ -58,10 +58,10 @@
                                 data-filter-mode="dataset"
                                 data-filter-key="ordine"
                                 autocomplete="off"
-                        >
+                        ></label>
                     </div>
                     <div class="col">
-                        <input
+                        <label><input
                                 type="text"
                                 class="js-table-filter form-control form-control-sm"
                                 placeholder="Filtra per articolo..."
@@ -69,7 +69,7 @@
                                 data-filter-mode="dataset"
                                 data-filter-key="codice"
                                 autocomplete="off"
-                        >
+                        ></label>
                     </div>
                 </div>
                 <div class="table-responsive text-capitalize fw-semibold text-center w-100 h-100 justify-content-start align-items-start mb-0 pb-0"
@@ -116,7 +116,7 @@
                 <button class="btn btn-primary m-2"
                         type="button"
                         data-bs-target="#toast-1"
-                        data-use-selected="#tbl-da-eseguire"
+                        data-use-selected="#ordini_da_eseguire"
                         data-fill-target="#toast-1"
                         data-bs-toggle="toast">Attiva ordine
                 </button>
@@ -127,7 +127,7 @@
                     style="width: auto;height: auto;">Ordini attivi</h2>
                 <div class="row mb-1">
                     <div class="col">
-                        <input
+                        <label><input
 
                                 type="text"
                                 class="js-table-filter form-control form-control-sm"
@@ -136,18 +136,19 @@
                                 data-filter-mode="dataset"
                                 data-filter-key="ordine"
                                 autocomplete="off"
-                        >
+                        ></label>
                     </div>
                     <div class="col">
-                        <input
-                                type="text"
-                                class="js-table-filter form-control form-control-sm"
-                                placeholder="Filtra per articolo..."
-                                data-target-table="ordini_in_corso"
-                                data-filter-mode="dataset"
-                                data-filter-key="codice"
-                                autocomplete="off"
-                        >
+                        <label>
+                            <input
+                                    type="text"
+                                    class="js-table-filter form-control form-control-sm"
+                                    placeholder="Filtra per articolo..."
+                                    data-target-table="ordini_in_corso"
+                                    data-filter-mode="dataset"
+                                    data-filter-key="codice"
+                                    autocomplete="off"
+                            ></label>
                     </div>
                 </div>
                 <div class="table-responsive text-capitalize fw-semibold text-center w-100 h-100 justify-content-start align-items-start"
