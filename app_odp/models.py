@@ -243,6 +243,8 @@ class InputOdp(db.Model):
     StatoOrdine = db.Column(db.Text)
     CodClassifTecnica = db.Column(db.Text)
     CodTipoDoc = db.Column(db.Text)
+    FaseAttiva = db.Column(db.Text)
+    Note = db.Column(db.Text)
 
     __table_args__ = (db.PrimaryKeyConstraint("IdDocumento", "IdRiga"),)
 
