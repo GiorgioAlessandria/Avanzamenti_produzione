@@ -514,10 +514,6 @@ class User(UserMixin, db.Model):
     def has_permission(self, permission) -> bool:
         if permission is None:
             return False
-
-        perm_id = None
-        perm_code = None
-
         if isinstance(permission, Permissions):
             perm_id = permission.id
             perm_code = permission.Codice
@@ -567,3 +563,12 @@ class TipologieStato(db.Model):
 
     def __repr__(self):
         return f"<TipologieStato {self.__dict__}>"
+
+
+class OdpClaim(db.Model):
+    __tablename__ = "odp_claim"
+    id_documento = db.Column(db.Text, primary_key=True, nullable=False)
+    id_riga = db.Column(db.Text, primary_key=True, nullable=False)
+    user_id = db.Column(db.Text, nullable=False)
+    claimed_at = db.Column(db.Text, nullable=False)
+    expires_at = db.Column(db.Text, nullable=False)

@@ -37,6 +37,145 @@
         </form>
     </div>
 </div>
+
+<div class="toast lh-lg hide"
+     role="alert"
+     id="toast-2"
+     style="width: max-content;height: max-content;position: fixed; top: 1rem; right: 1rem; z-index: 2000;opacity: 1;filter: blur(0px);">
+    <div class="toast-header">
+        <strong class="me-auto"
+                style="font-size: 25px;">Sospensione dell'ordine
+            <span data-bind-text="ordine"></span></strong>
+        <button class="btn-close ms-2 mb-1 close"
+                type="button"
+                aria-label="Close"
+                data-bs-dismiss="toast"
+                style="font-size: 25px;"></button>
+    </div>
+    <div class="toast-body d-flex flex-column justify-content-center align-items-center"
+         role="alert"
+         style="opacity: 1;width: auto;height: auto;">
+        <p style="font-size: 20px;">Stai sospendendo l'ordine</p>
+        <form method="post">
+            <input type="hidden"
+                   name="Ordine"
+                   data-bind="ordine">
+            <input type="hidden"
+                   name="CodArt"
+                   data-bind="codice">
+            <input type="hidden"
+                   name="Quantita"
+                   data-bind="quantita">
+            <input type="hidden"
+                   name="NumFase"
+                   data-bind="fase">
+            <input class="btn btn-lg btn-primary"
+                   type="submit"
+                   name="Inserimento"
+                   value="Preso in carico"
+                   style="font-size: 25px;">
+        </form>
+    </div>
+</div>
+<div class="toast lh-lg hide"
+     role="alert"
+     id="toast-3"
+     style="width: max-content;height: max-content;position: fixed; top: 1rem; right: 1rem; z-index: 2000;opacity: 1;filter: blur(0px);">
+    <div class="toast-header">
+        <strong class="me-auto"
+                style="font-size: 25px;">Riattivazione dell'ordine
+            <span data-bind-text="ordine"></span></strong>
+        <button class="btn-close ms-2 mb-1 close"
+                type="button"
+                aria-label="Close"
+                data-bs-dismiss="toast"
+                style="font-size: 25px;"></button>
+    </div>
+    <div class="toast-body d-flex flex-column justify-content-center align-items-center"
+         role="alert"
+         style="opacity: 1;width: auto;height: auto;">
+        <p style="font-size: 20px;">Stai riattivando l'ordine</p>
+        <form method="post">
+            <input type="hidden"
+                   name="Ordine"
+                   data-bind="ordine">
+            <input type="hidden"
+                   name="CodArt"
+                   data-bind="codice">
+            <input type="hidden"
+                   name="Quantita"
+                   data-bind="quantita">
+            <input type="hidden"
+                   name="NumFase"
+                   data-bind="fase">
+            <input class="btn btn-lg btn-primary"
+                   type="submit"
+                   name="Inserimento"
+                   value="Preso in carico"
+                   style="font-size: 25px;">
+        </form>
+    </div>
+</div>
+<div class="toast lh-lg hide"
+     role="alert"
+     id="toast-4"
+     style="width: max-content;height: max-content;position: fixed; top: 1rem; right: 1rem; z-index: 2000;opacity: 1;filter: blur(0px);">
+    <div class="toast-header">
+        <strong class="me-auto"
+                style="font-size: 25px;">Chiusura dell'ordine
+            <span data-bind-text="ordine"></span></strong>
+        <button class="btn-close ms-2 mb-1 close"
+                type="button"
+                aria-label="Close"
+                data-bs-dismiss="toast"
+                style="font-size: 25px;"></button>
+    </div>
+    <div class="toast-body d-flex flex-column justify-content-center align-items-center"
+         role="alert"
+         style="opacity: 1;width: auto;height: auto;">
+        <p style="font-size: 20px;">Stai chiudendo l'ordine</p>
+        <form method="post">
+            <div class="d-grid flex-column">
+                <div class="row-1 align-items-start">
+                    <div class="col-1 flex-column">
+                        <input placeholder="Materiale prodotto"
+                               type="number"
+                               name="qty_prodotta"
+                               required="required"
+                               style="margin:2px;font-size:20px;">
+                    </div>
+                    <div class="col-2 flex-column">
+                        <input placeholder="Materiale conforme"
+                               type="number"
+                               required="required"
+                               name="qty_ok"
+                               style="margin:2px;font-size:20px;">
+                    </div>
+                </div>
+                <div class="row-2 flex-column align-items-start"
+                     style="justify-content: center;align-items: center">
+                    <input class="btn btn-lg btn-primary align-items-start"
+                           type="submit"
+                           name="Inserimento"
+                           value="Preso in carico"
+                           style="margin:2px;font-size: 20px; justify-content: center">
+                </div>
+            </div>
+            <input type="hidden"
+                   name="Ordine"
+                   data-bind="ordine">
+            <input type="hidden"
+                   name="CodArt"
+                   data-bind="codice">
+            <input type="hidden"
+                   name="Quantita"
+                   data-bind="quantita">
+            <input type="hidden"
+                   name="NumFase"
+                   data-bind="fase"><br>
+        </form>
+    </div>
+</div>
 <main class="d-flex flex-column w-100 mt-3 mb-3"
       style="height: fit-content;width: fit-content;">
     <div class="container-fluid w-100 h-100 ps-0 pe-0 mx-0"
@@ -49,7 +188,7 @@
                     style="width: auto;height: auto;">Ordini da eseguire</h2>
                 <div class="row mb-1">
                     <div class="col">
-                        <input
+                        <label><input
 
                                 type="text"
                                 class="js-table-filter form-control form-control-sm"
@@ -58,10 +197,10 @@
                                 data-filter-mode="dataset"
                                 data-filter-key="ordine"
                                 autocomplete="off"
-                        >
+                        ></label>
                     </div>
                     <div class="col">
-                        <input
+                        <label><input
                                 type="text"
                                 class="js-table-filter form-control form-control-sm"
                                 placeholder="Filtra per articolo..."
@@ -69,7 +208,7 @@
                                 data-filter-mode="dataset"
                                 data-filter-key="codice"
                                 autocomplete="off"
-                        >
+                        ></label>
                     </div>
                 </div>
                 <div class="table-responsive text-capitalize fw-semibold text-center w-100 h-100 justify-content-start align-items-start mb-0 pb-0"
@@ -116,7 +255,7 @@
                 <button class="btn btn-primary m-2"
                         type="button"
                         data-bs-target="#toast-1"
-                        data-use-selected="#tbl-da-eseguire"
+                        data-use-selected="#ordini_da_eseguire"
                         data-fill-target="#toast-1"
                         data-bs-toggle="toast">Attiva ordine
                 </button>
@@ -127,7 +266,7 @@
                     style="width: auto;height: auto;">Ordini attivi</h2>
                 <div class="row mb-1">
                     <div class="col">
-                        <input
+                        <label><input
 
                                 type="text"
                                 class="js-table-filter form-control form-control-sm"
@@ -136,10 +275,10 @@
                                 data-filter-mode="dataset"
                                 data-filter-key="ordine"
                                 autocomplete="off"
-                        >
+                        ></label>
                     </div>
                     <div class="col">
-                        <input
+                        <label><input
                                 type="text"
                                 class="js-table-filter form-control form-control-sm"
                                 placeholder="Filtra per articolo..."
@@ -147,7 +286,7 @@
                                 data-filter-mode="dataset"
                                 data-filter-key="codice"
                                 autocomplete="off"
-                        >
+                        ></label>
                     </div>
                 </div>
                 <div class="table-responsive text-capitalize fw-semibold text-center w-100 h-100 justify-content-start align-items-start"
@@ -200,22 +339,24 @@
                         <button class="btn btn-primary mx-2"
                                 type="button"
                                 style="margin: 1px;"
-                                data-bs-target="toast-1"
+                                data-bs-target="#toast-2"
                                 data-bs-toggle="toast">
-                            Sospendi
-                            ordine
+                            Sospendi ordine
                         </button>
                         <button class="btn btn-primary disabled mx-2"
                                 type="button"
                                 style="margin: 1px;"
-                                disabled="">Riattiva ordine
+                                disabled=""
+                                data-bs-target="#toast-3"
+                                data-bs-toggle="toast">Riattiva ordine
                         </button>
                     </section>
                     <section class="text-end d-flex flex-grow-1 justify-content-end m-2"
                              style="width: auto;height: auto;">
                         <button class="btn btn-primary"
-                                type="button">Chiudi
-                                              ordine
+                                type="button"
+                                data-bs-target="#toast-4"
+                                data-bs-toggle="toast">Chiudi ordine
                         </button>
                     </section>
                 </section>

@@ -73,21 +73,6 @@ def inject_policy_and_nav():
                 "tab": cfg["tab"],
             }
         )
-
-    # voci extra (collaudo ecc.) filtrate dalla policy
-    # for x in EXTRA_TABS:
-    #    if x.get("reparto") and x["reparto"] not in policy.allowed_reparti:
-    #        continue
-    #    if x.get("perm") and not policy.can(x["perm"]):
-    #        continue
-    #    items.append(
-    #        {
-    #            "label": x["label"],
-    #            "url": url_for(".home", tab=x["tab"]),
-    #            "tab": x["tab"],
-    #        }
-    #    )
-
     return {"policy": policy, "home_switch_items": items}
 
 
@@ -118,8 +103,7 @@ def home():
 
     q = InputOdp.query
     q = policy.filter_input_odp(q)
-    odp = q.all()
-    odp
+    odp = list(q.all())
     return render_template(
         "home.j2", active_partial=template, active_tab=tab, policy=policy, odp=odp
     )
