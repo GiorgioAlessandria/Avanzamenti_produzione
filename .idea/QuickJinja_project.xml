@@ -3,6 +3,7 @@
   <component name="de.achimonline.quickjinja.settings.QuickJinjaProjectSettingsState">
     <option name="settings">
       <QuickJinjaProjectSettings>
+        <option name="templateFilePath" value="$PROJECT_DIR$/sync/sync_input.py" />
         <option name="templateSource" value="TEXT_SELECTION" />
       </QuickJinjaProjectSettings>
     </option>

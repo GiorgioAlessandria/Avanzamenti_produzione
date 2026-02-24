@@ -299,7 +299,7 @@
                         <th data-sort="text">Codice</th>
                         <th data-sort="text">Descrizione</th>
                         <th data-sort="text">Matricola</th>
-                        <th data-sort="text">Cliente</th>
+                        <th data-sort="text">Fase</th>
                         <th data-sort="date"
                             data-date-format="dd/mm/yyyy">Consegna
                         </th>
@@ -312,14 +312,14 @@
                                 data-codice="{{ singolo_odp.CodArt }}"
                                 data-descrizione="{{ singolo_odp.DesArt }}"
                                 data-matricola="{{ singolo_odp.CodMatricola }}"
-                                data-cliente="0"
+                                data-cliente="{{ singolo_odp.NumFase }}"
                                 data-datacons="{{ singolo_odp.DataFineSched }}"
                             >
                                 <td>{{ singolo_odp.RifRegistraz }}</td>
                                 <td>{{ singolo_odp.CodArt }}</td>
                                 <td>{{ singolo_odp.DesArt }}</td>
                                 <td>{{ singolo_odp.CodMatricola }}</td>
-                                <td></td>
+                                <td>{{ singolo_odp.NumFase }}</td>
                                 <td>{{ singolo_odp.DataFineSched | db_date("%Y-%m-%d %H:%M:%S","%d/%m/%Y") }}</td>
                             </tr>
                         {% endif %}

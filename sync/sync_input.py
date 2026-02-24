@@ -174,7 +174,7 @@ def filtra_odpfasi_con_odp(
     :type df_odpfasi: pd.DataFrame
     :param df_odp: dataframe con gli ordini di produzione
     :type df_odp: pd.DataFrame
-    :return: DataFrame filtrato per IdDocumento e IdRiga di df_odpkssk
+    :return: DataFrame filtrato per IdDocumento e IdRiga di df_odp
     :rtype: pd.DataFrame
     """
     df_odpfasi_filtered = df_odpfasi.merge(
@@ -632,6 +632,7 @@ def elaborazione_dati(session: Session) -> None:
         tuple(x) not in existing for x in df_input_odp[pk_cols].astype(str).to_numpy()
     ]
     df_new = df_input_odp.loc[mask_new].copy().drop_duplicates(subset=pk_cols)
+    df_new["FaseAttiva"] = 1
 
     # 4) nuovo_ciclo deve essere PRIMA (quando counter==0)
     if COUNTER_RIGHE == 0:
