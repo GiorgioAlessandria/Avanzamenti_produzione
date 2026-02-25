@@ -2,6 +2,8 @@
 # LIBRERIE ESTERNE
 from flask import render_template, Blueprint, request, url_for, abort
 from flask_login import login_required, current_user
+from flask import jsonify
+from app_odp.models import ChangeEvent
 
 # LIBRERIE INTERNE
 from app_odp.models import InputOdp, db, Roles
@@ -107,3 +109,59 @@ def home():
     return render_template(
         "home.j2", active_partial=template, active_tab=tab, policy=policy, odp=odp
     )
+
+
+@main_bp.route("/api/updates")
+@login_required
+def api_updates():
+    # id dell’ultimo evento ricevuto dal client
+    after_id = request.args.get("after_id", type=int, default=0)
+    policy = RbacPolicy(current_user)
+
+    # recupera gli eventi con id > after_id
+    events = (
+        ChangeEvent.query.filter(ChangeEvent.id > after_id)
+        .order_by(ChangeEvent.id.asc())
+        .all()
+    )
+
+    results = []
+    for ev in events:
+        # decodifica il payload (lista di IdDocumento,IdRiga oppure dict)
+        payload = json.loads(ev.payload_json or "null")
+        # se l'evento riguarda ordini, carica gli ordini e applica il filtro RBAC
+        if ev.topic == "nuovo_ordine":
+            id_list = [tuple(x.split(",")) for x in payload]
+            q = InputOdp.query.filter(
+                sa.tuple_(InputOdp.IdDocumento, InputOdp.IdRiga).in_(id_list)
+            )
+            q = policy.filter_input_odp(q)
+            ordini = [
+                {
+                    "IdDocumento": o.IdDocumento,
+                    "IdRiga": o.IdRiga,
+                    "CodArt": o.CodArt,
+                    "DesArt": o.DesArt,
+                    # inserisci qui i campi che vuoi mostrare nel front‑end
+                }
+                for o in q.all()
+            ]
+            # aggiungi al risultato solo se ci sono ordini visibili
+            for o in ordini:
+                results.append(
+                    {
+                        "id": ev.id,
+                        "topic": ev.topic,
+                        "payload": o,
+                    }
+                )
+        else:
+            # per event tipo odp_claimed/odp_released/odp_completed gestisci analogamente
+            results.append(
+                {
+                    "id": ev.id,
+                    "topic": ev.topic,
+                    "payload": payload,
+                }
+            )
+    return jsonify({"events": results})
