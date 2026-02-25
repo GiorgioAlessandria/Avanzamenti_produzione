@@ -175,21 +175,6 @@ class Causaliattivita(db.Model):
         return f"<Causaliattivita {self.__dict__}>"
 
 
-class ChangeEvent(db.Model):
-    __tablename__ = "change_event"
-
-    id = db.Column(db.Integer, primary_key=True)
-    topic = db.Column(db.Text, nullable=False)
-    scope = db.Column(db.Text)
-    payload_json = db.Column(db.Text)
-    created_at = db.Column(
-        db.Text, nullable=False, default=lambda: datetime.now(ZoneInfo("Europe/Rome"))
-    )
-
-    def __repr__(self):
-        return f"<ChangeEvent {self.__dict__}>"
-
-
 class Famiglia(db.Model):
     __tablename__ = "famiglia"
 
@@ -565,10 +550,32 @@ class TipologieStato(db.Model):
         return f"<TipologieStato {self.__dict__}>"
 
 
+class ChangeEvent(db.Model):
+    __tablename__ = "change_event"
+
+    id = db.Column(db.Integer, primary_key=True)
+    topic = db.Column(db.Text, nullable=False)
+    scope = db.Column(db.Text)
+    payload_json = db.Column(db.Text)
+    id_documento = db.Column(db.Text, nullable=True)
+    id_riga = db.Column(db.Text, nullable=True)
+    user_id = db.Column(db.Integer, nullable=True)
+
+    created_at = db.Column(
+        db.Text, nullable=False, default=lambda: datetime.now(ZoneInfo("Europe/Rome"))
+    )
+
+
 class OdpClaim(db.Model):
     __tablename__ = "odp_claim"
-    id_documento = db.Column(db.Text, primary_key=True, nullable=False)
-    id_riga = db.Column(db.Text, primary_key=True, nullable=False)
-    user_id = db.Column(db.Text, nullable=False)
-    claimed_at = db.Column(db.Text, nullable=False)
-    expires_at = db.Column(db.Text, nullable=False)
+
+    id_documento = db.Column(db.Text, primary_key=True)
+    id_riga = db.Column(db.Text, primary_key=True)
+
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    claimed_at = db.Column(
+        db.Text,
+        nullable=False,
+        default=lambda: datetime.now(ZoneInfo("Europe/Rome")).isoformat(),
+    )
+    expires_at = db.Column(db.Text, nullable=True)

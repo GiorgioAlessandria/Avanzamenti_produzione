@@ -11,12 +11,25 @@ from app_odp.RBAC.policy import RbacPolicy
 from pathlib import Path
 import logging
 from uuid import uuid4
+from sqlalchemy import event
+from sqlalchemy.engine import Engine
 
 try:
     from icecream import ic
 finally:
     pass
 CONFIG_PATH = Path("app_odp/static/config.toml")
+
+
+def _apply_sqlite_pragmas(engine: Engine) -> None:
+    @event.listens_for(engine, "connect")
+    def _set_pragmas(dbapi_connection, connection_record):
+        cursor = dbapi_connection.cursor()
+        try:
+            cursor.execute("PRAGMA busy_timeout=5000;")
+            cursor.execute("PRAGMA journal_mode=WAL;")
+        finally:
+            cursor.close()
 
 
 def load_config(config: Path) -> dict:
@@ -76,7 +89,6 @@ def create_app():
         f"sqlite:///{configurazione['Percorsi']['percorso_db']}"
     )
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-
     # inizializza estensioni
     db.init_app(app)
     register_filters(app)
@@ -94,7 +106,13 @@ def create_app():
             return {"policy": RbacPolicy(current_user)}
         return {"policy": None}
 
+    with app.app_context():
+        _apply_sqlite_pragmas(db.engine)
+
     app.register_blueprint(auth_bp)
     app.register_blueprint(main_bp)
 
+    from app_odp.api import api_bp
+
+    app.register_blueprint(api_bp)
     return app
