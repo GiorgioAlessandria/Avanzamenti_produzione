@@ -1,120 +1,6 @@
 <div class="toast lh-lg hide"
      role="alert"
-     data-bs-animation="false"
-     data-bs-autohide="false"
-     data-bs-delay=""
-     id="toast-1"
-     style="width: max-content;height: max-content;position: absolute;opacity: 1;filter: blur(0px);">
-    <div class="toast-header"><strong class="me-auto"
-                                      style="font-size: 25px;">Sospensione del collaudo:
-    </strong>
-        <button class="btn-close ms-2 mb-1 close"
-                type="button"
-                aria-label="Close"
-                data-bs-dismiss="toast"
-                style="font-size: 25px;"></button>
-    </div>
-    <div class="toast-body d-flex flex-column justify-content-center align-items-center"
-         role="alert"
-         style="opacity: 1;width: auto;height: auto;">
-        <p style="font-size: 20px;">Stai sospendendo il collaudo attivo</p>
-        <form class="flex-column justify-content-center align-items-center"
-              style="width: auto;height: auto;"
-              method="post"><input class="btn btn-primary justify-content-center m-2"
-                                   type="submit"
-                                   name="Inserimento"
-                                   value="Sospensione"
-                                   required=""
-                                   style="font-size: 20px;"></form>
-    </div>
-</div>
-<div class="toast lh-lg hide"
-     role="alert"
-     data-bs-animation="false"
-     data-bs-autohide="false"
-     data-bs-delay=""
-     id="toast-2"
-     style="width: max-content;height: max-content;position: absolute;opacity: 1;filter: blur(0px);">
-    <div class="toast-header"><strong class="me-auto"
-                                      style="font-size: 25px;">Chiusura del collaudo: </strong>
-        <button
-                class="btn-close ms-2 mb-1 close"
-                type="button"
-                aria-label="Close"
-                data-bs-dismiss="toast"
-                style="font-size: 25px;"></button>
-    </div>
-    <div class="toast-body d-flex flex-column justify-content-center align-items-center"
-         role="alert"
-         style="opacity: 1;width: auto;height: auto;">
-        <p style="font-size: 20px;">Stai completando il collaudo</p>
-        <form class="d-flex flex-column justify-content-center align-items-center"
-              style="width: auto;height: auto;"
-              method="post"><input
-                class="btn btn-primary d-flex flex-column justify-content-center align-items-center m-2"
-                type="submit"
-                name="Inserimento"
-                value="Chiusura"
-                required=""
-                style="font-size: 20px;"></form>
-    </div>
-</div>
-<div class="toast lh-lg hide"
-     role="alert"
-     data-bs-animation="false"
-     data-bs-autohide="false"
-     data-bs-delay=""
-     id="toast-3"
-     style="width: max-content;height: max-content;position: absolute;opacity: 1;filter: blur(0px);">
-    <div class="toast-header"><strong class="me-auto"
-                                      style="font-size: 25px;">Riattivazione del collaudo:
-    </strong>
-        <button class="btn-close ms-2 mb-1 close"
-                type="button"
-                aria-label="Close"
-                data-bs-dismiss="toast"
-                style="font-size: 25px;"></button>
-    </div>
-    <div class="toast-body d-flex flex-column justify-content-center align-items-center"
-         role="alert"
-         style="opacity: 1;width: auto;height: auto;">
-        <p style="font-size: 20px;">Stai riattivando un collaudo sospeso</p>
-        <form method="post"><input class="btn btn-lg btn-primary"
-                                   type="submit"
-                                   name="Inserimento"
-                                   value="Riattiva"
-                                   style="font-size: 25px;"></form>
-    </div>
-    <div class="toast lh-lg hide"
-         role="alert"
-         data-bs-animation="false"
-         data-bs-autohide="false"
-         id="toast-4"
-         style="width: max-content;height: max-content;position: absolute;opacity: 1;filter: blur(0px);">
-        <div class="toast-header"><strong class="me-auto"
-                                          style="font-size: 25px;">Riattivazione dell'ordine:
-        </strong>
-            <button class="btn-close ms-2 mb-1 close"
-                    type="button"
-                    aria-label="Close"
-                    data-bs-dismiss="toast"
-                    style="font-size: 25px;"></button>
-        </div>
-        <div class="toast-body d-flex flex-column justify-content-center align-items-center"
-             role="alert"
-             style="opacity: 1;width: auto;height: auto;">
-            <p style="font-size: 20px;">Stai riattivando un ordine sospeso</p>
-            <form method="post"><input class="btn btn-lg btn-primary"
-                                       type="submit"
-                                       name="Inserimento"
-                                       value="Riattiva"
-                                       style="font-size: 25px;"></form>
-        </div>
-    </div>
-</div>
-<div class="toast lh-lg hide"
-     role="alert"
-     id="toast-5"
+     id="toast-ordine-sl"
      style="width: max-content;height: max-content;position: fixed; top: 1rem; right: 1rem; z-index: 2000;opacity: 1;filter: blur(0px);">
     <div class="toast-header">
         <strong class="me-auto"
@@ -151,124 +37,387 @@
         </form>
     </div>
 </div>
-<main class="d-flex w-100 h-100 justify-content-center ms-3 me-2 mt-3 mb-3"
-      style="width: fit-content;height: fit-content;">
-    <div class="container-fluid w-100 h-100 ps-0 pe-0 mx-0"
+<div class="toast lh-lg hide"
+     role="alert"
+     id="toast-ordine-m"
+     style="width: max-content;height: max-content;position: fixed; top: 1rem; right: 1rem; z-index: 2000;opacity: 1;filter: blur(0px);">
+    <div class="toast-header">
+        <strong class="me-auto"
+                style="font-size: 25px;">Presa in carico dell'ordine
+            <span data-bind-text="ordine"></span></strong>
+        <button class="btn-close ms-2 mb-1 close"
+                type="button"
+                aria-label="Close"
+                data-bs-dismiss="toast"
+                style="font-size: 25px;"></button>
+    </div>
+    <div class="toast-body d-flex flex-column justify-content-center align-items-center"
+         role="alert"
+         style="opacity: 1;width: auto;height: auto;">
+        <p style="font-size: 20px;">Stai prendendo in carico un nuovo ordine</p>
+        <form method="post">
+            <input type="hidden"
+                   name="Ordine"
+                   data-bind="ordine">
+            <input type="hidden"
+                   name="CodArt"
+                   data-bind="codice">
+            <input type="hidden"
+                   name="Quantita"
+                   data-bind="quantita">
+            <input type="hidden"
+                   name="NumFase"
+                   data-bind="fase">
+            <input class="btn btn-lg btn-primary"
+                   type="submit"
+                   name="Inserimento"
+                   value="Preso in carico"
+                   style="font-size: 25px;">
+        </form>
+    </div>
+</div>
+<main class="d-flex flex-column w-100 mt-1 mb-1"
+      data-bridge-tab="collaudo"
+      style="height: fit-content;">
+    <div class="row text-center w-100 align-items-start mx-0"
          style="width: auto;height: auto;">
-        <div class="row text-center w-100 h-100 align-items-start"
+        <div class="col w-100 h-100 ms-0 me-0"
+             style="width: auto;height: auto;border-color: rgb(0,0,0);">
+            <h2 class="w-100 h-100 mb-1"
+                style="width: auto;height: auto;">Ordini semilavorati da eseguire</h2>
+            <div class="row mb-1">
+                <div class="col mb-1">
+                    <label><input
+                            type="text"
+                            class="js-table-filter form-control form-control-sm"
+                            placeholder="Filtra per ordine..."
+                            data-target-table="tbl-da-eseguire-sl"
+                            data-filter-mode="dataset"
+                            data-filter-key="ordine"
+                            autocomplete="off"
+                    ></label>
+                </div>
+                <div class="col mb-1">
+                    <label><input
+                            type="text"
+                            class="js-table-filter form-control form-control-sm"
+                            placeholder="Filtra per articolo..."
+                            data-target-table="tbl-da-eseguire-sl"
+                            data-filter-mode="dataset"
+                            data-filter-key="codice"
+                            autocomplete="off"
+                    ></label>
+                </div>
+            </div>
+            <div class="table-responsive text-capitalize fw-semibold text-center w-100 h-100 justify-content-start align-items-start mb-0 pb-0"
+                 style="width: auto;height: auto;color: rgb(0,0,0);display: block;overflow: auto;max-height: 275px">
+                <table class="table table-striped table-sortable table-hover table-selectable table-responsive table-sticky-wrap text-capitalize fw-semibold text-center justify-content-start align-items-start"
+                       id="ordini_da_eseguire_sl">
+                    <thead>
+                    <tr>
+                        <th data-sort="text">Ordine</th>
+                        <th data-sort="text">Codice</th>
+                        <th data-sort="text">Descrizione</th>
+                        <th data-sort="num">Quantità</th>
+                        <th data-sort="date"
+                            data-date-format="dd/mm/yyyy">Consegna
+                        </th>
+                        <th data-sort="text">Lavorazione</th>
+                        <th data-sort="text">Risorsa</th>
+                    </tr>
+                    </thead>
+                    <tbody id="tbody_ordini_da_eseguire_sl">
+                    {% include "partials/_home_montaggio_sl_rows_da_eseguire.html" %}
+                    </tbody>
+                </table>
+            </div>
+            <button class="btn btn-primary m-2"
+                    type="button"
+                    data-bs-target="#toast-ordine-sl"
+                    data-use-selected="#ordini_da_eseguire_sl"
+                    data-fill-target="#toast-ordine-sl"
+                    data-bs-toggle="toast">Attiva ordine SL
+            </button>
+        </div>
+        <div class="col w-100 h-100 ms-0"
              style="width: auto;height: auto;">
-            <div class="col w-100 h-100 ms-2 me-0"
-                 style="width: auto;height: auto;border-color: rgb(0,0,0);">
-                <h2 class="w-100 h-100 mb-3"
-                    style="width: auto;height: auto;">Macchine da collaudare</h2>
-                <div class="table-responsive text-capitalize fw-semibold text-center w-100 h-100 justify-content-start align-items-start mb-0 pb-0"
-                     style="width: auto;height: auto;color: rgb(0,0,0);border-color: rgb(0,0,0);border-top-color: #000000;display: block;">
-                    <table class="table table-striped  table-hover table-selectable table-responsive table-sticky-wrap text-capitalize fw-semibold text-center justify-content-start align-items-start"
-                           id="ordini_da_eseguire">
-                        <thead style="background: var(--bs-info);">
-                        <tr>
-                            <th>Priorità</th>
-                            <th>Ordine</th>
-                            <th>Codice</th>
-                            <th>Descrizione</th>
-                            <th>Quantità</th>
-                            <th>Data consegna</th>
-                            <th>Lavorazione</th>
-                        </tr>
-                        </thead>
-                        <tbody>
-                        <tr data-priorità="{{ odp.priorita }}"
-                            data-numero="{{ odp.ordine }}"
-                            data-codice="{{ odp.codice }}"
-                            data-descrizione="{{ odp.descrizione }}"
-                            data-quatita_in="{{ odp.quatita_in }}"
-                            data-consegna="{{ odp.consegna }}"
-                            data-lavorazione="{{ odp.lavorazione }}">
-                            <td>{{ odp.priorita }}</td>
-                            <td>{{ odp.ordine }}</td>
-                            <td>{{ odp.codice }}</td>
-                            <td>{{ odp.descrizione }}</td>
-                            <td>{{ odp.quatita_in }}</td>
-                            <td>{{ odp.DataFineSched | db_date("%Y-%m-%d %H:%M:%S","%d/%m/%Y") }}</td>
-                            <td>{{ odp.lavorazione }}</td>
-                        </tr>
-                        </tbody>
-                    </table>
+            <h2 class="w-100 h-100 mb-1"
+                style="width: auto;height: auto;">Ordini semilavorati attivi</h2>
+            <div class="row mb-1">
+                <div class="col mb-1">
+                    <label><input
+
+                            type="text"
+                            class="js-table-filter form-control form-control-sm"
+                            placeholder="Filtra per ordine..."
+                            data-target-table="ordini_in_corso_sl"
+                            data-filter-mode="dataset"
+                            data-filter-key="ordine"
+                            autocomplete="off"
+                    ></label>
                 </div>
-                <button class="btn btn-primary m-2"
-                        type="button"
-                        data-bs-target="#toast-5"
-                        data-use-selected="#tbl-da-eseguire"
-                        data-fill-target="#toast-5"
-                        data-bs-toggle="toast">Attiva collaudo
-                </button>
+                <div class="col mb-1">
+                    <label><input
+                            type="text"
+                            class="js-table-filter form-control form-control-sm"
+                            placeholder="Filtra per articolo..."
+                            data-target-table="ordini_in_corso_sl"
+                            data-filter-mode="dataset"
+                            data-filter-key="codice"
+                            autocomplete="off"
+                    ></label>
+                </div>
             </div>
-            <div class="col w-100 h-100 ms-0"
-                 style="width: auto;height: auto;">
-                <h2 class="w-100 h-100 mb-3"
-                    style="width: auto;height: auto;">Ordini attivi</h2>
-                <div class="table-responsive text-capitalize fw-semibold text-center w-100 h-100 justify-content-start align-items-start"
-                     style="width: auto;height: auto;color: rgb(0,0,0);border-color: rgb(0,0,0);border-top-color: #000000;display: block;">
-                    <table class="table table-striped  table-hover table-selectable table-responsive table-sticky-wrap text-capitalize fw-semibold text-center justify-content-start align-items-start"
-                           id="ordini_in_corso">
-                        <thead>
-                        <tr>
-                            <th>Ordine</th>
-                            <th>Codice</th>
-                            <th>Descrizione</th>
-                            <th>Data</th>
-                            <th>Quantità da produrre</th>
-                            <th>Quantità prodotta</th>
-                            <th>Lavorazione</th>
-                            <th>Stato</th>
-                        </tr>
-                        </thead>
-                        <tbody>
-                        <tr data-numero="{{ odp.ordine }}"
-                            data-codice="{{ odp.codice }}"
-                            data-descrizione="{{ odp.descrizione }}"
-                            data-lavorazione="{{ odp.lavorazione }}"
-                            data-quatita_in="{{ odp.quatita_in }}"
-                            data-quatita_prd="{{ odp.quatita_prd }}"
-                            data-stato="{{ odp.stato }}">
-                            <td>{{ odp.RifRegistraz }}</td>
-                            <td>{{ odp.CodArt }}</td>
-                            <td>{{ odp.DesArt }}</td>
-                            <td>{{ odp.Quantita }}</td>
-                            <td>{{ odp.NumFase | db_list_display }}</td>
-                            <td>{{ odp.DataFineSched | db_date("%Y-%m-%d %H:%M:%S","%d/%m/%Y") }}</td>
-                            <td>{{ odp.CodLavorazione | db_list_display }}</td>
-                            <td>{{ odp.CodRisorsaProd | db_list_display }}</td>
-                        </tr>
-                    </table>
-                </div>
-                <section class="text-center d-flex w-100 h-100 align-items-center"
-                         style="width: auto;height: auto;">
-                    <section class="d-flex flex-grow-1 justify-content-start m-2"
-                             style="width: fit-content;height: fit-content;">
-                        <button class="btn btn-primary mx-2"
-                                type="button"
-                                style="margin: 1px;"
-                                data-bs-target="#toast-1"
-                                data-bs-toggle="toast">
-                            Sospendi
-                            collaudo
-                        </button>
-                        <button class="btn btn-primary disabled mx-2"
-                                type="button"
-                                style="margin: 1px;"
-                                disabled="">Riattiva collaudo
-                        </button>
-                    </section>
-                    <section class="text-end d-flex flex-grow-1 justify-content-end m-2"
-                             style="width: auto;height: auto;">
-                        <button class="btn btn-primary"
-                                type="button">Termina
-                                              collaudo
-                        </button>
-                    </section>
+            <div class="table-responsive text-capitalize fw-semibold text-center w-100 h-100 justify-content-start align-items-start"
+                 style="width: auto;height: auto;color: rgb(0,0,0);display: block;max-height: 275px">
+                <table class="table table-striped table-state-rowcolor table-sortable table-hover table-responsive table-selectable table-sticky-wrap text-capitalize fw-semibold text-center w-100 h-100 justify-content-start align-items-start"
+                       id="ordini_in_corso_sl">
+                    <thead>
+                    <tr>
+                        <th data-sort="text">Ordine</th>
+                        <th data-sort="text">Codice</th>
+                        <th data-sort="text">Descrizione</th>
+                        <th data-sort="num">Quantità</th>
+                        <th data-sort="date"
+                            data-date-format="dd/mm/yyyy">Consegna
+                        </th>
+                        <th data-sort="text">Lavorazione</th>
+                        <th data-sort="text">Risorsa</th>
+                        <th data-sort="text">Stato</th>
+                    </tr>
+                    </thead>
+                    <tbody id="tbody_ordini_in_corso_sl">
+                    {% include "partials/_home_montaggio_sl_rows_in_corso.html" %}
+                    </tbody>
+                </table>
+            </div>
+            <section class="text-center d-flex w-100 h-100 align-items-center"
+                     style="width: auto;height: auto;">
+                <section class="d-flex flex-grow-1 justify-content-start m-2"
+                         style="width: fit-content;height: fit-content;">
+                    <button class="btn btn-primary mx-2"
+                            type="button"
+                            style="margin: 1px;"
+                            data-bs-target="#toast-1"
+                            data-bs-toggle="toast">
+                        Sospendi
+                        ordine
+                    </button>
+                    <button class="btn btn-primary disabled mx-2"
+                            type="button"
+                            style="margin: 1px;"
+                            disabled="">Riattiva ordine
+                    </button>
                 </section>
+                <section class="text-end d-flex flex-grow-1 justify-content-end m-2"
+                         style="width: auto;height: auto;">
+                    <button class="btn btn-primary"
+                            type="button">Chiudi
+                                          ordine
+                    </button>
+                </section>
+            </section>
+        </div>
+    </div>
+    <div class="row text-center w-100 align-items-start mx-0"
+         style="width: auto;height: auto;">
+        <div class="col w-100 h-100 ms-0"
+             style="width: auto;height: auto;">
+            <h2 class="w-100 h-100 mb-1"
+                style="width: auto;height: auto;">Ordini macchina da eseguire</h2>
+            <div class="row mb-1">
+                <div class="col mb-1">
+                    <label><input
+                            type="text"
+                            class="js-table-filter form-control form-control-sm"
+                            placeholder="Filtra per ordine..."
+                            data-target-table="tbl-da-eseguire-m"
+                            data-filter-mode="dataset"
+                            data-filter-key="ordine"
+                            autocomplete="off"
+                    ></label>
+                </div>
+                <div class="col mb-1">
+                    <label><input
+                            type="text"
+                            class="js-table-filter form-control form-control-sm"
+                            placeholder="Filtra per articolo..."
+                            data-target-table="tbl-da-eseguire-m"
+                            data-filter-mode="dataset"
+                            data-filter-key="codice"
+                            autocomplete="off"
+                    ></label>
+                </div>
             </div>
+            <div class="table-responsive text-capitalize fw-semibold text-center justify-content-start align-items-center mb-0 pb-0"
+                 style="width: auto;height: auto;display: block;max-height: 275px">
+                <table class="table table-striped table-sortable table-selectable table-hover table-responsive table-sticky-wrap text-capitalize fw-semibold text-center w-100 h-100 justify-content-start align-items-start"
+                       id="ordini_da_eseguire_m">
+                    <thead style="background: var(--bs-info);">
+                    <tr>
+                        <th data-sort="text">Ordine</th>
+                        <th data-sort="text">Codice</th>
+                        <th data-sort="text">Descrizione</th>
+                        <th data-sort="text">Matricola</th>
+                        <th data-sort="text">Fase</th>
+                        <th data-sort="date"
+                            data-date-format="dd/mm/yyyy">Consegna
+                        </th>
+                    </tr>
+                    </thead>
+                    <tbody id="tbody_ordini_da_eseguire_m">
+                    {% include "partials/_home_collaudo_m_rows_da_eseguire.html" %}
+                    </tbody>
+                </table>
+            </div>
+            <button class="btn btn-primary m-2"
+                    type="button"
+                    data-bs-target="#toast-ordine-m"
+                    data-use-selected="#ordini_da_eseguire_m"
+                    data-fill-target="#toast-ordine-m"
+                    data-bs-toggle="toast">Attiva ordine macchina
+            </button>
+        </div>
+        <div class="col w-100 h-100 mb-1"
+             style="width: auto;height: auto;">
+            <h2 class="w-100 h-100 mb-1"
+                style="width: auto;height: auto;">Ordini macchina attivi</h2>
+            <div class="row mb-1">
+                <div class="col mb-1">
+                    <label><input
+                            type="text"
+                            class="js-table-filter form-control form-control-sm"
+                            placeholder="Filtra per ordine..."
+                            data-target-table="ordini_in_corso_m"
+                            data-filter-mode="dataset"
+                            data-filter-key="ordine"
+                            autocomplete="off"
+                    ></label>
+                </div>
+                <div class="col mb-1">
+                    <label><input
+                            type="text"
+                            class="js-table-filter form-control form-control-sm"
+                            placeholder="Filtra per articolo..."
+                            data-target-table="ordini_in_corso_m"
+                            data-filter-mode="dataset"
+                            data-filter-key="codice"
+                            autocomplete="off"
+                    ></label>
+                </div>
+            </div>
+            <div class="table-responsive text-capitalize fw-semibold text-center w-100 h-100 justify-content-start align-items-start"
+                 style="width: auto;height: auto;color: rgb(0,0,0);display: block;max-height: 275px">
+                <table class="table table-striped table-state-rowcolor table-sortable table-hover table-selectable table-responsive table-sticky-wrap text-capitalize fw-semibold text-center w-100 h-100 justify-content-start align-items-start"
+                       id="ordini_in_corso_m">
+                    <thead>
+                    <tr>
+                        <th data-sort="text">Ordine</th>
+                        <th data-sort="text">Codice</th>
+                        <th data-sort="text">Descrizione</th>
+                        <th data-sort="text">Matricola</th>
+                        <th data-sort="date"
+                            data-date-format="dd/mm/yyyy">Consegna
+                        <th data-sort="text">Fase</th>
+                        <th data-sort="text">Stato</th>
+                    </tr>
+                    </thead>
+                    <tbody id="tbody_ordini_in_corso_m">
+                    {% include "partials/_home_collaudo_m_rows_in_corso.html" %}
+                    </tbody>
+                </table>
+            </div>
+            <section class="text-center d-flex w-100 h-100 align-items-center"
+                     style="width: auto;height: auto;">
+                <section class="d-flex flex-grow-1 justify-content-start m-1"
+                         style="width: fit-content;height: fit-content;">
+                    <button class="btn btn-primary mx-2"
+                            type="button"
+                            style="margin: 1px;"
+                            data-bs-target="#toast-6"
+                            data-bs-toggle="toast">
+                        Sospendi
+                        ordine
+                    </button>
+                    <button class="btn btn-primary disabled mx-2"
+                            type="button"
+                            style="margin: 1px;"
+                            disabled=""
+                            data-bs-target="#toast-8"
+                            data-bs-toggle="toast">
+                        Riattiva
+                        ordine
+                    </button>
+                </section>
+                <section class="text-end d-flex flex-grow-1 justify-content-end m-2"
+                         style="width: auto;height: auto;">
+                    <button class="btn btn-primary"
+                            type="button"
+                            data-bs-target="#toast-7"
+                            data-bs-toggle="toast">Chiudi ordine
+                    </button>
+                </section>
+            </section>
         </div>
     </div>
 </main>
+<script>
+    (() => {
+        const root = document.querySelector("[data-bridge-tab]");
+        if (!root) return;
+
+        const tab = root.dataset.bridgeTab;
+        const bridgeUrl = {{ url_for("main.api_home_bridge", tab="__TAB__")|tojson }}
+            .replace("__TAB__", tab);
+
+        let lastEventId = 0;
+        let inFlight = false;
+
+        function replaceFragments(fragments) {
+            Object.entries(fragments || {}).forEach(([tbodyId, html]) => {
+                const el = document.getElementById(tbodyId);
+                if (el) el.innerHTML = html;
+            });
+
+            if (window.applyRowColors) window.applyRowColors();
+            if (window.applyStateRowColorsAll) window.applyStateRowColorsAll();
+
+            document.querySelectorAll(".js-table-filter").forEach((input) => {
+                input.dispatchEvent(new Event("input", {bubbles: true}));
+            });
+        }
+
+        async function poll() {
+            if (inFlight) return;
+            inFlight = true;
+
+            try {
+                const res = await fetch(`${bridgeUrl}?after=${encodeURIComponent(lastEventId)}`, {
+                    headers: {"Accept": "application/json"},
+                    cache: "no-store"
+                });
+
+                if (res.redirected) {
+                    window.location = res.url;
+                    return;
+                }
+
+                if (!res.ok) return;
+
+                const data = await res.json();
+                if (!data.changed) {
+                    lastEventId = data.last_event_id || lastEventId;
+                    return;
+                }
+
+                replaceFragments(data.fragments);
+                lastEventId = data.last_event_id || lastEventId;
+            } finally {
+                inFlight = false;
+            }
+        }
+
+        poll();
+        setInterval(poll, 5000);
+    })();
+</script>

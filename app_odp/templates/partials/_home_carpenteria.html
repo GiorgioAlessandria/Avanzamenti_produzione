@@ -178,6 +178,7 @@
     </div>
 </div>
 <main class="d-flex flex-column w-100 mt-3 mb-3"
+      data-bridge-tab="carpenteria"
       style="height: fit-content;width: fit-content;">
     <div class="container-fluid w-100 h-100 ps-0 pe-0 mx-0"
          style="width: auto;height: auto;">
@@ -229,27 +230,8 @@
                             <th data-sort="text">Risorsa</th>
                         </tr>
                         </thead>
-                        <tbody>
-                        {% for singolo_odp in odp %}
-                            {% if singolo_odp.StatoOrdine == "Pianificata" %}
-                                <tr data-ordine="{{ singolo_odp.RifRegistraz }}"
-                                    data-codice="{{ singolo_odp.CodArt }}"
-                                    data-descrizione="{{ singolo_odp.DesArt }}"
-                                    data-quantita="{{ singolo_odp.Quantita }}"
-                                    data-datacons="{{ singolo_odp.DataFineSched }}"
-                                    data-lavorazione="{{ singolo_odp.CodLavorazione }}"
-                                    data-risorsaprod="{{ singolo_odp.CodRisorsaProd }}"
-                                >
-                                    <td>{{ singolo_odp.RifRegistraz }}</td>
-                                    <td>{{ singolo_odp.CodArt }}</td>
-                                    <td>{{ singolo_odp.DesArt }}</td>
-                                    <td>{{ singolo_odp.Quantita }}</td>
-                                    <td>{{ singolo_odp.DataFineSched | db_date("%Y-%m-%d %H:%M:%S","%d/%m/%Y") }}</td>
-                                    <td>{{ singolo_odp.CodLavorazione | db_list_display }}</td>
-                                    <td>{{ singolo_odp.CodRisorsaProd | db_list_display }}</td>
-                                </tr>
-                            {% endif %}
-                        {% endfor %}
+                        <tbody id="tbody_ordini_da_eseguire">
+                        {% include "partials/_home_carpenteria_rows_da_eseguire.html" %}
                         </tbody>
                     </table>
                 </div>
@@ -309,29 +291,9 @@
                             <th data-sort="text">Stato</th>
                         </tr>
                         </thead>
-                        <tbody>
-                        {% for singolo_odp in odp %}
-                            {% if singolo_odp.StatoOrdine != "Pianificata" %}
-                                <tr data-ordine="{{ singolo_odp.RifRegistraz }}"
-                                    data-codice="{{ singolo_odp.CodArt }}"
-                                    data-descrizione="{{ singolo_odp.DesArt }}"
-                                    data-quantita="{{ singolo_odp.Quantita }}"
-                                    data-datacons="{{ singolo_odp.DataFineSched }}"
-                                    data-lavorazione="{{ singolo_odp.CodLavorazione }}"
-                                    data-risorsaprod="{{ singolo_odp.CodRisorsaProd }}"
-                                    data-statoordine="{{ singolo_odp.StatoOrdine }}"
-                                >
-                                    <td>{{ singolo_odp.RifRegistraz }}</td>
-                                    <td>{{ singolo_odp.CodArt }}</td>
-                                    <td>{{ singolo_odp.DesArt }}</td>
-                                    <td>{{ singolo_odp.Quantita }}</td>
-                                    <td>{{ singolo_odp.DataFineSched | db_date("%Y-%m-%d %H:%M:%S","%d/%m/%Y") }}</td>
-                                    <td>{{ singolo_odp.CodLavorazione | db_list_display }}</td>
-                                    <td>{{ singolo_odp.CodRisorsaProd | db_list_display }}</td>
-                                    <td data-col="stato">{{ singolo_odp.StatoOrdine }}</td>
-                                </tr>
-                            {% endif %}
-                        {% endfor %}
+                        <tbody id="tbody_ordini_in_corso">
+                        {% include "partials/_home_carpenteria_rows_in_corso.html" %}
+                        </tbody>
                     </table>
                 </div>
                 <section class="text-center d-flex w-100 h-100 align-items-center"
@@ -370,3 +332,66 @@
         </div>
     </div>
 </main>
+
+<script>
+    (() => {
+        const root = document.querySelector("[data-bridge-tab]");
+        if (!root) return;
+
+        const tab = root.dataset.bridgeTab;
+        const bridgeUrl = {{ url_for("main.api_home_bridge", tab="__TAB__")|tojson }}
+            .replace("__TAB__", tab);
+
+        let lastEventId = 0;
+        let inFlight = false;
+
+        function replaceFragments(fragments) {
+            Object.entries(fragments || {}).forEach(([tbodyId, html]) => {
+                const el = document.getElementById(tbodyId);
+                if (el) el.innerHTML = html;
+            });
+
+            if (window.applyRowColors) window.applyRowColors();
+            if (window.applyStateRowColorsAll) window.applyStateRowColorsAll();
+
+            document.querySelectorAll(".js-table-filter").forEach((input) => {
+                input.dispatchEvent(new Event("input", {bubbles: true}));
+            });
+        }
+
+        async function poll() {
+            if (inFlight) return;
+            inFlight = true;
+
+            try {
+                const res = await fetch(`${bridgeUrl}?after=${encodeURIComponent(lastEventId)}`, {
+                    headers: {"Accept": "application/json"},
+                    cache: "no-store"
+                });
+
+                if (res.redirected) {
+                    window.location = res.url;
+                    return;
+                }
+
+                if (!res.ok) {
+                    console.error("Bridge error:", res.status, await res.text());
+                    return;
+                }
+                const data = await res.json();
+                if (!data.changed) {
+                    lastEventId = data.last_event_id || lastEventId;
+                    return;
+                }
+
+                replaceFragments(data.fragments);
+                lastEventId = data.last_event_id || lastEventId;
+            } finally {
+                inFlight = false;
+            }
+        }
+
+        poll();
+        setInterval(poll, 5000);
+    })();
+</script>

@@ -1,14 +1,10 @@
-# region IMPORT
-# LIBRERIE ESTERNE
 from flask import render_template, Blueprint, request, url_for, abort
 from flask_login import login_required, current_user
-from flask import jsonify
-from app_odp.models import ChangeEvent
+from sqlalchemy import func
 
-# LIBRERIE INTERNE
-from app_odp.models import InputOdp, db, Roles
-from app_odp.RBAC.decorator import require_perm
-from app_odp.RBAC.policy import RbacPolicy
+from app_odp.models import InputOdp, db, ChangeEvent
+from app_odp.policy.decorator import require_perm
+from app_odp.policy.policy import RbacPolicy
 
 try:
     from icecream import ic
@@ -35,6 +31,21 @@ HOME_TABS = {
         "template": "partials/_home_carpenteria.html",
     },
     "40": {
+        "tab": "Magazzino",
+        "label_fallback": "Magazzino",
+        "template": "partials/page_vuota.html",
+    },
+    "50": {
+        "tab": "Fornitori",
+        "label_fallback": "Fornitori",
+        "template": "partials/page_vuota.html",
+    },
+    "60": {
+        "tab": "Ufficio Tecnico",
+        "label_fallback": "Ufficio Tecnico",
+        "template": "partials/page_vuota.html",
+    },
+    "70": {
         "tab": "collaudo",
         "label_fallback": "Collaudo",
         "template": "partials/_home_collaudo.html",
@@ -50,9 +61,24 @@ TAB_TO_TEMPLATE = {
     ),
     "collaudo": (
         "partials/_home_collaudo.html",
-        {"reparto": "10", "perm": "controllo_qualita"},
+        {"reparto": "70", "perm": "home"},
     ),
 }
+BRIDGE_CONFIG = {
+    "officina": {"reparto": "20", "perm": "home", "renderer": "officina"},
+    "carpenteria": {"reparto": "30", "perm": "home", "renderer": "carpenteria"},
+    "montaggio": {"reparto": "10", "perm": "home", "renderer": "montaggio"},
+    "collaudo": {"reparto": "70", "perm": "home", "renderer": "collaudo"},
+}
+
+
+def _tab_scoped_odp(policy: RbacPolicy, reparto_code: str):
+    q = InputOdp.query
+    return policy.filter_input_odp_for_reparto(q, reparto_code)
+
+
+def _last_change_event_id() -> int:
+    return db.session.query(func.max(ChangeEvent.id)).scalar() or 0
 
 
 @main_bp.context_processor
@@ -103,65 +129,112 @@ def home():
     if not policy.can(req["perm"]):
         abort(403)
 
-    q = InputOdp.query
-    q = policy.filter_input_odp(q)
+    q = _tab_scoped_odp(policy, req["reparto"])
     odp = list(q.all())
     return render_template(
-        "home.j2", active_partial=template, active_tab=tab, policy=policy, odp=odp
+        "home.j2",
+        active_partial=template,
+        active_tab=tab,
+        policy=policy,
+        odp=odp,
     )
 
 
-@main_bp.route("/api/updates")
+def _query_for_tab(policy, reparto_code):
+    q = InputOdp.query
+    q = policy.filter_input_odp_for_reparto(q, reparto_code)
+    return q
+
+
+def _render_bridge_officina(odp):
+    return {
+        "tbody_ordini_da_eseguire": render_template(
+            "partials/_home_officina_rows_da_eseguire.html", odp=odp
+        ),
+        "tbody_ordini_in_corso": render_template(
+            "partials/_home_officina_rows_in_corso.html", odp=odp
+        ),
+    }
+
+
+def _render_bridge_carpenteria(odp):
+    return {
+        "tbody_ordini_da_eseguire": render_template(
+            "partials/_home_carpenteria_rows_da_eseguire.html", odp=odp
+        ),
+        "tbody_ordini_in_corso": render_template(
+            "partials/_home_carpenteria_rows_in_corso.html", odp=odp
+        ),
+    }
+
+
+def _render_bridge_montaggio(odp):
+    return {
+        "tbody_tbl_da_eseguire_sl": render_template(
+            "partials/_home_montaggio_sl_rows_da_eseguire.html", odp=odp
+        ),
+        "tbody_ordini_in_corso_sl": render_template(
+            "partials/_home_montaggio_sl_rows_in_corso.html", odp=odp
+        ),
+        "tbody_tbl_da_eseguire_m": render_template(
+            "partials/_home_montaggio_m_rows_da_eseguire.html", odp=odp
+        ),
+        "tbody_ordini_in_corso_m": render_template(
+            "partials/_home_montaggio_m_rows_in_corso.html", odp=odp
+        ),
+    }
+
+
+def _render_bridge_collaudo(odp):
+    return {
+        "tbody_tbl_da_eseguire_sl": render_template(
+            "partials/_home_montaggio_sl_rows_da_eseguire.html", odp=odp
+        ),
+        "tbody_ordini_in_corso_sl": render_template(
+            "partials/_home_montaggio_sl_rows_in_corso.html", odp=odp
+        ),
+        "tbody_tbl_da_eseguire_m": render_template(
+            "partials/_home_collaudo_m_rows_da_eseguire.html", odp=odp
+        ),
+        "tbody_ordini_in_corso_m": render_template(
+            "partials/_home_collaudo_m_rows_in_corso.html", odp=odp
+        ),
+    }
+
+
+RENDERERS = {
+    "officina": _render_bridge_officina,
+    "carpenteria": _render_bridge_carpenteria,
+    "montaggio": _render_bridge_montaggio,
+    "collaudo": _render_bridge_collaudo,
+}
+
+
+@main_bp.get("/api/home/<tab>/bridge")
 @login_required
-def api_updates():
-    # id dell’ultimo evento ricevuto dal client
-    after_id = request.args.get("after_id", type=int, default=0)
+@require_perm("home")
+def api_home_bridge(tab):
+    cfg = BRIDGE_CONFIG.get(tab)
+    if not cfg:
+        abort(404)
+
     policy = RbacPolicy(current_user)
 
-    # recupera gli eventi con id > after_id
-    events = (
-        ChangeEvent.query.filter(ChangeEvent.id > after_id)
-        .order_by(ChangeEvent.id.asc())
-        .all()
-    )
+    if cfg["reparto"] not in policy.allowed_reparti:
+        abort(403)
+    if not policy.can(cfg["perm"]):
+        abort(403)
 
-    results = []
-    for ev in events:
-        # decodifica il payload (lista di IdDocumento,IdRiga oppure dict)
-        payload = json.loads(ev.payload_json or "null")
-        # se l'evento riguarda ordini, carica gli ordini e applica il filtro RBAC
-        if ev.topic == "nuovo_ordine":
-            id_list = [tuple(x.split(",")) for x in payload]
-            q = InputOdp.query.filter(
-                sa.tuple_(InputOdp.IdDocumento, InputOdp.IdRiga).in_(id_list)
-            )
-            q = policy.filter_input_odp(q)
-            ordini = [
-                {
-                    "IdDocumento": o.IdDocumento,
-                    "IdRiga": o.IdRiga,
-                    "CodArt": o.CodArt,
-                    "DesArt": o.DesArt,
-                    # inserisci qui i campi che vuoi mostrare nel front‑end
-                }
-                for o in q.all()
-            ]
-            # aggiungi al risultato solo se ci sono ordini visibili
-            for o in ordini:
-                results.append(
-                    {
-                        "id": ev.id,
-                        "topic": ev.topic,
-                        "payload": o,
-                    }
-                )
-        else:
-            # per event tipo odp_claimed/odp_released/odp_completed gestisci analogamente
-            results.append(
-                {
-                    "id": ev.id,
-                    "topic": ev.topic,
-                    "payload": payload,
-                }
-            )
-    return jsonify({"events": results})
+    after = request.args.get("after", type=int, default=0)
+    last_event_id = _last_change_event_id()
+
+    if after and last_event_id <= after:
+        return {"changed": False, "last_event_id": last_event_id}
+
+    odp = list(_query_for_tab(policy, cfg["reparto"]).all())
+    fragments = RENDERERS[tab](odp)
+    return {
+        "changed": True,
+        "last_event_id": last_event_id,
+        "fragments": fragments,
+    }

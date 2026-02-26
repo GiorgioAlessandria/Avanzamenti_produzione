@@ -7,7 +7,7 @@ from app_odp.auth import auth_bp
 from app_odp.routes import main_bp
 import tomllib
 from flask_login import current_user
-from app_odp.RBAC.policy import RbacPolicy
+from app_odp.policy.policy import RbacPolicy
 from pathlib import Path
 import logging
 from uuid import uuid4

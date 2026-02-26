@@ -1,0 +1,18 @@
+{% for singolo_odp in odp %}
+    {% if singolo_odp.GestioneMatricola == 'si' and singolo_odp.StatoOrdine == "Pianificata" and singolo_odp.FaseAttiva == "1" %}
+        <tr data-ordine="{{ singolo_odp.RifRegistraz }}"
+            data-codice="{{ singolo_odp.CodArt }}"
+            data-descrizione="{{ singolo_odp.DesArt }}"
+            data-matricola="{{ singolo_odp.CodMatricola }}"
+            data-fase="{{ singolo_odp.FaseAttiva }}"
+            data-datacons="{{ singolo_odp.DataFineSched }}"
+        >
+            <td>{{ singolo_odp.RifRegistraz }}</td>
+            <td>{{ singolo_odp.CodArt }}</td>
+            <td>{{ singolo_odp.DesArt }}</td>
+            <td>{{ singolo_odp.CodMatricola }}</td>
+            <td>{{ singolo_odp.FaseAttiva }}</td>
+            <td>{{ singolo_odp.DataFineSched | db_date("%Y-%m-%d %H:%M:%S","%d/%m/%Y") }}</td>
+        </tr>
+    {% endif %}
+{% endfor %}
