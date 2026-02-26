@@ -2,9 +2,9 @@ from flask import render_template, Blueprint, request, url_for, abort
 from flask_login import login_required, current_user
 from sqlalchemy import func
 
-from app_odp.models import InputOdp, db, Roles, ChangeEvent
-from app_odp.RBAC.decorator import require_perm
-from app_odp.RBAC.policy import RbacPolicy
+from app_odp.models import InputOdp, db, ChangeEvent
+from app_odp.policy.decorator import require_perm
+from app_odp.policy.policy import RbacPolicy
 
 try:
     from icecream import ic
@@ -31,6 +31,21 @@ HOME_TABS = {
         "template": "partials/_home_carpenteria.html",
     },
     "40": {
+        "tab": "Magazzino",
+        "label_fallback": "Magazzino",
+        "template": "partials/page_vuota.html",
+    },
+    "50": {
+        "tab": "Fornitori",
+        "label_fallback": "Fornitori",
+        "template": "partials/page_vuota.html",
+    },
+    "60": {
+        "tab": "Ufficio Tecnico",
+        "label_fallback": "Ufficio Tecnico",
+        "template": "partials/page_vuota.html",
+    },
+    "70": {
         "tab": "collaudo",
         "label_fallback": "Collaudo",
         "template": "partials/_home_collaudo.html",
@@ -46,8 +61,14 @@ TAB_TO_TEMPLATE = {
     ),
     "collaudo": (
         "partials/_home_collaudo.html",
-        {"reparto": "10", "perm": "controllo_qualita"},
+        {"reparto": "70", "perm": "home"},
     ),
+}
+BRIDGE_CONFIG = {
+    "officina": {"reparto": "20", "perm": "home", "renderer": "officina"},
+    "carpenteria": {"reparto": "30", "perm": "home", "renderer": "carpenteria"},
+    "montaggio": {"reparto": "10", "perm": "home", "renderer": "montaggio"},
+    "collaudo": {"reparto": "70", "perm": "home", "renderer": "collaudo"},
 }
 
 
@@ -119,13 +140,6 @@ def home():
     )
 
 
-BRIDGE_CONFIG = {
-    "officina": {"reparto": "20", "perm": "home", "renderer": "officina"},
-    "carpenteria": {"reparto": "30", "perm": "home", "renderer": "carpenteria"},
-    "montaggio": {"reparto": "10", "perm": "home", "renderer": "montaggio"},
-}
-
-
 def _query_for_tab(policy, reparto_code):
     q = InputOdp.query
     q = policy.filter_input_odp_for_reparto(q, reparto_code)
@@ -135,10 +149,10 @@ def _query_for_tab(policy, reparto_code):
 def _render_bridge_officina(odp):
     return {
         "tbody_ordini_da_eseguire": render_template(
-            "partials/_officina_rows_da_eseguire.html", odp=odp
+            "partials/_home_officina_rows_da_eseguire.html", odp=odp
         ),
         "tbody_ordini_in_corso": render_template(
-            "partials/_officina_rows_in_corso.html", odp=odp
+            "partials/_home_officina_rows_in_corso.html", odp=odp
         ),
     }
 
@@ -146,10 +160,10 @@ def _render_bridge_officina(odp):
 def _render_bridge_carpenteria(odp):
     return {
         "tbody_ordini_da_eseguire": render_template(
-            "partials/_carpenteria_rows_da_eseguire.html", odp=odp
+            "partials/_home_carpenteria_rows_da_eseguire.html", odp=odp
         ),
         "tbody_ordini_in_corso": render_template(
-            "partials/_carpenteria_rows_in_corso.html", odp=odp
+            "partials/_home_carpenteria_rows_in_corso.html", odp=odp
         ),
     }
 
@@ -157,16 +171,33 @@ def _render_bridge_carpenteria(odp):
 def _render_bridge_montaggio(odp):
     return {
         "tbody_tbl_da_eseguire_sl": render_template(
-            "partials/_montaggio_rows_da_eseguire_sl.html", odp=odp
+            "partials/_home_montaggio_sl_rows_da_eseguire.html", odp=odp
         ),
         "tbody_ordini_in_corso_sl": render_template(
-            "partials/_montaggio_rows_in_corso_sl.html", odp=odp
+            "partials/_home_montaggio_sl_rows_in_corso.html", odp=odp
         ),
         "tbody_tbl_da_eseguire_m": render_template(
-            "partials/_montaggio_rows_da_eseguire_m.html", odp=odp
+            "partials/_home_montaggio_m_rows_da_eseguire.html", odp=odp
         ),
         "tbody_ordini_in_corso_m": render_template(
-            "partials/_montaggio_rows_in_corso_m.html", odp=odp
+            "partials/_home_montaggio_m_rows_in_corso.html", odp=odp
+        ),
+    }
+
+
+def _render_bridge_collaudo(odp):
+    return {
+        "tbody_tbl_da_eseguire_sl": render_template(
+            "partials/_home_montaggio_sl_rows_da_eseguire.html", odp=odp
+        ),
+        "tbody_ordini_in_corso_sl": render_template(
+            "partials/_home_montaggio_sl_rows_in_corso.html", odp=odp
+        ),
+        "tbody_tbl_da_eseguire_m": render_template(
+            "partials/_home_collaudo_m_rows_da_eseguire.html", odp=odp
+        ),
+        "tbody_ordini_in_corso_m": render_template(
+            "partials/_home_collaudo_m_rows_in_corso.html", odp=odp
         ),
     }
 
@@ -175,6 +206,7 @@ RENDERERS = {
     "officina": _render_bridge_officina,
     "carpenteria": _render_bridge_carpenteria,
     "montaggio": _render_bridge_montaggio,
+    "collaudo": _render_bridge_collaudo,
 }
 
 
@@ -201,7 +233,6 @@ def api_home_bridge(tab):
 
     odp = list(_query_for_tab(policy, cfg["reparto"]).all())
     fragments = RENDERERS[tab](odp)
-
     return {
         "changed": True,
         "last_event_id": last_event_id,

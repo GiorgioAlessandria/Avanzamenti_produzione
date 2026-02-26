@@ -228,8 +228,10 @@
                     return;
                 }
 
-                if (!res.ok) return;
-
+                if (!res.ok) {
+                    console.error("Bridge error:", res.status, await res.text());
+                    return;
+                }
                 const data = await res.json();
                 if (!data.changed) {
                     lastEventId = data.last_event_id || lastEventId;

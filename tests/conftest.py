@@ -3,11 +3,12 @@ import sqlite3
 from pathlib import Path
 import pytest
 
+
 @pytest.fixture()
 def rbac_db(tmp_path):
-    # metti RBAC.db in tests/assets/RBAC.db (consigliato)
-    src = Path(__file__).resolve().parent / "assets" / "RBAC.db"
-    dst = tmp_path / "RBAC.db"
+    # metti policy.db in tests/assets/policy.db (consigliato)
+    src = Path(__file__).resolve().parent / "assets" / "policy.db"
+    dst = tmp_path / "policy.db"
     shutil.copy(src, dst)
 
     # pulizia tabelle che toccherai nei test

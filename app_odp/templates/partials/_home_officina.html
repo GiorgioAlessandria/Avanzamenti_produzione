@@ -291,7 +291,6 @@
                         <tbody id="tbody_ordini_in_corso">
                         {% include "partials/_home_officina_rows_in_corso.html" %}
                         </tbody>
-                        </tr>
                     </table>
                 </div>
                 <section class="text-center d-flex w-100 h-100 align-items-center"
@@ -368,8 +367,10 @@
                     return;
                 }
 
-                if (!res.ok) return;
-
+                if (!res.ok) {
+                    console.error("Bridge error:", res.status, await res.text());
+                    return;
+                }
                 const data = await res.json();
                 if (!data.changed) {
                     lastEventId = data.last_event_id || lastEventId;

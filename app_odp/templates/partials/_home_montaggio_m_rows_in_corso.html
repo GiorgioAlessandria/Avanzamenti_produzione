@@ -1,5 +1,5 @@
 {% for singolo_odp in odp %}
-    {% if singolo_odp.GestioneMatricola == 'si' and singolo_odp.StatoOrdine != "Pianificata" %}
+    {% if singolo_odp.GestioneMatricola == 'si' and singolo_odp.StatoOrdine != "Pianificata" and singolo_odp.FaseAttiva == "1" %}
         <tr data-ordine="{{ singolo_odp.RifRegistraz }}"
             data-codice="{{ singolo_odp.CodArt }}"
             data-descrizione="{{ singolo_odp.DesArt }}"

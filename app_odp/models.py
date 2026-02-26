@@ -493,7 +493,7 @@ class User(UserMixin, db.Model):
         prefs[key] = value
         self.preferences = prefs
 
-    # --- helper RBAC ---
+    # --- helper policy ---
 
     def has_role(self, role_name: str) -> bool:
         return any(r.name == role_name for r in self.roles)

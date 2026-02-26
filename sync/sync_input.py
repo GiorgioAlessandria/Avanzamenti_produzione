@@ -36,7 +36,6 @@ config = None
 sqlite_engine_app = None
 sqlserver_engine_app = None
 
-COUNTER_RIGHE = 0
 ALLOWED_WEEKDAYS = None
 START_H = None
 END_H = None
@@ -51,6 +50,8 @@ logging.basicConfig(
     level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s"
 )
 
+nuovo_ciclo = 0
+
 
 def init(config_path: str | pathlib.Path = None, *, force: bool = False):
     """
@@ -59,7 +60,7 @@ def init(config_path: str | pathlib.Path = None, *, force: bool = False):
     - force: se True reinizializza anche se era già stato fatto
     """
     global CONFIG, config, sqlite_engine_app, sqlserver_engine_app
-    global COUNTER_RIGHE, ALLOWED_WEEKDAYS, START_H, END_H, TIMEZONE, POLL_SECONDS_DEFAULT
+    global ALLOWED_WEEKDAYS, START_H, END_H, TIMEZONE, POLL_SECONDS_DEFAULT
     global ELEMENTI_ESCLUSI, ELEMENTI_SELEZIONATI
     global _INITIALIZED
 
@@ -77,8 +78,6 @@ def init(config_path: str | pathlib.Path = None, *, force: bool = False):
     sync_cfg = CONFIG["sync_config"]
     ELEMENTI_ESCLUSI = CONFIG["Elementi_esclusi"]
     ELEMENTI_SELEZIONATI = CONFIG["Elementi_selezionati"]
-
-    COUNTER_RIGHE = int(sync_cfg.get("counter_righe", 0))
     ALLOWED_WEEKDAYS = set(sync_cfg["giorni_settimanali"])
     START_H = int(sync_cfg["ora_inizio"])
     END_H = int(sync_cfg["ora_fine"])
@@ -233,11 +232,11 @@ def inserimento_reparto_da_risorsa(
 
 
 def unione_fasi_componenti(
-    df_fasi: pd.DataFrame, df_componenti: pd.DataFrame
+    df_fasi: pd.DataFrame, df_componenti: pd.DataFrame, df_articoli: pd.DataFrame
 ) -> pd.DataFrame:
     """
     Join tra il df delle fasi e quello dei componenti per fase. Al df_componenti vengono rinominate le righe IdRigaPadre e IdRiga rispettivamente in IdRiga e IdRigacomponente
-
+    Viene inoltre aggiunta la descrizione del componente per codice articolo
     :param df_fasi: dataframe fasi
     :type df_fasi: pd.DataFrame
     :param df_componenti: dataframe componenti per fase
@@ -259,6 +258,11 @@ def unione_fasi_componenti(
         how="left",
     )
     df_fasi_componenti = df_fasi_componenti.reset_index(drop=False)
+    df_fasi_componenti = df_fasi_componenti.merge(
+        df_articoli[["CodArt", "DesArt"]],
+        on="CodArt",
+        how="left",
+    )
     return df_fasi_componenti
 
 
@@ -573,7 +577,7 @@ def elaborazione_dati(session: Session) -> None:
     :type session: Session
     """
     ensure_init()
-    global COUNTER_RIGHE
+    global nuovo_ciclo
     # righe_inserite = int(0)
     df_odp = leggi_view(
         table="vwESOdP",
@@ -596,14 +600,16 @@ def elaborazione_dati(session: Session) -> None:
     df_odpcomponenti = leggi_view("vwESOdPComponenti").pipe(
         filtra_odp_componenti_con_odp, df_odp=df_odp
     )
-    df_fasi_componenti = unione_fasi_componenti(df_odpfasi, df_odpcomponenti)
+    df_articoli = leggi_view("vwESArticoli")
+    df_fasi_componenti = unione_fasi_componenti(
+        df_odpfasi, df_odpcomponenti, df_articoli
+    )
     distinta_componenti = generazione_dizionario(
         df=df_fasi_componenti,
         chiavi=chiavi,
         rename_col="DistintaMateriale",
-        list_columns=["CodArt", "Quantita", "NumFase"],
+        list_columns=["CodArt", "DesArt", "Quantita", "NumFase"],
     )
-    df_articoli = leggi_view("vwESArticoli")
     df_input_odp = (
         inserimento_distinta_in_odp(
             df_odp=df_odp, componenti_per_odp=distinta_componenti, chiavi=chiavi
@@ -633,11 +639,9 @@ def elaborazione_dati(session: Session) -> None:
     ]
     df_new = df_input_odp.loc[mask_new].copy().drop_duplicates(subset=pk_cols)
     df_new["FaseAttiva"] = 1
-
-    # 4) nuovo_ciclo deve essere PRIMA (quando counter==0)
-    if COUNTER_RIGHE == 0:
+    if nuovo_ciclo == 0:
         emit_event(session=session, topic="nuovo_ciclo")
-
+        nuovo_ciclo = 1
     # 5) inserimento (None->0) + catch IntegrityError
     try:
         righe_inserite = int(
@@ -655,7 +659,7 @@ def elaborazione_dati(session: Session) -> None:
         righe_inserite = 0
 
     # 6) nuovo_ordine SOLO se cambia rispetto al counter
-    if (righe_inserite != 0) and (righe_inserite != COUNTER_RIGHE):
+    if righe_inserite > 0:
         df_ev = df_new.sort_values(["IdDocumento", "IdRiga"], ascending=False).head(
             righe_inserite
         )
@@ -669,8 +673,7 @@ def elaborazione_dati(session: Session) -> None:
             scope=json.dumps(scope),
             payload_json=json.dumps(payload),
         )
-
-    COUNTER_RIGHE = righe_inserite
+        emit_event(session=session, topic="nuovo_ordine")
 
 
 # endregion
@@ -798,26 +801,14 @@ def wait_if_not_allowed(start_h: int, end_h: int, allowed_weekdays: set[int]) ->
         time_mod.sleep(s)
 
 
-def emit_event(
-    session, topic: str, scope: str | None = None, payload_json: str | None = None
-) -> None:
-    """
-    Inserisce a db una stringa per identificare l'inserimento di un nuovo odp
-
-    :param session: Session database
-    :param topic: tipologia evento
-    :type topic: str
-    :param scope: non utilizzato
-    :type scope: str | None
-    :param payload_json: descrizione evento
-    :type payload_json: str | None
-    """
+def emit_event(session, topic, scope=None, payload_json=None) -> None:
     try:
         session.add(ChangeEvent(topic=topic, scope=scope, payload_json=payload_json))
-    except:
-        session.rollback()
-    else:
         session.commit()
+    except Exception:
+        session.rollback()
+        logging.exception("Errore emit_event topic=%s", topic)
+        raise
 
 
 def read_cycle() -> None:
