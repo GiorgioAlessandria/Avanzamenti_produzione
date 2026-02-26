@@ -237,6 +237,14 @@ class RbacPolicy:
     #    if self.can("odp.read_all"):
     #        return q
 
+    def filter_input_odp_for_reparto(self, q, reparto_code: str):
+        """
+        Applica prima il filtro RBAC generale, poi restringe al reparto/tab richiesto.
+        Usa _match così resta compatibile con colonne salvate come JSON-like.
+        """
+        q = self.filter_input_odp(q)
+        return q.filter(_match(InputOdp.CodReparto, {str(reparto_code)}))
+
 
 #
 #    conds = [
