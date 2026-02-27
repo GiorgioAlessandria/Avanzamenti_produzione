@@ -1,3 +1,4 @@
+<!--toast nuovo ordine in carico -->
 <div class="toast lh-lg hide"
      role="alert"
      id="toast-1"
@@ -37,8 +38,7 @@
         </form>
     </div>
 </div>
-
-
+<!--toast sospensione ordine -->
 <div class="toast lh-lg hide"
      role="alert"
      id="toast-2"
@@ -73,11 +73,12 @@
             <input class="btn btn-lg btn-primary"
                    type="submit"
                    name="Inserimento"
-                   value="Preso in carico"
+                   value="Conferma"
                    style="font-size: 25px;">
         </form>
     </div>
 </div>
+<!--toast riattivazione ordine -->
 <div class="toast lh-lg hide"
      role="alert"
      id="toast-3"
@@ -112,11 +113,12 @@
             <input class="btn btn-lg btn-primary"
                    type="submit"
                    name="Inserimento"
-                   value="Preso in carico"
+                   value="Conferma"
                    style="font-size: 25px;">
         </form>
     </div>
 </div>
+<!--toast chiusura ordine -->
 <div class="toast lh-lg hide"
      role="alert"
      id="toast-4"
@@ -136,32 +138,6 @@
          style="opacity: 1;width: auto;height: auto;">
         <p style="font-size: 20px;">Stai chiudendo l'ordine</p>
         <form method="post">
-            <div class="d-grid flex-column">
-                <div class="row-1 align-items-start">
-                    <div class="col-1 flex-column">
-                        <input placeholder="Materiale prodotto"
-                               type="number"
-                               name="qty_prodotta"
-                               required="required"
-                               style="margin:2px;font-size:20px;">
-                    </div>
-                    <div class="col-2 flex-column">
-                        <input placeholder="Materiale conforme"
-                               type="number"
-                               required="required"
-                               name="qty_ok"
-                               style="margin:2px;font-size:20px;">
-                    </div>
-                </div>
-                <div class="row-2 flex-column align-items-start"
-                     style="justify-content: center;align-items: center">
-                    <input class="btn btn-lg btn-primary align-items-start"
-                           type="submit"
-                           name="Inserimento"
-                           value="Preso in carico"
-                           style="margin:2px;font-size: 20px; justify-content: center">
-                </div>
-            </div>
             <input type="hidden"
                    name="Ordine"
                    data-bind="ordine">
@@ -173,7 +149,12 @@
                    data-bind="quantita">
             <input type="hidden"
                    name="NumFase"
-                   data-bind="fase"><br>
+                   data-bind="fase">
+            <input class="btn btn-lg btn-primary"
+                   type="submit"
+                   name="Inserimento"
+                   value="Conferma"
+                   style="font-size: 25px;">
         </form>
     </div>
 </div>
@@ -226,7 +207,6 @@
                             <th data-sort="date"
                                 data-date-format="dd/mm/yyyy">Consegna
                             </th>
-                            <th data-sort="text">Lavorazione</th>
                             <th data-sort="text">Risorsa</th>
                         </tr>
                         </thead>
@@ -286,7 +266,6 @@
                             <th data-sort="text">Descrizione</th>
                             <th data-sort="text">Quantità</th>
                             <th data-sort="text">Data</th>
-                            <th data-sort="text">Lavorazione</th>
                             <th data-sort="text">Risorsa</th>
                             <th data-sort="text">Stato</th>
                         </tr>
@@ -300,31 +279,30 @@
                          style="width: auto;height: auto;">
                     <section class="d-flex flex-grow-1 justify-content-start m-2"
                              style="width: fit-content;height: fit-content;">
-                        <button class="btn btn-primary mx-2"
+                        <button class="btn btn-primary m-2"
                                 type="button"
-                                style="margin: 1px;"
                                 data-bs-target="#toast-2"
+                                data-use-selected="#ordini_in_corso"
+                                data-fill-target="#toast-2"
                                 data-bs-toggle="toast">
-                            Sospendi
-                            ordine
+                            Sospendi ordine
                         </button>
-                        <button class="btn btn-primary mx-2"
+                        <button class="btn btn-primary m-2"
                                 type="button"
-                                style="margin: 1px;"
                                 data-bs-target="#toast-3"
-                                data-bs-toggle="toast"
-                                disabled="">Riattiva ordine
+                                data-use-selected="#ordini_in_corso"
+                                data-fill-target="#toast-3"
+                                data-bs-toggle="toast">Riattiva ordine
                         </button>
                     </section>
                     <section class="text-end d-flex flex-grow-1 justify-content-end m-2"
                              style="width: auto;height: auto;">
-                        <button class="btn btn-primary"
-                                class="btn btn-primary mx-2"
+                        <button class="btn btn-primary m-2"
                                 type="button"
                                 data-bs-target="#toast-4"
-                                data-bs-toggle="toast"
-                                type="button">Chiudi
-                                              ordine
+                                data-use-selected="#ordini_in_corso"
+                                data-fill-target="#toast-4"
+                                data-bs-toggle="toast">Chiudi ordine
                         </button>
                     </section>
                 </section>
@@ -333,65 +311,37 @@
     </div>
 </main>
 
-<script>
-    (() => {
-        const root = document.querySelector("[data-bridge-tab]");
-        if (!root) return;
+<div class="modal fade"
+     id="modalMaterialiOrdine"
+     tabindex="-1"
+     aria-labelledby="modalMaterialiOrdineLabel"
+     aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title d-flex align-items-center gap-2"
+                    id="modalMaterialiOrdineLabel">
+                    <span>Materiale necessario</span>
+                    <span class="text-muted"
+                          id="modal-codart"></span>
+                </h5>
+                <button type="button"
+                        class="btn-close"
+                        data-bs-dismiss="modal"
+                        aria-label="Chiudi"></button>
+            </div>
 
-        const tab = root.dataset.bridgeTab;
-        const bridgeUrl = {{ url_for("main.api_home_bridge", tab="__TAB__")|tojson }}
-            .replace("__TAB__", tab);
+            <div class="modal-body"
+                 id="modal-materiali-body">
+                <div class="text-muted">Seleziona un ordine.</div>
+            </div>
 
-        let lastEventId = 0;
-        let inFlight = false;
-
-        function replaceFragments(fragments) {
-            Object.entries(fragments || {}).forEach(([tbodyId, html]) => {
-                const el = document.getElementById(tbodyId);
-                if (el) el.innerHTML = html;
-            });
-
-            if (window.applyRowColors) window.applyRowColors();
-            if (window.applyStateRowColorsAll) window.applyStateRowColorsAll();
-
-            document.querySelectorAll(".js-table-filter").forEach((input) => {
-                input.dispatchEvent(new Event("input", {bubbles: true}));
-            });
-        }
-
-        async function poll() {
-            if (inFlight) return;
-            inFlight = true;
-
-            try {
-                const res = await fetch(`${bridgeUrl}?after=${encodeURIComponent(lastEventId)}`, {
-                    headers: {"Accept": "application/json"},
-                    cache: "no-store"
-                });
-
-                if (res.redirected) {
-                    window.location = res.url;
-                    return;
-                }
-
-                if (!res.ok) {
-                    console.error("Bridge error:", res.status, await res.text());
-                    return;
-                }
-                const data = await res.json();
-                if (!data.changed) {
-                    lastEventId = data.last_event_id || lastEventId;
-                    return;
-                }
-
-                replaceFragments(data.fragments);
-                lastEventId = data.last_event_id || lastEventId;
-            } finally {
-                inFlight = false;
-            }
-        }
-
-        poll();
-        setInterval(poll, 5000);
-    })();
-</script>
+            <div class="modal-footer">
+                <button type="button"
+                        class="btn btn-secondary"
+                        data-bs-dismiss="modal">Chiudi
+                </button>
+            </div>
+        </div>
+    </div>
+</div>

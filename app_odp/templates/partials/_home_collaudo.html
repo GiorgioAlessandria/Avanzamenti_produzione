@@ -1,6 +1,7 @@
+<!--toast nuovo ordine in carico -->
 <div class="toast lh-lg hide"
      role="alert"
-     id="toast-ordine-sl"
+     id="toast-1"
      style="width: max-content;height: max-content;position: fixed; top: 1rem; right: 1rem; z-index: 2000;opacity: 1;filter: blur(0px);">
     <div class="toast-header">
         <strong class="me-auto"
@@ -37,13 +38,14 @@
         </form>
     </div>
 </div>
+<!--toast sospensione ordine -->
 <div class="toast lh-lg hide"
      role="alert"
-     id="toast-ordine-m"
+     id="toast-2"
      style="width: max-content;height: max-content;position: fixed; top: 1rem; right: 1rem; z-index: 2000;opacity: 1;filter: blur(0px);">
     <div class="toast-header">
         <strong class="me-auto"
-                style="font-size: 25px;">Presa in carico dell'ordine
+                style="font-size: 25px;">Sospensione dell'ordine
             <span data-bind-text="ordine"></span></strong>
         <button class="btn-close ms-2 mb-1 close"
                 type="button"
@@ -54,7 +56,7 @@
     <div class="toast-body d-flex flex-column justify-content-center align-items-center"
          role="alert"
          style="opacity: 1;width: auto;height: auto;">
-        <p style="font-size: 20px;">Stai prendendo in carico un nuovo ordine</p>
+        <p style="font-size: 20px;">Stai sospendendo l'ordine</p>
         <form method="post">
             <input type="hidden"
                    name="Ordine"
@@ -71,7 +73,87 @@
             <input class="btn btn-lg btn-primary"
                    type="submit"
                    name="Inserimento"
-                   value="Preso in carico"
+                   value="Conferma"
+                   style="font-size: 25px;">
+        </form>
+    </div>
+</div>
+<!--toast riattivazione ordine -->
+<div class="toast lh-lg hide"
+     role="alert"
+     id="toast-3"
+     style="width: max-content;height: max-content;position: fixed; top: 1rem; right: 1rem; z-index: 2000;opacity: 1;filter: blur(0px);">
+    <div class="toast-header">
+        <strong class="me-auto"
+                style="font-size: 25px;">Riattivazione dell'ordine
+            <span data-bind-text="ordine"></span></strong>
+        <button class="btn-close ms-2 mb-1 close"
+                type="button"
+                aria-label="Close"
+                data-bs-dismiss="toast"
+                style="font-size: 25px;"></button>
+    </div>
+    <div class="toast-body d-flex flex-column justify-content-center align-items-center"
+         role="alert"
+         style="opacity: 1;width: auto;height: auto;">
+        <p style="font-size: 20px;">Stai riattivando l'ordine</p>
+        <form method="post">
+            <input type="hidden"
+                   name="Ordine"
+                   data-bind="ordine">
+            <input type="hidden"
+                   name="CodArt"
+                   data-bind="codice">
+            <input type="hidden"
+                   name="Quantita"
+                   data-bind="quantita">
+            <input type="hidden"
+                   name="NumFase"
+                   data-bind="fase">
+            <input class="btn btn-lg btn-primary"
+                   type="submit"
+                   name="Inserimento"
+                   value="Conferma"
+                   style="font-size: 25px;">
+        </form>
+    </div>
+</div>
+<!--toast chiusura ordine -->
+<div class="toast lh-lg hide"
+     role="alert"
+     id="toast-4"
+     style="width: max-content;height: max-content;position: fixed; top: 1rem; right: 1rem; z-index: 2000;opacity: 1;filter: blur(0px);">
+    <div class="toast-header">
+        <strong class="me-auto"
+                style="font-size: 25px;">Chiusura dell'ordine
+            <span data-bind-text="ordine"></span></strong>
+        <button class="btn-close ms-2 mb-1 close"
+                type="button"
+                aria-label="Close"
+                data-bs-dismiss="toast"
+                style="font-size: 25px;"></button>
+    </div>
+    <div class="toast-body d-flex flex-column justify-content-center align-items-center"
+         role="alert"
+         style="opacity: 1;width: auto;height: auto;">
+        <p style="font-size: 20px;">Stai chiudendo l'ordine</p>
+        <form method="post">
+            <input type="hidden"
+                   name="Ordine"
+                   data-bind="ordine">
+            <input type="hidden"
+                   name="CodArt"
+                   data-bind="codice">
+            <input type="hidden"
+                   name="Quantita"
+                   data-bind="quantita">
+            <input type="hidden"
+                   name="NumFase"
+                   data-bind="fase">
+            <input class="btn btn-lg btn-primary"
+                   type="submit"
+                   name="Inserimento"
+                   value="Conferma"
                    style="font-size: 25px;">
         </form>
     </div>
@@ -181,7 +263,6 @@
                         <th data-sort="date"
                             data-date-format="dd/mm/yyyy">Consegna
                         </th>
-                        <th data-sort="text">Lavorazione</th>
                         <th data-sort="text">Risorsa</th>
                         <th data-sort="text">Stato</th>
                     </tr>
@@ -329,31 +410,31 @@
             </div>
             <section class="text-center d-flex w-100 h-100 align-items-center"
                      style="width: auto;height: auto;">
-                <section class="d-flex flex-grow-1 justify-content-start m-1"
+                <section class="d-flex flex-grow-1 justify-content-start m-2"
                          style="width: fit-content;height: fit-content;">
-                    <button class="btn btn-primary mx-2"
+                    <button class="btn btn-primary m-2"
                             type="button"
-                            style="margin: 1px;"
-                            data-bs-target="#toast-6"
+                            data-bs-target="#toast-2"
+                            data-use-selected="#ordini_in_corso"
+                            data-fill-target="#toast-2"
                             data-bs-toggle="toast">
-                        Sospendi
-                        ordine
+                        Sospendi ordine
                     </button>
-                    <button class="btn btn-primary disabled mx-2"
+                    <button class="btn btn-primary m-2"
                             type="button"
-                            style="margin: 1px;"
-                            disabled=""
-                            data-bs-target="#toast-8"
-                            data-bs-toggle="toast">
-                        Riattiva
-                        ordine
+                            data-bs-target="#toast-3"
+                            data-use-selected="#ordini_in_corso"
+                            data-fill-target="#toast-3"
+                            data-bs-toggle="toast">Riattiva ordine
                     </button>
                 </section>
                 <section class="text-end d-flex flex-grow-1 justify-content-end m-2"
                          style="width: auto;height: auto;">
-                    <button class="btn btn-primary"
+                    <button class="btn btn-primary m-2"
                             type="button"
-                            data-bs-target="#toast-7"
+                            data-bs-target="#toast-4"
+                            data-use-selected="#ordini_in_corso"
+                            data-fill-target="#toast-4"
                             data-bs-toggle="toast">Chiudi ordine
                     </button>
                 </section>
@@ -361,63 +442,37 @@
         </div>
     </div>
 </main>
-<script>
-    (() => {
-        const root = document.querySelector("[data-bridge-tab]");
-        if (!root) return;
+<div class="modal fade"
+     id="modalMaterialiOrdine"
+     tabindex="-1"
+     aria-labelledby="modalMaterialiOrdineLabel"
+     aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title d-flex align-items-center gap-2"
+                    id="modalMaterialiOrdineLabel">
+                    <span>Materiale necessario</span>
+                    <span class="text-muted"
+                          id="modal-codart"></span>
+                </h5>
+                <button type="button"
+                        class="btn-close"
+                        data-bs-dismiss="modal"
+                        aria-label="Chiudi"></button>
+            </div>
 
-        const tab = root.dataset.bridgeTab;
-        const bridgeUrl = {{ url_for("main.api_home_bridge", tab="__TAB__")|tojson }}
-            .replace("__TAB__", tab);
+            <div class="modal-body"
+                 id="modal-materiali-body">
+                <div class="text-muted">Seleziona un ordine.</div>
+            </div>
 
-        let lastEventId = 0;
-        let inFlight = false;
-
-        function replaceFragments(fragments) {
-            Object.entries(fragments || {}).forEach(([tbodyId, html]) => {
-                const el = document.getElementById(tbodyId);
-                if (el) el.innerHTML = html;
-            });
-
-            if (window.applyRowColors) window.applyRowColors();
-            if (window.applyStateRowColorsAll) window.applyStateRowColorsAll();
-
-            document.querySelectorAll(".js-table-filter").forEach((input) => {
-                input.dispatchEvent(new Event("input", {bubbles: true}));
-            });
-        }
-
-        async function poll() {
-            if (inFlight) return;
-            inFlight = true;
-
-            try {
-                const res = await fetch(`${bridgeUrl}?after=${encodeURIComponent(lastEventId)}`, {
-                    headers: {"Accept": "application/json"},
-                    cache: "no-store"
-                });
-
-                if (res.redirected) {
-                    window.location = res.url;
-                    return;
-                }
-
-                if (!res.ok) return;
-
-                const data = await res.json();
-                if (!data.changed) {
-                    lastEventId = data.last_event_id || lastEventId;
-                    return;
-                }
-
-                replaceFragments(data.fragments);
-                lastEventId = data.last_event_id || lastEventId;
-            } finally {
-                inFlight = false;
-            }
-        }
-
-        poll();
-        setInterval(poll, 5000);
-    })();
-</script>
+            <div class="modal-footer">
+                <button type="button"
+                        class="btn btn-secondary"
+                        data-bs-dismiss="modal">Chiudi
+                </button>
+            </div>
+        </div>
+    </div>
+</div>

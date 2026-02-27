@@ -22,7 +22,7 @@
             <td>{{ singolo_odp.DesArt }}</td>
             <td>{{ singolo_odp.CodMatricola }}</td>
             <td>{{ singolo_odp.DataFineSched | db_date("%Y-%m-%d %H:%M:%S","%d/%m/%Y") }}</td>
-            <td>{{ singolo_odp.FaseAttiva | db_list_display }}</td>
+            <td>{{ singolo_odp.FaseAttiva }}</td>
             <td data-col="stato">{{ singolo_odp.StatoOrdine }}</td>
         </tr>
     {% endif %}

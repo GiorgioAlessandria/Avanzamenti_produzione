@@ -811,7 +811,7 @@ def emit_event(session, topic, scope=None, payload_json=None) -> None:
         raise
 
 
- def read_cycle() -> None:
+def read_cycle() -> None:
     """
     funzione per elaborazione dati e calcolo del tempo di attività dell'intero programma con polling a n secondi
     """

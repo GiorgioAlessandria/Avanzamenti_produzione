@@ -26,7 +26,6 @@
             <td>{{ singolo_odp.DesArt }}</td>
             <td>{{ singolo_odp.Quantita }}</td>
             <td>{{ singolo_odp.DataFineSched | db_date("%Y-%m-%d %H:%M:%S","%d/%m/%Y") }}</td>
-            <td>{{ singolo_odp.CodLavorazione | db_list_display }}</td>
             <td>{{ singolo_odp.CodRisorsaProd | db_list_display }}</td>
             <td data-col="stato">{{ singolo_odp.StatoOrdine }}</td>
         </tr>

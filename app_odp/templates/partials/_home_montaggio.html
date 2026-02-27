@@ -1,6 +1,7 @@
+<!--toast nuovo ordine in carico -->
 <div class="toast lh-lg hide"
      role="alert"
-     id="toast-ordine-sl"
+     id="toast-1"
      style="width: max-content;height: max-content;position: fixed; top: 1rem; right: 1rem; z-index: 2000;opacity: 1;filter: blur(0px);">
     <div class="toast-header">
         <strong class="me-auto"
@@ -37,13 +38,14 @@
         </form>
     </div>
 </div>
+<!--toast sospensione ordine -->
 <div class="toast lh-lg hide"
      role="alert"
-     id="toast-ordine-m"
+     id="toast-2"
      style="width: max-content;height: max-content;position: fixed; top: 1rem; right: 1rem; z-index: 2000;opacity: 1;filter: blur(0px);">
     <div class="toast-header">
         <strong class="me-auto"
-                style="font-size: 25px;">Presa in carico dell'ordine
+                style="font-size: 25px;">Sospensione dell'ordine
             <span data-bind-text="ordine"></span></strong>
         <button class="btn-close ms-2 mb-1 close"
                 type="button"
@@ -54,7 +56,7 @@
     <div class="toast-body d-flex flex-column justify-content-center align-items-center"
          role="alert"
          style="opacity: 1;width: auto;height: auto;">
-        <p style="font-size: 20px;">Stai prendendo in carico un nuovo ordine</p>
+        <p style="font-size: 20px;">Stai sospendendo l'ordine</p>
         <form method="post">
             <input type="hidden"
                    name="Ordine"
@@ -71,7 +73,207 @@
             <input class="btn btn-lg btn-primary"
                    type="submit"
                    name="Inserimento"
-                   value="Preso in carico"
+                   value="Conferma"
+                   style="font-size: 25px;">
+        </form>
+    </div>
+</div>
+<!--toast riattivazione ordine -->
+<div class="toast lh-lg hide"
+     role="alert"
+     id="toast-3"
+     style="width: max-content;height: max-content;position: fixed; top: 1rem; right: 1rem; z-index: 2000;opacity: 1;filter: blur(0px);">
+    <div class="toast-header">
+        <strong class="me-auto"
+                style="font-size: 25px;">Riattivazione dell'ordine
+            <span data-bind-text="ordine"></span></strong>
+        <button class="btn-close ms-2 mb-1 close"
+                type="button"
+                aria-label="Close"
+                data-bs-dismiss="toast"
+                style="font-size: 25px;"></button>
+    </div>
+    <div class="toast-body d-flex flex-column justify-content-center align-items-center"
+         role="alert"
+         style="opacity: 1;width: auto;height: auto;">
+        <p style="font-size: 20px;">Stai riattivando l'ordine</p>
+        <form method="post">
+            <input type="hidden"
+                   name="Ordine"
+                   data-bind="ordine">
+            <input type="hidden"
+                   name="CodArt"
+                   data-bind="codice">
+            <input type="hidden"
+                   name="Quantita"
+                   data-bind="quantita">
+            <input type="hidden"
+                   name="NumFase"
+                   data-bind="fase">
+            <input class="btn btn-lg btn-primary"
+                   type="submit"
+                   name="Inserimento"
+                   value="Conferma"
+                   style="font-size: 25px;">
+        </form>
+    </div>
+</div>
+<!--toast chiusura ordine -->
+<div class="toast lh-lg hide"
+     role="alert"
+     id="toast-4"
+     style="width: max-content;height: max-content;position: fixed; top: 1rem; right: 1rem; z-index: 2000;opacity: 1;filter: blur(0px);">
+    <div class="toast-header">
+        <strong class="me-auto"
+                style="font-size: 25px;">Chiusura dell'ordine
+            <span data-bind-text="ordine"></span></strong>
+        <button class="btn-close ms-2 mb-1 close"
+                type="button"
+                aria-label="Close"
+                data-bs-dismiss="toast"
+                style="font-size: 25px;"></button>
+    </div>
+    <div class="toast-body d-flex flex-column justify-content-center align-items-center"
+         role="alert"
+         style="opacity: 1;width: auto;height: auto;">
+        <p style="font-size: 20px;">Stai chiudendo l'ordine</p>
+        <form method="post">
+            <input type="hidden"
+                   name="Ordine"
+                   data-bind="ordine">
+            <input type="hidden"
+                   name="CodArt"
+                   data-bind="codice">
+            <input type="hidden"
+                   name="Quantita"
+                   data-bind="quantita">
+            <input type="hidden"
+                   name="NumFase"
+                   data-bind="fase">
+            <input class="btn btn-lg btn-primary"
+                   type="submit"
+                   name="Inserimento"
+                   value="Conferma"
+                   style="font-size: 25px;">
+        </form>
+    </div>
+</div>
+<!--toast sospensione ordine -->
+<div class="toast lh-lg hide"
+     role="alert"
+     id="toast-5"
+     style="width: max-content;height: max-content;position: fixed; top: 1rem; right: 1rem; z-index: 2000;opacity: 1;filter: blur(0px);">
+    <div class="toast-header">
+        <strong class="me-auto"
+                style="font-size: 25px;">Sospensione dell'ordine
+            <span data-bind-text="ordine"></span></strong>
+        <button class="btn-close ms-2 mb-1 close"
+                type="button"
+                aria-label="Close"
+                data-bs-dismiss="toast"
+                style="font-size: 25px;"></button>
+    </div>
+    <div class="toast-body d-flex flex-column justify-content-center align-items-center"
+         role="alert"
+         style="opacity: 1;width: auto;height: auto;">
+        <p style="font-size: 20px;">Stai sospendendo l'ordine</p>
+        <form method="post">
+            <input type="hidden"
+                   name="Ordine"
+                   data-bind="ordine">
+            <input type="hidden"
+                   name="CodArt"
+                   data-bind="codice">
+            <input type="hidden"
+                   name="Quantita"
+                   data-bind="quantita">
+            <input type="hidden"
+                   name="NumFase"
+                   data-bind="fase">
+            <input class="btn btn-lg btn-primary"
+                   type="submit"
+                   name="Inserimento"
+                   value="Conferma"
+                   style="font-size: 25px;">
+        </form>
+    </div>
+</div>
+<!--toast riattivazione ordine -->
+<div class="toast lh-lg hide"
+     role="alert"
+     id="toast-6"
+     style="width: max-content;height: max-content;position: fixed; top: 1rem; right: 1rem; z-index: 2000;opacity: 1;filter: blur(0px);">
+    <div class="toast-header">
+        <strong class="me-auto"
+                style="font-size: 25px;">Riattivazione dell'ordine
+            <span data-bind-text="ordine"></span></strong>
+        <button class="btn-close ms-2 mb-1 close"
+                type="button"
+                aria-label="Close"
+                data-bs-dismiss="toast"
+                style="font-size: 25px;"></button>
+    </div>
+    <div class="toast-body d-flex flex-column justify-content-center align-items-center"
+         role="alert"
+         style="opacity: 1;width: auto;height: auto;">
+        <p style="font-size: 20px;">Stai riattivando l'ordine</p>
+        <form method="post">
+            <input type="hidden"
+                   name="Ordine"
+                   data-bind="ordine">
+            <input type="hidden"
+                   name="CodArt"
+                   data-bind="codice">
+            <input type="hidden"
+                   name="Quantita"
+                   data-bind="quantita">
+            <input type="hidden"
+                   name="NumFase"
+                   data-bind="fase">
+            <input class="btn btn-lg btn-primary"
+                   type="submit"
+                   name="Inserimento"
+                   value="Conferma"
+                   style="font-size: 25px;">
+        </form>
+    </div>
+</div>
+<!--toast chiusura ordine -->
+<div class="toast lh-lg hide"
+     role="alert"
+     id="toast-7"
+     style="width: max-content;height: max-content;position: fixed; top: 1rem; right: 1rem; z-index: 2000;opacity: 1;filter: blur(0px);">
+    <div class="toast-header">
+        <strong class="me-auto"
+                style="font-size: 25px;">Chiusura dell'ordine
+            <span data-bind-text="ordine"></span></strong>
+        <button class="btn-close ms-2 mb-1 close"
+                type="button"
+                aria-label="Close"
+                data-bs-dismiss="toast"
+                style="font-size: 25px;"></button>
+    </div>
+    <div class="toast-body d-flex flex-column justify-content-center align-items-center"
+         role="alert"
+         style="opacity: 1;width: auto;height: auto;">
+        <p style="font-size: 20px;">Stai chiudendo l'ordine</p>
+        <form method="post">
+            <input type="hidden"
+                   name="Ordine"
+                   data-bind="ordine">
+            <input type="hidden"
+                   name="CodArt"
+                   data-bind="codice">
+            <input type="hidden"
+                   name="Quantita"
+                   data-bind="quantita">
+            <input type="hidden"
+                   name="NumFase"
+                   data-bind="fase">
+            <input class="btn btn-lg btn-primary"
+                   type="submit"
+                   name="Inserimento"
+                   value="Conferma"
                    style="font-size: 25px;">
         </form>
     </div>
@@ -122,7 +324,6 @@
                         <th data-sort="date"
                             data-date-format="dd/mm/yyyy">Consegna
                         </th>
-                        <th data-sort="text">Lavorazione</th>
                         <th data-sort="text">Risorsa</th>
                     </tr>
                     </thead>
@@ -181,7 +382,6 @@
                         <th data-sort="date"
                             data-date-format="dd/mm/yyyy">Consegna
                         </th>
-                        <th data-sort="text">Lavorazione</th>
                         <th data-sort="text">Risorsa</th>
                         <th data-sort="text">Stato</th>
                     </tr>
@@ -195,25 +395,30 @@
                      style="width: auto;height: auto;">
                 <section class="d-flex flex-grow-1 justify-content-start m-2"
                          style="width: fit-content;height: fit-content;">
-                    <button class="btn btn-primary mx-2"
+                    <button class="btn btn-primary m-2"
                             type="button"
-                            style="margin: 1px;"
-                            data-bs-target="#toast-1"
+                            data-bs-target="#toast-2"
+                            data-use-selected="#ordini_in_corso_sl"
+                            data-fill-target="#toast-2"
                             data-bs-toggle="toast">
-                        Sospendi
-                        ordine
+                        Sospendi ordine
                     </button>
-                    <button class="btn btn-primary disabled mx-2"
+                    <button class="btn btn-primary m-2"
                             type="button"
-                            style="margin: 1px;"
-                            disabled="">Riattiva ordine
+                            data-bs-target="#toast-3"
+                            data-use-selected="#ordini_in_corso_sl"
+                            data-fill-target="#toast-3"
+                            data-bs-toggle="toast">Riattiva ordine
                     </button>
                 </section>
                 <section class="text-end d-flex flex-grow-1 justify-content-end m-2"
                          style="width: auto;height: auto;">
-                    <button class="btn btn-primary"
-                            type="button">Chiudi
-                                          ordine
+                    <button class="btn btn-primary m-2"
+                            type="button"
+                            data-bs-target="#toast-4"
+                            data-use-selected="#ordini_in_corso_sl"
+                            data-fill-target="#toast-4"
+                            data-bs-toggle="toast">Chiudi ordine
                     </button>
                 </section>
             </section>
@@ -329,31 +534,31 @@
             </div>
             <section class="text-center d-flex w-100 h-100 align-items-center"
                      style="width: auto;height: auto;">
-                <section class="d-flex flex-grow-1 justify-content-start m-1"
+                <section class="d-flex flex-grow-1 justify-content-start m-2"
                          style="width: fit-content;height: fit-content;">
-                    <button class="btn btn-primary mx-2"
+                    <button class="btn btn-primary m-2"
                             type="button"
-                            style="margin: 1px;"
-                            data-bs-target="#toast-6"
+                            data-bs-target="#toast-5"
+                            data-use-selected="#ordini_in_corso_m"
+                            data-fill-target="#toast-5"
                             data-bs-toggle="toast">
-                        Sospendi
-                        ordine
+                        Sospendi ordine
                     </button>
-                    <button class="btn btn-primary disabled mx-2"
+                    <button class="btn btn-primary m-2"
                             type="button"
-                            style="margin: 1px;"
-                            disabled=""
-                            data-bs-target="#toast-8"
-                            data-bs-toggle="toast">
-                        Riattiva
-                        ordine
+                            data-bs-target="#toast-6"
+                            data-use-selected="#ordini_in_corso_m"
+                            data-fill-target="#toast-6"
+                            data-bs-toggle="toast">Riattiva ordine
                     </button>
                 </section>
                 <section class="text-end d-flex flex-grow-1 justify-content-end m-2"
                          style="width: auto;height: auto;">
-                    <button class="btn btn-primary"
+                    <button class="btn btn-primary m-2"
                             type="button"
                             data-bs-target="#toast-7"
+                            data-use-selected="#ordini_in_corso_m"
+                            data-fill-target="#toast-7"
                             data-bs-toggle="toast">Chiudi ordine
                     </button>
                 </section>
@@ -395,129 +600,3 @@
         </div>
     </div>
 </div>
-<script>
-    document.addEventListener("DOMContentLoaded", function () {
-        const modalEl = document.getElementById("modalMaterialiOrdine");
-        const modalBody = document.getElementById("modal-materiali-body");
-        const modalCodArt = document.getElementById("modal-codart");
-
-        const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
-
-        document.addEventListener("click", function (e) {
-            const trigger = e.target.closest(".open-materiali-modal");
-            if (!trigger) return;
-
-            e.preventDefault();
-
-            const codArt = trigger.dataset.codart || "";
-            const faseAttiva = Number(trigger.dataset.faseAttiva);
-            const distintaRaw = trigger.getAttribute("data-distinta") || "[]";
-
-            modalCodArt.textContent = codArt ? `- ${codArt}` : "";
-            modalBody.innerHTML = `
-      <div class="d-flex align-items-center gap-2">
-        <div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>
-        <span>Caricamento materiali...</span>
-      </div>
-    `;
-
-            modal.show();
-
-            try {
-                const distinta = parseDistinta(distintaRaw);
-
-                const materialiFiltrati = distinta.filter(item => {
-                    return Number(item.NumFase) === faseAttiva;
-                });
-
-                if (!materialiFiltrati.length) {
-                    modalBody.innerHTML = `
-          <div class="alert alert-warning mb-0">
-            Nessun materiale trovato per la fase attiva <strong>${escapeHtml(String(faseAttiva))}</strong>.
-          </div>
-        `;
-                    bootstrap.Modal.getInstance(modalEl)?.handleUpdate();
-                    return;
-                }
-
-                let rows = "";
-                for (const item of materialiFiltrati) {
-                    rows += `
-          <tr>
-            <td>${escapeHtml(item.CodArt ?? "")}</td>
-            <td>${escapeHtml(item.DesArt ?? "")}</td>
-            <td class="text-end">${formatQty(item.Quantita)}</td>
-            <td class="text-center">${escapeHtml(String(item.NumFase ?? ""))}</td>
-          </tr>
-        `;
-                }
-
-                modalBody.innerHTML = `
-        <div class="table-responsive">
-          <table class="table table-sm table-striped table-hover align-middle mb-0">
-            <thead class="table-light">
-              <tr>
-                <th>Codice Articolo</th>
-                <th>Descrizione</th>
-                <th class="text-end">Quantità</th>
-                <th class="text-center">Fase</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${rows}
-            </tbody>
-          </table>
-        </div>
-      `;
-
-                bootstrap.Modal.getInstance(modalEl)?.handleUpdate();
-
-            } catch (err) {
-                console.error(err);
-                modalBody.innerHTML = `
-        <div class="alert alert-danger mb-0">
-          Errore nel parsing della distinta materiali.
-        </div>
-      `;
-                bootstrap.Modal.getInstance(modalEl)?.handleUpdate();
-            }
-        });
-
-        function parseDistinta(raw) {
-            let parsed = raw;
-
-            // Caso 1: data-distinta contiene già JSON array testuale
-            // Caso 2: data-distinta contiene una stringa JSON serializzata da tojson
-            parsed = JSON.parse(parsed);
-
-            // Se dopo il primo parse ottieni ancora una stringa, rifai parse
-            if (typeof parsed === "string") {
-                parsed = JSON.parse(parsed);
-            }
-
-            if (!Array.isArray(parsed)) {
-                return [];
-            }
-
-            return parsed;
-        }
-
-        function formatQty(value) {
-            const n = Number(value);
-            if (Number.isNaN(n)) return "";
-            return n.toLocaleString("it-IT", {
-                minimumFractionDigits: 0,
-                maximumFractionDigits: 3
-            });
-        }
-
-        function escapeHtml(value) {
-            return String(value)
-                .replaceAll("&", "&amp;")
-                .replaceAll("<", "&lt;")
-                .replaceAll(">", "&gt;")
-                .replaceAll('"', "&quot;")
-                .replaceAll("'", "&#039;");
-        }
-    });
-</script>
