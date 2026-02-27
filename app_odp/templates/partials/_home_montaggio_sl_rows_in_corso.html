@@ -10,7 +10,16 @@
             data-statoordine="{{ singolo_odp.StatoOrdine }}"
         >
             <td>{{ singolo_odp.RifRegistraz }}</td>
-            <td>{{ singolo_odp.CodArt }}</td>
+            <td>
+                <button
+                        type="button"
+                        class="btn btn-link p-0 text-decoration-none open-materiali-modal"
+                        data-codart="{{ singolo_odp.CodArt|e }}"
+                        data-fase-attiva="{{ singolo_odp.FaseAttiva }}"
+                        data-distinta='{{ singolo_odp.DistintaMateriale|tojson }}'>
+                    {{ singolo_odp.CodArt }}
+                </button>
+            </td>
             <td>{{ singolo_odp.DesArt }}</td>
             <td>{{ singolo_odp.Quantita }}</td>
             <td>{{ singolo_odp.DataFineSched | db_date("%Y-%m-%d %H:%M:%S","%d/%m/%Y") }}</td>

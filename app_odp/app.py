@@ -111,8 +111,4 @@ def create_app():
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(main_bp)
-
-    from app_odp.api import api_bp
-
-    app.register_blueprint(api_bp)
     return app
