@@ -70,6 +70,14 @@
             <input type="hidden"
                    name="NumFase"
                    data-bind="fase">
+            <label for="causale_attivita"
+                   style="font-size: 20px;"> Inserire la causale della sospensione:<br>
+                <select id="causale_attivita">
+                    {% for causale in causali_attivita %}
+                        <option value="{{ causale }}">{{ causale }}</option>
+                    {% endfor %}
+                </select>
+            </label><br>
             <input class="btn btn-lg btn-primary"
                    type="submit"
                    name="Inserimento"
@@ -476,3 +484,68 @@
         </div>
     </div>
 </div>
+
+<script>
+    function getStatoOrdine(source) {
+        if (!source) return "";
+
+        if (source.dataset?.statoordine) {
+            return source.dataset.statoordine.trim();
+        }
+
+        const withState = source.closest?.("[data-statoordine]");
+        if (withState?.dataset?.statoordine) {
+            return withState.dataset.statoordine.trim();
+        }
+
+        const row = source.closest?.("tr");
+        if (row) {
+            if (row.dataset?.statoordine) {
+                return row.dataset.statoordine.trim();
+            }
+
+            const innerWithState = row.querySelector("[data-statoordine]");
+            if (innerWithState?.dataset?.statoordine) {
+                return innerWithState.dataset.statoordine.trim();
+            }
+
+            const statoCell = row.querySelector('td[data-col="stato"]');
+            if (statoCell) {
+                return statoCell.textContent.trim();
+            }
+        }
+
+        return "";
+    }
+
+    function aggiornaBottoniOrdine(source) {
+        const btnSospensione = document.getElementById("sospensione_ordine");
+        const btnRiattivazione = document.getElementById("riattivazione_ordine");
+
+        if (!btnSospensione || !btnRiattivazione) return;
+
+        const stato = getStatoOrdine(source);
+
+        if (stato === "Attivo") {
+            btnSospensione.disabled = false;
+            btnRiattivazione.disabled = true;
+            return;
+        }
+
+        if (stato === "In Sospeso") {
+            btnSospensione.disabled = true;
+            btnRiattivazione.disabled = false;
+            return;
+        }
+
+        btnSospensione.disabled = true;
+        btnRiattivazione.disabled = true;
+    }
+
+    document.addEventListener("click", function (event) {
+        const row = event.target.closest("tr[data-row-key]");
+        if (!row) return;
+
+        aggiornaBottoniOrdine(event.target);
+    });
+</script>

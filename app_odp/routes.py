@@ -1,8 +1,8 @@
 from flask import render_template, Blueprint, request, url_for, abort
 from flask_login import login_required, current_user
-from sqlalchemy import func
+from sqlalchemy import func, select
 
-from app_odp.models import InputOdp, db, ChangeEvent
+from app_odp.models import InputOdp, db, ChangeEvent, Causaliattivita
 from app_odp.policy.decorator import require_perm
 from app_odp.policy.policy import RbacPolicy
 
@@ -131,12 +131,25 @@ def home():
 
     q = _tab_scoped_odp(policy, req["reparto"])
     odp = list(q.all())
+
+    causali = (
+        db.session.execute(
+            select(Causaliattivita.DesCausaleAttivita).order_by(
+                Causaliattivita.DesCausaleAttivita
+            )
+        )
+        .scalars()
+        .all()
+    )
     return render_template(
         "home.j2",
         active_partial=template,
         active_tab=tab,
         policy=policy,
         odp=odp,
+        causali_attivita=causali,
+        bridge_url=url_for("main.api_home_bridge", tab=tab),
+        bridge_last_event_id=_last_change_event_id(),
     )
 
 

@@ -434,152 +434,6 @@
         })();
     </script>
     <script>
-        (() => {
-            // --------- Config ----------
-            const UPDATES_URL = "/api/updates";
-            const CLAIM_URL = "/api/odp/claim";
-            const POLL_BASE_MS = 2000;
-            const POLL_MAX_MS = 15000;
-
-            // last_id persistente (tab per tab)
-            const LS_KEY = "odp_last_event_id";
-            let afterId = Number(localStorage.getItem(LS_KEY) || "0");
-
-            // dedup client-side (at-least-once delivery)
-            const seenEventIds = new Set();
-
-            function showToast(msg) {
-                // opzionale: se hai un toast generico in pagina
-                const el = document.getElementById("toast-info");
-                if (!el || !window.bootstrap) {
-                    console.log("[toast]", msg);
-                    return;
-                }
-                const slot = el.querySelector("[data-role=toast-msg]");
-                if (slot) slot.textContent = msg;
-                bootstrap.Toast.getOrCreateInstance(el).show();
-            }
-
-            function findRowByKey(rowKey) {
-                return document.querySelector(`tr[data-row-key="${CSS.escape(rowKey)}"]`);
-            }
-
-            function disableRow(tr, reason) {
-                if (!tr) return;
-                tr.classList.add("opacity-50");
-                tr.dataset.claimed = "1";
-                tr.title = reason || "Ordine già preso in carico";
-            }
-
-            function enableRow(tr) {
-                if (!tr) return;
-                tr.classList.remove("opacity-50");
-                delete tr.dataset.claimed;
-                tr.title = "";
-            }
-
-            function applyEvent(ev) {
-                if (!ev || !ev.topic) return;
-                if (seenEventIds.has(ev.event_id)) return;
-                seenEventIds.add(ev.event_id);
-
-                // Claim: grigio e blocca
-                if (ev.topic === "odp_claimed") {
-                    const rowKey = `${ev.id_documento},${ev.id_riga}`;
-                    disableRow(findRowByKey(rowKey), "Ordine preso in carico da un altro operatore");
-                    return;
-                }
-
-                // Release: riabilita
-                if (ev.topic === "odp_released") {
-                    const rowKey = `${ev.id_documento},${ev.id_riga}`;
-                    enableRow(findRowByKey(rowKey));
-                    return;
-                }
-
-                // Nuovo ordine: per ora solo notifica (append opzionale se vuoi costruire HTML riga)
-                if (ev.topic === "nuovo_ordine") {
-                    showToast("Nuovo ordine disponibile");
-                    return;
-                }
-            }
-
-            async function pollLoop() {
-                let backoff = POLL_BASE_MS;
-
-                while (true) {
-                    try {
-                        const url = `${UPDATES_URL}?after_id=${afterId}&limit=50`;
-                        const res = await fetch(url, {credentials: "same-origin"});
-                        if (!res.ok) throw new Error("HTTP " + res.status);
-
-                        const data = await res.json();
-                        const events = data.events || [];
-                        for (const ev of events) applyEvent(ev);
-
-                        afterId = Number(data.last_id || afterId);
-                        localStorage.setItem(LS_KEY, String(afterId));
-
-                        backoff = POLL_BASE_MS;
-                    } catch (err) {
-                        console.warn("[poll] errore:", err);
-                        backoff = Math.min(POLL_MAX_MS, Math.round(backoff * 1.5));
-                    }
-
-                    await new Promise(r => setTimeout(r, backoff));
-                }
-            }
-
-            async function claim(idDocumento, idRiga) {
-                const res = await fetch(CLAIM_URL, {
-                    method: "POST",
-                    credentials: "same-origin",
-                    headers: {"Content-Type": "application/json"},
-                    body: JSON.stringify({id_documento: idDocumento, id_riga: idRiga}),
-                });
-
-                if (res.status === 409) {
-                    showToast("Ordine già preso in carico da un altro operatore.");
-                    return;
-                }
-                if (!res.ok) {
-                    showToast("Errore nel prendere in carico l'ordine.");
-                    return;
-                }
-                const data = await res.json();
-                if (data.status === "claimed" || data.status === "already_mine") {
-                    showToast("Ordine preso in carico.");
-                    const rowKey = `${idDocumento},${idRiga}`;
-                    disableRow(findRowByKey(rowKey), "In carico a te");
-                }
-            }
-
-            // Click handler sul bottone nel toast
-            document.addEventListener("click", (e) => {
-                const btn = e.target.closest("[data-action='odp-claim']");
-                if (!btn) return;
-
-                const toast = btn.closest(".toast");
-                if (!toast) return;
-
-                const idDocumentoEl = toast.querySelector("input[name='id_documento']");
-                const idRigaEl = toast.querySelector("input[name='id_riga']");
-                const idDocumento = (idDocumentoEl ? idDocumentoEl.value : "").trim();
-                const idRiga = (idRigaEl ? idRigaEl.value : "").trim();
-
-                if (!idDocumento || !idRiga) {
-                    showToast("Seleziona prima una riga (manca IdDocumento/IdRiga).");
-                    return;
-                }
-
-                claim(idDocumento, idRiga);
-            });
-
-            // Avvia polling
-            pollLoop();
-        })();
-    </script>
-    <script>
         document.addEventListener("DOMContentLoaded", function () {
             const modalEl = document.getElementById("modalMaterialiOrdine");
             const modalBody = document.getElementById("modal-materiali-body");
@@ -702,6 +556,16 @@
                     .replaceAll("'", "&#039;");
             }
         });
+    </script>
+    <script>
+        function selezionaRiga(riga) {
+            const bottone = document.getElementById("mioBottone");
+
+            // colonna 1 = Stato
+            const stato = riga.cells[1].textContent.trim();
+
+            bottone.disabled = (stato !== "Attivo");
+        }
     </script>
 {% endblock %}
 
