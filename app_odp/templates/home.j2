@@ -3,3 +3,65 @@
 {% block content %}
     {% include active_partial %}
 {% endblock %}
+
+<script>
+    let lastEventId = 0;
+
+    async function fetchUpdates() {
+        try {
+            const res = await fetch('/api/updates?after_id=' + lastEventId);
+            if (!res.ok) return;
+            const data = await res.json();
+            data.events.forEach(ev => {
+                lastEventId = Math.max(lastEventId, ev.id);
+                if (ev.topic === 'nuovo_ordine') {
+                    addOrderRow(ev.payload);
+                } else if (ev.topic === 'odp_claimed') {
+                    updateOrderClaim(ev.payload, true);
+                } else if (ev.topic === 'odp_released') {
+                    updateOrderClaim(ev.payload, false);
+                }
+            });
+        } catch (err) {
+            console.error('Errore nel polling', err);
+        }
+    }
+
+    // inserisci una nuova riga nella tabella ordini
+    function addOrderRow(order) {
+        const tbody = document.querySelector('#orders-table tbody');
+        // crea <tr> con i campi desiderati
+        const tr = document.createElement('tr');
+        tr.dataset.idDoc = order.IdDocumento;
+        tr.dataset.idRiga = order.IdRiga;
+        tr.innerHTML = `
+        <td>${order.IdDocumento}</td>
+        <td>${order.IdRiga}</td>
+        <td>${order.CodArt}</td>
+        <td>${order.DesArt}</td>
+        <td>
+            <button class="btn btn-sm btn-primary" onclick="claimOrder('${order.IdDocumento}','${order.IdRiga}')">
+                Prendi in carico
+            </button>
+        </td>`;
+        tbody.prepend(tr);
+    }
+
+    // aggiorna lo stato di claim di un ordine
+    function updateOrderClaim(payload, claimed) {
+        const {id_documento, id_riga, user_id} = payload;
+        const row = document.querySelector(`tr[data-id-doc="${id_documento}"][data-id-riga="${id_riga}"]`);
+        if (row) {
+            const btn = row.querySelector('button');
+            if (claimed) {
+                btn.disabled = true;
+                btn.innerText = 'In carico da utente ' + user_id;
+            } else {
+                btn.disabled = false;
+                btn.innerText = 'Prendi in carico';
+            }
+        }
+    }
+
+    setInterval(fetchUpdates, 2000);
+</script>

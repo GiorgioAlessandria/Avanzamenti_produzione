@@ -493,7 +493,7 @@ class User(UserMixin, db.Model):
         prefs[key] = value
         self.preferences = prefs
 
-    # --- helper RBAC ---
+    # --- helper policy ---
 
     def has_role(self, role_name: str) -> bool:
         return any(r.name == role_name for r in self.roles)
@@ -563,12 +563,3 @@ class TipologieStato(db.Model):
 
     def __repr__(self):
         return f"<TipologieStato {self.__dict__}>"
-
-
-class OdpClaim(db.Model):
-    __tablename__ = "odp_claim"
-    id_documento = db.Column(db.Text, primary_key=True, nullable=False)
-    id_riga = db.Column(db.Text, primary_key=True, nullable=False)
-    user_id = db.Column(db.Text, nullable=False)
-    claimed_at = db.Column(db.Text, nullable=False)
-    expires_at = db.Column(db.Text, nullable=False)

@@ -6,6 +6,8 @@ import pytest
 from pathlib import Path
 
 MODULE_PATH = "sync.sync_input"  # es: "app.sync_input" / "sync_input" / "app.utils.db"
+
+
 # region pytest fixtures
 @pytest.fixture()
 def mod(monkeypatch):
@@ -21,6 +23,7 @@ def mod(monkeypatch):
         )
     return importlib.import_module(MODULE_PATH)
 
+
 @pytest.fixture()
 def fake_config():
     # config minimale per i test
@@ -32,6 +35,7 @@ def fake_config():
             "StatoOrdine": "ATTIVO",
         },
     }
+
 
 @pytest.fixture()
 def base_df():
@@ -46,6 +50,7 @@ def base_df():
             "Altro": [1, 2, 3, 4, 5, 6],
         }
     )
+
 
 def _patch_read_sql(monkeypatch, mod, df_to_return):
     calls = {"query": None, "engine": None, "count": 0}
@@ -65,24 +70,30 @@ def _patch_globals(monkeypatch, mod, fake_config):
     fake_engine = object()
 
     # engine
-    monkeypatch.setattr(mod, "sqlserver_engine_app", fake_engine, raising = True)
+    monkeypatch.setattr(mod, "sqlserver_engine_app", fake_engine, raising=True)
 
     # config (se lo usi in altri punti)
     if hasattr(mod, "CONFIG"):
-        monkeypatch.setattr(mod, "CONFIG", fake_config, raising = True)
+        monkeypatch.setattr(mod, "CONFIG", fake_config, raising=True)
     if hasattr(mod, "config"):
-        monkeypatch.setattr(mod, "config", fake_config, raising = True)
+        monkeypatch.setattr(mod, "config", fake_config, raising=True)
 
     # >>> QUESTO È IL PEZZO CHE TI MANCA <<<
-    monkeypatch.setattr(mod, "ELEMENTI_ESCLUSI", fake_config["Elementi_esclusi"], raising = True)
-    monkeypatch.setattr(mod, "ELEMENTI_SELEZIONATI", fake_config["Elementi_selezionati"], raising = True)
+    monkeypatch.setattr(
+        mod, "ELEMENTI_ESCLUSI", fake_config["Elementi_esclusi"], raising=True
+    )
+    monkeypatch.setattr(
+        mod, "ELEMENTI_SELEZIONATI", fake_config["Elementi_selezionati"], raising=True
+    )
 
     # evita che ensure_init/init ricarichino e sovrascrivano
-    monkeypatch.setattr(mod, "_INITIALIZED", True, raising = False)
+    monkeypatch.setattr(mod, "_INITIALIZED", True, raising=False)
 
     return fake_engine
 
+
 # endregion
+
 
 # region leggi_view
 def test_leggi_view_no_filters(monkeypatch, mod, fake_config, base_df):
@@ -106,9 +117,7 @@ def test_leggi_view_filtro_esclusi(monkeypatch, mod, fake_config, base_df):
     _patch_read_sql(monkeypatch, mod, base_df)
 
     out = mod.leggi_view(
-        table="vwESOdP",
-        colonna_filtro_esclusi="CodReparto",
-        colonna_filtro_stato=""
+        table="vwESOdP", colonna_filtro_esclusi="CodReparto", colonna_filtro_stato=""
     )
     assert out["CodReparto"].tolist() == ["10", "20", "10"]
     assert out["CodReparto"].isna().sum() == 0
@@ -134,6 +143,7 @@ def test_leggi_view_filtro_stato_senza_esclusi(monkeypatch, mod, fake_config, ba
     # se nel tuo leggi_view fai reset_index(drop=True):
     assert list(out.index) == [0, 1, 2, 3]
 
+
 def test_leggi_view_filtro_stato_con_esclusi(monkeypatch, mod, fake_config, base_df):
     """
     Caso realistico per far passare anche il dropna del ramo stato:
@@ -145,7 +155,7 @@ def test_leggi_view_filtro_stato_con_esclusi(monkeypatch, mod, fake_config, base
     out = mod.leggi_view(
         table="vwESOdP",
         colonna_filtro_esclusi="CodReparto",
-        colonna_filtro_stato="StatoOrdine"
+        colonna_filtro_stato="StatoOrdine",
     )
 
     # Step 1 esclusi: toglie 99,00 e None -> restano righe con CodReparto 10,20,10
@@ -164,14 +174,22 @@ def test_leggi_view_query_varie_table(monkeypatch, mod, fake_config, base_df):
     assert calls["query"] == "SELECT * FROM BernardiProd.dbo.vwESArticoli"
     assert len(out) == len(base_df)
 
-def test_leggi_view_raises_keyerror_if_df_missing_filter_column(monkeypatch, mod, fake_config):
+
+def test_leggi_view_raises_keyerror_if_df_missing_filter_column(
+    monkeypatch, mod, fake_config
+):
     _patch_globals(monkeypatch, mod, fake_config)
 
     df = pd.DataFrame({"OtherCol": [1, 2]})
     _patch_read_sql(monkeypatch, mod, df)
 
     with pytest.raises(KeyError):
-        mod.leggi_view(table="vwESOdP", colonna_filtro_esclusi="CodReparto", colonna_filtro_stato="")
+        mod.leggi_view(
+            table="vwESOdP",
+            colonna_filtro_esclusi="CodReparto",
+            colonna_filtro_stato="",
+        )
+
 
 def test_leggi_view_raises_keyerror_if_exclusion_key_missing(monkeypatch, mod):
     fake_engine = object()
@@ -179,17 +197,25 @@ def test_leggi_view_raises_keyerror_if_exclusion_key_missing(monkeypatch, mod):
     monkeypatch.setattr(mod, "_INITIALIZED", True, raising=False)
 
     monkeypatch.setattr(mod, "ELEMENTI_ESCLUSI", {"CodArt": ["X"]}, raising=True)
-    monkeypatch.setattr(mod, "ELEMENTI_SELEZIONATI", {"StatoOrdine": "ATTIVO"}, raising=True)
+    monkeypatch.setattr(
+        mod, "ELEMENTI_SELEZIONATI", {"StatoOrdine": "ATTIVO"}, raising=True
+    )
 
     df = pd.DataFrame({"CodReparto": ["10", "20"]})
     _patch_read_sql(monkeypatch, mod, df)
 
     with pytest.raises(KeyError):
-        mod.leggi_view(table="vwESOdP", colonna_filtro_esclusi="CodReparto", colonna_filtro_stato="")
+        mod.leggi_view(
+            table="vwESOdP",
+            colonna_filtro_esclusi="CodReparto",
+            colonna_filtro_stato="",
+        )
+
 
 # endregion
 
 # region filtra_odpfasi_con_odp
+
 
 def test_filtra_odpfasi_con_odp_right_join_keeps_all_odp_keys(mod):
     df_odp = pd.DataFrame(
@@ -236,6 +262,7 @@ def test_filtra_odpfasi_con_odp_right_join_keeps_all_odp_keys(mod):
     assert pd.isna(row_b1.iloc[0]["Fase"])
     assert pd.isna(row_b1.iloc[0]["Extra"])
 
+
 def test_filtra_odpfasi_con_odp_non_matching_keys_produce_nans_for_odpfasi_cols(mod):
     df_odp = pd.DataFrame({"IdDocumento": ["A", "B"], "IdRiga": [1, 2]})
     df_odpfasi = pd.DataFrame(
@@ -281,7 +308,10 @@ def test_filtra_odpfasi_con_odp_output_has_required_columns(mod):
     assert {"IdDocumento", "IdRiga"}.issubset(out.columns)
     # E mantiene le colonne di df_odpfasi (quando c'è match)
     assert "Fase" in out.columns
+
+
 # endregion
+
 
 # region filtra_odp_componenti_con_odp
 def test_filtra_odp_componenti_con_odp_keeps_all_odp_keys_and_no_extraneous_keys(mod):
@@ -318,7 +348,9 @@ def test_filtra_odp_componenti_con_odp_keeps_all_odp_keys_and_no_extraneous_keys
     assert out_keys.issubset(odp_keys)
 
 
-def test_filtra_odp_componenti_con_odp_non_matching_odp_keys_yield_nans_in_component_cols(mod):
+def test_filtra_odp_componenti_con_odp_non_matching_odp_keys_yield_nans_in_component_cols(
+    mod,
+):
     df_odp = pd.DataFrame({"IdDocumento": ["A", "B"], "IdRiga": [1, 2]})
 
     # esiste solo componente per (A,1)
@@ -383,7 +415,10 @@ def test_filtra_odp_componenti_con_odp_output_columns_include_expected(mod):
     out = mod.filtra_odp_componenti_con_odp(df_odp_componenti, df_odp)
 
     # colonne chiave e alcune colonne componenti
-    assert {"IdDocumento", "IdRiga", "IdRigaPadre", "CodComponente", "Qta"}.issubset(out.columns)
+    assert {"IdDocumento", "IdRiga", "IdRigaPadre", "CodComponente", "Qta"}.issubset(
+        out.columns
+    )
+
 
 # endregion
 # region inserimento_reparto_da_risorsa
@@ -405,7 +440,9 @@ def test_inserimento_reparto_da_risorsa_adds_codreparto_and_filters_non_matches(
         }
     )
 
-    out = mod.inserimento_reparto_da_risorsa(df_odp_fasi=df_odp_fasi, df_risorse=df_risorse)
+    out = mod.inserimento_reparto_da_risorsa(
+        df_odp_fasi=df_odp_fasi, df_risorse=df_risorse
+    )
 
     # deve aggiungere CodReparto
     assert "CodReparto" in out.columns
@@ -491,7 +528,10 @@ def test_inserimento_reparto_da_risorsa_does_not_drop_when_codreparto_present(mo
 
     assert len(out) == 2
     assert out["CodReparto"].isna().sum() == 0
+
+
 # endregion
+
 
 # region unione_fasi_componenti
 def test_unione_fasi_componenti_renames_component_columns_and_joins(mod):
@@ -507,9 +547,9 @@ def test_unione_fasi_componenti_renames_component_columns_and_joins(mod):
     df_componenti = pd.DataFrame(
         {
             "IdDocumento": ["A"],
-            "IdRigaPadre": [1],     # deve diventare IdRiga
+            "IdRigaPadre": [1],  # deve diventare IdRiga
             "NumFase": [10],
-            "IdRiga": [999],        # deve diventare IdRigacomponente
+            "IdRiga": [999],  # deve diventare IdRigacomponente
             "CodArt": ["CMP1"],
             "Qta": [2.5],
         }
@@ -525,7 +565,9 @@ def test_unione_fasi_componenti_renames_component_columns_and_joins(mod):
     assert "IdRigaPadre" not in out.columns
 
     # join corretto su (A,1,10)
-    row = out[(out["IdDocumento"] == "A") & (out["IdRiga"] == 1) & (out["NumFase"] == 10)]
+    row = out[
+        (out["IdDocumento"] == "A") & (out["IdRiga"] == 1) & (out["NumFase"] == 10)
+    ]
     assert len(row) == 1
     assert row.iloc[0]["CodArt"] == "CMP1"
     assert row.iloc[0]["IdRigacomponente"] == 999
@@ -556,7 +598,9 @@ def test_unione_fasi_componenti_left_join_keeps_phases_without_components(mod):
     out = mod.unione_fasi_componenti(df_fasi, df_componenti)
 
     # deve contenere ancora la fase (A,2,20) anche se non ha componenti
-    row_no_comp = out[(out["IdDocumento"] == "A") & (out["IdRiga"] == 2) & (out["NumFase"] == 20)]
+    row_no_comp = out[
+        (out["IdDocumento"] == "A") & (out["IdRiga"] == 2) & (out["NumFase"] == 20)
+    ]
     assert len(row_no_comp) == 1
 
     # colonne componenti NaN per quella riga
@@ -589,7 +633,9 @@ def test_unione_fasi_componenti_multiple_components_expand_rows_validate_1_to_ma
 
     out = mod.unione_fasi_componenti(df_fasi, df_componenti)
 
-    rows = out[(out["IdDocumento"] == "A") & (out["IdRiga"] == 1) & (out["NumFase"] == 10)]
+    rows = out[
+        (out["IdDocumento"] == "A") & (out["IdRiga"] == 1) & (out["NumFase"] == 10)
+    ]
     assert len(rows) == 2
     assert set(rows["CodArt"].tolist()) == {"CMP1", "CMP2"}
     assert set(rows["IdRigacomponente"].tolist()) == {100, 101}
@@ -643,10 +689,14 @@ def test_unione_fasi_componenti_preserves_all_fasi_rows_count_when_no_components
     assert set(map(tuple, out[["IdDocumento", "IdRiga", "NumFase"]].to_numpy())) == set(
         map(tuple, df_fasi[["IdDocumento", "IdRiga", "NumFase"]].to_numpy())
     )
+
+
 # endregion
 
 # region generazione_lista
 import json
+
+
 def test_generazione_lista_basic_json_dump(mod):
     df = pd.DataFrame(
         {
@@ -785,6 +835,8 @@ def test_generazione_lista_rename_col_applied(mod):
 
     assert "MiaLista" in out.columns
     assert "Lista" not in out.columns
+
+
 # endregion
 # region generazione_dizionario
 def test_generazione_dizionario_basic_records_json(mod):
@@ -835,14 +887,19 @@ def test_generazione_dizionario_json_is_string_or_none(mod):
     assert json.loads(out.loc[0, "Dettagli"]) == [{"V": 1}]
 
 
-def test_generazione_dizionario_data_in_data_formats_datetime_in_rename_col_if_in_list_columns(mod):
+def test_generazione_dizionario_data_in_data_formats_datetime_in_rename_col_if_in_list_columns(
+    mod,
+):
     # Qui usiamo rename_col == "Data" e la includiamo anche in list_columns,
     # così la formattazione influisce davvero sull'output.
     df = pd.DataFrame(
         {
             "IdDocumento": ["A", "A"],
             "IdRiga": [1, 1],
-            "Data": [pd.Timestamp("2024-01-02 10:11:12"), pd.Timestamp("2024-01-03 00:00:00")],
+            "Data": [
+                pd.Timestamp("2024-01-02 10:11:12"),
+                pd.Timestamp("2024-01-03 00:00:00"),
+            ],
             "Val": [10, 20],
         }
     )
@@ -886,6 +943,8 @@ def test_generazione_dizionario_preserves_group_count(mod):
     assert len(out) == 3
     keys = set(map(tuple, out[["K1", "K2"]].to_numpy()))
     assert keys == {("A", 1), ("A", 2), ("B", 1)}
+
+
 # endregion
 # region inserimento_distinta_in_odp
 def test_inserimento_distinta_in_odp_left_merge_and_drop_columns(mod):
@@ -906,7 +965,10 @@ def test_inserimento_distinta_in_odp_left_merge_and_drop_columns(mod):
         {
             "IdDocumento": ["A", "C"],
             "IdRiga": [1, 1],
-            "DistintaMateriale": ['[{"CodArt":"X","Qta":1}]', '[{"CodArt":"Y","Qta":2}]'],
+            "DistintaMateriale": [
+                '[{"CodArt":"X","Qta":1}]',
+                '[{"CodArt":"Y","Qta":2}]',
+            ],
         }
     )
 
@@ -959,7 +1021,9 @@ def test_inserimento_distinta_in_odp_multiple_distinte_expand_rows(mod):
         }
     )
 
-    out = mod.inserimento_distinta_in_odp(df_odp, componenti_per_odp, ["IdDocumento", "IdRiga"])
+    out = mod.inserimento_distinta_in_odp(
+        df_odp, componenti_per_odp, ["IdDocumento", "IdRiga"]
+    )
 
     assert len(out) == 2
     assert set(out["DistintaMateriale"].tolist()) == {"D1", "D2"}
@@ -987,8 +1051,11 @@ def test_inserimento_distinta_in_odp_raises_if_drop_columns_missing(mod):
     assert out.loc[0, "IdDocumento"] == "A"
     assert out.loc[0, "IdRiga"] == 1
     assert out.loc[0, "DistintaMateriale"] == "D1"
+
+
 # endregion
 # region inserimento_dati_fasi_in_odp
+
 
 def _json_list_first_values_as_str(s: str) -> list[str]:
     """
@@ -1055,11 +1122,20 @@ def test_inserimento_dati_fasi_in_odp_adds_phase_columns_and_keeps_odp_rows(mod)
     assert _json_list_first_values_as_str(row_a1["CodLavorazione"]) == ["LAV1", "LAV2"]
     assert _json_list_first_values_as_str(row_a1["CodRisorsaProd"]) == ["R1", "R2"]
     assert _json_list_first_values_as_str(row_a1["CodReparto"]) == ["10", "20"]
-    assert _json_list_first_values_as_str(row_a1["DataInizioSched"]) == ["2024-01-01", "2024-01-02"]
-    assert _json_list_first_values_as_str(row_a1["DataFineSched"]) == ["2024-01-03", "2024-01-04"]
+    assert _json_list_first_values_as_str(row_a1["DataInizioSched"]) == [
+        "2024-01-01",
+        "2024-01-02",
+    ]
+    assert _json_list_first_values_as_str(row_a1["DataFineSched"]) == [
+        "2024-01-03",
+        "2024-01-04",
+    ]
 
     # TempoPrevistoLavoraz potrebbe diventare "1.5" / "2.0" a seconda dei tipi -> normalizzo a stringa
-    assert _json_list_first_values_as_str(row_a1["TempoPrevistoLavoraz"]) == ["1.5", "2.0"]
+    assert _json_list_first_values_as_str(row_a1["TempoPrevistoLavoraz"]) == [
+        "1.5",
+        "2.0",
+    ]
 
     # 4) riga B,1 deve avere 1 fase
     row_b1 = out[(out["IdDocumento"] == "B") & (out["IdRiga"] == 1)].iloc[0]
@@ -1113,7 +1189,9 @@ def test_inserimento_dati_fasi_in_odp_rows_without_fasi_get_nans(mod):
         assert pd.isna(row_a2[col])
 
 
-def test_inserimento_dati_fasi_in_odp_expands_from_multiple_fasi_but_keeps_single_row_per_odp(mod):
+def test_inserimento_dati_fasi_in_odp_expands_from_multiple_fasi_but_keeps_single_row_per_odp(
+    mod,
+):
     # anche con più fasi, l'output resta una riga per ODP (perché generazione_lista aggrega)
     df_odp = pd.DataFrame({"IdDocumento": ["A"], "IdRiga": [1]})
 
@@ -1131,7 +1209,9 @@ def test_inserimento_dati_fasi_in_odp_expands_from_multiple_fasi_but_keeps_singl
         }
     )
 
-    out = mod.inserimento_dati_fasi_in_odp(df_odp, df_odpfasi, ["IdDocumento", "IdRiga"])
+    out = mod.inserimento_dati_fasi_in_odp(
+        df_odp, df_odpfasi, ["IdDocumento", "IdRiga"]
+    )
 
     assert len(out) == 1
     row = out.iloc[0]
@@ -1139,8 +1219,8 @@ def test_inserimento_dati_fasi_in_odp_expands_from_multiple_fasi_but_keeps_singl
 
 
 def test_inserimento_dati_fasi_in_odp_reduce_inner_merge_drops_key_when_one_field_missing(
-        mod
-        ):
+    mod,
+):
     """
     Regressione: l'uso di pd.merge() senza how='outer' nel reduce produce un INNER merge.
     Se una delle colonne (es. CodReparto) è NaN per una chiave, generazione_lista creerà
@@ -1155,54 +1235,64 @@ def test_inserimento_dati_fasi_in_odp_reduce_inner_merge_drops_key_when_one_fiel
     """
 
     df_odp = pd.DataFrame(
-            {
-                "IdDocumento": ["A"],
-                "IdRiga"     : [1],
-                "CodArt"     : ["P1"],
-                }
-            )
+        {
+            "IdDocumento": ["A"],
+            "IdRiga": [1],
+            "CodArt": ["P1"],
+        }
+    )
 
     # fasi esistono, ma CodReparto è mancante (NaN) su tutte le righe
     df_odpfasi = pd.DataFrame(
-            {
-                "IdDocumento"         : ["A", "A"],
-                "IdRiga"              : [1, 1],
-                "NumFase"             : [10, 20],
-                "CodLavorazione"      : ["L1", "L2"],
-                "CodRisorsaProd"      : ["R1", "R2"],
-                "CodReparto"          : [None, None],  # <- campo problematico
-                "DataInizioSched"     : ["2024-01-01", "2024-01-02"],
-                "DataFineSched"       : ["2024-01-03", "2024-01-04"],
-                "TempoPrevistoLavoraz": [1.0, 2.0],
-                }
-            )
+        {
+            "IdDocumento": ["A", "A"],
+            "IdRiga": [1, 1],
+            "NumFase": [10, 20],
+            "CodLavorazione": ["L1", "L2"],
+            "CodRisorsaProd": ["R1", "R2"],
+            "CodReparto": [None, None],  # <- campo problematico
+            "DataInizioSched": ["2024-01-01", "2024-01-02"],
+            "DataFineSched": ["2024-01-03", "2024-01-04"],
+            "TempoPrevistoLavoraz": [1.0, 2.0],
+        }
+    )
 
     out = mod.inserimento_dati_fasi_in_odp(
-            df_odp = df_odp,
-            df_odpfasi = df_odpfasi,
-            chiavi = ["IdDocumento", "IdRiga"],
-            )
+        df_odp=df_odp,
+        df_odpfasi=df_odpfasi,
+        chiavi=["IdDocumento", "IdRiga"],
+    )
 
     row = out.iloc[0]
 
     # Aspettativa "corretta" desiderata:
     # anche se CodReparto manca, le altre colonne fase NON devono diventare tutte NaN.
-    assert pd.notna(row["NumFase"]), "NumFase è NaN: la chiave è stata persa nel merge interno del reduce."
     assert pd.notna(
-            row["CodLavorazione"]), "CodLavorazione è NaN: la chiave è stata persa nel merge interno del reduce."
+        row["NumFase"]
+    ), "NumFase è NaN: la chiave è stata persa nel merge interno del reduce."
     assert pd.notna(
-            row["CodRisorsaProd"]), "CodRisorsaProd è NaN: la chiave è stata persa nel merge interno del reduce."
+        row["CodLavorazione"]
+    ), "CodLavorazione è NaN: la chiave è stata persa nel merge interno del reduce."
     assert pd.notna(
-            row["DataInizioSched"]), "DataInizioSched è NaN: la chiave è stata persa nel merge interno del reduce."
+        row["CodRisorsaProd"]
+    ), "CodRisorsaProd è NaN: la chiave è stata persa nel merge interno del reduce."
     assert pd.notna(
-            row["DataFineSched"]), "DataFineSched è NaN: la chiave è stata persa nel merge interno del reduce."
-    assert pd.notna(row[
-                        "TempoPrevistoLavoraz"]), "TempoPrevistoLavoraz è NaN: la chiave è stata persa nel merge interno del reduce."
+        row["DataInizioSched"]
+    ), "DataInizioSched è NaN: la chiave è stata persa nel merge interno del reduce."
+    assert pd.notna(
+        row["DataFineSched"]
+    ), "DataFineSched è NaN: la chiave è stata persa nel merge interno del reduce."
+    assert pd.notna(
+        row["TempoPrevistoLavoraz"]
+    ), "TempoPrevistoLavoraz è NaN: la chiave è stata persa nel merge interno del reduce."
 
-        # CodReparto può essere NaN oppure una lista di null a seconda di come gestisci il dump:
-        # qui NON imponiamo il formato, imponiamo solo che non trascini giù tutte le altre colonne.
+    # CodReparto può essere NaN oppure una lista di null a seconda di come gestisci il dump:
+    # qui NON imponiamo il formato, imponiamo solo che non trascini giù tutte le altre colonne.
+
+
 # endregion
 # region gestione_lotto_matricola_famiglia
+
 
 def test_gestione_lotto_matricola_famiglia_adds_columns_and_filters_missing(mod):
     df_odp = pd.DataFrame(
@@ -1231,7 +1321,12 @@ def test_gestione_lotto_matricola_famiglia_adds_columns_and_filters_missing(mod)
     assert len(out) == 2
 
     # colonne aggiunte
-    for col in ["GestioneLotto", "GestioneMatricola", "CodFamiglia", "CodClassifTecnica"]:
+    for col in [
+        "GestioneLotto",
+        "GestioneMatricola",
+        "CodFamiglia",
+        "CodClassifTecnica",
+    ]:
         assert col in out.columns
 
     # mapping corretto
@@ -1303,8 +1398,11 @@ def test_gestione_lotto_matricola_famiglia_empty_when_no_matches(mod):
 
     out = mod.gestione_lotto_matricola_famiglia(df_odp, df_articoli)
     assert out.empty
+
+
 # endregion
 # region inserisci_o_ignora
+
 
 def test_inserimento_macrofamiglia_adds_column_and_drops_missing(mod):
     df_odp = pd.DataFrame(
@@ -1365,9 +1463,7 @@ def test_inserimento_macrofamiglia_drops_rows_when_macrofamiglia_is_nan(mod):
 
 
 def test_inserimento_macrofamiglia_duplicates_expand_rows(mod):
-    df_odp = pd.DataFrame(
-        {"IdDocumento": ["A"], "IdRiga": [1], "CodFamiglia": ["F1"]}
-    )
+    df_odp = pd.DataFrame({"IdDocumento": ["A"], "IdRiga": [1], "CodFamiglia": ["F1"]})
 
     # due macrofamiglie per stessa famiglia => output si espande
     df_famiglia = pd.DataFrame(
@@ -1388,20 +1484,23 @@ def test_inserimento_macrofamiglia_empty_when_no_matches(mod):
         {"IdDocumento": ["A"], "IdRiga": [1], "CodFamiglia": ["F_NOPE"]}
     )
 
-    df_famiglia = pd.DataFrame(
-        {"CodFamiglia": ["F1"], "CodMacrofamiglia": ["MF1"]}
-    )
+    df_famiglia = pd.DataFrame({"CodFamiglia": ["F1"], "CodMacrofamiglia": ["MF1"]})
 
     out = mod.inserimento_macrofamiglia(df_odp, df_famiglia)
     assert out.empty
+
+
 # endregion
 # region elaborazione_dati
+
 
 def _identity(df, *args, **kwargs):
     return df
 
 
-def _patch_elaborazione_pipeline(monkeypatch, mod, df_input_odp_prepared: pd.DataFrame, existing_pks=None):
+def _patch_elaborazione_pipeline(
+    monkeypatch, mod, df_input_odp_prepared: pd.DataFrame, existing_pks=None
+):
     """
     Patcha tutta la pipeline interna di elaborazione_dati per:
     - evitare DB e logiche complesse
@@ -1412,6 +1511,7 @@ def _patch_elaborazione_pipeline(monkeypatch, mod, df_input_odp_prepared: pd.Dat
     # Normalizza SUBITO per evitare UnboundLocalError
     if existing_pks is None:
         existing_pks = set()
+
     # 1) leggi_view: restituisce DF "minimi" per soddisfare le chiamate
     def fake_leggi_view(table, colonna_filtro_esclusi=None, colonna_filtro_stato=None):
         # ritorniamo DataFrame con colonne minime; non verranno davvero usate perché patchiamo la pipeline
@@ -1424,7 +1524,15 @@ def _patch_elaborazione_pipeline(monkeypatch, mod, df_input_odp_prepared: pd.Dat
         if table == "vwESOdPComponenti":
             return pd.DataFrame({"IdDocumento": [], "IdRigaPadre": [], "NumFase": []})
         if table == "vwESArticoli":
-            return pd.DataFrame({"CodArt": [], "GestioneLotto": [], "GestioneMatricola": [], "CodFamiglia": [], "CodClassifTecnica": []})
+            return pd.DataFrame(
+                {
+                    "CodArt": [],
+                    "GestioneLotto": [],
+                    "GestioneMatricola": [],
+                    "CodFamiglia": [],
+                    "CodClassifTecnica": [],
+                }
+            )
         if table == "vwESFamiglia":
             return pd.DataFrame({"CodFamiglia": [], "CodMacrofamiglia": []})
         return pd.DataFrame()
@@ -1435,18 +1543,35 @@ def _patch_elaborazione_pipeline(monkeypatch, mod, df_input_odp_prepared: pd.Dat
     monkeypatch.setattr(mod, "filtra_odpfasi_con_odp", _identity, raising=True)
     monkeypatch.setattr(mod, "inserimento_reparto_da_risorsa", _identity, raising=True)
     monkeypatch.setattr(mod, "filtra_odp_componenti_con_odp", _identity, raising=True)
-    monkeypatch.setattr(mod, "unione_fasi_componenti", lambda *args, **kwargs: pd.DataFrame(), raising=True)
-    monkeypatch.setattr(mod, "generazione_dizionario", lambda *args, **kwargs: pd.DataFrame(), raising=True)
+    monkeypatch.setattr(
+        mod,
+        "unione_fasi_componenti",
+        lambda *args, **kwargs: pd.DataFrame(),
+        raising=True,
+    )
+    monkeypatch.setattr(
+        mod,
+        "generazione_dizionario",
+        lambda *args, **kwargs: pd.DataFrame(),
+        raising=True,
+    )
 
     # qui forziamo df_input_odp della pipeline
     def fake_inserimento_distinta_in_odp(df_odp, componenti_per_odp, chiavi):
         return df_input_odp_prepared.copy()
 
-    monkeypatch.setattr(mod, "inserimento_distinta_in_odp", fake_inserimento_distinta_in_odp, raising=True)
+    monkeypatch.setattr(
+        mod,
+        "inserimento_distinta_in_odp",
+        fake_inserimento_distinta_in_odp,
+        raising=True,
+    )
 
     # resto pipeline: pass-through
     monkeypatch.setattr(mod, "inserimento_dati_fasi_in_odp", _identity, raising=True)
-    monkeypatch.setattr(mod, "gestione_lotto_matricola_famiglia", _identity, raising=True)
+    monkeypatch.setattr(
+        mod, "gestione_lotto_matricola_famiglia", _identity, raising=True
+    )
     monkeypatch.setattr(mod, "inserimento_macrofamiglia", _identity, raising=True)
 
     # 3) globals usati da elaborazione_dati
@@ -1455,24 +1580,26 @@ def _patch_elaborazione_pipeline(monkeypatch, mod, df_input_odp_prepared: pd.Dat
 
     # 4) cattura eventi
     events = []
+
     def fake_emit_event(session, topic, scope=None, payload_json=None):
         events.append(
-            {"session": session, "topic": topic, "scope": scope, "payload_json": payload_json}
+            {
+                "session": session,
+                "topic": topic,
+                "scope": scope,
+                "payload_json": payload_json,
+            }
         )
-
 
     if existing_pks is None:
         existing_pks = set()
 
     monkeypatch.setattr(
-            mod,
-            "_fetch_existing_pks",
-            lambda
-                engine,
-                pk_tuples,
-                pk_cols: existing_pks,
-            raising = True
-            )
+        mod,
+        "_fetch_existing_pks",
+        lambda engine, pk_tuples, pk_cols: existing_pks,
+        raising=True,
+    )
     monkeypatch.setattr(mod, "emit_event", fake_emit_event, raising=True)
 
     return events
@@ -1482,6 +1609,7 @@ def _patch_to_sql(monkeypatch, inserted_rows):
     """
     Patcha DataFrame.to_sql per restituire inserted_rows e validare i parametri principali.
     """
+
     def fake_to_sql(self, name, con, if_exists, index, method):
         assert name == "input_odp"
         assert if_exists == "append"
@@ -1494,7 +1622,9 @@ def _patch_to_sql(monkeypatch, inserted_rows):
     monkeypatch.setattr(pd.DataFrame, "to_sql", fake_to_sql, raising=True)
 
 
-def test_elaborazione_dati_emits_nuovo_ciclo_when_counter_zero_even_if_no_rows(monkeypatch, mod):
+def test_elaborazione_dati_emits_nuovo_ciclo_when_counter_zero_even_if_no_rows(
+    monkeypatch, mod
+):
     # df finale deve avere DataInizioProduzione perché la funzione fa drop su quella colonna
     df_input = pd.DataFrame(
         {
@@ -1519,7 +1649,9 @@ def test_elaborazione_dati_emits_nuovo_ciclo_when_counter_zero_even_if_no_rows(m
     assert mod.COUNTER_RIGHE == 0
 
 
-def test_elaborazione_dati_emits_nuovo_ordine_with_expected_scope_and_payload(monkeypatch, mod):
+def test_elaborazione_dati_emits_nuovo_ordine_with_expected_scope_and_payload(
+    monkeypatch, mod
+):
     # 3 righe: dopo sort desc per (IdDocumento, IdRiga) => (2,1), (1,2), (1,1)
     df_input = pd.DataFrame(
         {
@@ -1543,14 +1675,20 @@ def test_elaborazione_dati_emits_nuovo_ordine_with_expected_scope_and_payload(mo
     assert [e["topic"] for e in events] == ["nuovo_ciclo", "nuovo_ordine"]
 
     nuovo_ordine = events[1]
-    assert nuovo_ordine["scope"] == json.dumps([20, 30])  # reparti prime 2 righe post-sort
-    assert nuovo_ordine["payload_json"] == json.dumps(['2,1', '1,2'])  # prime 2 chiavi post-sort
+    assert nuovo_ordine["scope"] == json.dumps(
+        [20, 30]
+    )  # reparti prime 2 righe post-sort
+    assert nuovo_ordine["payload_json"] == json.dumps(
+        ["2,1", "1,2"]
+    )  # prime 2 chiavi post-sort
 
     assert mod.COUNTER_RIGHE == 2
 
 
-def test_elaborazione_dati_does_not_emit_nuovo_ordine_when_inserted_equals_counter(monkeypatch, mod):
-    monkeypatch.setattr(mod, "_INITIALIZED", True, raising = False)
+def test_elaborazione_dati_does_not_emit_nuovo_ordine_when_inserted_equals_counter(
+    monkeypatch, mod
+):
+    monkeypatch.setattr(mod, "_INITIALIZED", True, raising=False)
     df_input = pd.DataFrame(
         {
             "IdDocumento": [1, 2],
@@ -1572,9 +1710,13 @@ def test_elaborazione_dati_does_not_emit_nuovo_ordine_when_inserted_equals_count
     # non deve emettere né nuovo_ciclo (counter != 0) né nuovo_ordine (inserted == counter)
     assert events == []
     assert mod.COUNTER_RIGHE == 5
+
+
 # endregion
 # region _intime_window
 from datetime import time as dtime
+
+
 def test_in_time_window_start_equals_end_is_24h(mod):
     start = dtime(8, 0)
     end = dtime(8, 0)
@@ -1631,9 +1773,12 @@ def test_in_time_window_edge_case_evening_to_midnight(mod):
     assert mod._in_time_window(dtime(23, 59, 59), start, end) is True
     assert mod._in_time_window(dtime(0, 0), start, end) is False
     assert mod._in_time_window(dtime(0, 0, 1), start, end) is False
+
+
 # endregion
 # region _is_allowed_datetime
 import datetime as dt
+
 
 def test_is_allowed_datetime_normal_window_allowed_weekday_inside(mod):
     # Lunedì
@@ -1717,6 +1862,7 @@ def test_is_allowed_datetime_overnight_evening_part_uses_same_weekday(mod):
 
     assert mod._is_allowed_datetime(now, start, end, allowed) is True
 
+
 def test_is_allowed_datetime_with_timezone_info(mod):
     # il codice fa timetz().replace(tzinfo=None) quindi deve funzionare anche con tzinfo presente
     start = dtime(9, 0)
@@ -1727,9 +1873,13 @@ def test_is_allowed_datetime_with_timezone_info(mod):
     now = dt.datetime(2026, 2, 2, 10, 0, 0, tzinfo=tz)  # lunedì 10:00+01:00
 
     assert mod._is_allowed_datetime(now, start, end, allowed) is True
+
+
 # endregion
 # region seconds_until_next_allowed
 from zoneinfo import ZoneInfo
+
+
 def _patch_now(monkeypatch, mod, fixed_now: dt.datetime):
     class FakeDateTime:
         @staticmethod
@@ -1737,7 +1887,6 @@ def _patch_now(monkeypatch, mod, fixed_now: dt.datetime):
             return fixed_now
 
     monkeypatch.setattr(mod, "datetime", FakeDateTime, raising=True)
-
 
 
 def test_seconds_until_next_allowed_returns_0_if_inside_window(monkeypatch, mod):
@@ -1758,19 +1907,31 @@ def test_seconds_until_next_allowed_normal_window_waits_until_start(monkeypatch,
 
     allowed = {0, 1, 2, 3, 4}
     # probe parte da 08:10:00, poi incrementa a minuti interi: primo consentito 09:00:00
-    expected = int((dt.datetime(2026, 2, 2, 9, 0, 0, tzinfo=tz) - fixed_now).total_seconds())
-    assert mod.seconds_until_next_allowed(9, 17, allowed, tz=tz, step_minutes=1) == expected
+    expected = int(
+        (dt.datetime(2026, 2, 2, 9, 0, 0, tzinfo=tz) - fixed_now).total_seconds()
+    )
+    assert (
+        mod.seconds_until_next_allowed(9, 17, allowed, tz=tz, step_minutes=1)
+        == expected
+    )
 
 
-def test_seconds_until_next_allowed_overnight_daytime_waits_until_evening_start(monkeypatch, mod):
+def test_seconds_until_next_allowed_overnight_daytime_waits_until_evening_start(
+    monkeypatch, mod
+):
     tz = ZoneInfo("Europe/Rome")
     # lunedì 12:00 -> fuori finestra 18-6, prossimo è lunedì 18:00
     fixed_now = dt.datetime(2026, 2, 2, 12, 0, 10, tzinfo=tz)
     _patch_now(monkeypatch, mod, fixed_now)
 
     allowed = {0, 1, 2, 3, 4}
-    expected = int((dt.datetime(2026, 2, 2, 18, 0, 0, tzinfo=tz) - fixed_now).total_seconds())
-    assert mod.seconds_until_next_allowed(18, 6, allowed, tz=tz, step_minutes=1) == expected
+    expected = int(
+        (dt.datetime(2026, 2, 2, 18, 0, 0, tzinfo=tz) - fixed_now).total_seconds()
+    )
+    assert (
+        mod.seconds_until_next_allowed(18, 6, allowed, tz=tz, step_minutes=1)
+        == expected
+    )
 
 
 def test_seconds_until_next_allowed_respects_step_minutes_granularity(monkeypatch, mod):
@@ -1784,7 +1945,10 @@ def test_seconds_until_next_allowed_respects_step_minutes_granularity(monkeypatc
     expected_probe = dt.datetime(2026, 2, 2, 9, 2, 0, tzinfo=tz)
     expected = int((expected_probe - fixed_now).total_seconds())
 
-    assert mod.seconds_until_next_allowed(9, 17, allowed, tz=tz, step_minutes=15) == expected
+    assert (
+        mod.seconds_until_next_allowed(9, 17, allowed, tz=tz, step_minutes=15)
+        == expected
+    )
 
 
 def test_seconds_until_next_allowed_raises_if_no_window_found(monkeypatch, mod):
@@ -1794,13 +1958,17 @@ def test_seconds_until_next_allowed_raises_if_no_window_found(monkeypatch, mod):
     _patch_now(monkeypatch, mod, fixed_now)
 
     with pytest.raises(RuntimeError):
-        mod.seconds_until_next_allowed(9, 17, allowed_weekdays=set(), tz=tz, step_minutes=60)
+        mod.seconds_until_next_allowed(
+            9, 17, allowed_weekdays=set(), tz=tz, step_minutes=60
+        )
+
 
 def _patch_now(monkeypatch, mod, fixed_now: dt.datetime):
     class FakeDateTime:
         @staticmethod
         def now(tz=None):
             return fixed_now
+
     monkeypatch.setattr(mod, "datetime", FakeDateTime, raising=True)
 
 
@@ -1811,16 +1979,24 @@ def test_seconds_until_next_allowed_step_minutes_zero_is_clamped_to_1(monkeypatc
     _patch_now(monkeypatch, mod, fixed_now)
 
     warn_calls = []
-    monkeypatch.setattr(mod.logging, "warning", lambda msg, *args: warn_calls.append((msg, args)), raising=True)
+    monkeypatch.setattr(
+        mod.logging,
+        "warning",
+        lambda msg, *args: warn_calls.append((msg, args)),
+        raising=True,
+    )
 
     allowed = {0, 1, 2, 3, 4}
     s = mod.seconds_until_next_allowed(9, 17, allowed, tz=tz, step_minutes=0)
 
-    expected = int((dt.datetime(2026, 2, 2, 9, 0, 0, tzinfo=tz) - fixed_now).total_seconds())
+    expected = int(
+        (dt.datetime(2026, 2, 2, 9, 0, 0, tzinfo=tz) - fixed_now).total_seconds()
+    )
     assert s == expected
 
     assert len(warn_calls) == 1
     assert "step_minutes" in warn_calls[0][0]
+
 
 def test_seconds_until_next_allowed_step_minutes_negative_is_clamped(monkeypatch, mod):
     tz = ZoneInfo("Europe/Rome")
@@ -1828,23 +2004,38 @@ def test_seconds_until_next_allowed_step_minutes_negative_is_clamped(monkeypatch
     _patch_now(monkeypatch, mod, fixed_now)
 
     warn_calls = []
-    monkeypatch.setattr(mod.logging, "warning", lambda msg, *args: warn_calls.append((msg, args)), raising=True)
+    monkeypatch.setattr(
+        mod.logging,
+        "warning",
+        lambda msg, *args: warn_calls.append((msg, args)),
+        raising=True,
+    )
 
-    s = mod.seconds_until_next_allowed(9, 17, {0,1,2,3,4}, tz=tz, step_minutes=-5)
+    s = mod.seconds_until_next_allowed(9, 17, {0, 1, 2, 3, 4}, tz=tz, step_minutes=-5)
     assert s > 0
     assert len(warn_calls) == 1
+
 
 # endregion
 # region wait_if_not_allowed
 def test_wait_if_not_allowed_does_nothing_when_seconds_zero(monkeypatch, mod):
     # seconds_until_next_allowed -> 0
-    monkeypatch.setattr(mod, "seconds_until_next_allowed", lambda *args, **kwargs: 0, raising=True)
+    monkeypatch.setattr(
+        mod, "seconds_until_next_allowed", lambda *args, **kwargs: 0, raising=True
+    )
 
     info_calls = []
     sleep_calls = []
 
-    monkeypatch.setattr(mod.logging, "info", lambda *args, **kwargs: info_calls.append((args, kwargs)), raising=True)
-    monkeypatch.setattr(mod.time_mod, "sleep", lambda s: sleep_calls.append(s), raising=True)
+    monkeypatch.setattr(
+        mod.logging,
+        "info",
+        lambda *args, **kwargs: info_calls.append((args, kwargs)),
+        raising=True,
+    )
+    monkeypatch.setattr(
+        mod.time_mod, "sleep", lambda s: sleep_calls.append(s), raising=True
+    )
 
     mod.wait_if_not_allowed(start_h=9, end_h=17, allowed_weekdays={0, 1, 2, 3, 4})
 
@@ -1854,7 +2045,9 @@ def test_wait_if_not_allowed_does_nothing_when_seconds_zero(monkeypatch, mod):
 
 def test_wait_if_not_allowed_logs_and_sleeps_when_positive_seconds(monkeypatch, mod):
     # seconds_until_next_allowed -> 125 sec => 2 min nel log (floor division)
-    monkeypatch.setattr(mod, "seconds_until_next_allowed", lambda *args, **kwargs: 125, raising=True)
+    monkeypatch.setattr(
+        mod, "seconds_until_next_allowed", lambda *args, **kwargs: 125, raising=True
+    )
 
     info_calls = []
     sleep_calls = []
@@ -1863,7 +2056,9 @@ def test_wait_if_not_allowed_logs_and_sleeps_when_positive_seconds(monkeypatch, 
         info_calls.append((msg, args, kwargs))
 
     monkeypatch.setattr(mod.logging, "info", fake_info, raising=True)
-    monkeypatch.setattr(mod.time_mod, "sleep", lambda s: sleep_calls.append(s), raising=True)
+    monkeypatch.setattr(
+        mod.time_mod, "sleep", lambda s: sleep_calls.append(s), raising=True
+    )
 
     mod.wait_if_not_allowed(start_h=9, end_h=17, allowed_weekdays={0, 1, 2, 3, 4})
 
@@ -1877,7 +2072,9 @@ def test_wait_if_not_allowed_logs_and_sleeps_when_positive_seconds(monkeypatch, 
     assert args[0] == 2  # ~%d min
 
 
-def test_wait_if_not_allowed_propagates_exception_from_seconds_until_next_allowed(monkeypatch, mod):
+def test_wait_if_not_allowed_propagates_exception_from_seconds_until_next_allowed(
+    monkeypatch, mod
+):
     def boom(*args, **kwargs):
         raise RuntimeError("no window")
 
@@ -1886,8 +2083,10 @@ def test_wait_if_not_allowed_propagates_exception_from_seconds_until_next_allowe
     with pytest.raises(RuntimeError):
         mod.wait_if_not_allowed(start_h=9, end_h=17, allowed_weekdays={0, 1, 2, 3, 4})
 
+
 # endregion
 # region emit_event
+
 
 class DummySession:
     def __init__(self, fail_add: bool = False):
@@ -1906,6 +2105,7 @@ class DummySession:
 
     def rollback(self):
         self.rolled_back += 1
+
 
 class EmitEventSession:
     def __init__(self, should_fail_add: bool = False):
@@ -1937,7 +2137,9 @@ def test_emit_event_commits_on_success(monkeypatch, mod):
 
     session = EmitEventSession(should_fail_add=False)
 
-    mod.emit_event(session=session, topic="nuovo_ordine", scope="['10']", payload_json='["A,1"]')
+    mod.emit_event(
+        session=session, topic="nuovo_ordine", scope="['10']", payload_json='["A,1"]'
+    )
 
     assert len(session.added) == 1
     assert session.committed == 1
@@ -1988,6 +2190,7 @@ def test_emit_event_accepts_none_scope_and_payload(monkeypatch, mod):
     assert ev.scope is None
     assert ev.payload_json is None
 
+
 def test_emit_event_commit_failure_propagates(monkeypatch, mod):
     class FakeChangeEvent:
         def __init__(self, topic, scope=None, payload_json=None):
@@ -1997,9 +2200,15 @@ def test_emit_event_commit_failure_propagates(monkeypatch, mod):
         def __init__(self):
             self.rolled_back = 0
             self.added = 0
-        def add(self, obj): self.added += 1
-        def commit(self): raise RuntimeError("commit failed")
-        def rollback(self): self.rolled_back += 1
+
+        def add(self, obj):
+            self.added += 1
+
+        def commit(self):
+            raise RuntimeError("commit failed")
+
+        def rollback(self):
+            self.rolled_back += 1
 
     monkeypatch.setattr(mod, "ChangeEvent", FakeChangeEvent, raising=True)
 
@@ -2010,8 +2219,10 @@ def test_emit_event_commit_failure_propagates(monkeypatch, mod):
     assert s.added == 1
     assert s.rolled_back == 0  # oggi NON rollbacka su commit fail
 
+
 # endregion
 # region read_cycle
+
 
 class DummySession:
     def __init__(self):
@@ -2032,6 +2243,7 @@ class DummySession:
 
 class DummySessionFactory:
     """Simula Session(sqlite_engine_app) -> context manager che ritorna DummySession."""
+
     def __init__(self, session_obj):
         self._s = session_obj
 
@@ -2039,11 +2251,15 @@ class DummySessionFactory:
         return self._s
 
 
-def test_read_cycle_single_iteration_logs_and_sleeps_and_handles_elab_exception(monkeypatch, mod):
+def test_read_cycle_single_iteration_logs_and_sleeps_and_handles_elab_exception(
+    monkeypatch, mod
+):
     # --- patch Session / engine ---
     dummy_session = DummySession()
     monkeypatch.setattr(mod, "sqlite_engine_app", object(), raising=False)
-    monkeypatch.setattr(mod, "Session", DummySessionFactory(dummy_session), raising=True)
+    monkeypatch.setattr(
+        mod, "Session", DummySessionFactory(dummy_session), raising=True
+    )
 
     # --- patch schedule globals ---
     monkeypatch.setattr(mod, "START_H", 9, raising=False)
@@ -2052,7 +2268,12 @@ def test_read_cycle_single_iteration_logs_and_sleeps_and_handles_elab_exception(
 
     # --- patch wait_if_not_allowed ---
     wait_calls = []
-    monkeypatch.setattr(mod, "wait_if_not_allowed", lambda *a, **k: wait_calls.append((a, k)), raising=True)
+    monkeypatch.setattr(
+        mod,
+        "wait_if_not_allowed",
+        lambda *a, **k: wait_calls.append((a, k)),
+        raising=True,
+    )
 
     # --- patch elaborazione_dati: solleva eccezione per triggerare logging.exception ---
     def boom(*args, **kwargs):
@@ -2078,15 +2299,25 @@ def test_read_cycle_single_iteration_logs_and_sleeps_and_handles_elab_exception(
     info_calls = []
     exc_calls = []
 
-    monkeypatch.setattr(mod.logging, "info", lambda msg, *args: info_calls.append((msg, args)), raising=True)
-    monkeypatch.setattr(mod.logging, "exception", lambda msg, *args: exc_calls.append((msg, args)), raising=True)
-    monkeypatch.setattr(mod, "POLL_SECONDS_DEFAULT", 5, raising = False)
+    monkeypatch.setattr(
+        mod.logging,
+        "info",
+        lambda msg, *args: info_calls.append((msg, args)),
+        raising=True,
+    )
+    monkeypatch.setattr(
+        mod.logging,
+        "exception",
+        lambda msg, *args: exc_calls.append((msg, args)),
+        raising=True,
+    )
+    monkeypatch.setattr(mod, "POLL_SECONDS_DEFAULT", 5, raising=False)
     monkeypatch.setattr(mod, "_INITIALIZED", True, raising=False)
     # --- run ---
     mod.read_cycle()
 
     # session.begin chiamato 1 volta
-    #assert dummy_session.began == 1
+    # assert dummy_session.began == 1
 
     # wait chiamato (con START_H, END_H, ALLOWED_WEEKDAYS)
     assert len(wait_calls) == 1
@@ -2097,7 +2328,7 @@ def test_read_cycle_single_iteration_logs_and_sleeps_and_handles_elab_exception(
     assert "Errore generico" in exc_calls[0][0]
 
     # elapsed=1.2, poll=5 => sleep_for = max(0, 5 - int(1.2)) = 5 - 1 = 4
-    #assert sleep_calls == pytest.approx(3.7, rel=1)
+    # assert sleep_calls == pytest.approx(3.7, rel=1)
 
     # log "Inizio programma" + log ciclo + log medie finali (KeyboardInterrupt)
     assert any("Inizio programma" in m for (m, _) in info_calls)
@@ -2106,13 +2337,17 @@ def test_read_cycle_single_iteration_logs_and_sleeps_and_handles_elab_exception(
     assert any("Media tempo riposo" in m for (m, _) in info_calls)
 
 
-def test_read_cycle_two_iterations_then_keyboardinterrupt_logs_final_means(monkeypatch, mod):
+def test_read_cycle_two_iterations_then_keyboardinterrupt_logs_final_means(
+    monkeypatch, mod
+):
     # blocca init/ensure_init
     monkeypatch.setattr(mod, "_INITIALIZED", True, raising=False)
 
     dummy_session = DummySession()
     monkeypatch.setattr(mod, "sqlite_engine_app", object(), raising=False)
-    monkeypatch.setattr(mod, "Session", DummySessionFactory(dummy_session), raising=True)
+    monkeypatch.setattr(
+        mod, "Session", DummySessionFactory(dummy_session), raising=True
+    )
 
     monkeypatch.setattr(mod, "START_H", 9, raising=False)
     monkeypatch.setattr(mod, "END_H", 17, raising=False)
@@ -2137,7 +2372,12 @@ def test_read_cycle_two_iterations_then_keyboardinterrupt_logs_final_means(monke
     monkeypatch.setattr(mod.time_mod, "sleep", fake_sleep, raising=True)
 
     info_calls = []
-    monkeypatch.setattr(mod.logging, "info", lambda msg, *args: info_calls.append((msg, args)), raising=True)
+    monkeypatch.setattr(
+        mod.logging,
+        "info",
+        lambda msg, *args: info_calls.append((msg, args)),
+        raising=True,
+    )
     monkeypatch.setattr(mod.logging, "exception", lambda *a, **k: None, raising=True)
 
     monkeypatch.setattr(mod, "POLL_SECONDS_DEFAULT", 5, raising=False)
@@ -2153,34 +2393,36 @@ def test_read_cycle_two_iterations_then_keyboardinterrupt_logs_final_means(monke
     assert any("Media tempo riposo" in m for (m, _) in info_calls)
 
 
-def test_read_cycle_crashes_if_wait_if_not_allowed_raises(
-        monkeypatch,
-        mod
-        ):
-    monkeypatch.setattr(mod, "_INITIALIZED", True, raising = False)
-    monkeypatch.setattr(mod, "sqlite_engine_app", object(), raising = False)
-    monkeypatch.setattr(mod, "Session", DummySessionFactory(DummySession()), raising = True)
+def test_read_cycle_crashes_if_wait_if_not_allowed_raises(monkeypatch, mod):
+    monkeypatch.setattr(mod, "_INITIALIZED", True, raising=False)
+    monkeypatch.setattr(mod, "sqlite_engine_app", object(), raising=False)
+    monkeypatch.setattr(
+        mod, "Session", DummySessionFactory(DummySession()), raising=True
+    )
 
-    monkeypatch.setattr(mod, "START_H", 9, raising = False)
-    monkeypatch.setattr(mod, "END_H", 17, raising = False)
-    monkeypatch.setattr(mod, "ALLOWED_WEEKDAYS", {0, 1, 2, 3, 4}, raising = False)
+    monkeypatch.setattr(mod, "START_H", 9, raising=False)
+    monkeypatch.setattr(mod, "END_H", 17, raising=False)
+    monkeypatch.setattr(mod, "ALLOWED_WEEKDAYS", {0, 1, 2, 3, 4}, raising=False)
 
-    monkeypatch.setattr(mod, "wait_if_not_allowed", lambda
-        *a,
-        **k: (_ for _ in ()).throw(RuntimeError("boom")), raising = True)
+    monkeypatch.setattr(
+        mod,
+        "wait_if_not_allowed",
+        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")),
+        raising=True,
+    )
 
     with pytest.raises(RuntimeError):
         mod.read_cycle()
+
+
 # endregion
 # region load_config
 
-def test_load_config_reads_toml(
-        tmp_path,
-        mod
-        ):
+
+def test_load_config_reads_toml(tmp_path, mod):
     cfg = tmp_path / "config.toml"
     cfg.write_text(
-            """
+        """
             [Percorsi]
             percorso_db = "x.db"
 
@@ -2199,8 +2441,8 @@ def test_load_config_reads_toml(
             [Elementi_selezionati]
             StatoOrdine = "ATTIVO"
             """,
-            encoding = "utf-8",
-            )
+        encoding="utf-8",
+    )
 
     out = mod.load_config(cfg)
     assert out["Percorsi"]["percorso_db"] == "x.db"
@@ -2208,10 +2450,7 @@ def test_load_config_reads_toml(
     assert out["Elementi_selezionati"]["StatoOrdine"] == "ATTIVO"
 
 
-def test_load_config_missing_file_raises(
-        tmp_path,
-        mod
-        ):
+def test_load_config_missing_file_raises(tmp_path, mod):
     missing = tmp_path / "missing.toml"
     with pytest.raises(FileNotFoundError):
         mod.load_config(missing)
@@ -2226,73 +2465,54 @@ import sqlite3 as sq
 import sqlalchemy as sa
 from sqlalchemy import Table, Column, Integer, MetaData
 from sqlalchemy.dialects import sqlite as sqlite_dialect
+
+
 class _DummySQLTable:
     """Mima l'oggetto che Pandas passa al method=... in to_sql: deve avere table"""
 
-
-    def __init__(
-            self,
-            table
-            ):
+    def __init__(self, table):
         self.table = table
 
 
-def test_inserisci_o_ignora_no_rows_returns_0_and_does_not_execute(
-        mod
-        ):
+def test_inserisci_o_ignora_no_rows_returns_0_and_does_not_execute(mod):
     md = MetaData()
-    t = Table("t", md, Column("id", Integer, primary_key = True))
+    t = Table("t", md, Column("id", Integer, primary_key=True))
 
     sqltable = _DummySQLTable(t)
 
-
     class Conn:
-        def __init__(
-                self
-                ):
+        def __init__(self):
             self.calls = 0
 
-
-        def execute(
-                self,
-                stmt
-                ):
+        def execute(self, stmt):
             self.calls += 1
 
-
     conn = Conn()
-    out = mod.inserisci_o_ignora(sqltable, conn, keys = ["id"], data_iter = iter([]))
+    out = mod.inserisci_o_ignora(sqltable, conn, keys=["id"], data_iter=iter([]))
     assert out == 0
     assert conn.calls == 0
 
 
-def test_inserisci_o_ignora_compiles_with_or_ignore(
-        mod
-        ):
+def test_inserisci_o_ignora_compiles_with_or_ignore(mod):
     md = MetaData()
-    t = Table("t", md, Column("id", Integer, primary_key = True), Column("v", Integer))
+    t = Table("t", md, Column("id", Integer, primary_key=True), Column("v", Integer))
 
     sqltable = _DummySQLTable(t)
 
     captured = {"stmt": None}
 
-
     class Conn:
-        def execute(
-                self,
-                stmt
-                ):
+        def execute(self, stmt):
             captured["stmt"] = stmt
-
 
     conn = Conn()
     rows = [(1, 10), (2, 20)]
-    out = mod.inserisci_o_ignora(sqltable, conn, keys = ["id", "v"], data_iter = iter(rows))
+    out = mod.inserisci_o_ignora(sqltable, conn, keys=["id", "v"], data_iter=iter(rows))
 
     assert out == 2
     assert captured["stmt"] is not None
 
-    compiled = str(captured["stmt"].compile(dialect = sqlite_dialect.dialect()))
+    compiled = str(captured["stmt"].compile(dialect=sqlite_dialect.dialect()))
     # deve contenere "INSERT OR IGNORE"
     assert "INSERT OR IGNORE" in compiled.upper()
 
@@ -2302,78 +2522,59 @@ def test_inserisci_o_ignora_compiles_with_or_ignore(
 
 # region elaborazione_dati additional branches
 
-def test_elaborazione_dati_to_sql_returns_none_treated_as_zero(
-        monkeypatch,
-        mod
-        ):
+
+def test_elaborazione_dati_to_sql_returns_none_treated_as_zero(monkeypatch, mod):
     # df finale deve includere DataInizioProduzione perché in elaborazione_dati fai .drop(columns=[...])
     df_input = pd.DataFrame(
-            {
-                "IdDocumento"         : [1],
-                "IdRiga"              : [1],
-                "CodReparto"          : [10],
-                "DataInizioProduzione": ["x"],
-                }
-            )
+        {
+            "IdDocumento": [1],
+            "IdRiga": [1],
+            "CodReparto": [10],
+            "DataInizioProduzione": ["x"],
+        }
+    )
 
     events = _patch_elaborazione_pipeline(monkeypatch, mod, df_input)
 
-
     # patch to_sql per ritornare None
-    def fake_to_sql(
-            self,
-            name,
-            con,
-            if_exists,
-            index,
-            method
-            ):
+    def fake_to_sql(self, name, con, if_exists, index, method):
         return None
 
+    monkeypatch.setattr(pd.DataFrame, "to_sql", fake_to_sql, raising=True)
 
-    monkeypatch.setattr(pd.DataFrame, "to_sql", fake_to_sql, raising = True)
-
-    monkeypatch.setattr(mod, "COUNTER_RIGHE", 0, raising = False)
+    monkeypatch.setattr(mod, "COUNTER_RIGHE", 0, raising=False)
 
     session = object()
-    mod.elaborazione_dati(session = session)
+    mod.elaborazione_dati(session=session)
 
     # deve comunque emettere nuovo_ciclo perché COUNTER_RIGHE==0
     assert [e["topic"] for e in events] == ["nuovo_ciclo"]
     assert mod.COUNTER_RIGHE == 0  # righe_inserite -> 0
 
 
-def test_elaborazione_dati_catches_sqlite_integrity_error(
-        monkeypatch,
-        mod,
-        capsys
-        ):
+def test_elaborazione_dati_catches_sqlite_integrity_error(monkeypatch, mod, capsys):
     df_input = pd.DataFrame(
-            {
-                "IdDocumento"         : [1],
-                "IdRiga"              : [1],
-                "CodReparto"          : [10],
-                "DataInizioProduzione": ["x"],
-                }
-            )
+        {
+            "IdDocumento": [1],
+            "IdRiga": [1],
+            "CodReparto": [10],
+            "DataInizioProduzione": ["x"],
+        }
+    )
 
     _patch_elaborazione_pipeline(monkeypatch, mod, df_input)
 
-
-    def fake_to_sql(
-            *args,
-            **kwargs
-            ):
+    def fake_to_sql(*args, **kwargs):
         raise sq.IntegrityError("boom")
 
-
-    monkeypatch.setattr(pd.DataFrame, "to_sql", fake_to_sql, raising = True)
+    monkeypatch.setattr(pd.DataFrame, "to_sql", fake_to_sql, raising=True)
 
     # non deve propagare eccezione
-    mod.elaborazione_dati(session = object())
+    mod.elaborazione_dati(session=object())
 
     out = capsys.readouterr().out
     assert "Tutte le celle sono uguali" in out
+
 
 def _parse_listish(value):
     """Supporta scope/payload sia come json che come str(list) (es: "['2,1']")."""
@@ -2402,7 +2603,9 @@ def _parse_listish(value):
 
 def _count_rows(engine, table_name: str) -> int:
     with engine.connect() as conn:
-        return int(conn.execute(sa.text(f'SELECT COUNT(*) FROM "{table_name}"')).scalar() or 0)
+        return int(
+            conn.execute(sa.text(f'SELECT COUNT(*) FROM "{table_name}"')).scalar() or 0
+        )
 
 
 def _seed_input_odp(engine, rows: list[dict]):
@@ -2424,29 +2627,47 @@ def _patch_pipeline_to_return_df(monkeypatch, mod, df_input_odp: pd.DataFrame):
 
     # pipeline: lascia passare tutto
     monkeypatch.setattr(mod, "filtra_odpfasi_con_odp", lambda df, **k: df, raising=True)
-    monkeypatch.setattr(mod, "inserimento_reparto_da_risorsa", lambda df, **k: df, raising=True)
-    monkeypatch.setattr(mod, "filtra_odp_componenti_con_odp", lambda df, **k: df, raising=True)
+    monkeypatch.setattr(
+        mod, "inserimento_reparto_da_risorsa", lambda df, **k: df, raising=True
+    )
+    monkeypatch.setattr(
+        mod, "filtra_odp_componenti_con_odp", lambda df, **k: df, raising=True
+    )
 
-    monkeypatch.setattr(mod, "unione_fasi_componenti", lambda *a, **k: pd.DataFrame(), raising=True)
+    monkeypatch.setattr(
+        mod, "unione_fasi_componenti", lambda *a, **k: pd.DataFrame(), raising=True
+    )
     monkeypatch.setattr(mod, "generazione_dizionario", lambda *a, **k: {}, raising=True)
 
     # QUI: imposti l'output “finale”
-    monkeypatch.setattr(mod, "inserimento_distinta_in_odp", lambda *a, **k: df_input_odp.copy(), raising=True)
+    monkeypatch.setattr(
+        mod,
+        "inserimento_distinta_in_odp",
+        lambda *a, **k: df_input_odp.copy(),
+        raising=True,
+    )
 
-    monkeypatch.setattr(mod, "inserimento_dati_fasi_in_odp", lambda df, **k: df, raising=True)
-    monkeypatch.setattr(mod, "gestione_lotto_matricola_famiglia", lambda df, **k: df, raising=True)
-    monkeypatch.setattr(mod, "inserimento_macrofamiglia", lambda df, **k: df, raising=True)
+    monkeypatch.setattr(
+        mod, "inserimento_dati_fasi_in_odp", lambda df, **k: df, raising=True
+    )
+    monkeypatch.setattr(
+        mod, "gestione_lotto_matricola_famiglia", lambda df, **k: df, raising=True
+    )
+    monkeypatch.setattr(
+        mod, "inserimento_macrofamiglia", lambda df, **k: df, raising=True
+    )
 
 
 # ----------------------------
 # Fixtures DB (SQLite in-memory con PK composta)
 # ----------------------------
 
+
 @pytest.fixture()
 def sqlite_engine_input_odp():
     """
     SQLite in-memory *persistente* tra connessioni (StaticPool),
-    con schema input_odp come nel tuo RBAC.db (PK composta).
+    con schema input_odp come nel tuo policy.db (PK composta).
     """
     engine = sa.create_engine(
         "sqlite://",
@@ -2456,7 +2677,8 @@ def sqlite_engine_input_odp():
 
     md = MetaData()
     Table(
-        "input_odp", md,
+        "input_odp",
+        md,
         Column("IdDocumento", Text, primary_key=True),
         Column("IdRiga", Text, primary_key=True),
         Column("RifRegistraz", Text),
@@ -2490,7 +2712,11 @@ def sqlite_engine_input_odp():
 # ----------------------------
 from sqlalchemy.pool import StaticPool
 from sqlalchemy import MetaData, Table, Column, Text
-def test_elaborazione_dati_emits_event_only_for_new_rows(mod, sqlite_engine_input_odp, monkeypatch):
+
+
+def test_elaborazione_dati_emits_event_only_for_new_rows(
+    mod, sqlite_engine_input_odp, monkeypatch
+):
     """
     DB ha già (1,1). Batch contiene (1,1) + (2,1).
     Atteso: insert reale solo per (2,1) e evento 'nuovo_ordine' con payload=['2,1'] scope=['20'].
@@ -2505,10 +2731,22 @@ def test_elaborazione_dati_emits_event_only_for_new_rows(mod, sqlite_engine_inpu
     assert _count_rows(engine, "input_odp") == 1
 
     # batch: una duplicata + una nuova
-    df_input_odp = pd.DataFrame([
-        {"IdDocumento": "1", "IdRiga": "1", "CodReparto": "10", "DataInizioProduzione": "x"},
-        {"IdDocumento": "2", "IdRiga": "1", "CodReparto": "20", "DataInizioProduzione": "x"},
-    ])
+    df_input_odp = pd.DataFrame(
+        [
+            {
+                "IdDocumento": "1",
+                "IdRiga": "1",
+                "CodReparto": "10",
+                "DataInizioProduzione": "x",
+            },
+            {
+                "IdDocumento": "2",
+                "IdRiga": "1",
+                "CodReparto": "20",
+                "DataInizioProduzione": "x",
+            },
+        ]
+    )
 
     _patch_pipeline_to_return_df(monkeypatch, mod, df_input_odp)
 
@@ -2519,7 +2757,7 @@ def test_elaborazione_dati_emits_event_only_for_new_rows(mod, sqlite_engine_inpu
         lambda session, topic, scope=None, payload_json=None: events.append(
             {"topic": topic, "scope": scope, "payload_json": payload_json}
         ),
-        raising=True
+        raising=True,
     )
 
     mod.elaborazione_dati(session=object())
@@ -2538,7 +2776,9 @@ def test_elaborazione_dati_emits_event_only_for_new_rows(mod, sqlite_engine_inpu
     assert scope == ["20"]
 
 
-def test_elaborazione_dati_no_nuovo_ordine_if_all_duplicates(mod, sqlite_engine_input_odp, monkeypatch):
+def test_elaborazione_dati_no_nuovo_ordine_if_all_duplicates(
+    mod, sqlite_engine_input_odp, monkeypatch
+):
     """
     DB ha già (1,1). Batch contiene solo (1,1).
     Atteso: nessun evento 'nuovo_ordine'.
@@ -2550,9 +2790,16 @@ def test_elaborazione_dati_no_nuovo_ordine_if_all_duplicates(mod, sqlite_engine_
     _seed_input_odp(engine, [{"IdDocumento": "1", "IdRiga": "1", "CodReparto": "10"}])
     assert _count_rows(engine, "input_odp") == 1
 
-    df_input_odp = pd.DataFrame([
-        {"IdDocumento": "1", "IdRiga": "1", "CodReparto": "10", "DataInizioProduzione": "x"},
-    ])
+    df_input_odp = pd.DataFrame(
+        [
+            {
+                "IdDocumento": "1",
+                "IdRiga": "1",
+                "CodReparto": "10",
+                "DataInizioProduzione": "x",
+            },
+        ]
+    )
     _patch_pipeline_to_return_df(monkeypatch, mod, df_input_odp)
 
     events = []
@@ -2560,7 +2807,7 @@ def test_elaborazione_dati_no_nuovo_ordine_if_all_duplicates(mod, sqlite_engine_
         mod,
         "emit_event",
         lambda session, topic, scope=None, payload_json=None: events.append(topic),
-        raising=True
+        raising=True,
     )
 
     mod.elaborazione_dati(session=object())
@@ -2569,7 +2816,9 @@ def test_elaborazione_dati_no_nuovo_ordine_if_all_duplicates(mod, sqlite_engine_
     assert "nuovo_ordine" not in events
 
 
-def test_elaborazione_dati_dedupes_batch_internal_duplicates(mod, sqlite_engine_input_odp, monkeypatch):
+def test_elaborazione_dati_dedupes_batch_internal_duplicates(
+    mod, sqlite_engine_input_odp, monkeypatch
+):
     """
     DB ha già (1,1). Batch contiene (1,1) + (2,1) + (2,1) duplicata interna.
     Atteso: evento con una sola occorrenza di '2,1' e scope deduplicata.
@@ -2581,11 +2830,28 @@ def test_elaborazione_dati_dedupes_batch_internal_duplicates(mod, sqlite_engine_
     _seed_input_odp(engine, [{"IdDocumento": "1", "IdRiga": "1", "CodReparto": "10"}])
     assert _count_rows(engine, "input_odp") == 1
 
-    df_input_odp = pd.DataFrame([
-        {"IdDocumento": "1", "IdRiga": "1", "CodReparto": "10", "DataInizioProduzione": "x"},
-        {"IdDocumento": "2", "IdRiga": "1", "CodReparto": "20", "DataInizioProduzione": "x"},
-        {"IdDocumento": "2", "IdRiga": "1", "CodReparto": "20", "DataInizioProduzione": "x"},
-    ])
+    df_input_odp = pd.DataFrame(
+        [
+            {
+                "IdDocumento": "1",
+                "IdRiga": "1",
+                "CodReparto": "10",
+                "DataInizioProduzione": "x",
+            },
+            {
+                "IdDocumento": "2",
+                "IdRiga": "1",
+                "CodReparto": "20",
+                "DataInizioProduzione": "x",
+            },
+            {
+                "IdDocumento": "2",
+                "IdRiga": "1",
+                "CodReparto": "20",
+                "DataInizioProduzione": "x",
+            },
+        ]
+    )
     _patch_pipeline_to_return_df(monkeypatch, mod, df_input_odp)
 
     captured = []
@@ -2595,7 +2861,7 @@ def test_elaborazione_dati_dedupes_batch_internal_duplicates(mod, sqlite_engine_
         lambda session, topic, scope=None, payload_json=None: captured.append(
             {"topic": topic, "scope": scope, "payload_json": payload_json}
         ),
-        raising=True
+        raising=True,
     )
 
     mod.elaborazione_dati(session=object())
@@ -2608,12 +2874,13 @@ def test_elaborazione_dati_dedupes_batch_internal_duplicates(mod, sqlite_engine_
     payload = _parse_listish(ev[0]["payload_json"])
     scope = _parse_listish(ev[0]["scope"])
 
-    assert payload == ["2,1"]          # niente duplicati
-    assert scope == ["20"]             # niente duplicati
+    assert payload == ["2,1"]  # niente duplicati
+    assert scope == ["20"]  # niente duplicati
 
 
 # endregion
 # region read_cycle clamp sleep_for
+
 
 def test_read_cycle_sleep_for_is_zero_when_elapsed_exceeds_poll(monkeypatch, mod):
     # evita che ensure_init richiami init e sovrascriva patch
@@ -2623,7 +2890,9 @@ def test_read_cycle_sleep_for_is_zero_when_elapsed_exceeds_poll(monkeypatch, mod
 
     dummy_session = DummySession()
     monkeypatch.setattr(mod, "sqlite_engine_app", object(), raising=False)
-    monkeypatch.setattr(mod, "Session", DummySessionFactory(dummy_session), raising=True)
+    monkeypatch.setattr(
+        mod, "Session", DummySessionFactory(dummy_session), raising=True
+    )
 
     monkeypatch.setattr(mod, "START_H", 9, raising=False)
     monkeypatch.setattr(mod, "END_H", 17, raising=False)
@@ -2651,6 +2920,8 @@ def test_read_cycle_sleep_for_is_zero_when_elapsed_exceeds_poll(monkeypatch, mod
     mod.read_cycle()
 
     assert sleep_calls == [0.0]
+
+
 # endregion
 # region init
 def test_init_is_idempotent_when_already_initialized(monkeypatch, mod):
@@ -2659,13 +2930,24 @@ def test_init_is_idempotent_when_already_initialized(monkeypatch, mod):
     load_calls = {"n": 0}
     engine_calls = {"n": 0}
 
-    monkeypatch.setattr(mod, "load_config", lambda *a, **k: load_calls.__setitem__("n", load_calls["n"] + 1), raising=True)
-    monkeypatch.setattr(mod, "create_engine", lambda *a, **k: engine_calls.__setitem__("n", engine_calls["n"] + 1), raising=True)
+    monkeypatch.setattr(
+        mod,
+        "load_config",
+        lambda *a, **k: load_calls.__setitem__("n", load_calls["n"] + 1),
+        raising=True,
+    )
+    monkeypatch.setattr(
+        mod,
+        "create_engine",
+        lambda *a, **k: engine_calls.__setitem__("n", engine_calls["n"] + 1),
+        raising=True,
+    )
 
     mod.init(force=False)
 
     assert load_calls["n"] == 0
     assert engine_calls["n"] == 0
+
 
 def test_init_force_true_reloads_config_and_sets_globals(monkeypatch, mod, tmp_path):
     fake_cfg = {
@@ -2687,12 +2969,15 @@ def test_init_force_true_reloads_config_and_sets_globals(monkeypatch, mod, tmp_p
     monkeypatch.setattr(mod, "load_config", lambda *a, **k: fake_cfg, raising=True)
 
     created = []
+
     def fake_create_engine(url):
         created.append(url)
         return object()
 
     monkeypatch.setattr(mod, "create_engine", fake_create_engine, raising=True)
-    monkeypatch.setattr(mod.urllib.parse, "quote_plus", lambda s: "ENCODED", raising=True)
+    monkeypatch.setattr(
+        mod.urllib.parse, "quote_plus", lambda s: "ENCODED", raising=True
+    )
     monkeypatch.setattr(mod, "sqlserver_engine_app", None, raising=False)
 
     mod.init(config_path=tmp_path / "config.toml", force=True)
@@ -2711,6 +2996,7 @@ def test_init_force_true_reloads_config_and_sets_globals(monkeypatch, mod, tmp_p
     assert any(u.startswith("sqlite:///") for u in created)
     assert any(u.startswith("mssql+pyodbc:///?odbc_connect=") for u in created)
 
+
 def test_ensure_init_calls_init_only_when_not_initialized(monkeypatch, mod):
     calls = {"n": 0}
 
@@ -2725,6 +3011,8 @@ def test_ensure_init_calls_init_only_when_not_initialized(monkeypatch, mod):
     mod.ensure_init()  # seconda volta non deve richiamare
 
     assert calls["n"] == 1
+
+
 # endregion
 # region integrazione
 
@@ -2733,11 +3021,14 @@ import sqlite3
 import pandas as pd
 import sqlalchemy as sa
 
+
 def _count_rows(db_or_engine, table: str) -> int:
     # Caso 1: SQLAlchemy Engine (es. sqlite_engine_input_odp)
     if isinstance(db_or_engine, sa.engine.Engine):
         with db_or_engine.connect() as conn:
-            return int(conn.execute(sa.text(f'SELECT COUNT(*) FROM "{table}"')).scalar() or 0)
+            return int(
+                conn.execute(sa.text(f'SELECT COUNT(*) FROM "{table}"')).scalar() or 0
+            )
 
     # Caso 2: path-like (Path/str) (es. rbac_db)
     con = sqlite3.connect(str(db_or_engine))
@@ -2746,7 +3037,10 @@ def _count_rows(db_or_engine, table: str) -> int:
     finally:
         con.close()
 
-def test_to_sql_inserisci_o_ignora_returns_actual_inserted_rows(mod, rbac_db, monkeypatch):
+
+def test_to_sql_inserisci_o_ignora_returns_actual_inserted_rows(
+    mod, rbac_db, monkeypatch
+):
     # engine reale
     engine = sa.create_engine(f"sqlite:///{rbac_db}")
 
@@ -2755,18 +3049,35 @@ def test_to_sql_inserisci_o_ignora_returns_actual_inserted_rows(mod, rbac_db, mo
     monkeypatch.setattr(mod, "sqlite_engine_app", engine, raising=False)
 
     # seed: 1 riga esistente
-    seed = pd.DataFrame([{
-        "IdDocumento": "1", "IdRiga": "1",
-        "RifRegistraz": "", "CodArt": "A", "Quantita": "1",
-        "NumFase": "", "CodLavorazione": "", "CodRisorsaProd": "",
-        "DataInizioSched": "", "DataFineSched": "",
-        "GestioneLotto": "", "GestioneMatricola": "",
-        "DistintaMateriale": "", "CodMatricola": "",
-        "StatoRiga": "", "CodFamiglia": "", "CodMacrofamiglia": "",
-        "CodMagPrincipale": "", "CodReparto": "",
-        "TempoPrevistoLavoraz": "", "StatoOrdine": "",
-        "CodClassifTecnica": "", "CodTipoDoc": "",
-    }])
+    seed = pd.DataFrame(
+        [
+            {
+                "IdDocumento": "1",
+                "IdRiga": "1",
+                "RifRegistraz": "",
+                "CodArt": "A",
+                "Quantita": "1",
+                "NumFase": "",
+                "CodLavorazione": "",
+                "CodRisorsaProd": "",
+                "DataInizioSched": "",
+                "DataFineSched": "",
+                "GestioneLotto": "",
+                "GestioneMatricola": "",
+                "DistintaMateriale": "",
+                "CodMatricola": "",
+                "StatoRiga": "",
+                "CodFamiglia": "",
+                "CodMacrofamiglia": "",
+                "CodMagPrincipale": "",
+                "CodReparto": "",
+                "TempoPrevistoLavoraz": "",
+                "StatoOrdine": "",
+                "CodClassifTecnica": "",
+                "CodTipoDoc": "",
+            }
+        ]
+    )
     seed.to_sql("input_odp", con=engine, if_exists="append", index=False)
 
     assert _count_rows(rbac_db, "input_odp") == 1
@@ -2793,19 +3104,37 @@ def test_elaborazione_dati_no_event_when_all_duplicates(mod, rbac_db, monkeypatc
     monkeypatch.setattr(mod, "sqlite_engine_app", engine, raising=False)
 
     # prepara un df finale (post-pipeline) coerente con schema input_odp + DataInizioProduzione da droppare
-    df_final = pd.DataFrame([{
-        "IdDocumento": "1", "IdRiga": "1", "CodReparto": "10",
-        "DataInizioProduzione": "x",
-        # ... tutte le altre colonne di input_odp (anche vuote) ...
-        "RifRegistraz": "", "CodArt": "A", "Quantita": "1", "NumFase": "",
-        "CodLavorazione": "", "CodRisorsaProd": "",
-        "DataInizioSched": "", "DataFineSched": "",
-        "GestioneLotto": "", "GestioneMatricola": "",
-        "DistintaMateriale": "", "CodMatricola": "",
-        "StatoRiga": "", "CodFamiglia": "", "CodMacrofamiglia": "",
-        "CodMagPrincipale": "", "TempoPrevistoLavoraz": "",
-        "StatoOrdine": "", "CodClassifTecnica": "", "CodTipoDoc": "",
-    }])
+    df_final = pd.DataFrame(
+        [
+            {
+                "IdDocumento": "1",
+                "IdRiga": "1",
+                "CodReparto": "10",
+                "DataInizioProduzione": "x",
+                # ... tutte le altre colonne di input_odp (anche vuote) ...
+                "RifRegistraz": "",
+                "CodArt": "A",
+                "Quantita": "1",
+                "NumFase": "",
+                "CodLavorazione": "",
+                "CodRisorsaProd": "",
+                "DataInizioSched": "",
+                "DataFineSched": "",
+                "GestioneLotto": "",
+                "GestioneMatricola": "",
+                "DistintaMateriale": "",
+                "CodMatricola": "",
+                "StatoRiga": "",
+                "CodFamiglia": "",
+                "CodMacrofamiglia": "",
+                "CodMagPrincipale": "",
+                "TempoPrevistoLavoraz": "",
+                "StatoOrdine": "",
+                "CodClassifTecnica": "",
+                "CodTipoDoc": "",
+            }
+        ]
+    )
 
     # seed nel DB: stessa riga già presente
     df_seed = df_final.drop(columns=["DataInizioProduzione"])
@@ -2818,17 +3147,38 @@ def test_elaborazione_dati_no_event_when_all_duplicates(mod, rbac_db, monkeypatc
 
     monkeypatch.setattr(mod, "leggi_view", fake_leggi_view, raising=True)
     monkeypatch.setattr(mod, "filtra_odpfasi_con_odp", lambda x, **k: x, raising=True)
-    monkeypatch.setattr(mod, "inserimento_reparto_da_risorsa", lambda x, **k: x, raising=True)
-    monkeypatch.setattr(mod, "filtra_odp_componenti_con_odp", lambda x, **k: x, raising=True)
-    monkeypatch.setattr(mod, "unione_fasi_componenti", lambda *a, **k: pd.DataFrame(), raising=True)
-    monkeypatch.setattr(mod, "generazione_dizionario", lambda *a, **k: pd.DataFrame(), raising=True)
-    monkeypatch.setattr(mod, "inserimento_distinta_in_odp", lambda *a, **k: df_final.copy(), raising=True)
-    monkeypatch.setattr(mod, "inserimento_dati_fasi_in_odp", lambda x, **k: x, raising=True)
-    monkeypatch.setattr(mod, "gestione_lotto_matricola_famiglia", lambda x, **k: x, raising=True)
-    monkeypatch.setattr(mod, "inserimento_macrofamiglia", lambda x, **k: x, raising=True)
+    monkeypatch.setattr(
+        mod, "inserimento_reparto_da_risorsa", lambda x, **k: x, raising=True
+    )
+    monkeypatch.setattr(
+        mod, "filtra_odp_componenti_con_odp", lambda x, **k: x, raising=True
+    )
+    monkeypatch.setattr(
+        mod, "unione_fasi_componenti", lambda *a, **k: pd.DataFrame(), raising=True
+    )
+    monkeypatch.setattr(
+        mod, "generazione_dizionario", lambda *a, **k: pd.DataFrame(), raising=True
+    )
+    monkeypatch.setattr(
+        mod,
+        "inserimento_distinta_in_odp",
+        lambda *a, **k: df_final.copy(),
+        raising=True,
+    )
+    monkeypatch.setattr(
+        mod, "inserimento_dati_fasi_in_odp", lambda x, **k: x, raising=True
+    )
+    monkeypatch.setattr(
+        mod, "gestione_lotto_matricola_famiglia", lambda x, **k: x, raising=True
+    )
+    monkeypatch.setattr(
+        mod, "inserimento_macrofamiglia", lambda x, **k: x, raising=True
+    )
 
     events = []
-    monkeypatch.setattr(mod, "emit_event", lambda *a, **k: events.append(k), raising=True)
+    monkeypatch.setattr(
+        mod, "emit_event", lambda *a, **k: events.append(k), raising=True
+    )
 
     monkeypatch.setattr(mod, "COUNTER_RIGHE", 1, raising=False)  # già 1 riga nota
 
@@ -2837,9 +3187,13 @@ def test_elaborazione_dati_no_event_when_all_duplicates(mod, rbac_db, monkeypatc
     # nessun nuovo_ordine atteso (tutto duplicato)
     assert all(e.get("topic") != "nuovo_ordine" for e in events)
 
+
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, Session
+
+
 class Base(DeclarativeBase):
     pass
+
 
 class ChangeEventORM(Base):
     __tablename__ = "change_event"
@@ -2847,7 +3201,10 @@ class ChangeEventORM(Base):
     topic: Mapped[str] = mapped_column(sa.Text, nullable=False)
     scope: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     payload_json: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
-    created_at: Mapped[str] = mapped_column(sa.Text, nullable=False, default=lambda: dt.datetime.now().isoformat())
+    created_at: Mapped[str] = mapped_column(
+        sa.Text, nullable=False, default=lambda: dt.datetime.now().isoformat()
+    )
+
 
 def test_emit_event_persists_row_in_change_event(mod, rbac_db, monkeypatch):
     engine = sa.create_engine(f"sqlite:///{rbac_db}")
@@ -2855,11 +3212,15 @@ def test_emit_event_persists_row_in_change_event(mod, rbac_db, monkeypatch):
     monkeypatch.setattr(mod, "ChangeEvent", ChangeEventORM, raising=True)
 
     with Session(engine) as s:
-        mod.emit_event(session=s, topic="nuovo_ordine", scope="['10']", payload_json='["1,1"]')
+        mod.emit_event(
+            session=s, topic="nuovo_ordine", scope="['10']", payload_json='["1,1"]'
+        )
 
     # verifica inserimento via SQL
     con = sa.create_engine(f"sqlite:///{rbac_db}").connect()
-    rows = con.execute(sa.text('SELECT topic, scope, payload_json, created_at FROM change_event')).fetchall()
+    rows = con.execute(
+        sa.text("SELECT topic, scope, payload_json, created_at FROM change_event")
+    ).fetchall()
     con.close()
 
     assert len(rows) == 1

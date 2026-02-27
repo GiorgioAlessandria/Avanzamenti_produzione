@@ -3,6 +3,7 @@ from sqlalchemy.orm import declarative_base
 from sqlalchemy import Column, DateTime, Integer, String, Text, PrimaryKeyConstraint
 from datetime import datetime
 from zoneinfo import ZoneInfo
+
 # models.py
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
@@ -15,29 +16,53 @@ db = SQLAlchemy()
 
 user_roles = db.Table(
     "user_roles",
-    db.Column("user_id", db.Integer, db.ForeignKey(
-        "users.id", ondelete="CASCADE"), primary_key=True),
-    db.Column("role_id", db.Integer, db.ForeignKey(
-        "roles.id", ondelete="CASCADE"), primary_key=True),
+    db.Column(
+        "user_id",
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    db.Column(
+        "role_id",
+        db.Integer,
+        db.ForeignKey("roles.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
 )
 
 roles_permission = db.Table(
     "roles_permission",
-    db.Column("role_id", db.Integer, db.ForeignKey(
-        "roles.id", ondelete="CASCADE"), primary_key=True),
-    db.Column("permission_id", db.Integer, db.ForeignKey(
-        "permissions.id", ondelete="CASCADE"), primary_key=True),
+    db.Column(
+        "role_id",
+        db.Integer,
+        db.ForeignKey("roles.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    db.Column(
+        "permission_id",
+        db.Integer,
+        db.ForeignKey("permissions.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
 )
 
 user_reparti = db.Table(
     "user_reparti",
-    db.Column("user_id", db.Integer, db.ForeignKey(
-        "users.id", ondelete="CASCADE"), primary_key=True),
-    db.Column("reparto_id", db.Integer, db.ForeignKey(
-        "reparti.id", ondelete="CASCADE"), primary_key=True),
+    db.Column(
+        "user_id",
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    db.Column(
+        "reparto_id",
+        db.Integer,
+        db.ForeignKey("reparti.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
 )
 
-# --- RBAC ---
+# --- policy ---
 
 
 class input_odp(db.Model):
@@ -65,8 +90,7 @@ class input_odp(db.Model):
     StatoOrdine = db.Column(db.String, nullable=False)
     CodClassifTecnica = db.Column(db.String, nullable=False)
     CodTipoDoc = db.Column(db.String, nullable=False)
-    __table_args__ = (
-        PrimaryKeyConstraint("IdDocumento", "IdRiga"),)
+    __table_args__ = (PrimaryKeyConstraint("IdDocumento", "IdRiga"),)
 
     def __repr__(self):
         return f"<{self.IdDocumento, self.IdRiga, self.RifRegistraz, self.CodArt, self.Quantita, self.NumFase, self.CodLavorazione, self.CodRisorsaProd, self.DataInizioSched, self.DataFineSched, self.GestioneLotto, self.GestioneMatricola, self.DistintaMateriale, self.CodMatricola, self.StatoRiga, self.CodFamiglia, self.CodMacrofamiglia, self.CodMagPrincipale, self.CodReparto, self.TempoPrevistoLavoraz, self.StatoOrdine, self.CodClassifTecnica, self.CodTipoDoc}>"
@@ -116,8 +140,7 @@ class Reparto(db.Model):
     __tablename__ = "reparti"
 
     id = db.Column(db.Integer, primary_key=True)
-    codice = db.Column(db.String, unique=True,
-                       nullable=False)  # es. "MONTAGGIO"
+    codice = db.Column(db.String, unique=True, nullable=False)  # es. "MONTAGGIO"
     descrizione = db.Column(db.String)
 
     users = db.relationship(
@@ -189,7 +212,7 @@ class User(UserMixin, db.Model):
         prefs[key] = value
         self.preferences = prefs
 
-    # --- helper RBAC ---
+    # --- helper policy ---
 
     def has_role(self, role_name: str) -> bool:
         return any(r.name == role_name for r in self.roles)
@@ -215,7 +238,10 @@ class ChangeEvent(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     topic = Column(String(50), nullable=False)  # es: "ordini"
-    scope = Column(String(50), nullable=True)   # es: "all" o "stabilimento-A"
+    scope = Column(String(50), nullable=True)  # es: "all" o "stabilimento-A"
     payload_json = Column(Text, nullable=True)  # opzionale: JSON string
-    created_at = Column(DateTime, nullable=False,
-                        default=lambda: datetime.now().astimezone(ZoneInfo("Europe/Rome")))
+    created_at = Column(
+        DateTime,
+        nullable=False,
+        default=lambda: datetime.now().astimezone(ZoneInfo("Europe/Rome")),
+    )

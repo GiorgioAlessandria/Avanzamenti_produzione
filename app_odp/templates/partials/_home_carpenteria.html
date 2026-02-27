@@ -37,7 +37,148 @@
         </form>
     </div>
 </div>
+
+
+<div class="toast lh-lg hide"
+     role="alert"
+     id="toast-2"
+     style="width: max-content;height: max-content;position: fixed; top: 1rem; right: 1rem; z-index: 2000;opacity: 1;filter: blur(0px);">
+    <div class="toast-header">
+        <strong class="me-auto"
+                style="font-size: 25px;">Sospensione dell'ordine
+            <span data-bind-text="ordine"></span></strong>
+        <button class="btn-close ms-2 mb-1 close"
+                type="button"
+                aria-label="Close"
+                data-bs-dismiss="toast"
+                style="font-size: 25px;"></button>
+    </div>
+    <div class="toast-body d-flex flex-column justify-content-center align-items-center"
+         role="alert"
+         style="opacity: 1;width: auto;height: auto;">
+        <p style="font-size: 20px;">Stai sospendendo l'ordine</p>
+        <form method="post">
+            <input type="hidden"
+                   name="Ordine"
+                   data-bind="ordine">
+            <input type="hidden"
+                   name="CodArt"
+                   data-bind="codice">
+            <input type="hidden"
+                   name="Quantita"
+                   data-bind="quantita">
+            <input type="hidden"
+                   name="NumFase"
+                   data-bind="fase">
+            <input class="btn btn-lg btn-primary"
+                   type="submit"
+                   name="Inserimento"
+                   value="Preso in carico"
+                   style="font-size: 25px;">
+        </form>
+    </div>
+</div>
+<div class="toast lh-lg hide"
+     role="alert"
+     id="toast-3"
+     style="width: max-content;height: max-content;position: fixed; top: 1rem; right: 1rem; z-index: 2000;opacity: 1;filter: blur(0px);">
+    <div class="toast-header">
+        <strong class="me-auto"
+                style="font-size: 25px;">Riattivazione dell'ordine
+            <span data-bind-text="ordine"></span></strong>
+        <button class="btn-close ms-2 mb-1 close"
+                type="button"
+                aria-label="Close"
+                data-bs-dismiss="toast"
+                style="font-size: 25px;"></button>
+    </div>
+    <div class="toast-body d-flex flex-column justify-content-center align-items-center"
+         role="alert"
+         style="opacity: 1;width: auto;height: auto;">
+        <p style="font-size: 20px;">Stai riattivando l'ordine</p>
+        <form method="post">
+            <input type="hidden"
+                   name="Ordine"
+                   data-bind="ordine">
+            <input type="hidden"
+                   name="CodArt"
+                   data-bind="codice">
+            <input type="hidden"
+                   name="Quantita"
+                   data-bind="quantita">
+            <input type="hidden"
+                   name="NumFase"
+                   data-bind="fase">
+            <input class="btn btn-lg btn-primary"
+                   type="submit"
+                   name="Inserimento"
+                   value="Preso in carico"
+                   style="font-size: 25px;">
+        </form>
+    </div>
+</div>
+<div class="toast lh-lg hide"
+     role="alert"
+     id="toast-4"
+     style="width: max-content;height: max-content;position: fixed; top: 1rem; right: 1rem; z-index: 2000;opacity: 1;filter: blur(0px);">
+    <div class="toast-header">
+        <strong class="me-auto"
+                style="font-size: 25px;">Chiusura dell'ordine
+            <span data-bind-text="ordine"></span></strong>
+        <button class="btn-close ms-2 mb-1 close"
+                type="button"
+                aria-label="Close"
+                data-bs-dismiss="toast"
+                style="font-size: 25px;"></button>
+    </div>
+    <div class="toast-body d-flex flex-column justify-content-center align-items-center"
+         role="alert"
+         style="opacity: 1;width: auto;height: auto;">
+        <p style="font-size: 20px;">Stai chiudendo l'ordine</p>
+        <form method="post">
+            <div class="d-grid flex-column">
+                <div class="row-1 align-items-start">
+                    <div class="col-1 flex-column">
+                        <input placeholder="Materiale prodotto"
+                               type="number"
+                               name="qty_prodotta"
+                               required="required"
+                               style="margin:2px;font-size:20px;">
+                    </div>
+                    <div class="col-2 flex-column">
+                        <input placeholder="Materiale conforme"
+                               type="number"
+                               required="required"
+                               name="qty_ok"
+                               style="margin:2px;font-size:20px;">
+                    </div>
+                </div>
+                <div class="row-2 flex-column align-items-start"
+                     style="justify-content: center;align-items: center">
+                    <input class="btn btn-lg btn-primary align-items-start"
+                           type="submit"
+                           name="Inserimento"
+                           value="Preso in carico"
+                           style="margin:2px;font-size: 20px; justify-content: center">
+                </div>
+            </div>
+            <input type="hidden"
+                   name="Ordine"
+                   data-bind="ordine">
+            <input type="hidden"
+                   name="CodArt"
+                   data-bind="codice">
+            <input type="hidden"
+                   name="Quantita"
+                   data-bind="quantita">
+            <input type="hidden"
+                   name="NumFase"
+                   data-bind="fase"><br>
+        </form>
+    </div>
+</div>
 <main class="d-flex flex-column w-100 mt-3 mb-3"
+      data-bridge-tab="carpenteria"
       style="height: fit-content;width: fit-content;">
     <div class="container-fluid w-100 h-100 ps-0 pe-0 mx-0"
          style="width: auto;height: auto;">
@@ -89,27 +230,8 @@
                             <th data-sort="text">Risorsa</th>
                         </tr>
                         </thead>
-                        <tbody>
-                        {% for singolo_odp in odp %}
-                            {% if singolo_odp.StatoOrdine == "Pianificata" %}
-                                <tr data-ordine="{{ singolo_odp.RifRegistraz }}"
-                                    data-codice="{{ singolo_odp.CodArt }}"
-                                    data-descrizione="{{ singolo_odp.DesArt }}"
-                                    data-quantita="{{ singolo_odp.Quantita }}"
-                                    data-datacons="{{ singolo_odp.DataFineSched }}"
-                                    data-lavorazione="{{ singolo_odp.CodLavorazione }}"
-                                    data-risorsaprod="{{ singolo_odp.CodRisorsaProd }}"
-                                >
-                                    <td>{{ singolo_odp.RifRegistraz }}</td>
-                                    <td>{{ singolo_odp.CodArt }}</td>
-                                    <td>{{ singolo_odp.DesArt }}</td>
-                                    <td>{{ singolo_odp.Quantita }}</td>
-                                    <td>{{ singolo_odp.DataFineSched | db_date("%Y-%m-%d %H:%M:%S","%d/%m/%Y") }}</td>
-                                    <td>{{ singolo_odp.CodLavorazione | db_list_display }}</td>
-                                    <td>{{ singolo_odp.CodRisorsaProd | db_list_display }}</td>
-                                </tr>
-                            {% endif %}
-                        {% endfor %}
+                        <tbody id="tbody_ordini_da_eseguire">
+                        {% include "partials/_home_carpenteria_rows_da_eseguire.html" %}
                         </tbody>
                     </table>
                 </div>
@@ -169,29 +291,9 @@
                             <th data-sort="text">Stato</th>
                         </tr>
                         </thead>
-                        <tbody>
-                        {% for singolo_odp in odp %}
-                            {% if singolo_odp.StatoOrdine != "Pianificata" %}
-                                <tr data-ordine="{{ singolo_odp.RifRegistraz }}"
-                                    data-codice="{{ singolo_odp.CodArt }}"
-                                    data-descrizione="{{ singolo_odp.DesArt }}"
-                                    data-quantita="{{ singolo_odp.Quantita }}"
-                                    data-datacons="{{ singolo_odp.DataFineSched }}"
-                                    data-lavorazione="{{ singolo_odp.CodLavorazione }}"
-                                    data-risorsaprod="{{ singolo_odp.CodRisorsaProd }}"
-                                    data-statoordine="{{ singolo_odp.StatoOrdine }}"
-                                >
-                                    <td>{{ singolo_odp.RifRegistraz }}</td>
-                                    <td>{{ singolo_odp.CodArt }}</td>
-                                    <td>{{ singolo_odp.DesArt }}</td>
-                                    <td>{{ singolo_odp.Quantita }}</td>
-                                    <td>{{ singolo_odp.DataFineSched | db_date("%Y-%m-%d %H:%M:%S","%d/%m/%Y") }}</td>
-                                    <td>{{ singolo_odp.CodLavorazione | db_list_display }}</td>
-                                    <td>{{ singolo_odp.CodRisorsaProd | db_list_display }}</td>
-                                    <td data-col="stato">{{ singolo_odp.StatoOrdine }}</td>
-                                </tr>
-                            {% endif %}
-                        {% endfor %}
+                        <tbody id="tbody_ordini_in_corso">
+                        {% include "partials/_home_carpenteria_rows_in_corso.html" %}
+                        </tbody>
                     </table>
                 </div>
                 <section class="text-center d-flex w-100 h-100 align-items-center"
@@ -201,20 +303,26 @@
                         <button class="btn btn-primary mx-2"
                                 type="button"
                                 style="margin: 1px;"
-                                data-bs-target="toast-1"
+                                data-bs-target="#toast-2"
                                 data-bs-toggle="toast">
                             Sospendi
                             ordine
                         </button>
-                        <button class="btn btn-primary disabled mx-2"
+                        <button class="btn btn-primary mx-2"
                                 type="button"
                                 style="margin: 1px;"
+                                data-bs-target="#toast-3"
+                                data-bs-toggle="toast"
                                 disabled="">Riattiva ordine
                         </button>
                     </section>
                     <section class="text-end d-flex flex-grow-1 justify-content-end m-2"
                              style="width: auto;height: auto;">
                         <button class="btn btn-primary"
+                                class="btn btn-primary mx-2"
+                                type="button"
+                                data-bs-target="#toast-4"
+                                data-bs-toggle="toast"
                                 type="button">Chiudi
                                               ordine
                         </button>
@@ -224,3 +332,66 @@
         </div>
     </div>
 </main>
+
+<script>
+    (() => {
+        const root = document.querySelector("[data-bridge-tab]");
+        if (!root) return;
+
+        const tab = root.dataset.bridgeTab;
+        const bridgeUrl = {{ url_for("main.api_home_bridge", tab="__TAB__")|tojson }}
+            .replace("__TAB__", tab);
+
+        let lastEventId = 0;
+        let inFlight = false;
+
+        function replaceFragments(fragments) {
+            Object.entries(fragments || {}).forEach(([tbodyId, html]) => {
+                const el = document.getElementById(tbodyId);
+                if (el) el.innerHTML = html;
+            });
+
+            if (window.applyRowColors) window.applyRowColors();
+            if (window.applyStateRowColorsAll) window.applyStateRowColorsAll();
+
+            document.querySelectorAll(".js-table-filter").forEach((input) => {
+                input.dispatchEvent(new Event("input", {bubbles: true}));
+            });
+        }
+
+        async function poll() {
+            if (inFlight) return;
+            inFlight = true;
+
+            try {
+                const res = await fetch(`${bridgeUrl}?after=${encodeURIComponent(lastEventId)}`, {
+                    headers: {"Accept": "application/json"},
+                    cache: "no-store"
+                });
+
+                if (res.redirected) {
+                    window.location = res.url;
+                    return;
+                }
+
+                if (!res.ok) {
+                    console.error("Bridge error:", res.status, await res.text());
+                    return;
+                }
+                const data = await res.json();
+                if (!data.changed) {
+                    lastEventId = data.last_event_id || lastEventId;
+                    return;
+                }
+
+                replaceFragments(data.fragments);
+                lastEventId = data.last_event_id || lastEventId;
+            } finally {
+                inFlight = false;
+            }
+        }
+
+        poll();
+        setInterval(poll, 5000);
+    })();
+</script>
