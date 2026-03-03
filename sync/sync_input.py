@@ -259,7 +259,7 @@ def unione_fasi_componenti(
     )
     df_fasi_componenti = df_fasi_componenti.reset_index(drop=False)
     df_fasi_componenti = df_fasi_componenti.merge(
-        df_articoli[["CodArt", "DesArt"]],
+        df_articoli[["CodArt", "DesArt", "MagUM"]],
         on="CodArt",
         how="left",
     )
@@ -608,7 +608,7 @@ def elaborazione_dati(session: Session) -> None:
         df=df_fasi_componenti,
         chiavi=chiavi,
         rename_col="DistintaMateriale",
-        list_columns=["CodArt", "DesArt", "Quantita", "NumFase"],
+        list_columns=["CodArt", "DesArt", "Quantita", "NumFase", "MagUM"],
     )
     df_input_odp = (
         inserimento_distinta_in_odp(

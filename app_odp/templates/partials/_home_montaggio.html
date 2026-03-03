@@ -414,7 +414,7 @@
                             type="button"
                             id="sospensione_ordine_sl"
                             data-bs-target="#toast-2"
-                            data-use-selected="#ordini_in_corso"
+                            data-use-selected="#ordini_in_corso_sl"
                             data-fill-target="#toast-2"
                             data-bs-toggle="toast"
                             disabled>
@@ -424,7 +424,7 @@
                             id="riattivazione_ordine_sl"
                             type="button"
                             data-bs-target="#toast-3"
-                            data-use-selected="#ordini_in_corso"
+                            data-use-selected="#ordini_in_corso_sl"
                             data-fill-target="#toast-3"
                             data-bs-toggle="toast"
                             disabled>Riattiva ordine
@@ -559,7 +559,7 @@
                             type="button"
                             id="sospensione_ordine_m"
                             data-bs-target="#toast-5"
-                            data-use-selected="#ordini_in_corso"
+                            data-use-selected="#ordini_in_corso_m"
                             data-fill-target="#toast-5"
                             data-bs-toggle="toast"
                             disabled>
@@ -569,7 +569,7 @@
                             id="riattivazione_ordine_m"
                             type="button"
                             data-bs-target="#toast-6"
-                            data-use-selected="#ordini_in_corso"
+                            data-use-selected="#ordini_in_corso_m"
                             data-fill-target="#toast-6"
                             data-bs-toggle="toast"
                             disabled>Riattiva ordine
@@ -623,99 +623,59 @@
         </div>
     </div>
 </div>
-
 <script>
-    function getStatoOrdine(source) {
-        if (!source) return "";
+    function getStatoOrdine(row) {
+        if (!row) return "";
 
-        if (source.dataset?.statoordine) {
-            return source.dataset.statoordine.trim();
+        if (row.dataset?.stato) {
+            return row.dataset.stato.trim();
         }
 
-        const withState = source.closest?.("[data-statoordine]");
-        if (withState?.dataset?.statoordine) {
-            return withState.dataset.statoordine.trim();
-        }
-
-        const row = source.closest?.("tr");
-        if (row) {
-            if (row.dataset?.statoordine) {
-                return row.dataset.statoordine.trim();
-            }
-
-            const innerWithState = row.querySelector("[data-statoordine]");
-            if (innerWithState?.dataset?.statoordine) {
-                return innerWithState.dataset.statoordine.trim();
-            }
-
-            const statoCell = row.querySelector('td[data-col="stato"]');
-            if (statoCell) {
-                return statoCell.textContent.trim();
-            }
+        const statoCell = row.querySelector('td[data-col="stato"]');
+        if (statoCell) {
+            return statoCell.textContent.trim();
         }
 
         return "";
     }
 
-    function aggiornaBottoniOrdineSl(source) {
-        const btnSospensione = document.getElementById("sospensione_ordine_sl");
-        const btnRiattivazione = document.getElementById("riattivazione_ordine_sl");
+    function aggiornaBottoniOrdine(row, btnSospensioneId, btnRiattivazioneId) {
+        const btnSospensione = document.getElementById(btnSospensioneId);
+        const btnRiattivazione = document.getElementById(btnRiattivazioneId);
 
         if (!btnSospensione || !btnRiattivazione) return;
 
-        const stato = getStatoOrdine(source);
+        const stato = getStatoOrdine(row);
+
+        btnSospensione.disabled = true;
+        btnRiattivazione.disabled = true;
 
         if (stato === "Attivo") {
             btnSospensione.disabled = false;
             btnRiattivazione.disabled = true;
-            return;
-        }
-
-        if (stato === "In Sospeso") {
+        } else if (stato === "In Sospeso") {
             btnSospensione.disabled = true;
             btnRiattivazione.disabled = false;
-            return;
         }
-
-        btnSospensione.disabled = true;
-        btnRiattivazione.disabled = true;
     }
 
-    document.addEventListener("click", function (event) {
-        const row = event.target.closest("tr[data-row-key]");
-        if (!row) return;
+    const tabellaSl = document.getElementById("ordini_in_corso_sl");
+    if (tabellaSl) {
+        tabellaSl.addEventListener("click", function (event) {
+            const row = event.target.closest("tbody tr");
+            if (!row) return;
 
-        aggiornaBottoniOrdineSl(event.target);
-    });
-
-    function aggiornaBottoniOrdineM(source) {
-        const btnSospensione = document.getElementById("sospensione_ordine_m");
-        const btnRiattivazione = document.getElementById("riattivazione_ordine_m");
-
-        if (!btnSospensione || !btnRiattivazione) return;
-
-        const stato = getStatoOrdine(source);
-
-        if (stato === "Attivo") {
-            btnSospensione.disabled = false;
-            btnRiattivazione.disabled = true;
-            return;
-        }
-
-        if (stato === "In Sospeso") {
-            btnSospensione.disabled = true;
-            btnRiattivazione.disabled = false;
-            return;
-        }
-
-        btnSospensione.disabled = true;
-        btnRiattivazione.disabled = true;
+            aggiornaBottoniOrdine(row, "sospensione_ordine_sl", "riattivazione_ordine_sl");
+        });
     }
 
-    document.addEventListener("click", function (event) {
-        const row = event.target.closest("tr[data-row-key]");
-        if (!row) return;
+    const tabellaM = document.getElementById("ordini_in_corso_m");
+    if (tabellaM) {
+        tabellaM.addEventListener("click", function (event) {
+            const row = event.target.closest("tbody tr");
+            if (!row) return;
 
-        aggiornaBottoniOrdineM(event.target);
-    });
+            aggiornaBottoniOrdine(row, "sospensione_ordine_m", "riattivazione_ordine_m");
+        });
+    }
 </script>
