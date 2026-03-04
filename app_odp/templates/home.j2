@@ -30,7 +30,16 @@
                         el.innerHTML = html;
                     }
                 });
+
+                if (window.applyRowColors) window.applyRowColors();
+                if (window.restoreSelectedRows) window.restoreSelectedRows();
+
+                document.querySelectorAll(".js-table-filter").forEach((input) => {
+                    input.dispatchEvent(new Event("input", {bubbles: true}));
+                });
             }
+
+            window.applyHomeFragments = applyFragments;
 
             async function fetchUpdates() {
                 if (inFlight) return;
@@ -70,6 +79,7 @@
                 }
             }
 
+            fetchUpdates();
             setInterval(fetchUpdates, intervalMs);
         })();
     </script>

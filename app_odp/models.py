@@ -540,19 +540,16 @@ class User(UserMixin, db.Model):
 class StatoOdp(db.Model):
     __tablename__ = "odp_in_carico"
 
-    RifRegistraz = db.Column(
-        db.Text,
-        db.ForeignKey("input_odp.RifRegistraz", ondelete="CASCADE"),
-        primary_key=True,
-    )
+    IdDocumento = db.Column(db.Text, primary_key=True)
+    IdRiga = db.Column(db.Text, primary_key=True)
+    RifRegistraz = db.Column(db.Text, index=True, nullable=False)
+
     Stato_odp = db.Column(db.Text)
     Data_in_carico = db.Column(db.Text)
     Tempo_funzionamento = db.Column(db.Text)
     Utente_operazione = db.Column(db.Text)
     Fase = db.Column(db.Text)
-
-    def __repr__(self):
-        return f"<StatoOdp {self.__dict__}>"
+    data_ultima_attivazione = db.Column(db.Text)
 
 
 class TipologieStato(db.Model):

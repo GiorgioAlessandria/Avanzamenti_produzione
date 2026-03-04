@@ -17,27 +17,33 @@
          role="alert"
          style="opacity: 1;width: auto;height: auto;">
         <p style="font-size: 20px;">Stai prendendo in carico un nuovo ordine</p>
-        <form method="post">
-            <input type="hidden"
-                   name="Ordine"
-                   data-bind="ordine">
-            <input type="hidden"
-                   name="CodArt"
-                   data-bind="codice">
-            <input type="hidden"
-                   name="Quantita"
-                   data-bind="quantita">
-            <input type="hidden"
-                   name="NumFase"
-                   data-bind="fase">
-            <input class="btn btn-lg btn-primary"
-                   type="submit"
-                   name="Inserimento"
-                   value="Preso in carico"
-                   style="font-size: 25px;">
 
-        </form>
+        <input type="hidden"
+               data-bind="iddocumento"
+               id="toast1-iddocumento">
+        <input type="hidden"
+               data-bind="idriga"
+               id="toast1-idriga">
+        <input type="hidden"
+               data-bind="ordine"
+               id="toast1-ordine">
+        <input type="hidden"
+               data-bind="codice"
+               id="toast1-codice">
+        <input type="hidden"
+               data-bind="quantita"
+               id="toast1-quantita">
+        <input type="hidden"
+               data-bind="fase"
+               id="toast1-fase">
+
+        <button class="btn btn-primary"
+                id="btn-prendi-ordine"
+                type="button">
+            Preso in carico
+        </button>
     </div>
+</div>
 </div>
 <!--toast sospensione ordine -->
 <div class="toast lh-lg hide"
@@ -60,28 +66,33 @@
         <p style="font-size: 20px;">Stai sospendendo l'ordine</p>
         <form method="post">
             <input type="hidden"
-                   name="Ordine"
+                   id="toast2-iddocumento"
+                   data-bind="iddocumento">
+            <input type="hidden"
+                   id="toast2-idriga"
+                   data-bind="idriga">
+            <input type="hidden"
+                   id="toast2-ordine"
                    data-bind="ordine">
             <input type="hidden"
-                   name="CodArt"
+                   id="toast2-codice"
                    data-bind="codice">
             <input type="hidden"
-                   name="Quantita"
+                   id="toast2-quantita"
                    data-bind="quantita">
             <input type="hidden"
-                   name="NumFase"
+                   id="toast2-fase"
                    data-bind="fase">
-            <label for="causale_attivita"
-                   style="font-size: 20px;"> Inserire la causale della sospensione:<br>
-                <select id="causale_attivita">
-                    {% for causale in causali_attivita %}
-                        <option value="{{ causale }}">{{ causale }}</option>
-                    {% endfor %}
-                </select>
-            </label><br>
+
+            <select id="causale_attivita_sl">
+                {% for causale in causali_attivita %}
+                    <option value="{{ causale }}">{{ causale }}</option>
+                {% endfor %}
+            </select>
+
             <input class="btn btn-lg btn-primary"
                    type="submit"
-                   name="Inserimento"
+                   id="btn-conferma-sospensione-sl"
                    value="Conferma"
                    style="font-size: 25px;">
         </form>
@@ -108,20 +119,27 @@
         <p style="font-size: 20px;">Stai riattivando l'ordine</p>
         <form method="post">
             <input type="hidden"
-                   name="Ordine"
-                   data-bind="ordine">
+                   data-bind="iddocumento"
+                   id="toast-riatt-sl-iddocumento">
             <input type="hidden"
-                   name="CodArt"
-                   data-bind="codice">
+                   data-bind="idriga"
+                   id="toast-riatt-sl-idriga">
             <input type="hidden"
-                   name="Quantita"
-                   data-bind="quantita">
+                   data-bind="ordine"
+                   id="toast-riatt-sl-ordine">
             <input type="hidden"
-                   name="NumFase"
-                   data-bind="fase">
+                   data-bind="codice"
+                   id="toast-riatt-sl-codice">
+            <input type="hidden"
+                   data-bind="quantita"
+                   id="toast-riatt-sl-quantita">
+            <input type="hidden"
+                   data-bind="fase"
+                   id="toast-riatt-sl-fase">
+
             <input class="btn btn-lg btn-primary"
                    type="submit"
-                   name="Inserimento"
+                   id="btn-conferma-riattivazione-sl"
                    value="Conferma"
                    style="font-size: 25px;">
         </form>
@@ -420,5 +438,174 @@
         if (!row) return;
 
         aggiornaBottoniOrdine(event.target);
+    });
+
+</script>
+<script>
+    document.getElementById("btn-prendi-ordine")?.addEventListener("click", async function () {
+        const btn = this;
+        const idDocumento = document.getElementById("toast1-iddocumento")?.value?.trim() || "";
+        const idRiga = document.getElementById("toast1-idriga")?.value?.trim() || "";
+
+        if (!idDocumento || !idRiga) {
+            console.error("IdDocumento o IdRiga mancanti");
+            return;
+        }
+
+        btn.disabled = true;
+
+        try {
+            const resp = await fetch("/api/ordini/presa", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-Requested-With": "XMLHttpRequest"
+                },
+                credentials: "same-origin",
+                body: JSON.stringify({
+                    id_documento: idDocumento,
+                    id_riga: idRiga
+                })
+            });
+
+            let data = {};
+            try {
+                data = await resp.json();
+            } catch (_) {
+                data = {};
+            }
+
+            if (!resp.ok || data.ok === false) {
+                console.error("Errore nella presa in carico:", data);
+                alert(data.error || "Errore durante la presa in carico dell'ordine.");
+                return;
+            }
+
+            const toastEl = document.getElementById("toast-1");
+            bootstrap.Toast.getOrCreateInstance(toastEl).hide();
+
+            if (data.fragments && window.applyHomeFragments) {
+                window.applyHomeFragments(data.fragments);
+            } else {
+                const rowKey = data.row_key || `${idDocumento}|${idRiga}`;
+                const selectedRow = document.querySelector(
+                    `tr[data-row-key="${CSS.escape(rowKey)}"]`
+                );
+                if (selectedRow) {
+                    selectedRow.remove();
+                }
+            }
+
+            document.getElementById("sospensione_ordine")?.setAttribute("disabled", "disabled");
+            document.getElementById("riattivazione_ordine")?.setAttribute("disabled", "disabled");
+
+        } catch (err) {
+            console.error("Errore fetch presa ordine:", err);
+            alert("Errore di comunicazione con il server.");
+        } finally {
+            btn.disabled = false;
+        }
+    });
+</script>
+<script>
+    document.getElementById("btn-conferma-sospensione-sl")?.addEventListener("click", async function (event) {
+        event.preventDefault();
+
+        const idDocumento = document.getElementById("toast2-iddocumento")?.value?.trim() || "";
+        const idRiga = document.getElementById("toast2-idriga")?.value?.trim() || "";
+        const causale = document.getElementById("causale_attivita_sl")?.value?.trim() || "";
+
+        if (!idDocumento || !idRiga) return;
+
+        const resp = await fetch("/api/ordini/sospendi", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-Requested-With": "XMLHttpRequest"
+            },
+            credentials: "same-origin",
+            body: JSON.stringify({
+                id_documento: idDocumento,
+                id_riga: idRiga,
+                causale: causale,
+                modalita: "sl"
+            })
+        });
+
+        const data = await resp.json();
+
+        if (!resp.ok || data.ok === false) {
+            alert(data.error || "Errore durante la sospensione del semilavorato.");
+            return;
+        }
+
+        bootstrap.Toast.getOrCreateInstance(document.getElementById("toast-2")).hide();
+
+        if (data.fragments && window.applyHomeFragments) {
+            window.applyHomeFragments(data.fragments);
+        }
+
+        document.getElementById("sospensione_ordine")?.setAttribute("disabled", "disabled");
+        document.getElementById("riattivazione_ordine")?.setAttribute("disabled", "disabled");
+    });
+</script>
+<script>
+    document.getElementById("btn-conferma-riattivazione-sl")?.addEventListener("click", async function (event) {
+        event.preventDefault();
+
+        const btn = this;
+        const idDocumento = document.getElementById("toast-riatt-sl-iddocumento")?.value?.trim() || "";
+        const idRiga = document.getElementById("toast-riatt-sl-idriga")?.value?.trim() || "";
+
+        if (!idDocumento || !idRiga) {
+            console.error("IdDocumento o IdRiga mancanti");
+            return;
+        }
+
+        btn.disabled = true;
+
+        try {
+            const resp = await fetch("/api/ordini/riattiva", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-Requested-With": "XMLHttpRequest"
+                },
+                credentials: "same-origin",
+                body: JSON.stringify({
+                    id_documento: idDocumento,
+                    id_riga: idRiga,
+                    modalita: "sl"
+                })
+            });
+
+            let data = {};
+            try {
+                data = await resp.json();
+            } catch (_) {
+            }
+
+            if (!resp.ok || data.ok === false) {
+                alert(data.error || "Errore durante la riattivazione dell'ordine.");
+                return;
+            }
+
+            bootstrap.Toast.getOrCreateInstance(document.getElementById("toast-3")).hide();
+
+            if (data.fragments && window.applyHomeFragments) {
+                window.applyHomeFragments(data.fragments);
+            }
+
+            const btnSosp = document.getElementById("sospensione_ordine");
+            const btnRiatt = document.getElementById("riattivazione_ordine");
+            if (btnSosp) btnSosp.disabled = true;
+            if (btnRiatt) btnRiatt.disabled = true;
+
+        } catch (err) {
+            console.error("Errore fetch riattivazione SL:", err);
+            alert("Errore di comunicazione con il server.");
+        } finally {
+            btn.disabled = false;
+        }
     });
 </script>

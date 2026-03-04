@@ -122,8 +122,9 @@
         </div>
     </div>
 </header>
-{% include "partials/_nav_offcanvas.html" %}
 
+{% include "partials/_nav_offcanvas.html" %}
+{% block content %}{% endblock %}
 {% block extra_js %}
     <script>
         document.addEventListener("DOMContentLoaded", () => {
@@ -567,12 +568,48 @@
             bottone.disabled = (stato !== "Attivo");
         }
     </script>
+    <script>
+        window.selectedRowKeys = window.selectedRowKeys || {};
+
+        function markSelectedRow(row) {
+            const table = row.closest("table");
+            if (!table) return;
+
+            table.querySelectorAll("tbody tr.row-selected").forEach(tr => {
+                tr.classList.remove("row-selected");
+            });
+
+            row.classList.add("row-selected");
+            window.selectedRowKeys[table.id] = row.dataset.rowKey || "";
+        }
+
+        function restoreSelectedRows() {
+            document.querySelectorAll("table.table-selectable").forEach(table => {
+                const rowKey = window.selectedRowKeys[table.id];
+                if (!rowKey) return;
+
+                const row = table.querySelector(
+                    `tbody tr[data-row-key="${CSS.escape(rowKey)}"]`
+                );
+                if (row) {
+                    row.classList.add("row-selected");
+                }
+            });
+        }
+
+        window.restoreSelectedRows = restoreSelectedRows;
+
+        document.addEventListener("click", function (event) {
+            const row = event.target.closest("table.table-selectable tbody tr[data-row-key]");
+            if (!row) return;
+            markSelectedRow(row);
+        });
+    </script>
 {% endblock %}
 
-</body>
-{% block content %}{% endblock %}
 <script src="{{ url_for('static', filename='assets/js/jquery.min.js') }}"></script>
 <script src="{{ url_for('static', filename='assets/bootstrap/js/bootstrap.min.js') }}"></script>
 <script src="{{ url_for('static', filename='assets/js/bs-init.js') }}"></script>
 
+</body>
 </html>
