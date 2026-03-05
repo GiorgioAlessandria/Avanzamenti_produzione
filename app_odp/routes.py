@@ -1081,38 +1081,35 @@ def api_chiudi_ordine():
     now_dt = _now_rome_dt()
     now_iso = now_dt.isoformat(timespec="seconds")
 
-    # runtime record
     stato = StatoOdp.query.filter_by(
         IdDocumento=ordine.IdDocumento, IdRiga=ordine.IdRiga
     ).first()
 
-    # se attivo, finalizza Tempo_funzionamento
-    if stato is not None and stato_attuale == "attivo":
-        _accumulate_runtime_until(stato, now_dt)
+    # finalizza runtime al momento della chiusura
+    if stato is not None:
+        # se vuoi essere più robusto, usa lo stato in odp_in_carico (non quello in input_odp)
+        if _norm_text(stato.Stato_odp).lower().startswith("attiv"):
+            _accumulate_runtime_until(
+                stato, now_dt
+            )  # <-- aggiorna Tempo_funzionamento sommando il delta
 
-    tempo_finale = _norm_text(stato.Tempo_funzionamento) if stato else "0"
+        tempo_finale = _norm_text(stato.Tempo_funzionamento) or "0"
 
-    # salva nota di chiusura nel campo Note (se vuoi conservarla nello snapshot ordine prima di cancellare)
-    if note:
-        ordine.Note = (ordine.Note or "").strip()
-        ordine.Note = (
-            ordine.Note + "\n" if ordine.Note else ""
-        ) + f"[CHIUSURA {now_iso}] {note}"
-
-    # evento “broadcast” per il polling
-    _push_change_event(
-        topic="ordine_chiuso",
-        ordine=ordine,
-        extra_payload={
-            "azione": "chiusura_totale",
-            "utente": current_user.username,
-            "closed_at": now_iso,
-            "quantita_conforme": str(q_ok),
-            "quantita_non_conforme": str(q_nok),
-            "tempo_funzionamento": tempo_finale,
-            "note": note,
-        },
-    )
+        db.session.add(
+            StatoOdpLog(
+                IdDocumento=stato.IdDocumento,
+                IdRiga=stato.IdRiga,
+                RifRegistraz=stato.RifRegistraz,
+                Stato_odp=stato.Stato_odp,
+                Data_in_carico=stato.Data_in_carico,
+                Tempo_funzionamento=tempo_finale,  # <-- qui finisce il valore “già sommato”
+                Utente_operazione=stato.Utente_operazione,
+                Fase=stato.Fase,
+                data_ultima_attivazione=stato.data_ultima_attivazione,
+                ClosedBy=current_user.username,
+                ClosedAt=now_iso,
+            )
+        )
     db.session.flush()  # assicura che ChangeEvent abbia un id
 
     # --- LOG: 1) input_odp snapshot ---

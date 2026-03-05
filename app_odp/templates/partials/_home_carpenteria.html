@@ -183,17 +183,22 @@
             <input type="hidden"
                    data-bind="fase"
                    id="toast-chiudi-sl-fase">
-
-            <label for="quantita-conforme"
-                   style="font-size: 25px;">Quantità conforme:
+            <label for="toast-chiudi-sl-quantita-conforme"
+                   style="font-size: 25px;">Quantità conforme:<br>
                 <input type="number"
-                       id="toast-chiudi-sl-quantita-conforme"></label>
-            <label for="quantita-conforme"
-                   style="font-size: 25px;">Quantità non conforme:
+                       id="toast-chiudi-sl-quantita-conforme"
+                       min="0"
+                       step="1"
+                       required></label><br>
+            <label for="toast-chiudi-sl-quantita-non-conforme"
+                   style="font-size: 25px;">Quantità KO:<br>
                 <input type="number"
-                       id="toast-chiudi-sl-quantita-non-conforme"></label><br>
+                       id="toast-chiudi-sl-quantita-non-conforme"
+                       min="0"
+                       step="1"
+                       required></label><br>
             <label for="note-chiusura"
-                   style="font-size: 25px;">Note:
+                   style="font-size: 25px;">Note:<br>
                 <textarea id="toast-chiudi-sl-note"
                           rows="3"
                           cols="30"></textarea></label><br>
@@ -628,4 +633,122 @@
             btn.disabled = false;
         }
     });
+</script>
+<script>
+    document.getElementById("btn-conferma-chiusura-sl")?.addEventListener("click", async function (event) {
+        event.preventDefault();
+
+        const idDocumento = document.getElementById("toast-chiudi-sl-iddocumento")?.value?.trim() || "";
+        const idRiga = document.getElementById("toast-chiudi-sl-idriga")?.value?.trim() || "";
+
+        const qOrd = document.getElementById("toast-chiudi-sl-quantita")?.value?.trim() || "";
+        const qProd = document.getElementById("toast-chiudi-sl-quantita-conforme")?.value?.trim() || "";
+        const qScarto = document.getElementById("toast-chiudi-sl-quantita-non-conforme")?.value?.trim() || "";
+        const note = document.getElementById("toast-chiudi-sl-note")?.value?.trim() || "";
+
+        if (!idDocumento || !idRiga) {
+            alert("Ordine non valido (IdDocumento/IdRiga mancanti).");
+            return;
+        }
+
+        // validazione minima lato UI: scarto <= prodotta
+        const nProd = Number(String(qProd).replace(",", "."));
+        const nScarto = Number(String(qScarto).replace(",", "."));
+        const nOrd = Number(String(qOrd).replace(",", "."));
+
+        if (!Number.isFinite(nProd) || nProd < 0) {
+            alert("Quantità prodotta non valida.");
+            return;
+        }
+        if (!Number.isFinite(nScarto) || nScarto < 0) {
+            alert("Quantità scartata non valida.");
+            return;
+        }
+        if (nScarto > nProd) {
+            alert("La quantità scartata non può superare la quantità prodotta.");
+            return;
+        }
+        // opzionale (coerente col “prodotta = quantità ordine”):
+        if (Number.isFinite(nOrd) && nProd > nOrd) {
+            alert("La quantità prodotta non può superare la quantità dell'ordine.");
+            return;
+        }
+
+        const resp = await fetch("/api/ordini/chiudi", {
+            method: "POST",
+            headers: {"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"},
+            credentials: "same-origin",
+            body: JSON.stringify({
+                id_documento: idDocumento,
+                id_riga: idRiga,
+                quantita_prodotta: qProd,
+                quantita_scartata: qScarto,
+                note: note
+            })
+        });
+
+        const data = await resp.json().catch(() => ({}));
+
+        if (!resp.ok || data.ok === false) {
+            alert(data.error || "Errore durante la chiusura dell'ordine.");
+            return;
+        }
+
+        bootstrap.Toast.getOrCreateInstance(document.getElementById("toast-4")).hide();
+
+        if (data.fragments && window.applyHomeFragments) {
+            window.applyHomeFragments(data.fragments);
+        }
+    });
+</script>
+<script>
+    (() => {
+// Toast chiusura SL (carpenteria)
+        const toastId = "toast-4";
+        const toastEl = document.getElementById(toastId);
+        if (!toastEl) return;
+
+        const hidTot = document.getElementById("toast-chiudi-sl-quantita"); // riempito da data-bind="quantita"
+        const inpProd = document.getElementById("toast-chiudi-sl-quantita-conforme"); // "prodotta"
+        const inpScarto = document.getElementById("toast-chiudi-sl-quantita-non-conforme"); // "scartata"
+
+        if (!hidTot || !inpProd || !inpScarto) return;
+
+        function parseItNumber(v) {
+
+            let s = String(v ?? "").trim().replace(/\s+/g, "");
+            if (!s) return NaN;
+            if (s.includes(",") && s.includes(".")) s = s.replace(/\./g, "");
+            s = s.replace(",", ".");
+            const n = Number(s);
+            return Number.isFinite(n) ? n : NaN;
+        }
+
+        function autofillProdFromOrderTotal() {
+            const qOrd = parseItNumber(hidTot.value);
+
+            // requisito: quantità totale dell'ordine nel primo input
+            if (Number.isFinite(qOrd)) {
+                inpProd.value = String(qOrd);
+            } else {
+                // se non riesce a parsare, non forzo nulla (o svuota se preferisci)
+                // inpProd.value = "";
+            }
+
+            // opzionale: default scarto a 0 se vuoto
+            if (inpScarto && !String(inpScarto.value || "").trim()) {
+                inpScarto.value = "0";
+            }
+        }
+
+// Apertura toast: dopo che il tuo script data-bind ha riempito gli hidden
+        document.addEventListener("click", (e) => {
+            const btn = e.target.closest(`[data-bs-target="#${toastId}"]`);
+            if (!btn) return;
+
+            requestAnimationFrame(() => {
+                autofillProdFromOrderTotal();
+            });
+        });
+    })();
 </script>
