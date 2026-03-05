@@ -44,7 +44,7 @@
         </button>
     </div>
 </div>
-</div>
+
 <!--toast sospensione ordine -->
 <div class="toast lh-lg hide"
      role="alert"
@@ -162,24 +162,44 @@
     </div>
     <div class="toast-body d-flex flex-column justify-content-center align-items-center"
          role="alert"
-         style="opacity: 1;width: auto;height: auto;">
-        <p style="font-size: 20px;">Stai chiudendo l'ordine</p>
+         style="opacity: 2;width: auto;height: auto;">
+        <p style="font-size: 25px;">Stai chiudendo l'ordine</p>
         <form method="post">
             <input type="hidden"
-                   name="Ordine"
-                   data-bind="ordine">
+                   data-bind="iddocumento"
+                   id="toast-chiudi-sl-iddocumento">
             <input type="hidden"
-                   name="CodArt"
-                   data-bind="codice">
+                   data-bind="idriga"
+                   id="toast-chiudi-sl-idriga">
             <input type="hidden"
-                   name="Quantita"
-                   data-bind="quantita">
+                   data-bind="ordine"
+                   id="toast-chiudi-sl-ordine">
             <input type="hidden"
-                   name="NumFase"
-                   data-bind="fase">
+                   data-bind="codice"
+                   id="toast-chiudi-sl-codice">
+            <input type="hidden"
+                   data-bind="quantita"
+                   id="toast-chiudi-sl-quantita">
+            <input type="hidden"
+                   data-bind="fase"
+                   id="toast-chiudi-sl-fase">
+
+            <label for="quantita-conforme"
+                   style="font-size: 25px;">Quantità conforme:
+                <input type="number"
+                       id="toast-chiudi-sl-quantita-conforme"></label>
+            <label for="quantita-conforme"
+                   style="font-size: 25px;">Quantità non conforme:
+                <input type="number"
+                       id="toast-chiudi-sl-quantita-non-conforme"></label><br>
+            <label for="note-chiusura"
+                   style="font-size: 25px;">Note:
+                <textarea id="toast-chiudi-sl-note"
+                          rows="3"
+                          cols="30"></textarea></label><br>
             <input class="btn btn-lg btn-primary"
                    type="submit"
-                   name="Inserimento"
+                   id="btn-conferma-chiusura-sl"
                    value="Conferma"
                    style="font-size: 25px;">
         </form>

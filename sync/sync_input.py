@@ -259,7 +259,7 @@ def unione_fasi_componenti(
     )
     df_fasi_componenti = df_fasi_componenti.reset_index(drop=False)
     df_fasi_componenti = df_fasi_componenti.merge(
-        df_articoli[["CodArt", "DesArt", "MagUM"]],
+        df_articoli[["CodArt", "DesArt", "MagUM", "GestioneLotto"]],
         on="CodArt",
         how="left",
     )
@@ -569,6 +569,41 @@ def _fetch_existing_pks(
     return existing
 
 
+def int_format(x):
+    try:
+        return int(x)
+    except (ValueError, TypeError):
+        return 0
+
+
+def filtri_giacenza_lotti(df_giacenza_lotti: pd.DataFrame) -> pd.DataFrame:
+    """
+    Filtra il dataframe della giacenza lotti per mantenere solo le righe con giacenza maggiore di 0
+
+    :param df_giacenza_lotti: Dataframe con la giacenza dei lotti
+    :type df_giacenza_lotti: pd.DataFrame
+    :return: Dataframe filtrato con solo i lotti con giacenza maggiore di 0
+    :rtype: pd.DataFrame
+    """
+    df_giacenza_lotti["Giacenza"] = df_giacenza_lotti["Giacenza"].apply(int_format)
+    df_giacenza_lotti_filtered = df_giacenza_lotti.loc[
+        df_giacenza_lotti["Giacenza"] > 0
+    ]
+    df_giacenza_lotti_filtered_regexLotto = df_giacenza_lotti_filtered[
+        df_giacenza_lotti_filtered["RifLottoAlfa"]
+        .astype("string")
+        .str.fullmatch(r"^\d{8}$")
+    ]
+    df_giacenza_lotti_filtered_regexLotto_Articolo = (
+        df_giacenza_lotti_filtered_regexLotto[
+            df_giacenza_lotti_filtered_regexLotto["CodArt"]
+            .astype("string")
+            .str.fullmatch(r"^[A-Z]{2}\d{2}-\d{3}-\d{4}$")
+        ]
+    )
+    return df_giacenza_lotti_filtered_regexLotto_Articolo
+
+
 def elaborazione_dati(session: Session) -> None:
     """
     Funzione per l'inserimento dei dati nella tabella input_odp da inserire a db
@@ -576,6 +611,7 @@ def elaborazione_dati(session: Session) -> None:
     :param session: sessione Sqlalchemy ORM
     :type session: Session
     """
+
     ensure_init()
     global nuovo_ciclo
     # righe_inserite = int(0)
@@ -608,7 +644,14 @@ def elaborazione_dati(session: Session) -> None:
         df=df_fasi_componenti,
         chiavi=chiavi,
         rename_col="DistintaMateriale",
-        list_columns=["CodArt", "DesArt", "Quantita", "NumFase", "MagUM"],
+        list_columns=[
+            "CodArt",
+            "DesArt",
+            "Quantita",
+            "NumFase",
+            "MagUM",
+            "GestioneLotto",
+        ],
     )
     df_input_odp = (
         inserimento_distinta_in_odp(
@@ -639,12 +682,16 @@ def elaborazione_dati(session: Session) -> None:
     ]
     df_new = df_input_odp.loc[mask_new].copy().drop_duplicates(subset=pk_cols)
     df_new["FaseAttiva"] = 1
+
+    df_giacenza_lotti = leggi_view(table="vwESGiacenzaLotti").pipe(
+        filtri_giacenza_lotti
+    )
     if nuovo_ciclo == 0:
         emit_event(session=session, topic="nuovo_ciclo")
         nuovo_ciclo = 1
     # 5) inserimento (None->0) + catch IntegrityError
     try:
-        righe_inserite = int(
+        righe_inserite_odp = int(
             df_new.to_sql(
                 name="input_odp",
                 con=sqlite_engine_app,
@@ -654,14 +701,24 @@ def elaborazione_dati(session: Session) -> None:
             )
             or 0
         )
+        righe_inserite_lotti = int(
+            df_giacenza_lotti.to_sql(
+                name="giacenza_lotti",
+                con=sqlite_engine_app,
+                if_exists="append",
+                index=False,
+                method=inserisci_o_ignora,
+            )
+            or 0
+        )
     except sq.IntegrityError:
         print("Tutte le celle sono uguali")
-        righe_inserite = 0
+        righe_inserite_odp = 0
 
     # 6) nuovo_ordine SOLO se cambia rispetto al counter
-    if righe_inserite > 0:
+    if righe_inserite_odp > 0:
         df_ev = df_new.sort_values(["IdDocumento", "IdRiga"], ascending=False).head(
-            righe_inserite
+            righe_inserite_odp
         )
         payload = (
             df_ev["IdDocumento"].astype(str) + "," + df_ev["IdRiga"].astype(str)
@@ -822,7 +879,7 @@ def read_cycle() -> None:
     list_sleep = []
     try:
         with Session(sqlite_engine_app) as session:
-            while True:
+            while counter < 2:
                 wait_if_not_allowed(START_H, END_H, ALLOWED_WEEKDAYS)
                 start = time_mod.time()
 
@@ -856,7 +913,6 @@ def read_cycle() -> None:
                 )
                 media_riposo = statistics.mean(list_sleep[-1000 : len(list_sleep)])
                 logging.info("Media tempo riposo 1000 cicli %.3f", media_riposo)
-
             elif counter % 500 == 0:
                 media_tempo_ciclo = statistics.mean(
                     list_elapsed[-500 : len(list_elapsed)]
@@ -866,7 +922,6 @@ def read_cycle() -> None:
                 )
                 media_riposo = statistics.mean(list_sleep[-500 : len(list_sleep)])
                 logging.info("Media tempo riposo 500 cicli %.3f", media_riposo)
-
             elif counter % 100 == 0:
                 media_tempo_ciclo = statistics.mean(
                     list_elapsed[-100 : len(list_elapsed)]

@@ -15,6 +15,7 @@ from app_odp.models import (
 )
 from app_odp.policy.decorator import require_perm
 from app_odp.policy.policy import RbacPolicy
+from app_odp.models import InputOdpLog, StatoOdpLog, ChangeEventLog
 
 try:
     from icecream import ic
@@ -91,6 +92,16 @@ def _tab_scoped_odp(policy: RbacPolicy, reparto_code: str):
 
 def _last_change_event_id() -> int:
     return db.session.query(func.max(ChangeEvent.id)).scalar() or 0
+
+
+def _parse_qty_decimal(value) -> Decimal:
+    raw = _norm_text(value).replace(",", ".")
+    if raw == "":
+        return Decimal("0")
+    try:
+        return Decimal(raw)
+    except InvalidOperation:
+        raise ValueError(f"Quantità non valida: {value!r}")
 
 
 @main_bp.context_processor
@@ -1014,3 +1025,219 @@ def api_riattiva_ordine_montaggio_macchina():
         ),
         200,
     )
+
+
+@main_bp.post("/api/ordini/chiudi")
+@login_required
+@require_perm("home")
+def api_chiudi_ordine():
+    data = request.get_json(silent=True) or {}
+
+    id_documento = _norm_text(data.get("id_documento"))
+    id_riga = _norm_text(data.get("id_riga"))
+    q_ok_raw = data.get("quantita_conforme")
+    q_nok_raw = data.get("quantita_non_conforme")
+    note = _norm_text(data.get("note"))
+
+    if not id_documento or not id_riga:
+        return jsonify(
+            {"ok": False, "error": "IdDocumento e IdRiga sono obbligatori"}
+        ), 400
+
+    policy = RbacPolicy(current_user)
+    ordine = _get_visible_odp_by_key(policy, id_documento, id_riga)
+
+    stato_attuale = _norm_text(ordine.StatoOrdine).lower()
+    if stato_attuale == "pianificata":
+        return jsonify(
+            {"ok": False, "error": "Ordine non chiudibile: è ancora Pianificata"}
+        ), 409
+
+    # parse quantità ordine
+    try:
+        q_tot = _parse_qty_decimal(ordine.Quantita)
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+
+    # quantità input (se non passate, default: tutto conforme)
+    try:
+        q_ok = _parse_qty_decimal(q_ok_raw) if q_ok_raw is not None else q_tot
+        q_nok = _parse_qty_decimal(q_nok_raw) if q_nok_raw is not None else Decimal("0")
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+
+    if q_ok < 0 or q_nok < 0:
+        return jsonify(
+            {"ok": False, "error": "Le quantità non possono essere negative"}
+        ), 400
+    if (q_ok + q_nok) > q_tot:
+        return jsonify(
+            {
+                "ok": False,
+                "error": "Quantità conforme + non conforme supera la quantità ordine",
+            }
+        ), 400
+
+    now_dt = _now_rome_dt()
+    now_iso = now_dt.isoformat(timespec="seconds")
+
+    # runtime record
+    stato = StatoOdp.query.filter_by(
+        IdDocumento=ordine.IdDocumento, IdRiga=ordine.IdRiga
+    ).first()
+
+    # se attivo, finalizza Tempo_funzionamento
+    if stato is not None and stato_attuale == "attivo":
+        _accumulate_runtime_until(stato, now_dt)
+
+    tempo_finale = _norm_text(stato.Tempo_funzionamento) if stato else "0"
+
+    # salva nota di chiusura nel campo Note (se vuoi conservarla nello snapshot ordine prima di cancellare)
+    if note:
+        ordine.Note = (ordine.Note or "").strip()
+        ordine.Note = (
+            ordine.Note + "\n" if ordine.Note else ""
+        ) + f"[CHIUSURA {now_iso}] {note}"
+
+    # evento “broadcast” per il polling
+    _push_change_event(
+        topic="ordine_chiuso",
+        ordine=ordine,
+        extra_payload={
+            "azione": "chiusura_totale",
+            "utente": current_user.username,
+            "closed_at": now_iso,
+            "quantita_conforme": str(q_ok),
+            "quantita_non_conforme": str(q_nok),
+            "tempo_funzionamento": tempo_finale,
+            "note": note,
+        },
+    )
+    db.session.flush()  # assicura che ChangeEvent abbia un id
+
+    # --- LOG: 1) input_odp snapshot ---
+    db.session.add(
+        InputOdpLog(
+            IdDocumento=ordine.IdDocumento,
+            IdRiga=ordine.IdRiga,
+            RifRegistraz=ordine.RifRegistraz,
+            CodArt=ordine.CodArt,
+            DesArt=ordine.DesArt,
+            Quantita=ordine.Quantita,
+            NumFase=ordine.NumFase,
+            CodLavorazione=ordine.CodLavorazione,
+            CodRisorsaProd=ordine.CodRisorsaProd,
+            DataInizioSched=ordine.DataInizioSched,
+            DataFineSched=ordine.DataFineSched,
+            GestioneLotto=ordine.GestioneLotto,
+            GestioneMatricola=ordine.GestioneMatricola,
+            DistintaMateriale=ordine.DistintaMateriale,
+            CodMatricola=ordine.CodMatricola,
+            StatoRiga=ordine.StatoRiga,
+            CodFamiglia=ordine.CodFamiglia,
+            CodMacrofamiglia=ordine.CodMacrofamiglia,
+            CodMagPrincipale=ordine.CodMagPrincipale,
+            CodReparto=ordine.CodReparto,
+            TempoPrevistoLavoraz=ordine.TempoPrevistoLavoraz,
+            StatoOrdine=ordine.StatoOrdine,
+            CodClassifTecnica=ordine.CodClassifTecnica,
+            CodTipoDoc=ordine.CodTipoDoc,
+            FaseAttiva=ordine.FaseAttiva,
+            Note=ordine.Note,
+            QuantitaConforme=str(q_ok),
+            QuantitaNonConforme=str(q_nok),
+            NoteChiusura=note,
+            ClosedBy=current_user.username,
+            ClosedAt=now_iso,
+        )
+    )
+
+    # --- LOG: 2) odp_in_carico snapshot ---
+    if stato is not None:
+        db.session.add(
+            StatoOdpLog(
+                IdDocumento=stato.IdDocumento,
+                IdRiga=stato.IdRiga,
+                RifRegistraz=stato.RifRegistraz,
+                Stato_odp=stato.Stato_odp,
+                Data_in_carico=stato.Data_in_carico,
+                Tempo_funzionamento=stato.Tempo_funzionamento,
+                Utente_operazione=stato.Utente_operazione,
+                Fase=stato.Fase,
+                data_ultima_attivazione=stato.data_ultima_attivazione,
+                ClosedBy=current_user.username,
+                ClosedAt=now_iso,
+            )
+        )
+
+    # --- LOG: 3) change_event (tutte le righe dell’ordine) ---
+    # Usa json_extract perché i riferimenti ordine sono nel payload_json generato da _push_change_event.
+    ce_rows = (
+        ChangeEvent.query.filter(ChangeEvent.payload_json.isnot(None))
+        .filter(
+            func.json_extract(ChangeEvent.payload_json, "$.id_documento")
+            == ordine.IdDocumento
+        )
+        .filter(
+            func.json_extract(ChangeEvent.payload_json, "$.id_riga") == ordine.IdRiga
+        )
+        .order_by(ChangeEvent.id)
+        .all()
+    )
+    for ce in ce_rows:
+        db.session.add(
+            ChangeEventLog(
+                src_id=ce.id,
+                topic=ce.topic,
+                scope=ce.scope,
+                payload_json=ce.payload_json,
+                created_at=ce.created_at,
+                IdDocumento=ordine.IdDocumento,
+                IdRiga=ordine.IdRiga,
+            )
+        )
+
+    # --- DELETE dal DB padre (ordine + runtime) ---
+    tab = _tab_from_ordine(ordine)
+
+    # (consigliato) conserva l’evento "ordine_chiuso" per far aggiornare gli altri client via polling,
+    # ma puoi eliminare gli eventi vecchi dell’ordine per non far crescere la tabella.
+    (
+        ChangeEvent.query.filter(ChangeEvent.payload_json.isnot(None))
+        .filter(
+            func.json_extract(ChangeEvent.payload_json, "$.id_documento")
+            == ordine.IdDocumento
+        )
+        .filter(
+            func.json_extract(ChangeEvent.payload_json, "$.id_riga") == ordine.IdRiga
+        )
+        .filter(ChangeEvent.topic != "ordine_chiuso")
+        .delete(synchronize_session=False)
+    )
+
+    if stato is not None:
+        db.session.delete(stato)
+    db.session.delete(ordine)
+
+    # fragments dopo delete (così l’ordine sparisce)
+    fragments = {}
+    if tab:
+        reparto_code = BRIDGE_CONFIG[tab]["reparto"]
+        odp = list(_query_for_tab(policy, reparto_code).all())
+        fragments = RENDERERS[tab](odp)
+
+    db.session.commit()
+
+    return jsonify(
+        {
+            "ok": True,
+            "changed": True,
+            "message": "Ordine chiuso",
+            "id_documento": id_documento,
+            "id_riga": id_riga,
+            "row_key": _row_key(id_documento, id_riga),
+            "active_tab": tab,
+            "last_event_id": _last_change_event_id(),
+            "fragments": fragments,
+        }
+    ), 200

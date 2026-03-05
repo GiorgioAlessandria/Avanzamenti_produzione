@@ -40,6 +40,7 @@ CodArt = [
 ] #lasciare la voce vuota per rimuovere i valori vuoti
 [Percorsi]
 percorso_db = "//Serverspring02/PythonDB/Avanzamenti_produzione/app_odp/instance/RBAC.db"
+percorso_db_log = "//Serverspring02/PythonDB/Avanzamenti_produzione/app_odp/instance/db_log.sqlite"
 [sync_config]
 tempo_polling = 2
 counter_righe = 0

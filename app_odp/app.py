@@ -88,6 +88,9 @@ def create_app():
     app.config["SQLALCHEMY_DATABASE_URI"] = (
         f"sqlite:///{configurazione['Percorsi']['percorso_db']}"
     )
+    app.config["SQLALCHEMY_BINDS"] = {
+        "log": f"sqlite:///{configurazione['Percorsi']['percorso_db_log']}"
+    }
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     # inizializza estensioni
     db.init_app(app)
@@ -107,8 +110,9 @@ def create_app():
         return {"policy": None}
 
     with app.app_context():
-        _apply_sqlite_pragmas(db.engine)
-
+        for eng in db.engines.values():
+            _apply_sqlite_pragmas(eng)
+        db.create_all(bind_key="log")
     app.register_blueprint(auth_bp)
     app.register_blueprint(main_bp)
     return app
