@@ -4,64 +4,83 @@
     {% include active_partial %}
 {% endblock %}
 
-<script>
-    let lastEventId = 0;
+{% block extra_js %}
+    {{ super() }}
+    <script>
+        window.homeBridgeConfig = {
+            url: {{ bridge_url|tojson }},
+            lastEventId: {{ bridge_last_event_id | int }},
+            intervalMs: 2000
+        };
 
-    async function fetchUpdates() {
-        try {
-            const res = await fetch('/api/updates?after_id=' + lastEventId);
-            if (!res.ok) return;
-            const data = await res.json();
-            data.events.forEach(ev => {
-                lastEventId = Math.max(lastEventId, ev.id);
-                if (ev.topic === 'nuovo_ordine') {
-                    addOrderRow(ev.payload);
-                } else if (ev.topic === 'odp_claimed') {
-                    updateOrderClaim(ev.payload, true);
-                } else if (ev.topic === 'odp_released') {
-                    updateOrderClaim(ev.payload, false);
-                }
-            });
-        } catch (err) {
-            console.error('Errore nel polling', err);
-        }
-    }
+        (() => {
+            const cfg = window.homeBridgeConfig;
+            if (!cfg || !cfg.url) return;
 
-    // inserisci una nuova riga nella tabella ordini
-    function addOrderRow(order) {
-        const tbody = document.querySelector('#orders-table tbody');
-        // crea <tr> con i campi desiderati
-        const tr = document.createElement('tr');
-        tr.dataset.idDoc = order.IdDocumento;
-        tr.dataset.idRiga = order.IdRiga;
-        tr.innerHTML = `
-        <td>${order.IdDocumento}</td>
-        <td>${order.IdRiga}</td>
-        <td>${order.CodArt}</td>
-        <td>${order.DesArt}</td>
-        <td>
-            <button class="btn btn-sm btn-primary" onclick="claimOrder('${order.IdDocumento}','${order.IdRiga}')">
-                Prendi in carico
-            </button>
-        </td>`;
-        tbody.prepend(tr);
-    }
+            let lastEventId = Number(cfg.lastEventId || 0);
+            const intervalMs = Number(cfg.intervalMs || 2000);
+            let inFlight = false;
 
-    // aggiorna lo stato di claim di un ordine
-    function updateOrderClaim(payload, claimed) {
-        const {id_documento, id_riga, user_id} = payload;
-        const row = document.querySelector(`tr[data-id-doc="${id_documento}"][data-id-riga="${id_riga}"]`);
-        if (row) {
-            const btn = row.querySelector('button');
-            if (claimed) {
-                btn.disabled = true;
-                btn.innerText = 'In carico da utente ' + user_id;
-            } else {
-                btn.disabled = false;
-                btn.innerText = 'Prendi in carico';
+            function applyFragments(fragments) {
+                if (!fragments || typeof fragments !== "object") return;
+
+                Object.entries(fragments).forEach(([targetId, html]) => {
+                    const el = document.getElementById(targetId);
+                    if (el) {
+                        el.innerHTML = html;
+                    }
+                });
+
+                if (window.applyRowColors) window.applyRowColors();
+                if (window.restoreSelectedRows) window.restoreSelectedRows();
+
+                document.querySelectorAll(".js-table-filter").forEach((input) => {
+                    input.dispatchEvent(new Event("input", {bubbles: true}));
+                });
             }
-        }
-    }
 
-    setInterval(fetchUpdates, 2000);
-</script>
+            window.applyHomeFragments = applyFragments;
+
+            async function fetchUpdates() {
+                if (inFlight) return;
+                inFlight = true;
+
+                try {
+                    const url = new URL(cfg.url, window.location.origin);
+                    url.searchParams.set("after", String(lastEventId));
+
+                    const res = await fetch(url.toString(), {
+                        method: "GET",
+                        headers: {
+                            "X-Requested-With": "XMLHttpRequest"
+                        },
+                        credentials: "same-origin",
+                        cache: "no-store"
+                    });
+
+                    if (!res.ok) {
+                        console.error("Errore bridge:", res.status, res.statusText);
+                        return;
+                    }
+
+                    const data = await res.json();
+
+                    if (typeof data.last_event_id === "number") {
+                        lastEventId = data.last_event_id;
+                    }
+
+                    if (!data.changed) return;
+
+                    applyFragments(data.fragments);
+                } catch (err) {
+                    console.error("Errore nel polling", err);
+                } finally {
+                    inFlight = false;
+                }
+            }
+
+            fetchUpdates();
+            setInterval(fetchUpdates, intervalMs);
+        })();
+    </script>
+{% endblock %}

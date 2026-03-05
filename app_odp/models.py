@@ -537,22 +537,28 @@ class User(UserMixin, db.Model):
         return f"<Users {self.__dict__}>"
 
 
+class GiacenzaLotti(db.Model):
+    __tablename__ = "giacenza_lotti"
+
+    CodArt = db.Column(db.Text, primary_key=True)
+    RifLottoAlfa = db.Column(db.Text, primary_key=True)
+    Giacenza = db.Column(db.Text, nullable=False)
+    CodMag = db.Column(db.Text, nullable=False)
+
+
 class StatoOdp(db.Model):
     __tablename__ = "odp_in_carico"
 
-    RifRegistraz = db.Column(
-        db.Text,
-        db.ForeignKey("input_odp.RifRegistraz", ondelete="CASCADE"),
-        primary_key=True,
-    )
+    IdDocumento = db.Column(db.Text, primary_key=True)
+    IdRiga = db.Column(db.Text, primary_key=True)
+    RifRegistraz = db.Column(db.Text, index=True, nullable=False)
+
     Stato_odp = db.Column(db.Text)
     Data_in_carico = db.Column(db.Text)
     Tempo_funzionamento = db.Column(db.Text)
     Utente_operazione = db.Column(db.Text)
     Fase = db.Column(db.Text)
-
-    def __repr__(self):
-        return f"<StatoOdp {self.__dict__}>"
+    data_ultima_attivazione = db.Column(db.Text)
 
 
 class TipologieStato(db.Model):
@@ -563,3 +569,107 @@ class TipologieStato(db.Model):
 
     def __repr__(self):
         return f"<TipologieStato {self.__dict__}>"
+
+
+class InputOdpLog(db.Model):
+    __bind_key__ = "log"
+    __tablename__ = "input_odp_log"
+
+    log_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    logged_at = db.Column(
+        db.Text,
+        nullable=False,
+        default=lambda: datetime.now(ZoneInfo("Europe/Rome")).isoformat(
+            timespec="seconds"
+        ),
+    )
+
+    # chiavi originali
+    IdDocumento = db.Column(db.Text, nullable=False)
+    IdRiga = db.Column(db.Text, nullable=False)
+
+    # snapshot campi InputOdp
+    RifRegistraz = db.Column(db.Text)
+    CodArt = db.Column(db.Text)
+    DesArt = db.Column(db.Text)
+    Quantita = db.Column(db.Text)
+    NumFase = db.Column(db.Text)
+    CodLavorazione = db.Column(db.Text)
+    CodRisorsaProd = db.Column(db.Text)
+    DataInizioSched = db.Column(db.Text)
+    DataFineSched = db.Column(db.Text)
+    GestioneLotto = db.Column(db.Text)
+    GestioneMatricola = db.Column(db.Text)
+    DistintaMateriale = db.Column(db.Text)
+    CodMatricola = db.Column(db.Text)
+    StatoRiga = db.Column(db.Text)
+    CodFamiglia = db.Column(db.Text)
+    CodMacrofamiglia = db.Column(db.Text)
+    CodMagPrincipale = db.Column(db.Text)
+    CodReparto = db.Column(db.Text)
+    TempoPrevistoLavoraz = db.Column(db.Text)
+    StatoOrdine = db.Column(db.Text)
+    CodClassifTecnica = db.Column(db.Text)
+    CodTipoDoc = db.Column(db.Text)
+    FaseAttiva = db.Column(db.Text)
+    Note = db.Column(db.Text)
+
+    # dati chiusura (processo normale)
+    QuantitaConforme = db.Column(db.Text)
+    QuantitaNonConforme = db.Column(db.Text)
+    NoteChiusura = db.Column(db.Text)
+    ClosedBy = db.Column(db.Text)
+    ClosedAt = db.Column(db.Text)
+
+
+class StatoOdpLog(db.Model):
+    __bind_key__ = "log"
+    __tablename__ = "odp_in_carico_log"
+
+    log_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    logged_at = db.Column(
+        db.Text,
+        nullable=False,
+        default=lambda: datetime.now(ZoneInfo("Europe/Rome")).isoformat(
+            timespec="seconds"
+        ),
+    )
+
+    IdDocumento = db.Column(db.Text, nullable=False)
+    IdRiga = db.Column(db.Text, nullable=False)
+    RifRegistraz = db.Column(db.Text)
+
+    Stato_odp = db.Column(db.Text)
+    Data_in_carico = db.Column(db.Text)
+    Tempo_funzionamento = db.Column(db.Text)
+    Utente_operazione = db.Column(db.Text)
+    Fase = db.Column(db.Text)
+    data_ultima_attivazione = db.Column(db.Text)
+
+    ClosedBy = db.Column(db.Text)
+    ClosedAt = db.Column(db.Text)
+
+
+class ChangeEventLog(db.Model):
+    __bind_key__ = "log"
+    __tablename__ = "change_event_log"
+
+    log_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    logged_at = db.Column(
+        db.Text,
+        nullable=False,
+        default=lambda: datetime.now(ZoneInfo("Europe/Rome")).isoformat(
+            timespec="seconds"
+        ),
+    )
+
+    # riferimento evento originale
+    src_id = db.Column(db.Integer)
+    topic = db.Column(db.Text, nullable=False)
+    scope = db.Column(db.Text)
+    payload_json = db.Column(db.Text)
+    created_at = db.Column(db.Text)
+
+    # chiavi ordine “estratte” per query più facili
+    IdDocumento = db.Column(db.Text)
+    IdRiga = db.Column(db.Text)

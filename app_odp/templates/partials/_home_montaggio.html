@@ -1,6 +1,7 @@
+<!--toast nuovo ordine in carico -->
 <div class="toast lh-lg hide"
      role="alert"
-     id="toast-ordine-sl"
+     id="toast-1"
      style="width: max-content;height: max-content;position: fixed; top: 1rem; right: 1rem; z-index: 2000;opacity: 1;filter: blur(0px);">
     <div class="toast-header">
         <strong class="me-auto"
@@ -16,34 +17,96 @@
          role="alert"
          style="opacity: 1;width: auto;height: auto;">
         <p style="font-size: 20px;">Stai prendendo in carico un nuovo ordine</p>
+
+        <input type="hidden"
+               data-bind="iddocumento"
+               id="toast-presa-iddocumento">
+        <input type="hidden"
+               data-bind="idriga"
+               id="toast-presa-idriga">
+        <input type="hidden"
+               data-bind="ordine"
+               id="toast-presa-ordine">
+        <input type="hidden"
+               data-bind="codice"
+               id="toast-presa-codice">
+        <input type="hidden"
+               data-bind="quantita"
+               id="toast-presa-quantita">
+        <input type="hidden"
+               data-bind="fase"
+               id="toast-presa-fase">
+
+        <button class="btn btn-lg btn-primary"
+                type="button"
+                id="btn-prendi-ordine"
+                style="font-size: 25px;">
+            Preso in carico
+        </button>
+    </div>
+</div>
+<!--toast sospensione ordine -->
+<div class="toast lh-lg hide"
+     role="alert"
+     id="toast-2"
+     style="width: max-content;height: max-content;position: fixed; top: 1rem; right: 1rem; z-index: 2000;opacity: 1;filter: blur(0px);">
+    <div class="toast-header">
+        <strong class="me-auto"
+                style="font-size: 25px;">Sospensione dell'ordine
+            <span data-bind-text="ordine"></span></strong>
+        <button class="btn-close ms-2 mb-1 close"
+                type="button"
+                aria-label="Close"
+                data-bs-dismiss="toast"
+                style="font-size: 25px;"></button>
+    </div>
+    <div class="toast-body d-flex flex-column justify-content-center align-items-center"
+         role="alert"
+         style="opacity: 1;width: auto;height: auto;">
+        <p style="font-size: 20px;">Stai sospendendo l'ordine</p>
         <form method="post">
             <input type="hidden"
-                   name="Ordine"
-                   data-bind="ordine">
+                   data-bind="iddocumento"
+                   id="toast-sosp-iddocumento">
             <input type="hidden"
-                   name="CodArt"
-                   data-bind="codice">
+                   data-bind="idriga"
+                   id="toast-sosp-idriga">
             <input type="hidden"
-                   name="Quantita"
-                   data-bind="quantita">
+                   data-bind="ordine"
+                   id="toast-sosp-ordine">
             <input type="hidden"
-                   name="NumFase"
-                   data-bind="fase">
+                   data-bind="codice"
+                   id="toast-sosp-codice">
+            <input type="hidden"
+                   data-bind="quantita"
+                   id="toast-sosp-quantita">
+            <input type="hidden"
+                   data-bind="fase"
+                   id="toast-sosp-fase">
+            <label for="causale_attivita"
+                   style="font-size: 20px;"> Inserire la causale della sospensione:<br>
+                <select id="causale_attivita">
+                    {% for causale in causali_attivita %}
+                        <option value="{{ causale }}">{{ causale }}</option>
+                    {% endfor %}
+                </select>
+            </label><br>
             <input class="btn btn-lg btn-primary"
                    type="submit"
-                   name="Inserimento"
-                   value="Preso in carico"
+                   id="btn-conferma-sospensione"
+                   value="Conferma"
                    style="font-size: 25px;">
         </form>
     </div>
 </div>
+<!--toast riattivazione ordine semilavorato -->
 <div class="toast lh-lg hide"
      role="alert"
-     id="toast-ordine-m"
+     id="toast-3"
      style="width: max-content;height: max-content;position: fixed; top: 1rem; right: 1rem; z-index: 2000;opacity: 1;filter: blur(0px);">
     <div class="toast-header">
         <strong class="me-auto"
-                style="font-size: 25px;">Presa in carico dell'ordine
+                style="font-size: 25px;">Riattivazione dell'ordine
             <span data-bind-text="ordine"></span></strong>
         <button class="btn-close ms-2 mb-1 close"
                 type="button"
@@ -54,7 +117,54 @@
     <div class="toast-body d-flex flex-column justify-content-center align-items-center"
          role="alert"
          style="opacity: 1;width: auto;height: auto;">
-        <p style="font-size: 20px;">Stai prendendo in carico un nuovo ordine</p>
+        <p style="font-size: 20px;">Stai riattivando l'ordine</p>
+        <form method="post">
+            <input type="hidden"
+                   data-bind="iddocumento"
+                   id="toast-riatt-sl-iddocumento">
+            <input type="hidden"
+                   data-bind="idriga"
+                   id="toast-riatt-sl-idriga">
+            <input type="hidden"
+                   data-bind="ordine"
+                   id="toast-riatt-sl-ordine">
+            <input type="hidden"
+                   data-bind="codice"
+                   id="toast-riatt-sl-codice">
+            <input type="hidden"
+                   data-bind="quantita"
+                   id="toast-riatt-sl-quantita">
+            <input type="hidden"
+                   data-bind="fase"
+                   id="toast-riatt-sl-fase">
+
+            <input class="btn btn-lg btn-primary"
+                   type="submit"
+                   id="btn-conferma-riattivazione-sl"
+                   value="Conferma"
+                   style="font-size: 25px;">
+        </form>
+    </div>
+</div>
+<!--toast chiusura ordine -->
+<div class="toast lh-lg hide"
+     role="alert"
+     id="toast-4"
+     style="width: max-content;height: max-content;position: fixed; top: 1rem; right: 1rem; z-index: 2000;opacity: 1;filter: blur(0px);">
+    <div class="toast-header">
+        <strong class="me-auto"
+                style="font-size: 25px;">Chiusura dell'ordine
+            <span data-bind-text="ordine"></span></strong>
+        <button class="btn-close ms-2 mb-1 close"
+                type="button"
+                aria-label="Close"
+                data-bs-dismiss="toast"
+                style="font-size: 25px;"></button>
+    </div>
+    <div class="toast-body d-flex flex-column justify-content-center align-items-center"
+         role="alert"
+         style="opacity: 1;width: auto;height: auto;">
+        <p style="font-size: 20px;">Stai chiudendo l'ordine</p>
         <form method="post">
             <input type="hidden"
                    name="Ordine"
@@ -71,7 +181,157 @@
             <input class="btn btn-lg btn-primary"
                    type="submit"
                    name="Inserimento"
-                   value="Preso in carico"
+                   value="Conferma"
+                   style="font-size: 25px;">
+        </form>
+    </div>
+</div>
+<!--toast sospensione ordine -->
+<!--toast sospensione ordine macchina -->
+<div class="toast lh-lg hide"
+     role="alert"
+     id="toast-5"
+     style="width: max-content;height: max-content;position: fixed; top: 1rem; right: 1rem; z-index: 2000;opacity: 1;filter: blur(0px);">
+    <div class="toast-header">
+        <strong class="me-auto"
+                style="font-size: 25px;">Sospensione ordine macchina
+            <span data-bind-text="ordine"></span></strong>
+        <button class="btn-close ms-2 mb-1 close"
+                type="button"
+                aria-label="Close"
+                data-bs-dismiss="toast"
+                style="font-size: 25px;"></button>
+    </div>
+
+    <div class="toast-body d-flex flex-column justify-content-center align-items-center"
+         role="alert"
+         style="opacity: 1;width: auto;height: auto;">
+        <p style="font-size: 20px;">Stai sospendendo un ordine macchina</p>
+
+        <form method="post">
+            <input type="hidden"
+                   data-bind="iddocumento"
+                   id="toast-sosp-m-iddocumento">
+            <input type="hidden"
+                   data-bind="idriga"
+                   id="toast-sosp-m-idriga">
+            <input type="hidden"
+                   data-bind="ordine"
+                   id="toast-sosp-m-ordine">
+            <input type="hidden"
+                   data-bind="codice"
+                   id="toast-sosp-m-codice">
+            <input type="hidden"
+                   data-bind="fase"
+                   id="toast-sosp-m-fase">
+            <input type="hidden"
+                   data-bind="matricola"
+                   id="toast-sosp-m-matricola">
+
+            <label for="causale_attivita_m"
+                   style="font-size: 20px;">
+                Inserire la causale della sospensione:<br>
+                <select id="causale_attivita_m">
+                    {% for causale in causali_attivita %}
+                        <option value="{{ causale }}">{{ causale }}</option>
+                    {% endfor %}
+                </select>
+            </label><br>
+
+            <input class="btn btn-lg btn-primary"
+                   type="submit"
+                   id="btn-conferma-sospensione-m"
+                   value="Conferma"
+                   style="font-size: 25px;">
+        </form>
+    </div>
+</div>
+<!--toast riattivazione ordine macchina -->
+<div class="toast lh-lg hide"
+     role="alert"
+     id="toast-6"
+     style="width: max-content;height: max-content;position: fixed; top: 1rem; right: 1rem; z-index: 2000;opacity: 1;filter: blur(0px);">
+    <div class="toast-header">
+        <strong class="me-auto"
+                style="font-size: 25px;">Riattivazione dell'ordine
+            <span data-bind-text="ordine"></span></strong>
+        <button class="btn-close ms-2 mb-1 close"
+                type="button"
+                aria-label="Close"
+                data-bs-dismiss="toast"
+                style="font-size: 25px;"></button>
+    </div>
+    <div class="toast-body d-flex flex-column justify-content-center align-items-center"
+         role="alert"
+         style="opacity: 1;width: auto;height: auto;">
+        <p style="font-size: 20px;">Stai riattivando l'ordine macchina</p>
+        <form method="post">
+            <input type="hidden"
+                   data-bind="iddocumento"
+                   id="toast-riatt-m-iddocumento">
+            <input type="hidden"
+                   data-bind="idriga"
+                   id="toast-riatt-m-idriga">
+            <input type="hidden"
+                   data-bind="ordine"
+                   id="toast-riatt-m-ordine">
+            <input type="hidden"
+                   data-bind="codice"
+                   id="toast-riatt-m-codice">
+            <input type="hidden"
+                   data-bind="quantita"
+                   id="toast-riatt-m-quantita">
+            <input type="hidden"
+                   data-bind="fase"
+                   id="toast-riatt-m-fase">
+            <input type="hidden"
+                   data-bind="matricola"
+                   id="toast-riatt-m-matricola">
+
+            <input class="btn btn-lg btn-primary"
+                   type="submit"
+                   id="btn-conferma-riattivazione-m"
+                   value="Conferma"
+                   style="font-size: 25px;">
+        </form>
+    </div>
+</div>
+<!--toast chiusura ordine -->
+<div class="toast lh-lg hide"
+     role="alert"
+     id="toast-7"
+     style="width: max-content;height: max-content;position: fixed; top: 1rem; right: 1rem; z-index: 2000;opacity: 1;filter: blur(0px);">
+    <div class="toast-header">
+        <strong class="me-auto"
+                style="font-size: 25px;">Chiusura dell'ordine
+            <span data-bind-text="ordine"></span></strong>
+        <button class="btn-close ms-2 mb-1 close"
+                type="button"
+                aria-label="Close"
+                data-bs-dismiss="toast"
+                style="font-size: 25px;"></button>
+    </div>
+    <div class="toast-body d-flex flex-column justify-content-center align-items-center"
+         role="alert"
+         style="opacity: 1;width: auto;height: auto;">
+        <p style="font-size: 20px;">Stai chiudendo l'ordine</p>
+        <form method="post">
+            <input type="hidden"
+                   name="Ordine"
+                   data-bind="ordine">
+            <input type="hidden"
+                   name="CodArt"
+                   data-bind="codice">
+            <input type="hidden"
+                   name="Quantita"
+                   data-bind="quantita">
+            <input type="hidden"
+                   name="NumFase"
+                   data-bind="fase">
+            <input class="btn btn-lg btn-primary"
+                   type="submit"
+                   name="Inserimento"
+                   value="Conferma"
                    style="font-size: 25px;">
         </form>
     </div>
@@ -91,7 +351,7 @@
                             type="text"
                             class="js-table-filter form-control form-control-sm"
                             placeholder="Filtra per ordine..."
-                            data-target-table="tbl-da-eseguire-sl"
+                            data-target-table="ordini_da_eseguire_sl"
                             data-filter-mode="dataset"
                             data-filter-key="ordine"
                             autocomplete="off"
@@ -102,7 +362,7 @@
                             type="text"
                             class="js-table-filter form-control form-control-sm"
                             placeholder="Filtra per articolo..."
-                            data-target-table="tbl-da-eseguire-sl"
+                            data-target-table="ordini_da_eseguire_sl"
                             data-filter-mode="dataset"
                             data-filter-key="codice"
                             autocomplete="off"
@@ -122,7 +382,6 @@
                         <th data-sort="date"
                             data-date-format="dd/mm/yyyy">Consegna
                         </th>
-                        <th data-sort="text">Lavorazione</th>
                         <th data-sort="text">Risorsa</th>
                     </tr>
                     </thead>
@@ -133,10 +392,11 @@
             </div>
             <button class="btn btn-primary m-2"
                     type="button"
-                    data-bs-target="#toast-ordine-sl"
+                    data-bs-target="#toast-1"
                     data-use-selected="#ordini_da_eseguire_sl"
-                    data-fill-target="#toast-ordine-sl"
-                    data-bs-toggle="toast">Attiva ordine SL
+                    data-fill-target="#toast-1"
+                    data-bs-toggle="toast">
+                Attiva ordine semilavorati
             </button>
         </div>
         <div class="col w-100 h-100 ms-0"
@@ -146,7 +406,6 @@
             <div class="row mb-1">
                 <div class="col mb-1">
                     <label><input
-
                             type="text"
                             class="js-table-filter form-control form-control-sm"
                             placeholder="Filtra per ordine..."
@@ -181,7 +440,6 @@
                         <th data-sort="date"
                             data-date-format="dd/mm/yyyy">Consegna
                         </th>
-                        <th data-sort="text">Lavorazione</th>
                         <th data-sort="text">Risorsa</th>
                         <th data-sort="text">Stato</th>
                     </tr>
@@ -195,25 +453,34 @@
                      style="width: auto;height: auto;">
                 <section class="d-flex flex-grow-1 justify-content-start m-2"
                          style="width: fit-content;height: fit-content;">
-                    <button class="btn btn-primary mx-2"
+                    <button class="btn btn-primary m-2 btn-warning"
                             type="button"
-                            style="margin: 1px;"
-                            data-bs-target="#toast-1"
-                            data-bs-toggle="toast">
-                        Sospendi
-                        ordine
+                            id="sospensione_ordine_sl"
+                            data-bs-target="#toast-2"
+                            data-use-selected="#ordini_in_corso_sl"
+                            data-fill-target="#toast-2"
+                            data-bs-toggle="toast"
+                            disabled>
+                        Sospendi ordine
                     </button>
-                    <button class="btn btn-primary disabled mx-2"
+                    <button class="btn btn-primary m-2 btn-success"
+                            id="riattivazione_ordine_sl"
                             type="button"
-                            style="margin: 1px;"
-                            disabled="">Riattiva ordine
+                            data-bs-target="#toast-3"
+                            data-use-selected="#ordini_in_corso_sl"
+                            data-fill-target="#toast-3"
+                            data-bs-toggle="toast"
+                            disabled>Riattiva ordine
                     </button>
                 </section>
                 <section class="text-end d-flex flex-grow-1 justify-content-end m-2"
                          style="width: auto;height: auto;">
-                    <button class="btn btn-primary"
-                            type="button">Chiudi
-                                          ordine
+                    <button class="btn btn-primary m-2"
+                            type="button"
+                            data-bs-target="#toast-4"
+                            data-use-selected="#ordini_in_corso_sl"
+                            data-fill-target="#toast-4"
+                            data-bs-toggle="toast">Chiudi ordine
                     </button>
                 </section>
             </section>
@@ -231,7 +498,7 @@
                             type="text"
                             class="js-table-filter form-control form-control-sm"
                             placeholder="Filtra per ordine..."
-                            data-target-table="tbl-da-eseguire-m"
+                            data-target-table="ordini_da_eseguire_m"
                             data-filter-mode="dataset"
                             data-filter-key="ordine"
                             autocomplete="off"
@@ -242,7 +509,7 @@
                             type="text"
                             class="js-table-filter form-control form-control-sm"
                             placeholder="Filtra per articolo..."
-                            data-target-table="tbl-da-eseguire-m"
+                            data-target-table="ordini_da_eseguire_m"
                             data-filter-mode="dataset"
                             data-filter-key="codice"
                             autocomplete="off"
@@ -272,10 +539,11 @@
             </div>
             <button class="btn btn-primary m-2"
                     type="button"
-                    data-bs-target="#toast-ordine-m"
+                    data-bs-target="#toast-1"
                     data-use-selected="#ordini_da_eseguire_m"
-                    data-fill-target="#toast-ordine-m"
-                    data-bs-toggle="toast">Attiva ordine macchina
+                    data-fill-target="#toast-1"
+                    data-bs-toggle="toast">
+                Attiva ordine macchina
             </button>
         </div>
         <div class="col w-100 h-100 mb-1"
@@ -318,6 +586,7 @@
                         <th data-sort="text">Matricola</th>
                         <th data-sort="date"
                             data-date-format="dd/mm/yyyy">Consegna
+                        </th>
                         <th data-sort="text">Fase</th>
                         <th data-sort="text">Stato</th>
                     </tr>
@@ -329,31 +598,35 @@
             </div>
             <section class="text-center d-flex w-100 h-100 align-items-center"
                      style="width: auto;height: auto;">
-                <section class="d-flex flex-grow-1 justify-content-start m-1"
+                <section class="d-flex flex-grow-1 justify-content-start m-2"
                          style="width: fit-content;height: fit-content;">
-                    <button class="btn btn-primary mx-2"
+                    <button class="btn btn-primary m-2 btn-warning"
                             type="button"
-                            style="margin: 1px;"
-                            data-bs-target="#toast-6"
-                            data-bs-toggle="toast">
-                        Sospendi
-                        ordine
+                            id="sospensione_ordine_m"
+                            data-bs-target="#toast-5"
+                            data-use-selected="#ordini_in_corso_m"
+                            data-fill-target="#toast-5"
+                            data-bs-toggle="toast"
+                            disabled>
+                        Sospendi ordine
                     </button>
-                    <button class="btn btn-primary disabled mx-2"
+                    <button class="btn btn-primary m-2 btn-success"
+                            id="riattivazione_ordine_m"
                             type="button"
-                            style="margin: 1px;"
-                            disabled=""
-                            data-bs-target="#toast-8"
-                            data-bs-toggle="toast">
-                        Riattiva
-                        ordine
+                            data-bs-target="#toast-6"
+                            data-use-selected="#ordini_in_corso_m"
+                            data-fill-target="#toast-6"
+                            data-bs-toggle="toast"
+                            disabled>Riattiva ordine
                     </button>
                 </section>
                 <section class="text-end d-flex flex-grow-1 justify-content-end m-2"
                          style="width: auto;height: auto;">
-                    <button class="btn btn-primary"
+                    <button class="btn btn-primary m-2"
                             type="button"
                             data-bs-target="#toast-7"
+                            data-use-selected="#ordini_in_corso_m"
+                            data-fill-target="#toast-7"
                             data-bs-toggle="toast">Chiudi ordine
                     </button>
                 </section>
@@ -396,128 +669,317 @@
     </div>
 </div>
 <script>
-    document.addEventListener("DOMContentLoaded", function () {
-        const modalEl = document.getElementById("modalMaterialiOrdine");
-        const modalBody = document.getElementById("modal-materiali-body");
-        const modalCodArt = document.getElementById("modal-codart");
+    function getStatoOrdine(row) {
+        if (!row) return "";
 
-        const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+        if (row.dataset?.stato) {
+            return row.dataset.stato.trim();
+        }
 
-        document.addEventListener("click", function (e) {
-            const trigger = e.target.closest(".open-materiali-modal");
-            if (!trigger) return;
+        const statoCell = row.querySelector('td[data-col="stato"]');
+        if (statoCell) {
+            return statoCell.textContent.trim();
+        }
 
-            e.preventDefault();
+        return "";
+    }
 
-            const codArt = trigger.dataset.codart || "";
-            const faseAttiva = Number(trigger.dataset.faseAttiva);
-            const distintaRaw = trigger.getAttribute("data-distinta") || "[]";
+    function aggiornaBottoniOrdine(row, btnSospensioneId, btnRiattivazioneId) {
+        const btnSospensione = document.getElementById(btnSospensioneId);
+        const btnRiattivazione = document.getElementById(btnRiattivazioneId);
 
-            modalCodArt.textContent = codArt ? `- ${codArt}` : "";
-            modalBody.innerHTML = `
-      <div class="d-flex align-items-center gap-2">
-        <div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>
-        <span>Caricamento materiali...</span>
-      </div>
-    `;
+        if (!btnSospensione || !btnRiattivazione) return;
 
-            modal.show();
+        const stato = getStatoOrdine(row);
 
-            try {
-                const distinta = parseDistinta(distintaRaw);
+        btnSospensione.disabled = true;
+        btnRiattivazione.disabled = true;
 
-                const materialiFiltrati = distinta.filter(item => {
-                    return Number(item.NumFase) === faseAttiva;
-                });
+        if (stato === "Attivo") {
+            btnSospensione.disabled = false;
+            btnRiattivazione.disabled = true;
+        } else if (stato === "In Sospeso") {
+            btnSospensione.disabled = true;
+            btnRiattivazione.disabled = false;
+        }
+    }
 
-                if (!materialiFiltrati.length) {
-                    modalBody.innerHTML = `
-          <div class="alert alert-warning mb-0">
-            Nessun materiale trovato per la fase attiva <strong>${escapeHtml(String(faseAttiva))}</strong>.
-          </div>
-        `;
-                    bootstrap.Modal.getInstance(modalEl)?.handleUpdate();
-                    return;
-                }
+    const tabellaSl = document.getElementById("ordini_in_corso_sl");
+    if (tabellaSl) {
+        tabellaSl.addEventListener("click", function (event) {
+            const row = event.target.closest("tbody tr");
+            if (!row) return;
 
-                let rows = "";
-                for (const item of materialiFiltrati) {
-                    rows += `
-          <tr>
-            <td>${escapeHtml(item.CodArt ?? "")}</td>
-            <td>${escapeHtml(item.DesArt ?? "")}</td>
-            <td class="text-end">${formatQty(item.Quantita)}</td>
-            <td class="text-center">${escapeHtml(String(item.NumFase ?? ""))}</td>
-          </tr>
-        `;
-                }
-
-                modalBody.innerHTML = `
-        <div class="table-responsive">
-          <table class="table table-sm table-striped table-hover align-middle mb-0">
-            <thead class="table-light">
-              <tr>
-                <th>Codice Articolo</th>
-                <th>Descrizione</th>
-                <th class="text-end">Quantità</th>
-                <th class="text-center">Fase</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${rows}
-            </tbody>
-          </table>
-        </div>
-      `;
-
-                bootstrap.Modal.getInstance(modalEl)?.handleUpdate();
-
-            } catch (err) {
-                console.error(err);
-                modalBody.innerHTML = `
-        <div class="alert alert-danger mb-0">
-          Errore nel parsing della distinta materiali.
-        </div>
-      `;
-                bootstrap.Modal.getInstance(modalEl)?.handleUpdate();
-            }
+            aggiornaBottoniOrdine(row, "sospensione_ordine_sl", "riattivazione_ordine_sl");
         });
+    }
 
-        function parseDistinta(raw) {
-            let parsed = raw;
+    const tabellaM = document.getElementById("ordini_in_corso_m");
+    if (tabellaM) {
+        tabellaM.addEventListener("click", function (event) {
+            const row = event.target.closest("tbody tr");
+            if (!row) return;
 
-            // Caso 1: data-distinta contiene già JSON array testuale
-            // Caso 2: data-distinta contiene una stringa JSON serializzata da tojson
-            parsed = JSON.parse(parsed);
+            aggiornaBottoniOrdine(row, "sospensione_ordine_m", "riattivazione_ordine_m");
+        });
+    }
+</script>
+<script>
+    document.getElementById("btn-conferma-sospensione")?.addEventListener("click", async function (event) {
+        event.preventDefault();
 
-            // Se dopo il primo parse ottieni ancora una stringa, rifai parse
-            if (typeof parsed === "string") {
-                parsed = JSON.parse(parsed);
-            }
+        const btn = this;
+        const idDocumento = document.getElementById("toast-sosp-iddocumento")?.value?.trim() || "";
+        const idRiga = document.getElementById("toast-sosp-idriga")?.value?.trim() || "";
+        const causale = document.getElementById("causale_attivita")?.value?.trim() || "";
 
-            if (!Array.isArray(parsed)) {
-                return [];
-            }
-
-            return parsed;
+        if (!idDocumento || !idRiga) {
+            console.error("IdDocumento o IdRiga mancanti");
+            return;
         }
 
-        function formatQty(value) {
-            const n = Number(value);
-            if (Number.isNaN(n)) return "";
-            return n.toLocaleString("it-IT", {
-                minimumFractionDigits: 0,
-                maximumFractionDigits: 3
+        btn.disabled = true;
+
+        try {
+            const resp = await fetch("/api/ordini/sospendi", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-Requested-With": "XMLHttpRequest"
+                },
+                credentials: "same-origin",
+                body: JSON.stringify({
+                    id_documento: idDocumento,
+                    id_riga: idRiga,
+                    causale: causale,
+                    modalita: "sl"
+                })
             });
+
+            let data = {};
+            try {
+                data = await resp.json();
+            } catch (_) {
+                data = {};
+            }
+
+            if (!resp.ok || data.ok === false) {
+                console.error("Errore sospensione ordine:", data);
+                alert(data.error || "Errore durante la sospensione dell'ordine.");
+                return;
+            }
+
+            const toastEl = document.getElementById("toast-2");
+            bootstrap.Toast.getOrCreateInstance(toastEl).hide();
+
+            if (data.fragments && window.applyHomeFragments) {
+                window.applyHomeFragments(data.fragments);
+            }
+
+            // dopo il refresh, per sicurezza azzera i bottoni
+            const btnSospensione = document.getElementById("sospensione_ordine_sl");
+            const btnRiattivazione = document.getElementById("riattivazione_ordine_sl");
+
+            if (btnSospensione) btnSospensione.disabled = true;
+            if (btnRiattivazione) btnRiattivazione.disabled = true;
+
+        } catch (err) {
+            console.error("Errore fetch sospensione:", err);
+            alert("Errore di comunicazione con il server.");
+        } finally {
+            btn.disabled = false;
+        }
+    });
+</script>
+<script>
+    document.getElementById("btn-conferma-sospensione-m")?.addEventListener("click", async function (event) {
+        event.preventDefault();
+
+        const btn = this;
+        const idDocumento = document.getElementById("toast-sosp-m-iddocumento")?.value?.trim() || "";
+        const idRiga = document.getElementById("toast-sosp-m-idriga")?.value?.trim() || "";
+        const causale = document.getElementById("causale_attivita_m")?.value?.trim() || "";
+        const matricola = document.getElementById("toast-sosp-m-matricola")?.value?.trim() || "";
+        const fase = document.getElementById("toast-sosp-m-fase")?.value?.trim() || "";
+
+        if (!idDocumento || !idRiga) {
+            console.error("IdDocumento o IdRiga mancanti");
+            return;
         }
 
-        function escapeHtml(value) {
-            return String(value)
-                .replaceAll("&", "&amp;")
-                .replaceAll("<", "&lt;")
-                .replaceAll(">", "&gt;")
-                .replaceAll('"', "&quot;")
-                .replaceAll("'", "&#039;");
+        btn.disabled = true;
+
+        try {
+            const resp = await fetch("/api/ordini/montaggio/macchina/sospendi", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-Requested-With": "XMLHttpRequest"
+                },
+                credentials: "same-origin",
+                body: JSON.stringify({
+                    id_documento: idDocumento,
+                    id_riga: idRiga,
+                    causale: causale,
+                    matricola: matricola,
+                    fase: fase
+                })
+            });
+
+            let data = {};
+            try {
+                data = await resp.json();
+            } catch (_) {
+                data = {};
+            }
+
+            if (!resp.ok || data.ok === false) {
+                console.error("Errore sospensione ordine macchina:", data);
+                alert(data.error || "Errore durante la sospensione dell'ordine macchina.");
+                return;
+            }
+
+            const toastEl = document.getElementById("toast-5");
+            bootstrap.Toast.getOrCreateInstance(toastEl).hide();
+
+            if (data.fragments && window.applyHomeFragments) {
+                window.applyHomeFragments(data.fragments);
+            }
+
+            const btnSospensioneM = document.getElementById("sospensione_ordine_m");
+            const btnRiattivazioneM = document.getElementById("riattivazione_ordine_m");
+
+            if (btnSospensioneM) btnSospensioneM.disabled = true;
+            if (btnRiattivazioneM) btnRiattivazioneM.disabled = true;
+
+        } catch (err) {
+            console.error("Errore fetch sospensione macchina:", err);
+            alert("Errore di comunicazione con il server.");
+        } finally {
+            btn.disabled = false;
+        }
+    });
+</script>
+<script>
+    document.getElementById("btn-conferma-riattivazione-sl")?.addEventListener("click", async function (event) {
+        event.preventDefault();
+
+        const btn = this;
+        const idDocumento = document.getElementById("toast-riatt-sl-iddocumento")?.value?.trim() || "";
+        const idRiga = document.getElementById("toast-riatt-sl-idriga")?.value?.trim() || "";
+
+        if (!idDocumento || !idRiga) {
+            console.error("IdDocumento o IdRiga mancanti");
+            return;
+        }
+
+        btn.disabled = true;
+
+        try {
+            const resp = await fetch("/api/ordini/riattiva", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-Requested-With": "XMLHttpRequest"
+                },
+                credentials: "same-origin",
+                body: JSON.stringify({
+                    id_documento: idDocumento,
+                    id_riga: idRiga,
+                    modalita: "sl"
+                })
+            });
+
+            let data = {};
+            try {
+                data = await resp.json();
+            } catch (_) {
+            }
+
+            if (!resp.ok || data.ok === false) {
+                alert(data.error || "Errore durante la riattivazione dell'ordine.");
+                return;
+            }
+
+            bootstrap.Toast.getOrCreateInstance(document.getElementById("toast-3")).hide();
+
+            if (data.fragments && window.applyHomeFragments) {
+                window.applyHomeFragments(data.fragments);
+            }
+
+            const btnSosp = document.getElementById("sospensione_ordine_sl");
+            const btnRiatt = document.getElementById("riattivazione_ordine_sl");
+            if (btnSosp) btnSosp.disabled = true;
+            if (btnRiatt) btnRiatt.disabled = true;
+
+        } catch (err) {
+            console.error("Errore fetch riattivazione SL:", err);
+            alert("Errore di comunicazione con il server.");
+        } finally {
+            btn.disabled = false;
+        }
+    });
+</script>
+<script>
+    document.getElementById("btn-conferma-riattivazione-m")?.addEventListener("click", async function (event) {
+        event.preventDefault();
+
+        const btn = this;
+        const idDocumento = document.getElementById("toast-riatt-m-iddocumento")?.value?.trim() || "";
+        const idRiga = document.getElementById("toast-riatt-m-idriga")?.value?.trim() || "";
+        const matricola = document.getElementById("toast-riatt-m-matricola")?.value?.trim() || "";
+        const fase = document.getElementById("toast-riatt-m-fase")?.value?.trim() || "";
+
+        if (!idDocumento || !idRiga) {
+            console.error("IdDocumento o IdRiga mancanti");
+            return;
+        }
+
+        btn.disabled = true;
+
+        try {
+            const resp = await fetch("/api/ordini/montaggio/macchina/riattiva", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-Requested-With": "XMLHttpRequest"
+                },
+                credentials: "same-origin",
+                body: JSON.stringify({
+                    id_documento: idDocumento,
+                    id_riga: idRiga,
+                    matricola: matricola,
+                    fase: fase
+                })
+            });
+
+            let data = {};
+            try {
+                data = await resp.json();
+            } catch (_) {
+            }
+
+            if (!resp.ok || data.ok === false) {
+                alert(data.error || "Errore durante la riattivazione dell'ordine macchina.");
+                return;
+            }
+
+            bootstrap.Toast.getOrCreateInstance(document.getElementById("toast-6")).hide();
+
+            if (data.fragments && window.applyHomeFragments) {
+                window.applyHomeFragments(data.fragments);
+            }
+
+            const btnSosp = document.getElementById("sospensione_ordine_m");
+            const btnRiatt = document.getElementById("riattivazione_ordine_m");
+            if (btnSosp) btnSosp.disabled = true;
+            if (btnRiatt) btnRiatt.disabled = true;
+
+        } catch (err) {
+            console.error("Errore fetch riattivazione macchina:", err);
+            alert("Errore di comunicazione con il server.");
+        } finally {
+            btn.disabled = false;
         }
     });
 </script>
