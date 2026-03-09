@@ -150,12 +150,14 @@
 <div class="toast lh-lg hide"
      role="alert"
      id="toast-4"
-     style="width: max-content;height: max-content;position: fixed; top: 1rem; right: 1rem; z-index: 2000;opacity: 1;filter: blur(0px);">
+     style="width: max-content; max-width: 90vw; height: max-content; position: fixed; top: 1rem; right: 1rem; z-index: 2000; opacity: 1;">
     <div class="toast-header">
         <strong class="me-auto"
-                style="font-size: 25px;">Chiusura dell'ordine
-            <span data-bind-text="ordine"></span></strong>
-        <button class="btn-close ms-2 mb-1 close"
+                style="font-size: 25px;">
+            Chiusura dell'ordine
+            <span data-bind-text="ordine"></span>
+        </strong>
+        <button class="btn-close ms-2 mb-1"
                 type="button"
                 aria-label="Close"
                 data-bs-dismiss="toast"
@@ -163,54 +165,116 @@
     </div>
     <div class="toast-body d-flex flex-column justify-content-center align-items-center"
          role="alert"
-         style="opacity: 2;width: auto;height: auto;">
-        <p style="font-size: 25px;">Stai chiudendo l'ordine</p>
-        <form method="post">
-            <input type="hidden"
-                   data-bind="iddocumento"
-                   id="toast-chiudi-sl-iddocumento">
-            <input type="hidden"
-                   data-bind="idriga"
-                   id="toast-chiudi-sl-idriga">
-            <input type="hidden"
-                   data-bind="ordine"
-                   id="toast-chiudi-sl-ordine">
-            <input type="hidden"
-                   data-bind="codice"
-                   id="toast-chiudi-sl-codice">
-            <input type="hidden"
-                   data-bind="quantita"
-                   id="toast-chiudi-sl-quantita">
-            <input type="hidden"
-                   data-bind="fase"
-                   id="toast-chiudi-sl-fase">
-            <label for="toast-chiudi-sl-quantita-conforme"
-                   style="font-size: 25px;">Quantità conforme:<br>
-                <input type="number"
-                       id="toast-chiudi-sl-quantita-conforme"
-                       min="0"
-                       step="1"
-                       required></label><br>
-            <label for="toast-chiudi-sl-quantita-non-conforme"
-                   style="font-size: 25px;">Quantità KO:<br>
-                <input type="number"
-                       id="toast-chiudi-sl-quantita-non-conforme"
-                       min="0"
-                       step="1"
-                       required></label><br>
-            <label for="note-chiusura"
-                   style="font-size: 25px;">Note:<br>
-                <textarea id="toast-chiudi-sl-note"
-                          rows="3"
-                          cols="30"></textarea></label><br>
-            <input class="btn btn-lg btn-primary"
-                   type="submit"
-                   id="btn-conferma-chiusura-sl"
-                   value="Conferma"
-                   style="font-size: 25px;">
-        </form>
+         style="opacity: 1; max-height: 80vh; overflow-y: auto;">
+        <p style="font-size: 20px;">Stai chiudendo l'ordine</p>
+
+        <!-- Hidden fields -->
+        <input type="hidden"
+               data-bind="iddocumento"
+               id="toast-chiudi-sl-iddocumento">
+        <input type="hidden"
+               data-bind="idriga"
+               id="toast-chiudi-sl-idriga">
+        <input type="hidden"
+               data-bind="ordine"
+               id="toast-chiudi-sl-ordine">
+        <input type="hidden"
+               data-bind="codice"
+               id="toast-chiudi-sl-codice">
+        <input type="hidden"
+               data-bind="quantita"
+               id="toast-chiudi-sl-quantita">
+        <input type="hidden"
+               data-bind="fase"
+               id="toast-chiudi-sl-fase">
+
+        <!-- Quantità conforme / non conforme -->
+        <label for="toast-chiudi-sl-quantita-conforme"
+               style="font-size: 20px;">
+            Quantità conforme:<br>
+            <input type="number"
+                   id="toast-chiudi-sl-quantita-conforme"
+                   min="0"
+                   step="1"
+                   required>
+        </label><br>
+        <label for="toast-chiudi-sl-quantita-non-conforme"
+               style="font-size: 20px;">
+            Quantità KO:<br>
+            <input type="number"
+                   id="toast-chiudi-sl-quantita-non-conforme"
+                   min="0"
+                   step="1"
+                   required>
+        </label><br>
+
+        <!-- Note -->
+        <label for="toast-chiudi-sl-note"
+               style="font-size: 20px;">
+            Note:<br>
+            <textarea id="toast-chiudi-sl-note"
+                      rows="2"
+                      cols="30"></textarea>
+        </label><br>
+
+        <!-- Sezione Lotti (nascosta di default) -->
+        <div id="lotti-section-sl"
+             style="display: none; width: 100%;">
+            <hr>
+            <h5 class="text-center mb-2">Assegnazione Lotti Materiale</h5>
+
+            <div id="lotti-loading-sl"
+                 class="text-center my-2"
+                 style="display: none;">
+                <div class="spinner-border spinner-border-sm"
+                     role="status"></div>
+                <span class="ms-2">Caricamento lotti...</span>
+            </div>
+
+            <div id="lotti-alert-sl"
+                 class="alert alert-danger mb-2"
+                 style="display: none; font-size: 14px; white-space: pre-line;"></div>
+
+            <div class="table-responsive"
+                 style="max-height: 350px; overflow-y: auto;">
+                <table class="table table-sm table-striped table-bordered align-middle mb-1"
+                       id="tbl-lotti-sl">
+                    <thead class="table-light"
+                           style="position: sticky; top: 0; z-index: 1;">
+                    <tr>
+                        <th style="min-width: 140px;">Codice</th>
+                        <th style="min-width: 180px;">Descrizione</th>
+                        <th style="min-width: 160px;">Lotto</th>
+                        <th style="min-width: 80px;"
+                            class="text-end">Giacenza
+                        </th>
+                        <th style="min-width: 100px;"
+                            class="text-end">Qtà utilizzata
+                        </th>
+                        <th style="min-width: 70px;">Esito</th>
+                        <th style="width: 70px;"></th>
+                    </tr>
+                    </thead>
+                    <tbody id="tbody-lotti-sl"></tbody>
+                </table>
+            </div>
+
+            <div id="lotti-riepilogo-sl"
+                 class="mt-2 mb-2"
+                 style="font-size: 13px; background: #f8f9fa; padding: 8px; border-radius: 4px;">
+            </div>
+        </div>
+
+        <button class="btn btn-lg btn-primary mt-2"
+                type="button"
+                id="btn-conferma-chiusura-sl"
+                style="font-size: 25px;">
+            Conferma
+        </button>
     </div>
 </div>
+
+
 <main class="d-flex flex-column w-100 mt-3 mb-3"
       data-bridge-tab="carpenteria"
       style="height: fit-content;width: fit-content;">
@@ -635,88 +699,40 @@
         }
     });
 </script>
-<script>
-    document.getElementById("btn-conferma-chiusura-sl")?.addEventListener("click", async function (event) {
-        event.preventDefault();
 
-        const idDocumento = document.getElementById("toast-chiudi-sl-iddocumento")?.value?.trim() || "";
-        const idRiga = document.getElementById("toast-chiudi-sl-idriga")?.value?.trim() || "";
-
-        const qOrd = document.getElementById("toast-chiudi-sl-quantita")?.value?.trim() || "";
-        const qProd = document.getElementById("toast-chiudi-sl-quantita-conforme")?.value?.trim() || "";
-        const qScarto = document.getElementById("toast-chiudi-sl-quantita-non-conforme")?.value?.trim() || "";
-        const note = document.getElementById("toast-chiudi-sl-note")?.value?.trim() || "";
-
-        if (!idDocumento || !idRiga) {
-            alert("Ordine non valido (IdDocumento/IdRiga mancanti).");
-            return;
-        }
-
-        // validazione minima lato UI: scarto <= prodotta
-        const nProd = Number(String(qProd).replace(",", "."));
-        const nScarto = Number(String(qScarto).replace(",", "."));
-        const nOrd = Number(String(qOrd).replace(",", "."));
-
-        if (!Number.isFinite(nProd) || nProd < 0) {
-            alert("Quantità prodotta non valida.");
-            return;
-        }
-        if (!Number.isFinite(nScarto) || nScarto < 0) {
-            alert("Quantità scartata non valida.");
-            return;
-        }
-        if (nScarto > nProd) {
-            alert("La quantità scartata non può superare la quantità prodotta.");
-            return;
-        }
-        // opzionale (coerente col “prodotta = quantità ordine”):
-        if (Number.isFinite(nOrd) && nProd > nOrd) {
-            alert("La quantità prodotta non può superare la quantità dell'ordine.");
-            return;
-        }
-
-        const resp = await fetch("/api/ordini/chiudi", {
-            method: "POST",
-            headers: {"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"},
-            credentials: "same-origin",
-            body: JSON.stringify({
-                id_documento: idDocumento,
-                id_riga: idRiga,
-                quantita_prodotta: qProd,
-                quantita_scartata: qScarto,
-                note: note
-            })
-        });
-
-        const data = await resp.json().catch(() => ({}));
-
-        if (!resp.ok || data.ok === false) {
-            alert(data.error || "Errore durante la chiusura dell'ordine.");
-            return;
-        }
-
-        bootstrap.Toast.getOrCreateInstance(document.getElementById("toast-4")).hide();
-
-        if (data.fragments && window.applyHomeFragments) {
-            window.applyHomeFragments(data.fragments);
-        }
-    });
-</script>
 <script>
     (() => {
-// Toast chiusura SL (carpenteria)
-        const toastId = "toast-4";
-        const toastEl = document.getElementById(toastId);
-        if (!toastEl) return;
+        // ---- Stato lotti SL ----
+        let _lottiData = [];
+        let _hasLotti = false;
+        let _rowCounter = 0;
 
-        const hidTot = document.getElementById("toast-chiudi-sl-quantita"); // riempito da data-bind="quantita"
-        const inpProd = document.getElementById("toast-chiudi-sl-quantita-conforme"); // "prodotta"
-        const inpScarto = document.getElementById("toast-chiudi-sl-quantita-non-conforme"); // "scartata"
+        // ---- DOM ----
+        const toastEl = document.getElementById("toast-4");
+        const section = document.getElementById("lotti-section-sl");
+        const loading = document.getElementById("lotti-loading-sl");
+        const alertEl = document.getElementById("lotti-alert-sl");
+        const tbody = document.getElementById("tbody-lotti-sl");
+        const riepilogo = document.getElementById("lotti-riepilogo-sl");
+        const hidTot = document.getElementById("toast-chiudi-sl-quantita");
+        const inpConf = document.getElementById("toast-chiudi-sl-quantita-conforme");
+        const inpNonConf = document.getElementById("toast-chiudi-sl-quantita-non-conforme");
 
-        if (!hidTot || !inpProd || !inpScarto) return;
+        if (!toastEl || !section || !tbody) return;
 
-        function parseItNumber(v) {
+        // ---- Utility ----
+        function escHtml(s) {
+            return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+        }
 
+        function showAlert(msg) {
+            if (!alertEl) return;
+            alertEl.textContent = msg;
+            alertEl.style.display = msg ? "" : "none";
+        }
+
+        function parseNum(v) {
             let s = String(v ?? "").trim().replace(/\s+/g, "");
             if (!s) return NaN;
             if (s.includes(",") && s.includes(".")) s = s.replace(/\./g, "");
@@ -725,31 +741,351 @@
             return Number.isFinite(n) ? n : NaN;
         }
 
-        function autofillProdFromOrderTotal() {
-            const qOrd = parseItNumber(hidTot.value);
-
-            // requisito: quantità totale dell'ordine nel primo input
+        // ---- Autofill quantità all'apertura ----
+        function autofillQuantita() {
+            if (!hidTot || !inpConf || !inpNonConf) return;
+            const qOrd = parseNum(hidTot.value);
             if (Number.isFinite(qOrd)) {
-                inpProd.value = String(qOrd);
-            } else {
-                // se non riesce a parsare, non forzo nulla (o svuota se preferisci)
-                // inpProd.value = "";
+                inpConf.value = String(qOrd);
             }
-
-            // opzionale: default scarto a 0 se vuoto
-            if (inpScarto && !String(inpScarto.value || "").trim()) {
-                inpScarto.value = "0";
+            if (!String(inpNonConf.value || "").trim()) {
+                inpNonConf.value = "0";
             }
         }
 
-// Apertura toast: dopo che il tuo script data-bind ha riempito gli hidden
-        document.addEventListener("click", (e) => {
-            const btn = e.target.closest(`[data-bs-target="#${toastId}"]`);
+        // ---- Dropdown lotti ----
+        function buildLottoSelect(codArt, lotti) {
+            let html = '<select class="form-select form-select-sm lotto-select-sl">';
+            html += '<option value="">-- Seleziona lotto --</option>';
+            for (const l of lotti) {
+                html += `<option value="${escHtml(l.RifLottoAlfa)}" `
+                    + `data-giacenza="${l.Giacenza}" `
+                    + `data-codmag="${escHtml(l.CodMag || "")}">`
+                    + `${escHtml(l.RifLottoAlfa)} (mag: ${escHtml(l.CodMag || "-")})`
+                    + `</option>`;
+            }
+            html += '</select>';
+            return html;
+        }
+
+        // ---- Crea riga lotto ----
+        function addLottoRow(codArt, desArt, lotti, isInitial) {
+            _rowCounter++;
+            const tr = document.createElement("tr");
+            tr.id = `lotto-sl-row-${_rowCounter}`;
+            tr.dataset.codart = codArt;
+
+            tr.innerHTML = `
+            <td class="fw-semibold" style="font-size: 13px;">${escHtml(codArt)}</td>
+            <td style="font-size: 13px;">${escHtml(desArt)}</td>
+            <td>${buildLottoSelect(codArt, lotti)}</td>
+            <td class="text-end giacenza-cell-sl" style="font-size: 13px;">-</td>
+            <td>
+                <input type="number" class="form-control form-control-sm lotto-qty-sl text-end"
+                       min="0" step="1" value="" placeholder="0" style="width: 90px;">
+            </td>
+            <td>
+                <select class="form-select form-select-sm lotto-esito-sl" style="width: 70px;">
+                    <option value="ok">OK</option>
+                    <option value="ko">KO</option>
+                </select>
+            </td>
+            <td class="text-center">
+                <button type="button" class="btn btn-sm btn-outline-primary btn-add-lotto-sl me-1"
+                        title="Aggiungi riga" data-codart="${escHtml(codArt)}"
+                        data-desart="${escHtml(desArt)}">+</button>
+                ${isInitial ? "" : '<button type="button" class="btn btn-sm btn-outline-danger btn-rem-lotto-sl" title="Rimuovi">−</button>'}
+            </td>
+        `;
+            tbody.appendChild(tr);
+            return tr;
+        }
+
+        // ---- Aggiorna giacenza al cambio lotto ----
+        tbody.addEventListener("change", function (e) {
+            const sel = e.target.closest(".lotto-select-sl");
+            if (!sel) return;
+            const row = sel.closest("tr");
+            const giacCell = row.querySelector(".giacenza-cell-sl");
+            const qtyInput = row.querySelector(".lotto-qty-sl");
+            const opt = sel.options[sel.selectedIndex];
+            if (opt && opt.value) {
+                const g = parseInt(opt.dataset.giacenza || "0", 10);
+                giacCell.textContent = g;
+                qtyInput.max = g;
+            } else {
+                giacCell.textContent = "-";
+                qtyInput.max = "";
+            }
+            updateRiepilogo();
+        });
+
+        tbody.addEventListener("input", function (e) {
+            if (e.target.classList.contains("lotto-qty-sl")) updateRiepilogo();
+        });
+
+        // ---- +/- righe ----
+        tbody.addEventListener("click", function (e) {
+            const btnAdd = e.target.closest(".btn-add-lotto-sl");
+            if (btnAdd) {
+                const codArt = btnAdd.dataset.codart;
+                const desArt = btnAdd.dataset.desart;
+                const comp = _lottiData.find(c => c.CodArt === codArt);
+                if (comp) addLottoRow(codArt, desArt, comp.lotti, false);
+                updateRiepilogo();
+                return;
+            }
+            const btnRem = e.target.closest(".btn-rem-lotto-sl");
+            if (btnRem) {
+                btnRem.closest("tr")?.remove();
+                updateRiepilogo();
+            }
+        });
+
+        // ---- Riepilogo ----
+        function updateRiepilogo() {
+            if (!riepilogo) return;
+            const totals = {};
+            tbody.querySelectorAll("tr").forEach(row => {
+                const cod = row.dataset.codart || "";
+                const qty = parseFloat(row.querySelector(".lotto-qty-sl")?.value || "0") || 0;
+                const esito = row.querySelector(".lotto-esito-sl")?.value || "ok";
+                if (!totals[cod]) totals[cod] = {ok: 0, ko: 0, totale: 0};
+                if (esito === "ok") totals[cod].ok += qty; else totals[cod].ko += qty;
+                totals[cod].totale += qty;
+            });
+
+            let html = "<strong>Riepilogo per componente:</strong><br>";
+            for (const comp of _lottiData) {
+                const t = totals[comp.CodArt] || {ok: 0, ko: 0, totale: 0};
+                const rich = comp.Quantita || 0;
+                const ok = (t.totale === rich);
+                html += `<span class="${ok ? "text-success" : "text-danger"}">`
+                    + `${escHtml(comp.CodArt)}: ${t.totale}/${rich} (OK: ${t.ok}, KO: ${t.ko})`
+                    + `${ok ? " ✓" : " ✗"}</span><br>`;
+            }
+            riepilogo.innerHTML = html;
+        }
+
+        // ---- Carica lotti dal server ----
+        async function fetchLottiData(idDocumento, idRiga) {
+            loading.style.display = "";
+            section.style.display = "";
+            tbody.innerHTML = "";
+            showAlert("");
+            riepilogo.innerHTML = "";
+            _lottiData = [];
+            _hasLotti = false;
+
+            try {
+                const resp = await fetch("/api/ordini/lotti-componenti", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"},
+                    credentials: "same-origin",
+                    body: JSON.stringify({id_documento: idDocumento, id_riga: idRiga})
+                });
+                const data = await resp.json();
+
+                if (!resp.ok || !data.ok) {
+                    showAlert(data.error || "Errore nel caricamento dei lotti.");
+                    loading.style.display = "none";
+                    return;
+                }
+
+                _lottiData = data.componenti || [];
+                _hasLotti = _lottiData.length > 0;
+
+                if (!_hasLotti) {
+                    section.style.display = "none";
+                    loading.style.display = "none";
+                    return;
+                }
+
+                for (const comp of _lottiData) {
+                    addLottoRow(comp.CodArt, comp.DesArt, comp.lotti, true);
+                }
+                updateRiepilogo();
+            } catch (err) {
+                console.error("Errore fetch lotti SL:", err);
+                showAlert("Errore di comunicazione.");
+            } finally {
+                loading.style.display = "none";
+            }
+        }
+
+        // ---- Validazione lotti ----
+        function validateLotti() {
+            if (!_hasLotti) return {valid: true, lottiPayload: []};
+
+            const errors = [];
+            const perCodice = {};
+            const lottiPayload = [];
+            const usati = new Set();
+
+            tbody.querySelectorAll("tr").forEach(row => {
+                const cod = row.dataset.codart || "";
+                const lottoVal = row.querySelector(".lotto-select-sl")?.value || "";
+                const giacenza = parseInt(row.querySelector(".giacenza-cell-sl")?.textContent || "0", 10) || 0;
+                const qty = parseFloat(row.querySelector(".lotto-qty-sl")?.value || "0") || 0;
+                const esito = row.querySelector(".lotto-esito-sl")?.value || "ok";
+
+                if (qty > 0 && !lottoVal) {
+                    errors.push(`${cod}: selezionare un lotto.`);
+                    return;
+                }
+                if (!lottoVal) return;
+                if (qty > giacenza) errors.push(`${cod} lotto ${lottoVal}: qtà ${qty} > giacenza ${giacenza}.`);
+                if (qty <= 0) errors.push(`${cod} lotto ${lottoVal}: inserire qtà > 0.`);
+
+                const key = `${cod}|${lottoVal}`;
+                if (usati.has(key)) errors.push(`${cod}: lotto ${lottoVal} duplicato.`);
+                usati.add(key);
+
+                if (!perCodice[cod]) perCodice[cod] = {ok: 0, ko: 0, totale: 0};
+                if (esito === "ok") perCodice[cod].ok += qty; else perCodice[cod].ko += qty;
+                perCodice[cod].totale += qty;
+
+                lottiPayload.push({CodArt: cod, RifLottoAlfa: lottoVal, Quantita: qty, Esito: esito});
+            });
+
+            for (const comp of _lottiData) {
+                const t = perCodice[comp.CodArt] || {totale: 0};
+                if (t.totale !== parseFloat(comp.Quantita || 0)) {
+                    errors.push(`${comp.CodArt}: somma lotti (${t.totale}) ≠ richiesta (${comp.Quantita}).`);
+                }
+            }
+
+            if (errors.length > 0) {
+                showAlert(errors.join("\n"));
+                return {valid: false, lottiPayload: []};
+            }
+            showAlert("");
+            return {valid: true, lottiPayload};
+        }
+
+        // ---- Apertura toast: autofill + carica lotti ----
+        document.addEventListener("click", function (e) {
+            const btn = e.target.closest('[data-bs-target="#toast-4"]');
             if (!btn) return;
 
             requestAnimationFrame(() => {
-                autofillProdFromOrderTotal();
+                autofillQuantita();
+
+                const idDoc = document.getElementById("toast-chiudi-sl-iddocumento")?.value?.trim();
+                const idRiga = document.getElementById("toast-chiudi-sl-idriga")?.value?.trim();
+                if (idDoc && idRiga) {
+                    fetchLottiData(idDoc, idRiga);
+                } else {
+                    section.style.display = "none";
+                }
             });
+        });
+
+        // ---- Conferma chiusura SL ----
+        document.getElementById("btn-conferma-chiusura-sl")?.addEventListener("click", async function (event) {
+            event.preventDefault();
+
+            const btn = this;
+            const idDocumento = document.getElementById("toast-chiudi-sl-iddocumento")?.value?.trim() || "";
+            const idRiga = document.getElementById("toast-chiudi-sl-idriga")?.value?.trim() || "";
+            const qOrd = document.getElementById("toast-chiudi-sl-quantita")?.value?.trim() || "";
+            const qConf = document.getElementById("toast-chiudi-sl-quantita-conforme")?.value?.trim() || "";
+            const qNonConf = document.getElementById("toast-chiudi-sl-quantita-non-conforme")?.value?.trim() || "";
+            const note = document.getElementById("toast-chiudi-sl-note")?.value?.trim() || "";
+
+            if (!idDocumento || !idRiga) {
+                alert("Ordine non valido (IdDocumento/IdRiga mancanti).");
+                return;
+            }
+
+            // Validazione quantità
+            const nConf = Number(String(qConf).replace(",", "."));
+            const nNonConf = Number(String(qNonConf).replace(",", "."));
+            const nOrd = Number(String(qOrd).replace(",", "."));
+
+            if (!Number.isFinite(nConf) || nConf < 0) {
+                alert("Quantità conforme non valida.");
+                return;
+            }
+            if (!Number.isFinite(nNonConf) || nNonConf < 0) {
+                alert("Quantità KO non valida.");
+                return;
+            }
+            if (nNonConf > nConf) {
+                alert("La quantità KO non può superare la quantità conforme.");
+                return;
+            }
+            if (Number.isFinite(nOrd) && nConf > nOrd) {
+                alert("La quantità conforme non può superare la quantità ordine.");
+                return;
+            }
+
+            // Validazione lotti
+            let lottiPayload = [];
+            if (_hasLotti) {
+                const validation = validateLotti();
+                if (!validation.valid) return;
+                lottiPayload = validation.lottiPayload;
+
+                // Check coerenza lotti KO vs quantità
+                const totKoLotti = lottiPayload.filter(l => l.Esito === "ko").reduce((s, l) => s + l.Quantita, 0);
+                if (nNonConf === 0 && totKoLotti > 0) {
+                    if (!confirm("Hai lotti marcati KO ma quantità non conforme = 0. Continuare?")) return;
+                }
+            }
+
+            btn.disabled = true;
+
+            try {
+                const resp = await fetch("/api/ordini/chiudi", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"},
+                    credentials: "same-origin",
+                    body: JSON.stringify({
+                        id_documento: idDocumento,
+                        id_riga: idRiga,
+                        quantita_conforme: qConf,
+                        quantita_non_conforme: qNonConf,
+                        note: note,
+                        lotti: lottiPayload,
+                    })
+                });
+
+                let data = {};
+                try {
+                    data = await resp.json();
+                } catch (_) {
+                    data = {};
+                }
+
+                if (!resp.ok || data.ok === false) {
+                    console.error("Errore chiusura SL:", data);
+                    alert(data.error || "Errore durante la chiusura dell'ordine.");
+                    return;
+                }
+
+                bootstrap.Toast.getOrCreateInstance(toastEl).hide();
+
+                if (data.fragments && window.applyHomeFragments) {
+                    window.applyHomeFragments(data.fragments);
+                }
+
+                // Reset
+                const btnSosp = document.getElementById("sospensione_ordine_sl");
+                const btnRiatt = document.getElementById("riattivazione_ordine_sl");
+                if (btnSosp) btnSosp.disabled = true;
+                if (btnRiatt) btnRiatt.disabled = true;
+                section.style.display = "none";
+                tbody.innerHTML = "";
+                _lottiData = [];
+                _hasLotti = false;
+
+            } catch (err) {
+                console.error("Errore fetch chiusura SL:", err);
+                alert("Errore di comunicazione con il server.");
+            } finally {
+                btn.disabled = false;
+            }
         });
     })();
 </script>

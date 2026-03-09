@@ -673,3 +673,31 @@ class ChangeEventLog(db.Model):
     # chiavi ordine “estratte” per query più facili
     IdDocumento = db.Column(db.Text)
     IdRiga = db.Column(db.Text)
+
+
+class LottiUsatiLog(db.Model):
+    __bind_key__ = "log"
+    __tablename__ = "lotti_usati_log"
+
+    log_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    logged_at = db.Column(
+        db.Text,
+        nullable=False,
+        default=lambda: datetime.now(ZoneInfo("Europe/Rome")).isoformat(
+            timespec="seconds"
+        ),
+    )
+
+    # Riferimento ordine
+    IdDocumento = db.Column(db.Text, nullable=False)
+    IdRiga = db.Column(db.Text, nullable=False)
+    RifRegistraz = db.Column(db.Text)
+
+    # Dati lotto
+    CodArt = db.Column(db.Text, nullable=False)  # codice componente
+    RifLottoAlfa = db.Column(db.Text, nullable=False)  # numero lotto
+    Quantita = db.Column(db.Text, nullable=False)  # quantità utilizzata
+    Esito = db.Column(db.Text)  # "ok" o "ko"
+
+    ClosedBy = db.Column(db.Text)
+    ClosedAt = db.Column(db.Text)
