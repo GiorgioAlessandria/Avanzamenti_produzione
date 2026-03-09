@@ -1,6 +1,7 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 import json
+import math
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from flask import Blueprint, render_template, request, url_for, abort, jsonify
 from flask_login import login_required, current_user
@@ -14,6 +15,7 @@ from app_odp.models import (
     Causaliattivita,
     GiacenzaLotti,
     LottiUsatiLog,
+    ErpOutbox,
 )
 from app_odp.policy.decorator import require_perm
 from app_odp.policy.policy import RbacPolicy
@@ -104,6 +106,323 @@ def _parse_qty_decimal(value) -> Decimal:
         return Decimal(raw)
     except InvalidOperation:
         raise ValueError(f"Quantità non valida: {value!r}")
+
+
+def _get_blocking_outbox_for_phase(
+    id_documento: str,
+    id_riga: str,
+    fase: str,
+):
+    fase = _norm_text(fase)
+    if not fase:
+        return None
+
+    return (
+        ErpOutbox.query.filter_by(
+            IdDocumento=id_documento,
+            IdRiga=id_riga,
+            Fase=fase,
+        )
+        .filter(ErpOutbox.status.in_(["pending", "exported", "error"]))
+        .order_by(ErpOutbox.outbox_id.desc())
+        .first()
+    )
+
+
+def _is_nan_like_value(value) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, float):
+        try:
+            return math.isnan(value)
+        except Exception:
+            return False
+    txt = _norm_text(value).strip().lower()
+    return txt in {"", "nan", "none", "null"}
+
+
+def _is_blank_distinta_row(row: dict) -> bool:
+    if not isinstance(row, dict):
+        return True
+
+    campi_chiave = [
+        row.get("CodArt"),
+        row.get("DesArt"),
+        row.get("Quantita"),
+        row.get("GestioneLotto"),
+    ]
+    return all(_is_nan_like_value(v) for v in campi_chiave)
+
+
+def _parse_distinta_materiale(ordine) -> list[dict]:
+    distinta = []
+    if ordine.DistintaMateriale:
+        try:
+            distinta = json.loads(ordine.DistintaMateriale)
+            if isinstance(distinta, str):
+                distinta = json.loads(distinta)
+        except (json.JSONDecodeError, TypeError):
+            distinta = []
+
+    if not isinstance(distinta, list):
+        return []
+
+    pulita = []
+    for row in distinta:
+        if not isinstance(row, dict):
+            continue
+        if _is_blank_distinta_row(row):
+            continue
+        pulita.append(row)
+
+    return pulita
+
+
+def _fase_attiva_int(ordine) -> int | None:
+    try:
+        return int(float(_norm_text(ordine.FaseAttiva)))
+    except (ValueError, TypeError):
+        return None
+
+
+def _fase_corrente_for_export(ordine, stato=None, fase_override="") -> str:
+    return (
+        _norm_text(fase_override)
+        or _norm_text(getattr(stato, "Fase", ""))
+        or _norm_text(ordine.FaseAttiva)
+        or _norm_text(ordine.NumFase)
+    )
+
+
+def _ordine_is_macchina(ordine) -> bool:
+    return _norm_text(getattr(ordine, "GestioneMatricola", "")).lower() == "si"
+
+
+def _componenti_lotto_per_ordine(
+    ordine,
+    *,
+    modalita: str = "sl",
+    include_senza_lotti: bool = False,
+) -> list[dict]:
+    modalita = _norm_text(modalita).lower() or "sl"
+    is_macchina = modalita == "m"
+
+    if is_macchina:
+        if not _ordine_is_macchina(ordine):
+            return []
+    else:
+        if _norm_text(ordine.GestioneLotto).lower() != "si":
+            return []
+
+    distinta = _parse_distinta_materiale(ordine)
+    fase_attiva = _fase_attiva_int(ordine)
+
+    componenti_lotto = []
+    codici_visti = set()
+
+    for comp in distinta:
+        if not isinstance(comp, dict):
+            continue
+
+        if fase_attiva is not None:
+            try:
+                comp_fase = int(float(comp.get("NumFase", 0)))
+            except (ValueError, TypeError):
+                comp_fase = 0
+            if comp_fase != fase_attiva:
+                continue
+
+        comp_gl = _norm_text(comp.get("GestioneLotto", "")).lower()
+        if comp_gl != "si":
+            continue
+
+        cod_art = _norm_text(comp.get("CodArt", ""))
+        if not cod_art or cod_art in codici_visti:
+            continue
+
+        codici_visti.add(cod_art)
+
+        lotti_db = GiacenzaLotti.query.filter_by(CodArt=cod_art).all()
+        lotti_list = []
+        for lotto in lotti_db:
+            try:
+                giacenza_val = int(float(_norm_text(lotto.Giacenza)))
+            except (ValueError, TypeError):
+                giacenza_val = 0
+            if giacenza_val <= 0:
+                continue
+            lotti_list.append(
+                {
+                    "RifLottoAlfa": lotto.RifLottoAlfa,
+                    "Giacenza": giacenza_val,
+                    "CodMag": lotto.CodMag,
+                }
+            )
+
+        if lotti_list or include_senza_lotti:
+            componenti_lotto.append(
+                {
+                    "CodArt": cod_art,
+                    "DesArt": _norm_text(comp.get("DesArt", "")),
+                    "Quantita": comp.get("Quantita", 0),
+                    "NumFase": comp.get("NumFase", ""),
+                    "GestioneLotto": "si",
+                    "lotti": lotti_list,
+                }
+            )
+
+    return componenti_lotto
+
+
+def _validate_lotti_input(lotti_input: list[dict], componenti_richiesti_lotto: list[dict]):
+    required_by_code = {
+        _norm_text(comp.get("CodArt")): comp
+        for comp in (componenti_richiesti_lotto or [])
+        if _norm_text(comp.get("CodArt"))
+    }
+
+    if required_by_code and not lotti_input:
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": "Per questo ordine è obbligatoria l'assegnazione dei lotti materiale prima della chiusura.",
+                }
+            ),
+            400,
+        )
+
+    for lotto_row in lotti_input or []:
+        cod_art = _norm_text(lotto_row.get("CodArt"))
+        rif_lotto = _norm_text(lotto_row.get("RifLottoAlfa"))
+        try:
+            qty = _parse_qty_decimal(lotto_row.get("Quantita"))
+        except ValueError as e:
+            return jsonify({"ok": False, "error": f"Quantità lotto non valida: {e}"}), 400
+
+        if not cod_art or not rif_lotto:
+            return (
+                jsonify(
+                    {
+                        "ok": False,
+                        "error": "Codice e lotto sono obbligatori per ogni riga lotti.",
+                    }
+                ),
+                400,
+            )
+
+        if cod_art not in required_by_code:
+            return (
+                jsonify(
+                    {
+                        "ok": False,
+                        "error": f"{cod_art}: componente non previsto tra quelli da gestire a lotto per questa fase.",
+                    }
+                ),
+                400,
+            )
+
+        if qty <= 0:
+            return (
+                jsonify(
+                    {
+                        "ok": False,
+                        "error": f"{cod_art} lotto {rif_lotto}: quantità deve essere > 0.",
+                    }
+                ),
+                400,
+            )
+
+        lotto_db = GiacenzaLotti.query.filter_by(CodArt=cod_art, RifLottoAlfa=rif_lotto).first()
+        if lotto_db is None:
+            return (
+                jsonify(
+                    {
+                        "ok": False,
+                        "error": f"Lotto {rif_lotto} non trovato per {cod_art}.",
+                    }
+                ),
+                400,
+            )
+
+        try:
+            giacenza = _parse_qty_decimal(lotto_db.Giacenza)
+        except ValueError:
+            giacenza = Decimal("0")
+
+        if qty > giacenza:
+            return (
+                jsonify(
+                    {
+                        "ok": False,
+                        "error": f"{cod_art} lotto {rif_lotto}: quantità {qty} supera giacenza {giacenza}.",
+                    }
+                ),
+                400,
+            )
+
+    return None
+
+
+def _normalize_lotti_for_payload(lotti_input: list[dict]) -> list[dict]:
+    rows = []
+    for row in lotti_input or []:
+        rows.append(
+            {
+                "CodArt": _norm_text(row.get("CodArt")),
+                "RifLottoAlfa": _norm_text(row.get("RifLottoAlfa")),
+                "Quantita": str(row.get("Quantita", 0)),
+                "Esito": _norm_text(row.get("Esito", "ok")),
+            }
+        )
+    return rows
+
+
+def _build_phase_payload(
+    ordine,
+    fase_corrente: str,
+    q_ok: Decimal,
+    q_nok: Decimal,
+    tempo_finale: str,
+    lotti_input: list[dict],
+    note: str,
+    now_iso: str,
+) -> dict:
+    return {
+        "kind": "consuntivo_fase",
+        "id_documento": ordine.IdDocumento,
+        "id_riga": ordine.IdRiga,
+        "rif_registraz": ordine.RifRegistraz,
+        "cod_art": ordine.CodArt,
+        "descrizione": ordine.DesArt,
+        "fase": fase_corrente,
+        "cod_reparto": ordine.CodReparto,
+        "quantita_ordine": _norm_text(ordine.Quantita),
+        "quantita_ok": str(q_ok),
+        "quantita_ko": str(q_nok),
+        "tempo_funzionamento": tempo_finale,
+        "note": note,
+        "lotti": _normalize_lotti_for_payload(lotti_input),
+        "created_at": now_iso,
+        "created_by": current_user.username,
+    }
+
+
+def _queue_phase_export(ordine, fase_corrente: str, payload: dict):
+    outbox = ErpOutbox(
+        kind="consuntivo_fase",
+        status="pending",
+        IdDocumento=ordine.IdDocumento,
+        IdRiga=ordine.IdRiga,
+        RifRegistraz=ordine.RifRegistraz,
+        CodArt=ordine.CodArt,
+        Fase=fase_corrente,
+        CodReparto=_norm_text(ordine.CodReparto),
+        payload_json=json.dumps(payload, ensure_ascii=False),
+    )
+    db.session.add(outbox)
+    db.session.flush()
+    return outbox
 
 
 @main_bp.context_processor
@@ -513,6 +832,45 @@ def api_prendi_ordine():
     policy = RbacPolicy(current_user)
     ordine = _get_visible_odp_by_key(policy, id_documento, id_riga)
 
+    fase_corrente = _fase_corrente_for_export(ordine)
+    blocking_outbox = _get_blocking_outbox_for_phase(
+        id_documento=ordine.IdDocumento,
+        id_riga=ordine.IdRiga,
+        fase=fase_corrente,
+    )
+
+    if blocking_outbox is not None:
+        tab, fragments = _fragments_for_ordine_tab(policy, ordine)
+
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "changed": False,
+                    "error": (
+                        "Questa fase risulta già consuntivata ed è ancora in attesa "
+                        "di sincronizzazione con il gestionale."
+                    ),
+                    "message": (
+                        f"Presa in carico bloccata: fase {fase_corrente} con export "
+                        f"in stato '{blocking_outbox.status}'."
+                    ),
+                    "id_documento": ordine.IdDocumento,
+                    "id_riga": ordine.IdRiga,
+                    "row_key": _row_key(ordine.IdDocumento, ordine.IdRiga),
+                    "rif_registraz": ordine.RifRegistraz,
+                    "stato_ordine": ordine.StatoOrdine,
+                    "fase": fase_corrente,
+                    "outbox_status": blocking_outbox.status,
+                    "outbox_id": blocking_outbox.outbox_id,
+                    "active_tab": tab,
+                    "last_event_id": _last_change_event_id(),
+                    "fragments": fragments,
+                }
+            ),
+            409,
+        )
+
     stato_attuale = _norm_text(ordine.StatoOrdine)
     stato_norm = stato_attuale.lower()
     changed = False
@@ -528,8 +886,6 @@ def api_prendi_ordine():
             IdRiga=ordine.IdRiga,
         ).first()
 
-        fase_corrente = _norm_text(ordine.FaseAttiva) or _norm_text(ordine.NumFase)
-
         stato = _ensure_stato_attivo(
             ordine=ordine,
             stato=stato,
@@ -544,6 +900,7 @@ def api_prendi_ordine():
             extra_payload={
                 "azione": "presa_in_carico",
                 "utente": current_user.username,
+                "fase": fase_corrente,
                 "data_ultima_attivazione": stato.data_ultima_attivazione,
                 "tempo_funzionamento": stato.Tempo_funzionamento,
             },
@@ -552,6 +909,15 @@ def api_prendi_ordine():
         db.session.commit()
         changed = True
         message = "Ordine preso in carico"
+
+    elif stato_norm == "attivo":
+        message = "Ordine già attivo"
+
+    elif stato_norm == "in sospeso":
+        message = "Ordine in sospeso: usare la riattivazione"
+
+    else:
+        message = f"Ordine non prendibile: stato attuale '{stato_attuale}'"
 
     tab, fragments = _fragments_for_ordine_tab(policy, ordine)
 
@@ -566,6 +932,7 @@ def api_prendi_ordine():
                 "row_key": _row_key(ordine.IdDocumento, ordine.IdRiga),
                 "rif_registraz": ordine.RifRegistraz,
                 "stato_ordine": ordine.StatoOrdine,
+                "fase": fase_corrente,
                 "active_tab": tab,
                 "last_event_id": _last_change_event_id(),
                 "fragments": fragments,
@@ -844,6 +1211,45 @@ def api_riattiva_ordine():
 
     policy = RbacPolicy(current_user)
     ordine = _get_visible_odp_by_key(policy, id_documento, id_riga)
+    fase_corrente = _fase_corrente_for_export(ordine)
+
+    blocking_outbox = _get_blocking_outbox_for_phase(
+        id_documento=ordine.IdDocumento,
+        id_riga=ordine.IdRiga,
+        fase=fase_corrente,
+    )
+
+    if blocking_outbox is not None:
+        tab, fragments = _fragments_for_ordine_tab(policy, ordine)
+
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "changed": False,
+                    "error": (
+                        "Questa fase risulta già consuntivata ed è ancora in attesa "
+                        "di sincronizzazione con il gestionale."
+                    ),
+                    "message": (
+                        f"Riattivazione bloccata: fase {fase_corrente} con export "
+                        f"in stato '{blocking_outbox.status}'."
+                    ),
+                    "id_documento": ordine.IdDocumento,
+                    "id_riga": ordine.IdRiga,
+                    "row_key": _row_key(ordine.IdDocumento, ordine.IdRiga),
+                    "rif_registraz": ordine.RifRegistraz,
+                    "stato_ordine": ordine.StatoOrdine,
+                    "fase": fase_corrente,
+                    "outbox_status": blocking_outbox.status,
+                    "outbox_id": blocking_outbox.outbox_id,
+                    "active_tab": tab,
+                    "last_event_id": _last_change_event_id(),
+                    "fragments": fragments,
+                }
+            ),
+            409,
+        )
 
     stato_attuale = _norm_text(ordine.StatoOrdine)
     stato_norm = stato_attuale.lower()
@@ -852,7 +1258,6 @@ def api_riattiva_ordine():
 
     if stato_norm == "in sospeso":
         now_dt = _now_rome_dt()
-        fase_corrente = _norm_text(ordine.FaseAttiva) or _norm_text(ordine.NumFase)
 
         ordine.StatoOrdine = "Attivo"
 
@@ -875,6 +1280,7 @@ def api_riattiva_ordine():
             extra_payload={
                 "azione": "riattivazione",
                 "utente": current_user.username,
+                "fase": fase_corrente,
                 "data_ultima_attivazione": stato.data_ultima_attivazione,
                 "tempo_funzionamento": stato.Tempo_funzionamento,
             },
@@ -903,6 +1309,7 @@ def api_riattiva_ordine():
                 "row_key": _row_key(ordine.IdDocumento, ordine.IdRiga),
                 "rif_registraz": ordine.RifRegistraz,
                 "stato_ordine": ordine.StatoOrdine,
+                "fase": fase_corrente,
                 "active_tab": tab,
                 "last_event_id": _last_change_event_id(),
                 "fragments": fragments,
@@ -959,6 +1366,45 @@ def api_riattiva_ordine_montaggio_macchina():
             400,
         )
 
+    fase_corrente = _fase_corrente_for_export(ordine, fase_override=fase)
+    blocking_outbox = _get_blocking_outbox_for_phase(
+        id_documento=ordine.IdDocumento,
+        id_riga=ordine.IdRiga,
+        fase=fase_corrente,
+    )
+
+    if blocking_outbox is not None:
+        tab, fragments = _fragments_for_ordine_tab(policy, ordine)
+
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "changed": False,
+                    "error": (
+                        "Questa fase risulta già consuntivata ed è ancora in attesa "
+                        "di sincronizzazione con il gestionale."
+                    ),
+                    "message": (
+                        f"Riattivazione bloccata: fase {fase_corrente} con export "
+                        f"in stato '{blocking_outbox.status}'."
+                    ),
+                    "id_documento": ordine.IdDocumento,
+                    "id_riga": ordine.IdRiga,
+                    "row_key": _row_key(ordine.IdDocumento, ordine.IdRiga),
+                    "rif_registraz": ordine.RifRegistraz,
+                    "stato_ordine": ordine.StatoOrdine,
+                    "fase": fase_corrente,
+                    "outbox_status": blocking_outbox.status,
+                    "outbox_id": blocking_outbox.outbox_id,
+                    "active_tab": tab,
+                    "last_event_id": _last_change_event_id(),
+                    "fragments": fragments,
+                }
+            ),
+            409,
+        )
+
     stato_attuale = _norm_text(ordine.StatoOrdine)
     stato_norm = stato_attuale.lower()
     changed = False
@@ -966,9 +1412,6 @@ def api_riattiva_ordine_montaggio_macchina():
 
     if stato_norm == "in sospeso":
         now_dt = _now_rome_dt()
-        fase_corrente = (
-            fase or _norm_text(ordine.FaseAttiva) or _norm_text(ordine.NumFase)
-        )
 
         ordine.StatoOrdine = "Attivo"
 
@@ -1020,6 +1463,7 @@ def api_riattiva_ordine_montaggio_macchina():
                 "row_key": _row_key(ordine.IdDocumento, ordine.IdRiga),
                 "rif_registraz": ordine.RifRegistraz,
                 "stato_ordine": ordine.StatoOrdine,
+                "fase": fase_corrente,
                 "active_tab": tab,
                 "last_event_id": _last_change_event_id(),
                 "fragments": fragments,
@@ -1051,6 +1495,28 @@ def api_chiudi_ordine():
     policy = RbacPolicy(current_user)
     ordine = _get_visible_odp_by_key(policy, id_documento, id_riga)
 
+    fase_corrente = _fase_corrente_for_export(ordine)
+    blocking_outbox = _get_blocking_outbox_for_phase(
+        id_documento=ordine.IdDocumento,
+        id_riga=ordine.IdRiga,
+        fase=fase_corrente,
+    )
+    if blocking_outbox is not None:
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": (
+                        "Questa fase risulta già consuntivata ed è ancora in attesa "
+                        "di sincronizzazione con il gestionale."
+                    ),
+                    "outbox_status": blocking_outbox.status,
+                    "outbox_id": blocking_outbox.outbox_id,
+                }
+            ),
+            409,
+        )
+
     stato_attuale = _norm_text(ordine.StatoOrdine).lower()
     if stato_attuale == "pianificata":
         return (
@@ -1060,7 +1526,6 @@ def api_chiudi_ordine():
             409,
         )
 
-    # Parse quantità ordine
     try:
         q_tot = _parse_qty_decimal(ordine.Quantita)
     except ValueError as e:
@@ -1088,74 +1553,21 @@ def api_chiudi_ordine():
             400,
         )
 
-    # --- Validazione lotti ---
-    if lotti_input:
-        from app_odp.models import GiacenzaLotti
-
-        for lotto_row in lotti_input:
-            cod_art = _norm_text(lotto_row.get("CodArt"))
-            rif_lotto = _norm_text(lotto_row.get("RifLottoAlfa"))
-            try:
-                qty = _parse_qty_decimal(lotto_row.get("Quantita"))
-            except ValueError as e:
-                return (
-                    jsonify({"ok": False, "error": f"Quantità lotto non valida: {e}"}),
-                    400,
-                )
-
-            if not cod_art or not rif_lotto:
-                return (
-                    jsonify(
-                        {
-                            "ok": False,
-                            "error": "Codice e lotto obbligatori per ogni riga.",
-                        }
-                    ),
-                    400,
-                )
-            if qty <= 0:
-                return (
-                    jsonify(
-                        {
-                            "ok": False,
-                            "error": f"{cod_art} lotto {rif_lotto}: quantità deve essere > 0.",
-                        }
-                    ),
-                    400,
-                )
-
-            lotto_db = GiacenzaLotti.query.filter_by(
-                CodArt=cod_art, RifLottoAlfa=rif_lotto
-            ).first()
-            if lotto_db is None:
-                return (
-                    jsonify(
-                        {
-                            "ok": False,
-                            "error": f"Lotto {rif_lotto} non trovato per {cod_art}.",
-                        }
-                    ),
-                    400,
-                )
-            try:
-                giacenza = _parse_qty_decimal(lotto_db.Giacenza)
-            except ValueError:
-                giacenza = Decimal("0")
-            if qty > giacenza:
-                return (
-                    jsonify(
-                        {
-                            "ok": False,
-                            "error": f"{cod_art} lotto {rif_lotto}: qtà {qty} > giacenza {giacenza}.",
-                        }
-                    ),
-                    400,
-                )
+    componenti_richiesti_lotto = _componenti_lotto_per_ordine(
+        ordine,
+        modalita="sl",
+        include_senza_lotti=True,
+    )
+    validation_error = _validate_lotti_input(
+        lotti_input,
+        componenti_richiesti_lotto,
+    )
+    if validation_error is not None:
+        return validation_error
 
     now_dt = _now_rome_dt()
     now_iso = now_dt.isoformat(timespec="seconds")
 
-    # --- Finalizza runtime ---
     stato = StatoOdp.query.filter_by(
         IdDocumento=ordine.IdDocumento, IdRiga=ordine.IdRiga
     ).first()
@@ -1166,22 +1578,40 @@ def api_chiudi_ordine():
             _accumulate_runtime_until(stato, now_dt)
         tempo_finale = _norm_text(stato.Tempo_funzionamento) or "0"
 
-    # --- Evento ordine_chiuso ---
+    fase_corrente = _fase_corrente_for_export(ordine, stato=stato)
+    payload = _build_phase_payload(
+        ordine=ordine,
+        fase_corrente=fase_corrente,
+        q_ok=q_ok,
+        q_nok=q_nok,
+        tempo_finale=tempo_finale,
+        lotti_input=lotti_input,
+        note=note,
+        now_iso=now_iso,
+    )
+    outbox = _queue_phase_export(
+        ordine=ordine,
+        fase_corrente=fase_corrente,
+        payload=payload,
+    )
+
     _push_change_event(
-        topic="ordine_chiuso",
+        topic="fase_consuntivata",
         ordine=ordine,
         extra_payload={
-            "azione": "chiusura_totale",
+            "azione": "consuntivo_fase",
             "utente": current_user.username,
+            "fase": fase_corrente,
             "quantita_conforme": str(q_ok),
             "quantita_non_conforme": str(q_nok),
             "tempo_funzionamento": tempo_finale,
             "lotti_count": len(lotti_input),
+            "outbox_id": outbox.outbox_id,
+            "export_status": outbox.status,
         },
     )
     db.session.flush()
 
-    # --- LOG 1: input_odp_log ---
     db.session.add(
         InputOdpLog(
             IdDocumento=ordine.IdDocumento,
@@ -1218,7 +1648,6 @@ def api_chiudi_ordine():
         )
     )
 
-    # --- LOG 2: odp_in_carico_log ---
     if stato is not None:
         db.session.add(
             StatoOdpLog(
@@ -1236,26 +1665,23 @@ def api_chiudi_ordine():
             )
         )
 
-    # --- LOG 3: lotti_usati_log ---
     if lotti_input:
-        from app_odp.models import LottiUsatiLog
-
         for lotto_row in lotti_input:
-            db.session.add(
-                LottiUsatiLog(
-                    IdDocumento=ordine.IdDocumento,
-                    IdRiga=ordine.IdRiga,
-                    RifRegistraz=ordine.RifRegistraz,
-                    CodArt=_norm_text(lotto_row.get("CodArt")),
-                    RifLottoAlfa=_norm_text(lotto_row.get("RifLottoAlfa")),
-                    Quantita=str(lotto_row.get("Quantita", 0)),
-                    Esito=_norm_text(lotto_row.get("Esito", "ok")),
-                    ClosedBy=current_user.username,
-                    ClosedAt=now_iso,
-                )
+            lotto_log = LottiUsatiLog(
+                IdDocumento=ordine.IdDocumento,
+                IdRiga=ordine.IdRiga,
+                RifRegistraz=ordine.RifRegistraz,
+                CodArt=_norm_text(lotto_row.get("CodArt")),
+                RifLottoAlfa=_norm_text(lotto_row.get("RifLottoAlfa")),
+                Quantita=str(lotto_row.get("Quantita", 0)),
+                Esito=_norm_text(lotto_row.get("Esito", "ok")),
+                ClosedBy=current_user.username,
+                ClosedAt=now_iso,
             )
+            if hasattr(LottiUsatiLog, "Fase"):
+                lotto_log.Fase = fase_corrente
+            db.session.add(lotto_log)
 
-    # --- LOG 4: change_event_log ---
     ce_rows = (
         ChangeEvent.query.filter(ChangeEvent.payload_json.isnot(None))
         .filter(
@@ -1281,24 +1707,12 @@ def api_chiudi_ordine():
             )
         )
 
-    # --- DELETE ---
     tab = _tab_from_ordine(ordine)
-
-    (
-        ChangeEvent.query.filter(ChangeEvent.payload_json.isnot(None))
-        .filter(
-            func.json_extract(ChangeEvent.payload_json, "$.id_documento")
-            == ordine.IdDocumento
-        )
-        .filter(
-            func.json_extract(ChangeEvent.payload_json, "$.id_riga") == ordine.IdRiga
-        )
-        .delete(synchronize_session=False)
-    )
 
     if stato is not None:
         db.session.delete(stato)
-    db.session.delete(ordine)
+
+    ordine.StatoOrdine = "Pianificata"
 
     fragments = {}
     if tab:
@@ -1313,10 +1727,13 @@ def api_chiudi_ordine():
             {
                 "ok": True,
                 "changed": True,
-                "message": "Ordine chiuso",
+                "message": "Fase consuntivata",
                 "id_documento": id_documento,
                 "id_riga": id_riga,
                 "row_key": _row_key(id_documento, id_riga),
+                "fase": fase_corrente,
+                "outbox_id": outbox.outbox_id,
+                "outbox_status": outbox.status,
                 "active_tab": tab,
                 "last_event_id": _last_change_event_id(),
                 "fragments": fragments,
@@ -1337,9 +1754,7 @@ def api_chiudi_ordine_montaggio_macchina():
     matricola = _norm_text(data.get("matricola"))
     fase = _norm_text(data.get("fase"))
     note = _norm_text(data.get("note"))
-    lotti_input = (
-        data.get("lotti") or []
-    )  # lista di {CodArt, RifLottoAlfa, Quantita, Esito}
+    lotti_input = data.get("lotti") or []
 
     if not id_documento or not id_riga:
         return (
@@ -1350,7 +1765,6 @@ def api_chiudi_ordine_montaggio_macchina():
     policy = RbacPolicy(current_user)
     ordine = _get_visible_odp_by_key(policy, id_documento, id_riga)
 
-    # --- Validazioni specifiche montaggio macchina ---
     if _tab_from_ordine(ordine) != "montaggio":
         return (
             jsonify(
@@ -1370,6 +1784,28 @@ def api_chiudi_ordine_montaggio_macchina():
             400,
         )
 
+    fase_corrente = _fase_corrente_for_export(ordine, fase_override=fase)
+    blocking_outbox = _get_blocking_outbox_for_phase(
+        id_documento=ordine.IdDocumento,
+        id_riga=ordine.IdRiga,
+        fase=fase_corrente,
+    )
+    if blocking_outbox is not None:
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": (
+                        "Questa fase risulta già consuntivata ed è ancora in attesa "
+                        "di sincronizzazione con il gestionale."
+                    ),
+                    "outbox_status": blocking_outbox.status,
+                    "outbox_id": blocking_outbox.outbox_id,
+                }
+            ),
+            409,
+        )
+
     stato_attuale = _norm_text(ordine.StatoOrdine).lower()
     if stato_attuale == "pianificata":
         return (
@@ -1379,63 +1815,18 @@ def api_chiudi_ordine_montaggio_macchina():
             409,
         )
 
-    # --- Validazione lotti (se presenti) ---
-    if lotti_input:
-        for lotto_row in lotti_input:
-            cod_art = _norm_text(lotto_row.get("CodArt"))
-            rif_lotto = _norm_text(lotto_row.get("RifLottoAlfa"))
-            try:
-                qty = _parse_qty_decimal(lotto_row.get("Quantita"))
-            except ValueError as e:
-                return jsonify(
-                    {"ok": False, "error": f"Quantità lotto non valida: {e}"}
-                ), 400
+    componenti_richiesti_lotto = _componenti_lotto_per_ordine(
+        ordine,
+        modalita="m",
+        include_senza_lotti=True,
+    )
+    validation_error = _validate_lotti_input(
+        lotti_input,
+        componenti_richiesti_lotto,
+    )
+    if validation_error is not None:
+        return validation_error
 
-            if not cod_art or not rif_lotto:
-                return jsonify(
-                    {
-                        "ok": False,
-                        "error": "Codice e lotto sono obbligatori per ogni riga lotti.",
-                    }
-                ), 400
-
-            if qty <= 0:
-                return jsonify(
-                    {
-                        "ok": False,
-                        "error": f"{cod_art} lotto {rif_lotto}: quantità deve essere > 0.",
-                    }
-                ), 400
-
-            # Verifica giacenza disponibile
-            from app_odp.models import GiacenzaLotti
-
-            lotto_db = GiacenzaLotti.query.filter_by(
-                CodArt=cod_art, RifLottoAlfa=rif_lotto
-            ).first()
-
-            if lotto_db is None:
-                return jsonify(
-                    {
-                        "ok": False,
-                        "error": f"Lotto {rif_lotto} non trovato per {cod_art}.",
-                    }
-                ), 400
-
-            try:
-                giacenza = _parse_qty_decimal(lotto_db.Giacenza)
-            except ValueError:
-                giacenza = Decimal("0")
-
-            if qty > giacenza:
-                return jsonify(
-                    {
-                        "ok": False,
-                        "error": f"{cod_art} lotto {rif_lotto}: quantità {qty} supera giacenza {giacenza}.",
-                    }
-                ), 400
-
-    # --- Quantità: tutto conforme ---
     try:
         q_tot = _parse_qty_decimal(ordine.Quantita)
     except ValueError as e:
@@ -1447,7 +1838,6 @@ def api_chiudi_ordine_montaggio_macchina():
     now_dt = _now_rome_dt()
     now_iso = now_dt.isoformat(timespec="seconds")
 
-    # --- Finalizza runtime ---
     stato = StatoOdp.query.filter_by(
         IdDocumento=ordine.IdDocumento, IdRiga=ordine.IdRiga
     ).first()
@@ -1458,24 +1848,41 @@ def api_chiudi_ordine_montaggio_macchina():
             _accumulate_runtime_until(stato, now_dt)
         tempo_finale = _norm_text(stato.Tempo_funzionamento) or "0"
 
-    # --- Evento chiusura ---
+    fase_corrente = _fase_corrente_for_export(ordine, stato=stato, fase_override=fase)
+    payload = _build_phase_payload(
+        ordine=ordine,
+        fase_corrente=fase_corrente,
+        q_ok=q_ok,
+        q_nok=q_nok,
+        tempo_finale=tempo_finale,
+        lotti_input=lotti_input,
+        note=note,
+        now_iso=now_iso,
+    )
+    outbox = _queue_phase_export(
+        ordine=ordine,
+        fase_corrente=fase_corrente,
+        payload=payload,
+    )
+
     _push_change_event(
-        topic="ordine_chiuso",
+        topic="fase_consuntivata_montaggio_macchina",
         ordine=ordine,
         extra_payload={
-            "azione": "chiusura_macchina",
+            "azione": "consuntivo_fase_macchina",
             "utente": current_user.username,
             "matricola": matricola,
-            "fase": fase,
+            "fase": fase_corrente,
             "quantita_conforme": str(q_ok),
             "quantita_non_conforme": str(q_nok),
             "tempo_funzionamento": tempo_finale,
             "lotti_count": len(lotti_input),
+            "outbox_id": outbox.outbox_id,
+            "export_status": outbox.status,
         },
     )
     db.session.flush()
 
-    # --- LOG 1: input_odp_log ---
     db.session.add(
         InputOdpLog(
             IdDocumento=ordine.IdDocumento,
@@ -1512,7 +1919,6 @@ def api_chiudi_ordine_montaggio_macchina():
         )
     )
 
-    # --- LOG 2: odp_in_carico_log ---
     if stato is not None:
         db.session.add(
             StatoOdpLog(
@@ -1530,25 +1936,22 @@ def api_chiudi_ordine_montaggio_macchina():
             )
         )
 
-    # --- LOG 3: lotti_usati_log ---
-    from app_odp.models import LottiUsatiLog
-
     for lotto_row in lotti_input:
-        db.session.add(
-            LottiUsatiLog(
-                IdDocumento=ordine.IdDocumento,
-                IdRiga=ordine.IdRiga,
-                RifRegistraz=ordine.RifRegistraz,
-                CodArt=_norm_text(lotto_row.get("CodArt")),
-                RifLottoAlfa=_norm_text(lotto_row.get("RifLottoAlfa")),
-                Quantita=str(lotto_row.get("Quantita", 0)),
-                Esito=_norm_text(lotto_row.get("Esito", "ok")),
-                ClosedBy=current_user.username,
-                ClosedAt=now_iso,
-            )
+        lotto_log = LottiUsatiLog(
+            IdDocumento=ordine.IdDocumento,
+            IdRiga=ordine.IdRiga,
+            RifRegistraz=ordine.RifRegistraz,
+            CodArt=_norm_text(lotto_row.get("CodArt")),
+            RifLottoAlfa=_norm_text(lotto_row.get("RifLottoAlfa")),
+            Quantita=str(lotto_row.get("Quantita", 0)),
+            Esito=_norm_text(lotto_row.get("Esito", "ok")),
+            ClosedBy=current_user.username,
+            ClosedAt=now_iso,
         )
+        if hasattr(LottiUsatiLog, "Fase"):
+            lotto_log.Fase = fase_corrente
+        db.session.add(lotto_log)
 
-    # --- LOG 4: change_event_log ---
     ce_rows = (
         ChangeEvent.query.filter(ChangeEvent.payload_json.isnot(None))
         .filter(
@@ -1574,26 +1977,13 @@ def api_chiudi_ordine_montaggio_macchina():
             )
         )
 
-    # --- DELETE dal DB principale ---
     tab = _tab_from_ordine(ordine)
-
-    (
-        ChangeEvent.query.filter(ChangeEvent.payload_json.isnot(None))
-        .filter(
-            func.json_extract(ChangeEvent.payload_json, "$.id_documento")
-            == ordine.IdDocumento
-        )
-        .filter(
-            func.json_extract(ChangeEvent.payload_json, "$.id_riga") == ordine.IdRiga
-        )
-        .delete(synchronize_session=False)
-    )
 
     if stato is not None:
         db.session.delete(stato)
-    db.session.delete(ordine)
 
-    # --- Fragments ---
+    ordine.StatoOrdine = "Pianificata"
+
     fragments = {}
     if tab:
         reparto_code = BRIDGE_CONFIG[tab]["reparto"]
@@ -1607,10 +1997,13 @@ def api_chiudi_ordine_montaggio_macchina():
             {
                 "ok": True,
                 "changed": True,
-                "message": "Ordine macchina chiuso",
+                "message": "Fase macchina consuntivata",
                 "id_documento": id_documento,
                 "id_riga": id_riga,
                 "row_key": _row_key(id_documento, id_riga),
+                "fase": fase_corrente,
+                "outbox_id": outbox.outbox_id,
+                "outbox_status": outbox.status,
                 "active_tab": tab,
                 "last_event_id": _last_change_event_id(),
                 "fragments": fragments,
@@ -1627,6 +2020,8 @@ def api_lotti_componenti():
     data = request.get_json(silent=True) or {}
     id_documento = _norm_text(data.get("id_documento"))
     id_riga = _norm_text(data.get("id_riga"))
+    modalita = _norm_text(data.get("modalita")).lower() or "sl"
+    is_macchina = modalita == "m"
 
     if not id_documento or not id_riga:
         return jsonify({"ok": False, "error": "IdDocumento e IdRiga obbligatori"}), 400
@@ -1634,102 +2029,61 @@ def api_lotti_componenti():
     policy = RbacPolicy(current_user)
     ordine = _get_visible_odp_by_key(policy, id_documento, id_riga)
 
-    # Parse DistintaMateriale
-    distinta = []
-    if ordine.DistintaMateriale:
-        try:
-            distinta = json.loads(ordine.DistintaMateriale)
-            if isinstance(distinta, str):
-                distinta = json.loads(distinta)
-        except (json.JSONDecodeError, TypeError):
-            distinta = []
+    if is_macchina:
+        if _tab_from_ordine(ordine) != "montaggio" or not _ordine_is_macchina(ordine):
+            return (
+                jsonify(
+                    {
+                        "ok": False,
+                        "error": "Questa modalità è riservata agli ordini macchina di montaggio.",
+                    }
+                ),
+                400,
+            )
 
-    # Fase attiva
-    fase_attiva = None
-    try:
-        fase_attiva = int(float(_norm_text(ordine.FaseAttiva)))
-    except (ValueError, TypeError):
-        pass
+        componenti_lotto = _componenti_lotto_per_ordine(
+            ordine,
+            modalita="m",
+            include_senza_lotti=True,
+        )
+        return jsonify(
+            {
+                "ok": True,
+                "gestioneLotto": True,
+                "force_show_section": len(componenti_lotto) > 0,
+                "haComponentiLotto": any(
+                    isinstance(c.get("lotti"), list) and len(c["lotti"]) > 0
+                    for c in componenti_lotto
+                ),
+                "componenti": componenti_lotto,
+            }
+        )
 
-    # L'ordine ha GestioneLotto a livello ordine?
     ordine_gestione_lotto = _norm_text(ordine.GestioneLotto).lower() == "si"
 
-    # Filtra componenti
-    componenti_lotto = []
-    for comp in distinta:
-        # Filtra per fase attiva
-        if fase_attiva is not None:
-            try:
-                comp_fase = int(float(comp.get("NumFase", 0)))
-            except (ValueError, TypeError):
-                comp_fase = 0
-            if comp_fase != fase_attiva:
-                continue
+    if not ordine_gestione_lotto:
+        return jsonify(
+            {
+                "ok": True,
+                "gestioneLotto": False,
+                "force_show_section": False,
+                "haComponentiLotto": False,
+                "componenti": [],
+            }
+        )
 
-        # Criterio: componente con GestioneLotto="si" nel campo,
-        # OPPURE se l'ordine ha GestioneLotto="si" e il componente
-        # non ha il campo (dati vecchi), lo includiamo comunque
-        comp_gl = _norm_text(comp.get("GestioneLotto", "")).lower()
-        if comp_gl == "si":
-            componenti_lotto.append(comp)
-        elif ordine_gestione_lotto and comp_gl == "":
-            # Campo assente nei dati vecchi: verifica se il componente
-            # ha lotti in giacenza_lotti per decidere se includerlo
-            cod_art = _norm_text(comp.get("CodArt", ""))
-            if cod_art:
-                from app_odp.models import GiacenzaLotti
-
-                has_lots = GiacenzaLotti.query.filter_by(CodArt=cod_art).first()
-                if has_lots:
-                    componenti_lotto.append(comp)
-
-    # Per ogni componente, cerca i lotti disponibili
-    risultato = []
-    codici_visti = set()
-
-    for comp in componenti_lotto:
-        cod_art = _norm_text(comp.get("CodArt", ""))
-        if not cod_art or cod_art in codici_visti:
-            continue
-        codici_visti.add(cod_art)
-
-        from app_odp.models import GiacenzaLotti
-
-        lotti_db = GiacenzaLotti.query.filter_by(CodArt=cod_art).all()
-
-        lotti_list = []
-        for lotto in lotti_db:
-            try:
-                giacenza_val = int(float(_norm_text(lotto.Giacenza)))
-            except (ValueError, TypeError):
-                giacenza_val = 0
-            if giacenza_val <= 0:
-                continue
-            lotti_list.append(
-                {
-                    "RifLottoAlfa": lotto.RifLottoAlfa,
-                    "Giacenza": giacenza_val,
-                    "CodMag": lotto.CodMag,
-                }
-            )
-
-        # Include solo se ha lotti disponibili
-        if lotti_list:
-            risultato.append(
-                {
-                    "CodArt": cod_art,
-                    "DesArt": _norm_text(comp.get("DesArt", "")),
-                    "Quantita": comp.get("Quantita", 0),
-                    "NumFase": comp.get("NumFase", ""),
-                    "lotti": lotti_list,
-                }
-            )
+    componenti_lotto = _componenti_lotto_per_ordine(
+        ordine,
+        modalita="sl",
+        include_senza_lotti=False,
+    )
 
     return jsonify(
         {
             "ok": True,
-            "gestioneLotto": ordine_gestione_lotto,
-            "haComponentiLotto": len(risultato) > 0,
-            "componenti": risultato,
+            "gestioneLotto": True,
+            "force_show_section": False,
+            "haComponentiLotto": len(componenti_lotto) > 0,
+            "componenti": componenti_lotto,
         }
     )

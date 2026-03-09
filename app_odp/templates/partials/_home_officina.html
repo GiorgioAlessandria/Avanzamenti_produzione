@@ -276,7 +276,7 @@
 
 
 <main class="d-flex flex-column w-100 mt-3 mb-3"
-      data-bridge-tab="carpenteria"
+      data-bridge-tab="officina"
       style="height: fit-content;width: fit-content;">
     <div class="container-fluid w-100 h-100 ps-0 pe-0 mx-0"
          style="width: auto;height: auto;">
@@ -515,16 +515,10 @@
             }
 
             // Reset bottoni SL
-            const btnSospSl = document.getElementById("sospensione_ordine_sl");
-            const btnRiattSl = document.getElementById("riattivazione_ordine_sl");
-            if (btnSospSl) btnSospSl.disabled = true;
-            if (btnRiattSl) btnRiattSl.disabled = true;
-
-            // Reset bottoni macchina
-            const btnSospM = document.getElementById("sospensione_ordine_m");
-            const btnRiattM = document.getElementById("riattivazione_ordine_m");
-            if (btnSospM) btnSospM.disabled = true;
-            if (btnRiattM) btnRiattM.disabled = true;
+            const btnSosp = document.getElementById("sospensione_ordine");
+            const btnRiatt = document.getElementById("riattivazione_ordine");
+            if (btnSosp) btnSosp.disabled = true;
+            if (btnRiatt) btnRiatt.disabled = true;
 
         } catch (err) {
             console.error("Errore fetch presa ordine:", err);
@@ -962,8 +956,8 @@
 
         // ---- Carica lotti dal server ----
         async function fetchLottiData(idDocumento, idRiga) {
+            section.style.display = "none";
             loading.style.display = "";
-            section.style.display = "";
             tbody.innerHTML = "";
             showAlert("");
             riepilogo.innerHTML = "";
@@ -975,7 +969,11 @@
                     method: "POST",
                     headers: {"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"},
                     credentials: "same-origin",
-                    body: JSON.stringify({id_documento: idDocumento, id_riga: idRiga})
+                    body: JSON.stringify({
+                        id_documento: idDocumento,
+                        id_riga: idRiga,
+                        modalita: "sl"
+                    })
                 });
                 const data = await resp.json();
 
@@ -993,6 +991,8 @@
                     loading.style.display = "none";
                     return;
                 }
+
+                section.style.display = "";
 
                 for (const comp of _lottiData) {
                     addLottoRow(comp.CodArt, comp.DesArt, comp.lotti, true);
@@ -1169,8 +1169,8 @@
                 }
 
                 // Reset
-                const btnSosp = document.getElementById("sospensione_ordine_sl");
-                const btnRiatt = document.getElementById("riattivazione_ordine_sl");
+                const btnSosp = document.getElementById("sospensione_ordine");
+                const btnRiatt = document.getElementById("riattivazione_ordine");
                 if (btnSosp) btnSosp.disabled = true;
                 if (btnRiatt) btnRiatt.disabled = true;
                 section.style.display = "none";

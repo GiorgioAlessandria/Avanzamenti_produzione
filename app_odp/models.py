@@ -701,3 +701,34 @@ class LottiUsatiLog(db.Model):
 
     ClosedBy = db.Column(db.Text)
     ClosedAt = db.Column(db.Text)
+    Fase = db.Column(db.Text)
+
+
+class ErpOutbox(db.Model):
+    __bind_key__ = "log"
+    __tablename__ = "erp_outbox"
+
+    outbox_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    created_at = db.Column(
+        db.Text,
+        nullable=False,
+        default=lambda: datetime.now(ZoneInfo("Europe/Rome")).isoformat(
+            timespec="seconds"
+        ),
+    )
+
+    kind = db.Column(db.Text, nullable=False)  # "consuntivo_fase"
+    status = db.Column(db.Text, nullable=False, default="pending")
+
+    IdDocumento = db.Column(db.Text, nullable=False)
+    IdRiga = db.Column(db.Text, nullable=False)
+    RifRegistraz = db.Column(db.Text)
+    CodArt = db.Column(db.Text)
+    Fase = db.Column(db.Text, nullable=False)
+    CodReparto = db.Column(db.Text)
+
+    payload_json = db.Column(db.Text, nullable=False)
+
+    attempts = db.Column(db.Integer, nullable=False, default=0)
+    last_error = db.Column(db.Text)
+    exported_at = db.Column(db.Text)
