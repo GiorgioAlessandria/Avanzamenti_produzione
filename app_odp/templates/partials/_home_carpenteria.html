@@ -1027,10 +1027,15 @@
                 if (!validation.valid) return;
                 lottiPayload = validation.lottiPayload;
 
-                // Check coerenza lotti KO vs quantità
+                // Check coerenza lotti KO vs quantità (BLOCCANTE)
                 const totKoLotti = lottiPayload.filter(l => l.Esito === "ko").reduce((s, l) => s + l.Quantita, 0);
                 if (nNonConf === 0 && totKoLotti > 0) {
-                    if (!confirm("Hai lotti marcati KO ma quantità non conforme = 0. Continuare?")) return;
+                    alert("Hai lotti marcati KO ma quantità non conforme = 0. Correggere prima di procedere.");
+                    return;
+                }
+                if (nNonConf > 0 && totKoLotti === 0) {
+                    alert("Quantità non conforme > 0 ma nessun lotto è marcato KO. Correggere prima di procedere.");
+                    return;
                 }
             }
 
