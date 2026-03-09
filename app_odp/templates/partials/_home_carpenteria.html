@@ -869,8 +869,8 @@
 
         // ---- Carica lotti dal server ----
         async function fetchLottiData(idDocumento, idRiga) {
+            section.style.display = "none";
             loading.style.display = "";
-            section.style.display = "";
             tbody.innerHTML = "";
             showAlert("");
             riepilogo.innerHTML = "";
@@ -882,7 +882,11 @@
                     method: "POST",
                     headers: {"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"},
                     credentials: "same-origin",
-                    body: JSON.stringify({id_documento: idDocumento, id_riga: idRiga})
+                    body: JSON.stringify({
+                        id_documento: idDocumento,
+                        id_riga: idRiga,
+                        modalita: "sl"
+                    })
                 });
                 const data = await resp.json();
 
@@ -900,6 +904,8 @@
                     loading.style.display = "none";
                     return;
                 }
+
+                section.style.display = "";
 
                 for (const comp of _lottiData) {
                     addLottoRow(comp.CodArt, comp.DesArt, comp.lotti, true);

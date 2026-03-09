@@ -66,16 +66,35 @@
          style="opacity: 1;width: auto;height: auto;">
         <p style="font-size: 20px;">Stai prendendo in carico un ordine macchina</p>
 
-        <input type="hidden" data-bind="iddocumento" id="toast-presa-m-iddocumento">
-        <input type="hidden" data-bind="idriga"      id="toast-presa-m-idriga">
-        <input type="hidden" data-bind="ordine"      id="toast-presa-m-ordine">
-        <input type="hidden" data-bind="codice"      id="toast-presa-m-codice">
-        <input type="hidden" data-bind="matricola"   id="toast-presa-m-matricola">
-        <input type="hidden" data-bind="fase"        id="toast-presa-m-fase">
+        <input type="hidden"
+               data-bind="iddocumento"
+               id="toast-presa-m-iddocumento">
+        <input type="hidden"
+               data-bind="idriga"
+               id="toast-presa-m-idriga">
+        <input type="hidden"
+               data-bind="ordine"
+               id="toast-presa-m-ordine">
+        <input type="hidden"
+               data-bind="codice"
+               id="toast-presa-m-codice">
+        <input type="hidden"
+               data-bind="matricola"
+               id="toast-presa-m-matricola">
+        <input type="hidden"
+               data-bind="fase"
+               id="toast-presa-m-fase">
 
-        <table class="table table-sm table-borderless mb-2" style="font-size: 18px; max-width: 400px;">
-            <tr><td class="fw-semibold">Matricola:</td><td><span data-bind-text="matricola"></span></td></tr>
-            <tr><td class="fw-semibold">Fase:</td><td><span data-bind-text="fase"></span></td></tr>
+        <table class="table table-sm table-borderless mb-2"
+               style="font-size: 18px; max-width: 400px;">
+            <tr>
+                <td class="fw-semibold">Matricola:</td>
+                <td><span data-bind-text="matricola"></span></td>
+            </tr>
+            <tr>
+                <td class="fw-semibold">Fase:</td>
+                <td><span data-bind-text="fase"></span></td>
+            </tr>
         </table>
 
         <button class="btn btn-lg btn-primary"
@@ -707,6 +726,17 @@
                     <label><input
                             type="text"
                             class="js-table-filter form-control form-control-sm"
+                            placeholder="Filtra per matricola..."
+                            data-target-table="ordini_da_eseguire_m"
+                            data-filter-mode="dataset"
+                            data-filter-key="matricola"
+                            autocomplete="off"
+                    ></label>
+                </div>
+                <div class="col mb-1">
+                    <label><input
+                            type="text"
+                            class="js-table-filter form-control form-control-sm"
                             placeholder="Filtra per articolo..."
                             data-target-table="ordini_da_eseguire_m"
                             data-filter-mode="dataset"
@@ -758,6 +788,17 @@
                             data-target-table="ordini_in_corso_m"
                             data-filter-mode="dataset"
                             data-filter-key="ordine"
+                            autocomplete="off"
+                    ></label>
+                </div>
+                <div class="col mb-1">
+                    <label><input
+                            type="text"
+                            class="js-table-filter form-control form-control-sm"
+                            placeholder="Filtra per matricola..."
+                            data-target-table="ordini_da_eseguire_m"
+                            data-filter-mode="dataset"
+                            data-filter-key="matricola"
                             autocomplete="off"
                     ></label>
                 </div>
@@ -937,12 +978,16 @@
             try {
                 const resp = await fetch("/api/ordini/presa", {
                     method: "POST",
-                    headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
+                    headers: {"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"},
                     credentials: "same-origin",
-                    body: JSON.stringify({ id_documento: idDocumento, id_riga: idRiga })
+                    body: JSON.stringify({id_documento: idDocumento, id_riga: idRiga})
                 });
                 let data = {};
-                try { data = await resp.json(); } catch (_) { data = {}; }
+                try {
+                    data = await resp.json();
+                } catch (_) {
+                    data = {};
+                }
 
                 if (!resp.ok || data.ok === false) {
                     alert(data.error || "Errore durante la presa in carico dell'ordine.");
@@ -956,8 +1001,11 @@
                     window.applyHomeFragments(data.fragments);
                 }
 
-                ["sospensione_ordine_sl","riattivazione_ordine_sl","sospensione_ordine_m","riattivazione_ordine_m"]
-                    .forEach(id => { const b = document.getElementById(id); if (b) b.disabled = true; });
+                ["sospensione_ordine_sl", "riattivazione_ordine_sl", "sospensione_ordine_m", "riattivazione_ordine_m"]
+                    .forEach(id => {
+                        const b = document.getElementById(id);
+                        if (b) b.disabled = true;
+                    });
 
             } catch (err) {
                 console.error("Errore fetch presa ordine:", err);
@@ -985,12 +1033,16 @@
             try {
                 const resp = await fetch("/api/ordini/presa", {
                     method: "POST",
-                    headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
+                    headers: {"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"},
                     credentials: "same-origin",
-                    body: JSON.stringify({ id_documento: idDocumento, id_riga: idRiga })
+                    body: JSON.stringify({id_documento: idDocumento, id_riga: idRiga})
                 });
                 let data = {};
-                try { data = await resp.json(); } catch (_) { data = {}; }
+                try {
+                    data = await resp.json();
+                } catch (_) {
+                    data = {};
+                }
 
                 if (!resp.ok || data.ok === false) {
                     alert(data.error || "Errore durante la presa in carico dell'ordine macchina.");
@@ -1031,18 +1083,25 @@
             const idRiga = document.getElementById("toast-sosp-idriga")?.value?.trim() || "";
             const causale = document.getElementById("causale_attivita")?.value?.trim() || "";
 
-            if (!idDocumento || !idRiga) { alert("IdDocumento o IdRiga mancanti."); return; }
+            if (!idDocumento || !idRiga) {
+                alert("IdDocumento o IdRiga mancanti.");
+                return;
+            }
             btnSosp.disabled = true;
 
             try {
                 const resp = await fetch("/api/ordini/sospendi", {
                     method: "POST",
-                    headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
+                    headers: {"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"},
                     credentials: "same-origin",
-                    body: JSON.stringify({ id_documento: idDocumento, id_riga: idRiga, causale: causale, modalita: "sl" })
+                    body: JSON.stringify({id_documento: idDocumento, id_riga: idRiga, causale: causale, modalita: "sl"})
                 });
                 let data = {};
-                try { data = await resp.json(); } catch (_) { data = {}; }
+                try {
+                    data = await resp.json();
+                } catch (_) {
+                    data = {};
+                }
 
                 if (!resp.ok || data.ok === false) {
                     alert(data.error || "Errore durante la sospensione dell'ordine.");
@@ -1061,7 +1120,9 @@
             } catch (err) {
                 console.error("Errore fetch sospensione:", err);
                 alert("Errore di comunicazione con il server.");
-            } finally { btnSosp.disabled = false; }
+            } finally {
+                btnSosp.disabled = false;
+            }
             return;
         }
 
@@ -1075,18 +1136,31 @@
             const matricola = document.getElementById("toast-sosp-m-matricola")?.value?.trim() || "";
             const fase = document.getElementById("toast-sosp-m-fase")?.value?.trim() || "";
 
-            if (!idDocumento || !idRiga) { alert("IdDocumento o IdRiga mancanti."); return; }
+            if (!idDocumento || !idRiga) {
+                alert("IdDocumento o IdRiga mancanti.");
+                return;
+            }
             btnSospM.disabled = true;
 
             try {
                 const resp = await fetch("/api/ordini/montaggio/macchina/sospendi", {
                     method: "POST",
-                    headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
+                    headers: {"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"},
                     credentials: "same-origin",
-                    body: JSON.stringify({ id_documento: idDocumento, id_riga: idRiga, causale: causale, matricola: matricola, fase: fase })
+                    body: JSON.stringify({
+                        id_documento: idDocumento,
+                        id_riga: idRiga,
+                        causale: causale,
+                        matricola: matricola,
+                        fase: fase
+                    })
                 });
                 let data = {};
-                try { data = await resp.json(); } catch (_) { data = {}; }
+                try {
+                    data = await resp.json();
+                } catch (_) {
+                    data = {};
+                }
 
                 if (!resp.ok || data.ok === false) {
                     alert(data.error || "Errore durante la sospensione dell'ordine macchina.");
@@ -1105,7 +1179,9 @@
             } catch (err) {
                 console.error("Errore fetch sospensione macchina:", err);
                 alert("Errore di comunicazione con il server.");
-            } finally { btnSospM.disabled = false; }
+            } finally {
+                btnSospM.disabled = false;
+            }
             return;
         }
     });
@@ -1121,18 +1197,24 @@
             const idDocumento = document.getElementById("toast-riatt-sl-iddocumento")?.value?.trim() || "";
             const idRiga = document.getElementById("toast-riatt-sl-idriga")?.value?.trim() || "";
 
-            if (!idDocumento || !idRiga) { alert("IdDocumento o IdRiga mancanti."); return; }
+            if (!idDocumento || !idRiga) {
+                alert("IdDocumento o IdRiga mancanti.");
+                return;
+            }
             btnRiattSl.disabled = true;
 
             try {
                 const resp = await fetch("/api/ordini/riattiva", {
                     method: "POST",
-                    headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
+                    headers: {"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"},
                     credentials: "same-origin",
-                    body: JSON.stringify({ id_documento: idDocumento, id_riga: idRiga, modalita: "sl" })
+                    body: JSON.stringify({id_documento: idDocumento, id_riga: idRiga, modalita: "sl"})
                 });
                 let data = {};
-                try { data = await resp.json(); } catch (_) {}
+                try {
+                    data = await resp.json();
+                } catch (_) {
+                }
 
                 if (!resp.ok || data.ok === false) {
                     alert(data.error || "Errore durante la riattivazione dell'ordine.");
@@ -1151,7 +1233,9 @@
             } catch (err) {
                 console.error("Errore fetch riattivazione SL:", err);
                 alert("Errore di comunicazione con il server.");
-            } finally { btnRiattSl.disabled = false; }
+            } finally {
+                btnRiattSl.disabled = false;
+            }
             return;
         }
 
@@ -1164,18 +1248,24 @@
             const matricola = document.getElementById("toast-riatt-m-matricola")?.value?.trim() || "";
             const fase = document.getElementById("toast-riatt-m-fase")?.value?.trim() || "";
 
-            if (!idDocumento || !idRiga) { alert("IdDocumento o IdRiga mancanti."); return; }
+            if (!idDocumento || !idRiga) {
+                alert("IdDocumento o IdRiga mancanti.");
+                return;
+            }
             btnRiattM.disabled = true;
 
             try {
                 const resp = await fetch("/api/ordini/montaggio/macchina/riattiva", {
                     method: "POST",
-                    headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
+                    headers: {"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"},
                     credentials: "same-origin",
-                    body: JSON.stringify({ id_documento: idDocumento, id_riga: idRiga, matricola: matricola, fase: fase })
+                    body: JSON.stringify({id_documento: idDocumento, id_riga: idRiga, matricola: matricola, fase: fase})
                 });
                 let data = {};
-                try { data = await resp.json(); } catch (_) {}
+                try {
+                    data = await resp.json();
+                } catch (_) {
+                }
 
                 if (!resp.ok || data.ok === false) {
                     alert(data.error || "Errore durante la riattivazione dell'ordine macchina.");
@@ -1194,7 +1284,9 @@
             } catch (err) {
                 console.error("Errore fetch riattivazione macchina:", err);
                 alert("Errore di comunicazione con il server.");
-            } finally { btnRiattM.disabled = false; }
+            } finally {
+                btnRiattM.disabled = false;
+            }
             return;
         }
     });
@@ -1209,162 +1301,322 @@
         let _hasLotti = false;
         let _rowCounter = 0;
 
-        const toastEl  = document.getElementById("toast-7");
-        const section  = document.getElementById("lotti-section-m");
-        const loading  = document.getElementById("lotti-loading-m");
-        const alertEl  = document.getElementById("lotti-alert-m");
-        const tbody    = document.getElementById("tbody-lotti-m");
+        const toastEl = document.getElementById("toast-7");
+        const section = document.getElementById("lotti-section-m");
+        const loading = document.getElementById("lotti-loading-m");
+        const alertEl = document.getElementById("lotti-alert-m");
+        const tbody = document.getElementById("tbody-lotti-m");
         const riepilogo = document.getElementById("lotti-riepilogo-m");
 
         if (!toastEl || !section || !tbody) return;
 
         function escHtml(s) {
-            return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
-                .replace(/"/g,"&quot;").replace(/'/g,"&#039;");
+            return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;").replace(/'/g, "&#039;");
         }
-        function showAlert(msg) { if(!alertEl)return; alertEl.textContent=msg; alertEl.style.display=msg?"":"none"; }
+
+        function showAlert(msg) {
+            if (!alertEl) return;
+            alertEl.textContent = msg;
+            alertEl.style.display = msg ? "" : "none";
+        }
 
         function buildLottoSelect(codArt, lotti, selectedLotto) {
-            let html='<select class="form-select form-select-sm lotto-select">';
-            html+='<option value="">-- Seleziona lotto --</option>';
-            for(const l of lotti){
-                const sel=(l.RifLottoAlfa===selectedLotto)?" selected":"";
-                html+=`<option value="${escHtml(l.RifLottoAlfa)}" data-giacenza="${l.Giacenza}" data-codmag="${escHtml(l.CodMag||"")}"${sel}>${escHtml(l.RifLottoAlfa)} (mag: ${escHtml(l.CodMag||"-")})</option>`;
+            let html = '<select class="form-select form-select-sm lotto-select">';
+            html += '<option value="">-- Seleziona lotto --</option>';
+            for (const l of lotti) {
+                const sel = (l.RifLottoAlfa === selectedLotto) ? " selected" : "";
+                html += `<option value="${escHtml(l.RifLottoAlfa)}" data-giacenza="${l.Giacenza}" data-codmag="${escHtml(l.CodMag || "")}"${sel}>${escHtml(l.RifLottoAlfa)} (mag: ${escHtml(l.CodMag || "-")})</option>`;
             }
-            html+='</select>';
+            html += '</select>';
             return html;
         }
 
         function addLottoRow(codArt, desArt, lotti, isInitial) {
             _rowCounter++;
-            const tr=document.createElement("tr");
-            tr.id=`lotto-row-${_rowCounter}`;
-            tr.dataset.codart=codArt;
-            tr.innerHTML=`
+            const tr = document.createElement("tr");
+            tr.id = `lotto-row-${_rowCounter}`;
+            tr.dataset.codart = codArt;
+            tr.innerHTML = `
                 <td class="fw-semibold" style="font-size:13px;">${escHtml(codArt)}</td>
                 <td style="font-size:13px;">${escHtml(desArt)}</td>
-                <td>${buildLottoSelect(codArt,lotti,"")}</td>
+                <td>${buildLottoSelect(codArt, lotti, "")}</td>
                 <td class="text-end giacenza-cell" style="font-size:13px;">-</td>
                 <td><input type="number" class="form-control form-control-sm lotto-qty text-end" min="0" step="1" value="" placeholder="0" style="width:90px;"></td>
                 <td><select class="form-select form-select-sm lotto-esito" style="width:70px;"><option value="ok">OK</option><option value="ko">KO</option></select></td>
                 <td class="text-center">
                     <button type="button" class="btn btn-sm btn-outline-primary btn-add-lotto-row me-1" title="Aggiungi riga" data-codart="${escHtml(codArt)}" data-desart="${escHtml(desArt)}">+</button>
-                    ${isInitial?"":'<button type="button" class="btn btn-sm btn-outline-danger btn-remove-lotto-row" title="Rimuovi">−</button>'}
+                    ${isInitial ? "" : '<button type="button" class="btn btn-sm btn-outline-danger btn-remove-lotto-row" title="Rimuovi">−</button>'}
                 </td>`;
             tbody.appendChild(tr);
             return tr;
         }
 
-        tbody.addEventListener("change",function(e){
-            const sel=e.target.closest(".lotto-select"); if(!sel)return;
-            const row=sel.closest("tr");
-            const giacCell=row.querySelector(".giacenza-cell");
-            const qtyInput=row.querySelector(".lotto-qty");
-            const opt=sel.options[sel.selectedIndex];
-            if(opt&&opt.value){const g=parseInt(opt.dataset.giacenza||"0",10);giacCell.textContent=g;qtyInput.max=g;}
-            else{giacCell.textContent="-";qtyInput.max="";}
+        tbody.addEventListener("change", function (e) {
+            const sel = e.target.closest(".lotto-select");
+            if (!sel) return;
+            const row = sel.closest("tr");
+            const giacCell = row.querySelector(".giacenza-cell");
+            const qtyInput = row.querySelector(".lotto-qty");
+            const opt = sel.options[sel.selectedIndex];
+            if (opt && opt.value) {
+                const g = parseInt(opt.dataset.giacenza || "0", 10);
+                giacCell.textContent = g;
+                qtyInput.max = g;
+            } else {
+                giacCell.textContent = "-";
+                qtyInput.max = "";
+            }
             updateRiepilogo();
         });
-        tbody.addEventListener("input",function(e){if(e.target.classList.contains("lotto-qty"))updateRiepilogo();});
-
-        tbody.addEventListener("click",function(e){
-            const btnAdd=e.target.closest(".btn-add-lotto-row");
-            if(btnAdd){const codArt=btnAdd.dataset.codart;const desArt=btnAdd.dataset.desart;const comp=_lottiData.find(c=>c.CodArt===codArt);if(comp)addLottoRow(codArt,desArt,comp.lotti,false);updateRiepilogo();return;}
-            const btnRem=e.target.closest(".btn-remove-lotto-row");
-            if(btnRem){btnRem.closest("tr")?.remove();updateRiepilogo();}
+        tbody.addEventListener("input", function (e) {
+            if (e.target.classList.contains("lotto-qty")) updateRiepilogo();
         });
 
-        function updateRiepilogo(){
-            if(!riepilogo)return;
-            const totals={};
-            tbody.querySelectorAll("tr").forEach(row=>{
-                const cod=row.dataset.codart||"";
-                const qty=parseFloat(row.querySelector(".lotto-qty")?.value||"0")||0;
-                const esito=row.querySelector(".lotto-esito")?.value||"ok";
-                if(!totals[cod])totals[cod]={ok:0,ko:0,totale:0};
-                if(esito==="ok")totals[cod].ok+=qty;else totals[cod].ko+=qty;
-                totals[cod].totale+=qty;
-            });
-            let html="<strong>Riepilogo per componente:</strong><br>";
-            for(const comp of _lottiData){
-                const t=totals[comp.CodArt]||{ok:0,ko:0,totale:0};
-                const rich=comp.Quantita||0;const ok=(t.totale===rich);
-                html+=`<span class="${ok?"text-success":"text-danger"}">${escHtml(comp.CodArt)}: ${t.totale}/${rich} (OK: ${t.ok}, KO: ${t.ko})${ok?" ✓":" ✗"}</span><br>`;
-            }
-            riepilogo.innerHTML=html;
-        }
-
-        async function fetchLottiData(idDocumento, idRiga){
-            loading.style.display="";section.style.display="";tbody.innerHTML="";showAlert("");riepilogo.innerHTML="";_lottiData=[];_hasLotti=false;
-            try{
-                const resp=await fetch("/api/ordini/lotti-componenti",{method:"POST",headers:{"Content-Type":"application/json","X-Requested-With":"XMLHttpRequest"},credentials:"same-origin",body:JSON.stringify({id_documento:idDocumento,id_riga:idRiga})});
-                const data=await resp.json();
-                if(!resp.ok||!data.ok){showAlert(data.error||"Errore nel caricamento dei lotti.");loading.style.display="none";return;}
-                _lottiData=data.componenti||[];_hasLotti=_lottiData.length>0;
-                if(!_hasLotti){section.style.display="none";loading.style.display="none";return;}
-                for(const comp of _lottiData)addLottoRow(comp.CodArt,comp.DesArt,comp.lotti,true);
+        tbody.addEventListener("click", function (e) {
+            const btnAdd = e.target.closest(".btn-add-lotto-row");
+            if (btnAdd) {
+                const codArt = btnAdd.dataset.codart;
+                const desArt = btnAdd.dataset.desart;
+                const comp = _lottiData.find(c => c.CodArt === codArt);
+                if (comp) addLottoRow(codArt, desArt, comp.lotti, false);
                 updateRiepilogo();
-            }catch(err){console.error("Errore fetch lotti M:",err);showAlert("Errore di comunicazione.");}
-            finally{loading.style.display="none";}
-        }
+                return;
+            }
+            const btnRem = e.target.closest(".btn-remove-lotto-row");
+            if (btnRem) {
+                btnRem.closest("tr")?.remove();
+                updateRiepilogo();
+            }
+        });
 
-        function validateLotti(){
-            if(!_hasLotti)return{valid:true,lottiPayload:[]};
-            const errors=[];const perCodice={};const lottiPayload=[];const usati=new Set();
-            tbody.querySelectorAll("tr").forEach(row=>{
-                const cod=row.dataset.codart||"";const lottoVal=row.querySelector(".lotto-select")?.value||"";
-                const giacenza=parseInt(row.querySelector(".giacenza-cell")?.textContent||"0",10)||0;
-                const qty=parseFloat(row.querySelector(".lotto-qty")?.value||"0")||0;
-                const esito=row.querySelector(".lotto-esito")?.value||"ok";
-                if(qty>0&&!lottoVal){errors.push(`${cod}: selezionare un lotto.`);return;}
-                if(!lottoVal)return;
-                if(qty>giacenza)errors.push(`${cod} lotto ${lottoVal}: qtà ${qty} > giacenza ${giacenza}.`);
-                if(qty<=0)errors.push(`${cod} lotto ${lottoVal}: inserire qtà > 0.`);
-                const key=`${cod}|${lottoVal}`;if(usati.has(key))errors.push(`${cod}: lotto ${lottoVal} duplicato.`);usati.add(key);
-                if(!perCodice[cod])perCodice[cod]={ok:0,ko:0,totale:0};
-                if(esito==="ok")perCodice[cod].ok+=qty;else perCodice[cod].ko+=qty;perCodice[cod].totale+=qty;
-                lottiPayload.push({CodArt:cod,RifLottoAlfa:lottoVal,Quantita:qty,Esito:esito});
+        function updateRiepilogo() {
+            if (!riepilogo) return;
+            const totals = {};
+            tbody.querySelectorAll("tr").forEach(row => {
+                const cod = row.dataset.codart || "";
+                const qty = parseFloat(row.querySelector(".lotto-qty")?.value || "0") || 0;
+                const esito = row.querySelector(".lotto-esito")?.value || "ok";
+                if (!totals[cod]) totals[cod] = {ok: 0, ko: 0, totale: 0};
+                if (esito === "ok") totals[cod].ok += qty; else totals[cod].ko += qty;
+                totals[cod].totale += qty;
             });
-            for(const comp of _lottiData){const t=perCodice[comp.CodArt]||{totale:0};if(t.totale!==parseFloat(comp.Quantita||0))errors.push(`${comp.CodArt}: somma lotti (${t.totale}) ≠ richiesta (${comp.Quantita}).`);}
-            if(errors.length>0){showAlert(errors.join("\n"));return{valid:false,lottiPayload:[]};}
-            showAlert("");return{valid:true,lottiPayload};
+            let html = "<strong>Riepilogo per componente:</strong><br>";
+            for (const comp of _lottiData) {
+                const t = totals[comp.CodArt] || {ok: 0, ko: 0, totale: 0};
+                const rich = comp.Quantita || 0;
+                const ok = (t.totale === rich);
+                html += `<span class="${ok ? "text-success" : "text-danger"}">${escHtml(comp.CodArt)}: ${t.totale}/${rich} (OK: ${t.ok}, KO: ${t.ko})${ok ? " ✓" : " ✗"}</span><br>`;
+            }
+            riepilogo.innerHTML = html;
         }
 
-        document.addEventListener("click",function(e){
-            const btn=e.target.closest('[data-bs-target="#toast-7"]');if(!btn)return;
-            requestAnimationFrame(()=>{
-                const idDoc=document.getElementById("toast-chiudi-m-iddocumento")?.value?.trim();
-                const idRiga=document.getElementById("toast-chiudi-m-idriga")?.value?.trim();
-                if(idDoc&&idRiga)fetchLottiData(idDoc,idRiga);else section.style.display="none";
+        function isGestioneLottoSi(comp) {
+            const flag = String(
+                comp?.GestioneLotto
+                ?? comp?.gestione_lotto
+                ?? comp?.gestioneLotto
+                ?? ""
+            ).trim().toLowerCase();
+
+            if (flag) {
+                return flag === "si";
+            }
+
+            return Array.isArray(comp?.lotti) && comp.lotti.length > 0;
+        }
+
+        async function fetchLottiData(idDocumento, idRiga) {
+            section.style.display = "none";
+            loading.style.display = "";
+            tbody.innerHTML = "";
+            showAlert("");
+            riepilogo.innerHTML = "";
+            _lottiData = [];
+            _hasLotti = false;
+
+            try {
+                const resp = await fetch("/api/ordini/lotti-componenti", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-Requested-With": "XMLHttpRequest"
+                    },
+                    credentials: "same-origin",
+                    body: JSON.stringify({
+                        id_documento: idDocumento,
+                        id_riga: idRiga,
+                        modalita: "m"
+                    })
+                });
+
+                const data = await resp.json();
+
+                if (!resp.ok || !data.ok) {
+                    showAlert(data.error || "Errore nel caricamento dei lotti.");
+                    return;
+                }
+
+                const forceShow = !!data.force_show_section;
+                const rawComponenti = Array.isArray(data.componenti) ? data.componenti : [];
+
+                _lottiData = rawComponenti.filter(comp => isGestioneLottoSi(comp));
+
+                const componentiConLotti = _lottiData.filter(
+                    comp => Array.isArray(comp.lotti) && comp.lotti.length > 0
+                );
+                const componentiSenzaLotti = _lottiData.filter(
+                    comp => !Array.isArray(comp.lotti) || comp.lotti.length === 0
+                );
+
+                // true se esistono componenti che richiedono gestione lotto
+                _hasLotti = _lottiData.length > 0;
+
+                if (!_hasLotti && !forceShow) {
+                    section.style.display = "none";
+                    return;
+                }
+
+                section.style.display = "";
+
+                for (const comp of componentiConLotti) {
+                    addLottoRow(comp.CodArt, comp.DesArt, comp.lotti, true);
+                }
+
+                if (componentiSenzaLotti.length > 0) {
+                    const elenco = componentiSenzaLotti
+                        .map(comp => `- ${comp.CodArt}${comp.DesArt ? ` (${comp.DesArt})` : ""}`)
+                        .join("\n");
+                    showAlert(
+                        `Nessun lotto disponibile per i seguenti componenti della fase attiva:\n${elenco}`
+                    );
+                } else if (componentiConLotti.length === 0 && forceShow) {
+                    showAlert("Nessun lotto disponibile per i componenti della fase attiva con GestioneLotto = si.");
+                } else {
+                    showAlert("");
+                }
+
+                updateRiepilogo();
+
+            } catch (err) {
+                console.error("Errore fetch lotti M:", err);
+                showAlert("Errore di comunicazione.");
+            } finally {
+                loading.style.display = "none";
+            }
+        }
+
+        function validateLotti() {
+            if (!_hasLotti) return {valid: true, lottiPayload: []};
+            const errors = [];
+            const perCodice = {};
+            const lottiPayload = [];
+            const usati = new Set();
+            tbody.querySelectorAll("tr").forEach(row => {
+                const cod = row.dataset.codart || "";
+                const lottoVal = row.querySelector(".lotto-select")?.value || "";
+                const giacenza = parseInt(row.querySelector(".giacenza-cell")?.textContent || "0", 10) || 0;
+                const qty = parseFloat(row.querySelector(".lotto-qty")?.value || "0") || 0;
+                const esito = row.querySelector(".lotto-esito")?.value || "ok";
+                if (qty > 0 && !lottoVal) {
+                    errors.push(`${cod}: selezionare un lotto.`);
+                    return;
+                }
+                if (!lottoVal) return;
+                if (qty > giacenza) errors.push(`${cod} lotto ${lottoVal}: qtà ${qty} > giacenza ${giacenza}.`);
+                if (qty <= 0) errors.push(`${cod} lotto ${lottoVal}: inserire qtà > 0.`);
+                const key = `${cod}|${lottoVal}`;
+                if (usati.has(key)) errors.push(`${cod}: lotto ${lottoVal} duplicato.`);
+                usati.add(key);
+                if (!perCodice[cod]) perCodice[cod] = {ok: 0, ko: 0, totale: 0};
+                if (esito === "ok") perCodice[cod].ok += qty; else perCodice[cod].ko += qty;
+                perCodice[cod].totale += qty;
+                lottiPayload.push({CodArt: cod, RifLottoAlfa: lottoVal, Quantita: qty, Esito: esito});
+            });
+            for (const comp of _lottiData) {
+                const t = perCodice[comp.CodArt] || {totale: 0};
+                if (t.totale !== parseFloat(comp.Quantita || 0)) errors.push(`${comp.CodArt}: somma lotti (${t.totale}) ≠ richiesta (${comp.Quantita}).`);
+            }
+            if (errors.length > 0) {
+                showAlert(errors.join("\n"));
+                return {valid: false, lottiPayload: []};
+            }
+            showAlert("");
+            return {valid: true, lottiPayload};
+        }
+
+        document.addEventListener("click", function (e) {
+            const btn = e.target.closest('[data-bs-target="#toast-7"]');
+            if (!btn) return;
+            requestAnimationFrame(() => {
+                const idDoc = document.getElementById("toast-chiudi-m-iddocumento")?.value?.trim();
+                const idRiga = document.getElementById("toast-chiudi-m-idriga")?.value?.trim();
+                if (idDoc && idRiga) fetchLottiData(idDoc, idRiga); else section.style.display = "none";
             });
         });
 
-        document.getElementById("btn-conferma-chiusura-m")?.addEventListener("click",async function(event){
+        document.getElementById("btn-conferma-chiusura-m")?.addEventListener("click", async function (event) {
             event.preventDefault();
-            const btn=this;
-            const idDocumento=document.getElementById("toast-chiudi-m-iddocumento")?.value?.trim()||"";
-            const idRiga=document.getElementById("toast-chiudi-m-idriga")?.value?.trim()||"";
-            const matricola=document.getElementById("toast-chiudi-m-matricola")?.value?.trim()||"";
-            const fase=document.getElementById("toast-chiudi-m-fase")?.value?.trim()||"";
-            const note=document.getElementById("toast-chiudi-m-note")?.value?.trim()||"";
+            const btn = this;
+            const idDocumento = document.getElementById("toast-chiudi-m-iddocumento")?.value?.trim() || "";
+            const idRiga = document.getElementById("toast-chiudi-m-idriga")?.value?.trim() || "";
+            const matricola = document.getElementById("toast-chiudi-m-matricola")?.value?.trim() || "";
+            const fase = document.getElementById("toast-chiudi-m-fase")?.value?.trim() || "";
+            const note = document.getElementById("toast-chiudi-m-note")?.value?.trim() || "";
 
-            if(!idDocumento||!idRiga){alert("Ordine non valido (IdDocumento/IdRiga mancanti).");return;}
+            if (!idDocumento || !idRiga) {
+                alert("Ordine non valido (IdDocumento/IdRiga mancanti).");
+                return;
+            }
 
-            let lottiPayload=[];
-            if(_hasLotti){const validation=validateLotti();if(!validation.valid)return;lottiPayload=validation.lottiPayload;}
+            let lottiPayload = [];
+            if (_hasLotti) {
+                const validation = validateLotti();
+                if (!validation.valid) return;
+                lottiPayload = validation.lottiPayload;
+            }
 
-            btn.disabled=true;
-            try{
-                const resp=await fetch("/api/ordini/montaggio/macchina/chiudi",{method:"POST",headers:{"Content-Type":"application/json","X-Requested-With":"XMLHttpRequest"},credentials:"same-origin",body:JSON.stringify({id_documento:idDocumento,id_riga:idRiga,matricola:matricola,fase:fase,note:note,lotti:lottiPayload})});
-                let data={};try{data=await resp.json();}catch(_){data={};}
-                if(!resp.ok||data.ok===false){alert(data.error||"Errore durante la chiusura dell'ordine macchina.");return;}
+            btn.disabled = true;
+            try {
+                const resp = await fetch("/api/ordini/montaggio/macchina/chiudi", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"},
+                    credentials: "same-origin",
+                    body: JSON.stringify({
+                        id_documento: idDocumento,
+                        id_riga: idRiga,
+                        matricola: matricola,
+                        fase: fase,
+                        note: note,
+                        lotti: lottiPayload
+                    })
+                });
+                let data = {};
+                try {
+                    data = await resp.json();
+                } catch (_) {
+                    data = {};
+                }
+                if (!resp.ok || data.ok === false) {
+                    alert(data.error || "Errore durante la chiusura dell'ordine macchina.");
+                    return;
+                }
                 bootstrap.Toast.getOrCreateInstance(toastEl).hide();
-                if(data.fragments&&window.applyHomeFragments)window.applyHomeFragments(data.fragments);
-                const btnSosp=document.getElementById("sospensione_ordine_m");const btnRiatt=document.getElementById("riattivazione_ordine_m");
-                if(btnSosp)btnSosp.disabled=true;if(btnRiatt)btnRiatt.disabled=true;
-                section.style.display="none";tbody.innerHTML="";_lottiData=[];_hasLotti=false;
-            }catch(err){console.error("Errore fetch chiusura macchina:",err);alert("Errore di comunicazione con il server.");}
-            finally{btn.disabled=false;}
+                if (data.fragments && window.applyHomeFragments) window.applyHomeFragments(data.fragments);
+                const btnSosp = document.getElementById("sospensione_ordine_m");
+                const btnRiatt = document.getElementById("riattivazione_ordine_m");
+                if (btnSosp) btnSosp.disabled = true;
+                if (btnRiatt) btnRiatt.disabled = true;
+                section.style.display = "none";
+                tbody.innerHTML = "";
+                _lottiData = [];
+                _hasLotti = false;
+            } catch (err) {
+                console.error("Errore fetch chiusura macchina:", err);
+                alert("Errore di comunicazione con il server.");
+            } finally {
+                btn.disabled = false;
+            }
         });
     })();
 </script>
@@ -1378,194 +1630,335 @@
         let _hasLotti = false;
         let _rowCounter = 0;
 
-        const toastEl   = document.getElementById("toast-4");
-        const section   = document.getElementById("lotti-section-sl");
-        const loading   = document.getElementById("lotti-loading-sl");
-        const alertEl   = document.getElementById("lotti-alert-sl");
-        const tbody     = document.getElementById("tbody-lotti-sl");
+        const toastEl = document.getElementById("toast-4");
+        const section = document.getElementById("lotti-section-sl");
+        const loading = document.getElementById("lotti-loading-sl");
+        const alertEl = document.getElementById("lotti-alert-sl");
+        const tbody = document.getElementById("tbody-lotti-sl");
         const riepilogo = document.getElementById("lotti-riepilogo-sl");
-        const hidTot    = document.getElementById("toast-chiudi-sl-quantita");
-        const inpConf   = document.getElementById("toast-chiudi-sl-quantita-conforme");
+        const hidTot = document.getElementById("toast-chiudi-sl-quantita");
+        const inpConf = document.getElementById("toast-chiudi-sl-quantita-conforme");
         const inpNonConf = document.getElementById("toast-chiudi-sl-quantita-non-conforme");
 
         if (!toastEl || !section || !tbody) return;
 
         function escHtml(s) {
-            return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
-                .replace(/"/g,"&quot;").replace(/'/g,"&#039;");
+            return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;").replace(/'/g, "&#039;");
         }
-        function showAlert(msg) { if(!alertEl)return; alertEl.textContent=msg; alertEl.style.display=msg?"":"none"; }
+
+        function showAlert(msg) {
+            if (!alertEl) return;
+            alertEl.textContent = msg;
+            alertEl.style.display = msg ? "" : "none";
+        }
+
         function parseNum(v) {
-            let s=String(v??"").trim().replace(/\s+/g,"");if(!s)return NaN;
-            if(s.includes(",")&&s.includes("."))s=s.replace(/\./g,"");s=s.replace(",",".");
-            const n=Number(s);return Number.isFinite(n)?n:NaN;
+            let s = String(v ?? "").trim().replace(/\s+/g, "");
+            if (!s) return NaN;
+            if (s.includes(",") && s.includes(".")) s = s.replace(/\./g, "");
+            s = s.replace(",", ".");
+            const n = Number(s);
+            return Number.isFinite(n) ? n : NaN;
         }
 
         function autofillQuantita() {
-            if(!hidTot||!inpConf||!inpNonConf)return;
-            const qOrd=parseNum(hidTot.value);
-            if(Number.isFinite(qOrd))inpConf.value=String(qOrd);
-            if(!String(inpNonConf.value||"").trim())inpNonConf.value="0";
+            if (!hidTot || !inpConf || !inpNonConf) return;
+            const qOrd = parseNum(hidTot.value);
+            if (Number.isFinite(qOrd)) inpConf.value = String(qOrd);
+            if (!String(inpNonConf.value || "").trim()) inpNonConf.value = "0";
         }
 
         function buildLottoSelect(codArt, lotti) {
-            let html='<select class="form-select form-select-sm lotto-select-sl">';
-            html+='<option value="">-- Seleziona lotto --</option>';
-            for(const l of lotti){
-                html+=`<option value="${escHtml(l.RifLottoAlfa)}" data-giacenza="${l.Giacenza}" data-codmag="${escHtml(l.CodMag||"")}">${escHtml(l.RifLottoAlfa)} (mag: ${escHtml(l.CodMag||"-")})</option>`;
+            let html = '<select class="form-select form-select-sm lotto-select-sl">';
+            html += '<option value="">-- Seleziona lotto --</option>';
+            for (const l of lotti) {
+                html += `<option value="${escHtml(l.RifLottoAlfa)}" data-giacenza="${l.Giacenza}" data-codmag="${escHtml(l.CodMag || "")}">${escHtml(l.RifLottoAlfa)} (mag: ${escHtml(l.CodMag || "-")})</option>`;
             }
-            html+='</select>';
+            html += '</select>';
             return html;
         }
 
         function addLottoRow(codArt, desArt, lotti, isInitial) {
             _rowCounter++;
-            const tr=document.createElement("tr");
-            tr.id=`lotto-sl-row-${_rowCounter}`;
-            tr.dataset.codart=codArt;
-            tr.innerHTML=`
+            const tr = document.createElement("tr");
+            tr.id = `lotto-sl-row-${_rowCounter}`;
+            tr.dataset.codart = codArt;
+            tr.innerHTML = `
                 <td class="fw-semibold" style="font-size:13px;">${escHtml(codArt)}</td>
                 <td style="font-size:13px;">${escHtml(desArt)}</td>
-                <td>${buildLottoSelect(codArt,lotti)}</td>
+                <td>${buildLottoSelect(codArt, lotti)}</td>
                 <td class="text-end giacenza-cell-sl" style="font-size:13px;">-</td>
                 <td><input type="number" class="form-control form-control-sm lotto-qty-sl text-end" min="0" step="1" value="" placeholder="0" style="width:90px;"></td>
                 <td><select class="form-select form-select-sm lotto-esito-sl" style="width:70px;"><option value="ok">OK</option><option value="ko">KO</option></select></td>
                 <td class="text-center">
                     <button type="button" class="btn btn-sm btn-outline-primary btn-add-lotto-sl me-1" title="Aggiungi riga" data-codart="${escHtml(codArt)}" data-desart="${escHtml(desArt)}">+</button>
-                    ${isInitial?"":'<button type="button" class="btn btn-sm btn-outline-danger btn-rem-lotto-sl" title="Rimuovi">−</button>'}
+                    ${isInitial ? "" : '<button type="button" class="btn btn-sm btn-outline-danger btn-rem-lotto-sl" title="Rimuovi">−</button>'}
                 </td>`;
             tbody.appendChild(tr);
             return tr;
         }
 
-        tbody.addEventListener("change",function(e){
-            const sel=e.target.closest(".lotto-select-sl"); if(!sel)return;
-            const row=sel.closest("tr");
-            const giacCell=row.querySelector(".giacenza-cell-sl");
-            const qtyInput=row.querySelector(".lotto-qty-sl");
-            const opt=sel.options[sel.selectedIndex];
-            if(opt&&opt.value){const g=parseInt(opt.dataset.giacenza||"0",10);giacCell.textContent=g;qtyInput.max=g;}
-            else{giacCell.textContent="-";qtyInput.max="";}
+        tbody.addEventListener("change", function (e) {
+            const sel = e.target.closest(".lotto-select-sl");
+            if (!sel) return;
+            const row = sel.closest("tr");
+            const giacCell = row.querySelector(".giacenza-cell-sl");
+            const qtyInput = row.querySelector(".lotto-qty-sl");
+            const opt = sel.options[sel.selectedIndex];
+            if (opt && opt.value) {
+                const g = parseInt(opt.dataset.giacenza || "0", 10);
+                giacCell.textContent = g;
+                qtyInput.max = g;
+            } else {
+                giacCell.textContent = "-";
+                qtyInput.max = "";
+            }
             updateRiepilogo();
         });
-        tbody.addEventListener("input",function(e){if(e.target.classList.contains("lotto-qty-sl"))updateRiepilogo();});
-
-        tbody.addEventListener("click",function(e){
-            const btnAdd=e.target.closest(".btn-add-lotto-sl");
-            if(btnAdd){const codArt=btnAdd.dataset.codart;const desArt=btnAdd.dataset.desart;const comp=_lottiData.find(c=>c.CodArt===codArt);if(comp)addLottoRow(codArt,desArt,comp.lotti,false);updateRiepilogo();return;}
-            const btnRem=e.target.closest(".btn-rem-lotto-sl");
-            if(btnRem){btnRem.closest("tr")?.remove();updateRiepilogo();}
+        tbody.addEventListener("input", function (e) {
+            if (e.target.classList.contains("lotto-qty-sl")) updateRiepilogo();
         });
 
-        function updateRiepilogo(){
-            if(!riepilogo)return;
-            const totals={};
-            tbody.querySelectorAll("tr").forEach(row=>{
-                const cod=row.dataset.codart||"";
-                const qty=parseFloat(row.querySelector(".lotto-qty-sl")?.value||"0")||0;
-                const esito=row.querySelector(".lotto-esito-sl")?.value||"ok";
-                if(!totals[cod])totals[cod]={ok:0,ko:0,totale:0};
-                if(esito==="ok")totals[cod].ok+=qty;else totals[cod].ko+=qty;
-                totals[cod].totale+=qty;
-            });
-            let html="<strong>Riepilogo per componente:</strong><br>";
-            for(const comp of _lottiData){
-                const t=totals[comp.CodArt]||{ok:0,ko:0,totale:0};
-                const rich=comp.Quantita||0;const ok=(t.totale===rich);
-                html+=`<span class="${ok?"text-success":"text-danger"}">${escHtml(comp.CodArt)}: ${t.totale}/${rich} (OK: ${t.ok}, KO: ${t.ko})${ok?" ✓":" ✗"}</span><br>`;
-            }
-            riepilogo.innerHTML=html;
-        }
-
-        async function fetchLottiData(idDocumento, idRiga){
-            loading.style.display="";section.style.display="";tbody.innerHTML="";showAlert("");riepilogo.innerHTML="";_lottiData=[];_hasLotti=false;
-            try{
-                const resp=await fetch("/api/ordini/lotti-componenti",{method:"POST",headers:{"Content-Type":"application/json","X-Requested-With":"XMLHttpRequest"},credentials:"same-origin",body:JSON.stringify({id_documento:idDocumento,id_riga:idRiga})});
-                const data=await resp.json();
-                if(!resp.ok||!data.ok){showAlert(data.error||"Errore nel caricamento dei lotti.");loading.style.display="none";return;}
-                _lottiData=data.componenti||[];_hasLotti=_lottiData.length>0;
-                if(!_hasLotti){section.style.display="none";loading.style.display="none";return;}
-                for(const comp of _lottiData)addLottoRow(comp.CodArt,comp.DesArt,comp.lotti,true);
+        tbody.addEventListener("click", function (e) {
+            const btnAdd = e.target.closest(".btn-add-lotto-sl");
+            if (btnAdd) {
+                const codArt = btnAdd.dataset.codart;
+                const desArt = btnAdd.dataset.desart;
+                const comp = _lottiData.find(c => c.CodArt === codArt);
+                if (comp) addLottoRow(codArt, desArt, comp.lotti, false);
                 updateRiepilogo();
-            }catch(err){console.error("Errore fetch lotti SL:",err);showAlert("Errore di comunicazione.");}
-            finally{loading.style.display="none";}
+                return;
+            }
+            const btnRem = e.target.closest(".btn-rem-lotto-sl");
+            if (btnRem) {
+                btnRem.closest("tr")?.remove();
+                updateRiepilogo();
+            }
+        });
+
+        function updateRiepilogo() {
+            if (!riepilogo) return;
+            const totals = {};
+            tbody.querySelectorAll("tr").forEach(row => {
+                const cod = row.dataset.codart || "";
+                const qty = parseFloat(row.querySelector(".lotto-qty-sl")?.value || "0") || 0;
+                const esito = row.querySelector(".lotto-esito-sl")?.value || "ok";
+                if (!totals[cod]) totals[cod] = {ok: 0, ko: 0, totale: 0};
+                if (esito === "ok") totals[cod].ok += qty; else totals[cod].ko += qty;
+                totals[cod].totale += qty;
+            });
+            let html = "<strong>Riepilogo per componente:</strong><br>";
+            for (const comp of _lottiData) {
+                const t = totals[comp.CodArt] || {ok: 0, ko: 0, totale: 0};
+                const rich = comp.Quantita || 0;
+                const ok = (t.totale === rich);
+                html += `<span class="${ok ? "text-success" : "text-danger"}">${escHtml(comp.CodArt)}: ${t.totale}/${rich} (OK: ${t.ok}, KO: ${t.ko})${ok ? " ✓" : " ✗"}</span><br>`;
+            }
+            riepilogo.innerHTML = html;
         }
 
-        function validateLotti(){
-            if(!_hasLotti)return{valid:true,lottiPayload:[]};
-            const errors=[];const perCodice={};const lottiPayload=[];const usati=new Set();
-            tbody.querySelectorAll("tr").forEach(row=>{
-                const cod=row.dataset.codart||"";const lottoVal=row.querySelector(".lotto-select-sl")?.value||"";
-                const giacenza=parseInt(row.querySelector(".giacenza-cell-sl")?.textContent||"0",10)||0;
-                const qty=parseFloat(row.querySelector(".lotto-qty-sl")?.value||"0")||0;
-                const esito=row.querySelector(".lotto-esito-sl")?.value||"ok";
-                if(qty>0&&!lottoVal){errors.push(`${cod}: selezionare un lotto.`);return;}
-                if(!lottoVal)return;
-                if(qty>giacenza)errors.push(`${cod} lotto ${lottoVal}: qtà ${qty} > giacenza ${giacenza}.`);
-                if(qty<=0)errors.push(`${cod} lotto ${lottoVal}: inserire qtà > 0.`);
-                const key=`${cod}|${lottoVal}`;if(usati.has(key))errors.push(`${cod}: lotto ${lottoVal} duplicato.`);usati.add(key);
-                if(!perCodice[cod])perCodice[cod]={ok:0,ko:0,totale:0};
-                if(esito==="ok")perCodice[cod].ok+=qty;else perCodice[cod].ko+=qty;perCodice[cod].totale+=qty;
-                lottiPayload.push({CodArt:cod,RifLottoAlfa:lottoVal,Quantita:qty,Esito:esito});
+        async function fetchLottiData(idDocumento, idRiga) {
+            section.style.display = "none";
+            loading.style.display = "";
+            tbody.innerHTML = "";
+            showAlert("");
+            riepilogo.innerHTML = "";
+            _lottiData = [];
+            _hasLotti = false;
+
+            try {
+                const resp = await fetch("/api/ordini/lotti-componenti", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-Requested-With": "XMLHttpRequest"
+                    },
+                    credentials: "same-origin",
+                    body: JSON.stringify({
+                        id_documento: idDocumento,
+                        id_riga: idRiga,
+                        modalita: "sl"
+                    })
+                });
+
+                const data = await resp.json();
+
+                if (!resp.ok || !data.ok) {
+                    showAlert(data.error || "Errore nel caricamento dei lotti.");
+                    loading.style.display = "none";
+                    return;
+                }
+
+                _lottiData = data.componenti || [];
+                _hasLotti = _lottiData.length > 0;
+
+                if (!_hasLotti) {
+                    section.style.display = "none";
+                    loading.style.display = "none";
+                    return;
+                }
+
+                section.style.display = "";
+
+                for (const comp of _lottiData) {
+                    addLottoRow(comp.CodArt, comp.DesArt, comp.lotti, true);
+                }
+
+                updateRiepilogo();
+            } catch (err) {
+                console.error("Errore fetch lotti SL:", err);
+                showAlert("Errore di comunicazione.");
+            } finally {
+                loading.style.display = "none";
+            }
+        }
+
+        function validateLotti() {
+            if (!_hasLotti) return {valid: true, lottiPayload: []};
+            const errors = [];
+            const perCodice = {};
+            const lottiPayload = [];
+            const usati = new Set();
+            tbody.querySelectorAll("tr").forEach(row => {
+                const cod = row.dataset.codart || "";
+                const lottoVal = row.querySelector(".lotto-select-sl")?.value || "";
+                const giacenza = parseInt(row.querySelector(".giacenza-cell-sl")?.textContent || "0", 10) || 0;
+                const qty = parseFloat(row.querySelector(".lotto-qty-sl")?.value || "0") || 0;
+                const esito = row.querySelector(".lotto-esito-sl")?.value || "ok";
+                if (qty > 0 && !lottoVal) {
+                    errors.push(`${cod}: selezionare un lotto.`);
+                    return;
+                }
+                if (!lottoVal) return;
+                if (qty > giacenza) errors.push(`${cod} lotto ${lottoVal}: qtà ${qty} > giacenza ${giacenza}.`);
+                if (qty <= 0) errors.push(`${cod} lotto ${lottoVal}: inserire qtà > 0.`);
+                const key = `${cod}|${lottoVal}`;
+                if (usati.has(key)) errors.push(`${cod}: lotto ${lottoVal} duplicato.`);
+                usati.add(key);
+                if (!perCodice[cod]) perCodice[cod] = {ok: 0, ko: 0, totale: 0};
+                if (esito === "ok") perCodice[cod].ok += qty; else perCodice[cod].ko += qty;
+                perCodice[cod].totale += qty;
+                lottiPayload.push({CodArt: cod, RifLottoAlfa: lottoVal, Quantita: qty, Esito: esito});
             });
-            for(const comp of _lottiData){const t=perCodice[comp.CodArt]||{totale:0};if(t.totale!==parseFloat(comp.Quantita||0))errors.push(`${comp.CodArt}: somma lotti (${t.totale}) ≠ richiesta (${comp.Quantita}).`);}
-            if(errors.length>0){showAlert(errors.join("\n"));return{valid:false,lottiPayload:[]};}
-            showAlert("");return{valid:true,lottiPayload};
+            for (const comp of _lottiData) {
+                const t = perCodice[comp.CodArt] || {totale: 0};
+                if (t.totale !== parseFloat(comp.Quantita || 0)) errors.push(`${comp.CodArt}: somma lotti (${t.totale}) ≠ richiesta (${comp.Quantita}).`);
+            }
+            if (errors.length > 0) {
+                showAlert(errors.join("\n"));
+                return {valid: false, lottiPayload: []};
+            }
+            showAlert("");
+            return {valid: true, lottiPayload};
         }
 
         // Apertura toast-4: autofill + carica lotti
-        document.addEventListener("click",function(e){
-            const btn=e.target.closest('[data-bs-target="#toast-4"]');if(!btn)return;
-            requestAnimationFrame(()=>{
+        document.addEventListener("click", function (e) {
+            const btn = e.target.closest('[data-bs-target="#toast-4"]');
+            if (!btn) return;
+            requestAnimationFrame(() => {
                 autofillQuantita();
-                const idDoc=document.getElementById("toast-chiudi-sl-iddocumento")?.value?.trim();
-                const idRiga=document.getElementById("toast-chiudi-sl-idriga")?.value?.trim();
-                if(idDoc&&idRiga)fetchLottiData(idDoc,idRiga);else section.style.display="none";
+                const idDoc = document.getElementById("toast-chiudi-sl-iddocumento")?.value?.trim();
+                const idRiga = document.getElementById("toast-chiudi-sl-idriga")?.value?.trim();
+                if (idDoc && idRiga) fetchLottiData(idDoc, idRiga); else section.style.display = "none";
             });
         });
 
         // Conferma chiusura SL
-        document.getElementById("btn-conferma-chiusura-sl")?.addEventListener("click",async function(event){
+        document.getElementById("btn-conferma-chiusura-sl")?.addEventListener("click", async function (event) {
             event.preventDefault();
-            const btn=this;
-            const idDocumento=document.getElementById("toast-chiudi-sl-iddocumento")?.value?.trim()||"";
-            const idRiga=document.getElementById("toast-chiudi-sl-idriga")?.value?.trim()||"";
-            const qOrd=document.getElementById("toast-chiudi-sl-quantita")?.value?.trim()||"";
-            const qConf=document.getElementById("toast-chiudi-sl-quantita-conforme")?.value?.trim()||"";
-            const qNonConf=document.getElementById("toast-chiudi-sl-quantita-non-conforme")?.value?.trim()||"";
-            const note=document.getElementById("toast-chiudi-sl-note")?.value?.trim()||"";
+            const btn = this;
+            const idDocumento = document.getElementById("toast-chiudi-sl-iddocumento")?.value?.trim() || "";
+            const idRiga = document.getElementById("toast-chiudi-sl-idriga")?.value?.trim() || "";
+            const qOrd = document.getElementById("toast-chiudi-sl-quantita")?.value?.trim() || "";
+            const qConf = document.getElementById("toast-chiudi-sl-quantita-conforme")?.value?.trim() || "";
+            const qNonConf = document.getElementById("toast-chiudi-sl-quantita-non-conforme")?.value?.trim() || "";
+            const note = document.getElementById("toast-chiudi-sl-note")?.value?.trim() || "";
 
-            if(!idDocumento||!idRiga){alert("Ordine non valido (IdDocumento/IdRiga mancanti).");return;}
-
-            const nConf=Number(String(qConf).replace(",","."));
-            const nNonConf=Number(String(qNonConf).replace(",","."));
-            const nOrd=Number(String(qOrd).replace(",","."));
-
-            if(!Number.isFinite(nConf)||nConf<0){alert("Quantità conforme non valida.");return;}
-            if(!Number.isFinite(nNonConf)||nNonConf<0){alert("Quantità KO non valida.");return;}
-            if(nNonConf>nConf){alert("La quantità KO non può superare la quantità conforme.");return;}
-            if(Number.isFinite(nOrd)&&nConf>nOrd){alert("La quantità conforme non può superare la quantità ordine.");return;}
-
-            let lottiPayload=[];
-            if(_hasLotti){
-                const validation=validateLotti();if(!validation.valid)return;lottiPayload=validation.lottiPayload;
-                const totKoLotti=lottiPayload.filter(l=>l.Esito==="ko").reduce((s,l)=>s+l.Quantita,0);
-                if(nNonConf===0&&totKoLotti>0){alert("Hai lotti marcati KO ma quantità non conforme = 0. Correggere prima di procedere.");return;}
-                if(nNonConf>0&&totKoLotti===0){alert("Quantità non conforme > 0 ma nessun lotto è marcato KO. Correggere prima di procedere.");return;}
+            if (!idDocumento || !idRiga) {
+                alert("Ordine non valido (IdDocumento/IdRiga mancanti).");
+                return;
             }
 
-            btn.disabled=true;
-            try{
-                const resp=await fetch("/api/ordini/chiudi",{method:"POST",headers:{"Content-Type":"application/json","X-Requested-With":"XMLHttpRequest"},credentials:"same-origin",body:JSON.stringify({id_documento:idDocumento,id_riga:idRiga,quantita_conforme:qConf,quantita_non_conforme:qNonConf,note:note,lotti:lottiPayload})});
-                let data={};try{data=await resp.json();}catch(_){data={};}
-                if(!resp.ok||data.ok===false){alert(data.error||"Errore durante la chiusura dell'ordine.");return;}
+            const nConf = Number(String(qConf).replace(",", "."));
+            const nNonConf = Number(String(qNonConf).replace(",", "."));
+            const nOrd = Number(String(qOrd).replace(",", "."));
+
+            if (!Number.isFinite(nConf) || nConf < 0) {
+                alert("Quantità conforme non valida.");
+                return;
+            }
+            if (!Number.isFinite(nNonConf) || nNonConf < 0) {
+                alert("Quantità KO non valida.");
+                return;
+            }
+            if (nNonConf > nConf) {
+                alert("La quantità KO non può superare la quantità conforme.");
+                return;
+            }
+            if (Number.isFinite(nOrd) && nConf > nOrd) {
+                alert("La quantità conforme non può superare la quantità ordine.");
+                return;
+            }
+
+            let lottiPayload = [];
+            if (_hasLotti) {
+                const validation = validateLotti();
+                if (!validation.valid) return;
+                lottiPayload = validation.lottiPayload;
+                const totKoLotti = lottiPayload.filter(l => l.Esito === "ko").reduce((s, l) => s + l.Quantita, 0);
+                if (nNonConf === 0 && totKoLotti > 0) {
+                    alert("Hai lotti marcati KO ma quantità non conforme = 0. Correggere prima di procedere.");
+                    return;
+                }
+                if (nNonConf > 0 && totKoLotti === 0) {
+                    alert("Quantità non conforme > 0 ma nessun lotto è marcato KO. Correggere prima di procedere.");
+                    return;
+                }
+            }
+
+            btn.disabled = true;
+            try {
+                const resp = await fetch("/api/ordini/chiudi", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"},
+                    credentials: "same-origin",
+                    body: JSON.stringify({
+                        id_documento: idDocumento,
+                        id_riga: idRiga,
+                        quantita_conforme: qConf,
+                        quantita_non_conforme: qNonConf,
+                        note: note,
+                        lotti: lottiPayload
+                    })
+                });
+                let data = {};
+                try {
+                    data = await resp.json();
+                } catch (_) {
+                    data = {};
+                }
+                if (!resp.ok || data.ok === false) {
+                    alert(data.error || "Errore durante la chiusura dell'ordine.");
+                    return;
+                }
                 bootstrap.Toast.getOrCreateInstance(toastEl).hide();
-                if(data.fragments&&window.applyHomeFragments)window.applyHomeFragments(data.fragments);
-                const btnSosp=document.getElementById("sospensione_ordine_sl");const btnRiatt=document.getElementById("riattivazione_ordine_sl");
-                if(btnSosp)btnSosp.disabled=true;if(btnRiatt)btnRiatt.disabled=true;
-                section.style.display="none";tbody.innerHTML="";_lottiData=[];_hasLotti=false;
-            }catch(err){console.error("Errore fetch chiusura SL:",err);alert("Errore di comunicazione con il server.");}
-            finally{btn.disabled=false;}
+                if (data.fragments && window.applyHomeFragments) window.applyHomeFragments(data.fragments);
+                const btnSosp = document.getElementById("sospensione_ordine_sl");
+                const btnRiatt = document.getElementById("riattivazione_ordine_sl");
+                if (btnSosp) btnSosp.disabled = true;
+                if (btnRiatt) btnRiatt.disabled = true;
+                section.style.display = "none";
+                tbody.innerHTML = "";
+                _lottiData = [];
+                _hasLotti = false;
+            } catch (err) {
+                console.error("Errore fetch chiusura SL:", err);
+                alert("Errore di comunicazione con il server.");
+            } finally {
+                btn.disabled = false;
+            }
         });
     })();
 </script>

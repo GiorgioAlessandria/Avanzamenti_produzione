@@ -303,6 +303,23 @@ def generazione_lista(
     return componenti_per_odp
 
 
+def _sanitize_json_scalar(value):
+    """
+    Converte i valori pandas/numpy non JSON-validi in None.
+    Evita che json.dumps serializzi NaN come token non valido per il frontend.
+    """
+    if pd.isna(value):
+        return None
+    return value
+
+
+def _sanitize_records_for_json(records: list[dict]) -> list[dict]:
+    return [
+        {key: _sanitize_json_scalar(value) for key, value in record.items()}
+        for record in records
+    ]
+
+
 def generazione_dizionario(
     df: pd.DataFrame,
     chiavi: list[str],
@@ -329,19 +346,30 @@ def generazione_dizionario(
     :rtype: pd.DataFrame
     """
 
+    df = df.copy()
+
+    # DistintaMateriale: elimina le pseudo-righe create dalle fasi senza componenti
+    # (tipicamente CodArt/DesArt/Quantita/GestioneLotto tutti NaN).
+    if rename_col == "DistintaMateriale" and "CodArt" in list_columns:
+        codici = df["CodArt"].astype("string").str.strip()
+        df = df[codici.notna() & codici.ne("")]
+
     df = df.set_index(chiavi)
     if data_in == "data":
         df[rename_col] = df[rename_col].dt.strftime("%d/%m/%Y %H:%M:%S")
-    else:
-        pass
+
     componenti_per_odp = (
         df.groupby(chiavi)
-        .apply((lambda g: g[list_columns].to_dict("records")))
+        .apply(lambda g: _sanitize_records_for_json(g[list_columns].to_dict("records")))
         .rename(rename_col)
         .reset_index()
     )
     componenti_per_odp[rename_col] = componenti_per_odp[rename_col].apply(
-        lambda x: json.dumps(x) if isinstance(x, (list, tuple)) else None
+        lambda x: (
+            json.dumps(x, ensure_ascii=False, allow_nan=False)
+            if isinstance(x, (list, tuple))
+            else None
+        )
     )
     return componenti_per_odp
 
