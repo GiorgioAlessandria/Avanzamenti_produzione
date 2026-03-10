@@ -6,14 +6,14 @@
             data-ordine="{{ singolo_odp.RifRegistraz }}"
             data-codice="{{ singolo_odp.CodArt }}"
             data-descrizione="{{ singolo_odp.DesArt }}"
-            data-quantita="{{ singolo_odp.QtyDaLavorare }}"
+            data-quantita="{{ singolo_odp.QtyDaLavorare or singolo_odp.Quantita }}"
             data-fase="{{ singolo_odp.NumFase }}"
             data-datacons="{{ singolo_odp.DataFineSched }}"
             data-risorsaprod="{{ singolo_odp.CodRisorsaProd }}">
             <td>{{ singolo_odp.RifRegistraz }}</td>
             <td>{{ singolo_odp.CodArt }}</td>
             <td>{{ singolo_odp.DesArt }}</td>
-            <td>{{ singolo_odp.QtyDaLavorare }}</td>
+            <td>{{ singolo_odp.QtyDaLavorare or singolo_odp.Quantita }}</td>
             <td>{{ singolo_odp.DataFineSched | db_date("%Y-%m-%d %H:%M:%S","%d/%m/%Y") }}</td>
             <td>{{ singolo_odp.CodRisorsaProd | db_list_display }}</td>
         </tr>
