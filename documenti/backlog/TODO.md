@@ -25,22 +25,89 @@ Procedura per la chiusura degli ordini di produzione nella totalità dei casi pr
 4. Il programma cancella da change_event,
    input_odp, odp_in_carico tutte le voci riguardanti l'ordine selezionato
 
-#### Fase 2: Eccezione 1 - Ordini parziali - Da integrare
+#### Fase 2: Eccezione 1 - Ordini parziali - In corso
 
-Ordini chiusi in modo parziale (da attivare con una spunta), che mi permettono di scalare un parziale e poi sospendere
-automaticamente l'ordine. In questo caso si esegue il punto 1, 1.1 e 2 ma cambiando tipologia di evento (chiusura
-parziale) e inserendo le quantità prodotte, cambiando anche quelle a table html (da prevedere una nuova colonna per gli
-ordini in carico in modo da tracciare le quantità parziali ancora da produrre). Quando non attivo la spunta allora
-chiudo in modo totale l'ordine con il numero di componenti rimanenti eseguendo la procedura completa 1, 1.1, 2, 3 e 4
+1. __Integrato__ Creare una colonna nella tabella ordini che prevede una colonna per il materiale parziale e cambiare la
+   colonna dove
+   punta la table html (QtyDaLavorare)
+2. Attivare la spunta per la chiusura parziale in modo da scalare un parziale e poi sospendere automaticamente l'ordine.
+3. L'evento diventa "chiusura parziale" con le quantità prodotte.
+4. L'ordine di produzione viene sospeso e viene modificata la tabella con la quantità rimanente
 
-#### Fase 3: Eccezione 2 -Componenti multifase - Da integrare
+#### Fase 3: Eccezione 2 - Componenti multifase - Da integrare
 
 Se il componente è multifase allora il sistema deve cambiare FaseAttiva al componente incrementandola di 1
-e inserire lo StatoOrdine come Pianificata. In questo caso si esegue il punto 1, 1.1, 2 con un evento differente (
-chiusura fase X). Quando la fase attuale corrisponde all'ultima di NumFase allora si esegue la procedura completa 1,
+e inserire lo StatoOrdine come Pianificata. In questo caso si esegue il punto 1, 1.1, 2 con un evento differente
+(chiusura fase X). Quando la fase attuale corrisponde all'ultima di NumFase allora si esegue la procedura completa 1,
 1.1, 2, 3 e 4
 
-## 02 - Cambio logica gestione dati input
+## 02 - Responsabile di qualità
+
+    - Stato: da iniziare
+    - Descrizione: implementazione pagina collaudo
+    - Priorità: medio-alta
+    - Area: app_odp/policy e templates
+
+### Obiettivo
+
+Integrare la logica nella policy per il responsabile di qualità
+
+#### Fase 1: Debug e test
+
+1. Verificare che la policy per il responsabile di qualità sia correttamente implementata e funzioni come previsto
+2. Eseguire test approfonditi per identificare e risolvere eventuali bug o problemi di funzionalità
+3. Assicurarsi che la pagina collaudo sia accessibile solo agli utenti con il ruolo di responsabile di qualità
+
+## 03 - Implementazione pagine di supporto
+
+    - Stato: da iniziare
+    - Descrizione: Implementazione pagine di supporto utente
+    - Priorità: media
+    - Area: app_odp e templates
+
+### Obiettivo
+
+Inserire le pagine di supporto utente per migliorare l'esperienza d'uso dell'applicazione e fornire assistenza agli
+utenti
+
+#### Fase 1: Impostazioni utente
+
+Impostazioni a utente. Cambio dimensioni font e tema.
+
+#### Fase 2: Dashboard reparto
+
+Dashboard reparto con statistiche di produzione, ordini in corso, ordini chiusi, performance del reparto, ecc.
+
+#### Fase 3: Dashboard responsabile produzione
+
+Dashboard responsabile produzione con statistiche di produzione, ordini in corso, ordini chiusi, performance del
+reparto,
+
+#### Fase 4: Pagina priorità
+
+Pagina che permette di impostare le priorità di produzione per gli ordini da aprire
+
+## 04 - Test e debug generale
+
+    - Stato: da iniziare
+    - Descrizione: Generazione di test e debug generale per l'applicazione
+    - Priorità: media
+    - Area: Avanzamenti_produzione
+
+### Obiettivo
+
+Creare test e debug generale per l'applicazione al fine di garantire la stabilità, la sicurezza e le prestazioni
+ottimali
+
+#### Fase 1: Aggiornamento test sync_odp
+
+Aggiornare i test esistenti per la sincronizzazione degli ordini di produzione (sync_odp)
+
+#### Fase 2: Creazione test per app_odp
+
+Creare test per l'applicazione di gestione degli ordini di produzione (app_odp)
+
+## 05 - Cambio logica gestione dati input
 
     - Stato: da iniziare
     - Descrizione: cambio logica dati input
@@ -58,48 +125,32 @@ e i cambi di gestione lotto senza dover modificare gli indicatori come lo stato 
 Fare riferimento al documento "documenti/input_odp_safe_update_todolist.pdf" per la descrizione dettagliata della nuova
 logica da integrare. Il file è già pensato per AI
 
-## 03 - Responsabile di qualità
+## 06 - Gestione acquisti
 
     - Stato: da iniziare
-    - Descrizione: implementazione pagina collaudo
-    - Priorità: medio-alta
-    - Area: app_odp/policy e templates
+    - Descrizione: pagina per il responsabile acquisti
+    - Priorità: bassa
+    - Area: app_odp
 
 ### Obiettivo
 
-Integrare la logica nella policy per il responsabile di qualità
+Creare una o più pagine dedicate al responsabile acquisti per l'andamento della produzione
 
-#### Fase 1: Debug e test
+#### Fase 1: creazione pagina di riepilogo acquisti
 
-1. Verificare che la policy per il responsabile di qualità sia correttamente implementata e funzioni come previsto
-2. Eseguire test approfonditi per identificare e risolvere eventuali bug o problemi di funzionalità
-3. Assicurarsi che la pagina collaudo sia accessibile solo agli utenti con il ruolo di responsabile di qualità
+Pagina con gli odp in esecuzione e il materiale impiegato vs il materiale in magazzino
 
-## 04 - Implementazione pagine di supporto
+## 07 - Gestione vendite
 
     - Stato: da iniziare
-    - Descrizione: Implementazione pagine di supporto utente
-    - Priorità: media
-    - Area: app_odp e templates
+    - Descrizione: pagina per i responsabili vendite
+    - Priorità: bassa
+    - Area: app_odp
 
 ### Obiettivo
 
-Inserire le pagine di supporto utente per migliorare l'esperienza d'uso dell'applicazione e fornire assistenza agli
-utenti
+Creare una o più pagine dedicate alle responsabili vendite per l'andamento della produzione
 
-#### Fase 1: Impostazioni utente
+#### Fase 1: Pagina macchine finite
 
-Impostazioni a utente. Cambio dimensioni font e tema.
-
-#### Fase 2: Dasboard reparto
-
-Dashboard reparto con statistiche di produzione, ordini in corso, ordini chiusi, performance del reparto, ecc.
-
-#### Fase 3: Dashboard responsabile produzione
-
-Dashboard responsabile produzione con statistiche di produzione, ordini in corso, ordini chiusi, performance del
-reparto,
-
-#### Fase 4: Pagina priorità
-
-Pagina che permette di impostare le priorita di produzione per gli ordini da apririre
+Creazione di una pagina che mostra le macchine finite con le matricole e gli eventuali clienti assegnati
