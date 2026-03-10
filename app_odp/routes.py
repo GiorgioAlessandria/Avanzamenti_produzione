@@ -173,16 +173,125 @@ def _fase_attiva_int(ordine) -> int | None:
         return None
 
 
+def _fase_to_int(value) -> int | None:
+    s = _norm_text(value)
+    if not s:
+        return None
+    try:
+        return int(float(s))
+    except (TypeError, ValueError):
+        return None
+
+
+def _phase_sequence_for_ordine(ordine) -> list[str]:
+    totale_fasi = _fase_to_int(getattr(ordine, "NumFase", ""))
+
+    if totale_fasi is None or totale_fasi <= 0:
+        fase_corrente = _fase_to_int(getattr(ordine, "FaseAttiva", ""))
+        if fase_corrente is not None and fase_corrente > 0:
+            return [str(fase_corrente)]
+        return []
+
+    return [str(i) for i in range(1, totale_fasi + 1)]
+
+
+def _get_phase_transition(ordine, fase_corrente: str) -> tuple[bool, str | None]:
+    fasi = _phase_sequence_for_ordine(ordine)
+    if not fasi:
+        return True, None
+
+    fase_corrente = _norm_text(fase_corrente)
+    if fase_corrente not in fasi:
+        return True, None
+
+    idx = fasi.index(fase_corrente)
+    is_last = idx >= len(fasi) - 1
+    next_phase = None if is_last else fasi[idx + 1]
+    return is_last, next_phase
+
+
+def _reset_runtime_after_close(stato, username: str):
+    if stato is None:
+        return
+    stato.Stato_odp = "Pianificata"
+    stato.Utente_operazione = username
+    stato.data_ultima_attivazione = None
+
+
+def _advance_or_finalize_phase(
+    *,
+    ordine,
+    stato,
+    fase_corrente: str,
+    q_ok: Decimal,
+    q_nok: Decimal,
+    qty_residua: Decimal,
+    qty_residua_text: str,
+    qty_lavorata_text: str,
+    chiusura_parziale: bool,
+    username: str,
+):
+    is_last_phase, next_phase = _get_phase_transition(ordine, fase_corrente)
+
+    # Chiusura parziale: stessa fase, torna da eseguire
+    if chiusura_parziale:
+        ordine.FaseAttiva = fase_corrente
+        ordine.StatoOrdine = "Pianificata"
+        ordine.QtyDaLavorare = qty_residua_text
+        _reset_runtime_after_close(stato, username)
+        return {
+            "tipo": "parziale_stessa_fase",
+            "fase_corrente": fase_corrente,
+            "fase_successiva": fase_corrente,
+        }
+
+    # Ultima fase: chiusura definitiva
+    if is_last_phase:
+        ordine.FaseAttiva = fase_corrente
+        ordine.StatoOrdine = "Chiusa"
+        ordine.QtyDaLavorare = "0"
+        return {
+            "tipo": "finale",
+            "fase_corrente": fase_corrente,
+            "fase_successiva": None,
+        }
+
+    # Fase intermedia completa: passa alla successiva
+    ordine.FaseAttiva = next_phase
+    ordine.StatoOrdine = "Pianificata"
+    ordine.QtyDaLavorare = _decimal_to_text(q_ok)
+    _reset_runtime_after_close(stato, username)
+
+    return {
+        "tipo": "avanzata",
+        "fase_corrente": fase_corrente,
+        "fase_successiva": next_phase,
+    }
+
+
 def _fase_corrente_for_export(ordine, stato=None, fase_override="") -> str:
-    return (
+    raw = (
         _norm_text(fase_override)
         or _norm_text(getattr(stato, "Fase", ""))
-        or _norm_text(ordine.FaseAttiva)
-        or _norm_text(ordine.NumFase)
+        or _norm_text(getattr(ordine, "FaseAttiva", ""))
     )
 
+    fase_int = _fase_to_int(raw)
+    if fase_int is not None and fase_int > 0:
+        return str(fase_int)
 
-def _componenti_lotto_per_ordine(ordine) -> list[dict]:
+    totale = _fase_to_int(getattr(ordine, "NumFase", ""))
+    if totale == 1:
+        return "1"
+
+    return ""
+
+
+def _componenti_lotto_per_ordine(
+    ordine,
+    include_senza_lotti: bool = False,
+    **_unused,
+) -> list[dict]:
     if _norm_text(ordine.GestioneLotto).lower() != "si":
         return []
 
@@ -221,8 +330,10 @@ def _componenti_lotto_per_ordine(ordine) -> list[dict]:
                 giacenza_val = int(float(_norm_text(lotto.Giacenza)))
             except (ValueError, TypeError):
                 giacenza_val = 0
+
             if giacenza_val <= 0:
                 continue
+
             lotti_list.append(
                 {
                     "RifLottoAlfa": lotto.RifLottoAlfa,
@@ -231,18 +342,42 @@ def _componenti_lotto_per_ordine(ordine) -> list[dict]:
                 }
             )
 
-        if lotti_list:
+        if include_senza_lotti or lotti_list:
             componenti_lotto.append(
                 {
                     "CodArt": cod_art,
                     "DesArt": _norm_text(comp.get("DesArt", "")),
                     "Quantita": comp.get("Quantita", 0),
                     "NumFase": comp.get("NumFase", ""),
+                    "GestioneLotto": "si",
                     "lotti": lotti_list,
                 }
             )
 
     return componenti_lotto
+
+
+def _same_decimal_qty(a: Decimal, b: Decimal, tol: Decimal = Decimal("0.0001")) -> bool:
+    return abs(a - b) <= tol
+
+
+def _scaled_component_qty(
+    comp_qty,
+    q_lavorata: Decimal,
+    q_tot: Decimal,
+) -> Decimal:
+    try:
+        base_qty = _parse_qty_decimal(comp_qty)
+    except ValueError:
+        return Decimal("0")
+
+    if q_tot <= 0:
+        return base_qty
+
+    return (base_qty * q_lavorata / q_tot).quantize(
+        Decimal("0.0001"),
+        rounding=ROUND_HALF_UP,
+    )
 
 
 def _normalize_lotti_for_payload(lotti_input: list[dict]) -> list[dict]:
@@ -1428,22 +1563,14 @@ def api_chiudi_ordine():
         )
 
     q_lavorata = q_ok + q_nok
-    if q_lavorata > q_tot:
-        return (
-            jsonify(
-                {
-                    "ok": False,
-                    "error": "Quantità conforme + non conforme supera la quantità da lavorare",
-                }
-            ),
-            400,
-        )
-
     qty_residua = q_tot - q_lavorata
     qty_residua_text = _decimal_to_text(qty_residua)
     qty_lavorata_text = _decimal_to_text(q_lavorata)
     qty_pre_text = _qty_da_lavorare_text(ordine)
 
+    # Regole nuove:
+    # - SL totale: nessun controllo min/max quantità
+    # - SL parziale: quantità lavorata > 0 e strettamente minore del totale ordine
     if chiusura_parziale:
         if q_lavorata <= 0:
             return (
@@ -1455,29 +1582,22 @@ def api_chiudi_ordine():
                 ),
                 400,
             )
-        if qty_residua <= 0:
+
+        if q_lavorata >= q_tot:
             return (
                 jsonify(
                     {
                         "ok": False,
-                        "error": "La quantità residua è zero: disattiva la chiusura parziale e chiudi normalmente l'ordine.",
-                    }
-                ),
-                400,
-            )
-    else:
-        if q_lavorata != q_tot:
-            return (
-                jsonify(
-                    {
-                        "ok": False,
-                        "error": "La quantità lavorata non copre tutta la quantità da lavorare. Attiva la chiusura parziale oppure completa l'ordine.",
+                        "error": "Nella chiusura parziale la quantità lavorata deve essere strettamente minore della quantità totale dell'ordine.",
                     }
                 ),
                 400,
             )
 
-    componenti_richiesti_lotto = _componenti_lotto_per_ordine(ordine)
+    componenti_richiesti_lotto = _componenti_lotto_per_ordine(
+        ordine,
+        include_senza_lotti=True,
+    )
     if componenti_richiesti_lotto and not lotti_input:
         return (
             jsonify(
@@ -1745,46 +1865,23 @@ def api_chiudi_ordine():
                 IdRiga=ordine.IdRiga,
             )
         )
+    transition = _advance_or_finalize_phase(
+        ordine=ordine,
+        stato=stato,
+        fase_corrente=fase_corrente,
+        q_ok=q_ok,
+        q_nok=q_nok,
+        qty_residua=qty_residua,
+        qty_residua_text=qty_residua_text,
+        qty_lavorata_text=qty_lavorata_text,
+        chiusura_parziale=chiusura_parziale,
+        username=current_user.username,
+    )
 
     tab = _tab_from_ordine(ordine)
 
-    if chiusura_parziale:
-        fragments = {}
-        if tab:
-            reparto_code = BRIDGE_CONFIG[tab]["reparto"]
-            odp = list(_query_for_tab(policy, reparto_code).all())
-            fragments = RENDERERS[tab](odp)
-
-        db.session.commit()
-
-        return (
-            jsonify(
-                {
-                    "ok": True,
-                    "changed": True,
-                    "message": "Ordine aggiornato con chiusura parziale",
-                    "id_documento": id_documento,
-                    "id_riga": id_riga,
-                    "row_key": _row_key(id_documento, id_riga),
-                    "fase": fase_corrente,
-                    "chiusura_parziale": True,
-                    "qty_da_lavorare_pre": qty_pre_text,
-                    "qty_da_lavorare_post": qty_residua_text,
-                    "erp_outbox_required": True,
-                    "erp_outbox_pending": False,
-                    "active_tab": tab,
-                    "last_event_id": _last_change_event_id(),
-                    "fragments": fragments,
-                }
-            ),
-            200,
-        )
-
     if stato is not None:
         db.session.delete(stato)
-
-    ordine.StatoOrdine = "Pianificata"
-    ordine.QtyDaLavorare = _norm_text(ordine.Quantita)
 
     fragments = {}
     if tab:
@@ -1794,19 +1891,35 @@ def api_chiudi_ordine():
 
     db.session.commit()
 
+    if transition["tipo"] == "finale":
+        message = "Ordine chiuso definitivamente"
+    elif transition["tipo"] == "avanzata":
+        message = (
+            f"Fase {transition['fase_corrente']} consuntivata. "
+            f"Ordine riportato in pianificata sulla fase {transition['fase_successiva']}."
+        )
+    else:
+        message = (
+            f"Fase {transition['fase_corrente']} chiusa parzialmente. "
+            f"Ordine riportato in pianificata sulla stessa fase."
+        )
+
     return (
         jsonify(
             {
                 "ok": True,
                 "changed": True,
-                "message": "Fase consuntivata",
+                "message": message,
                 "id_documento": id_documento,
                 "id_riga": id_riga,
                 "row_key": _row_key(id_documento, id_riga),
-                "fase": fase_corrente,
-                "outbox_id": outbox.outbox_id,
-                "outbox_status": outbox.status,
-                "chiusura_parziale": False,
+                "fase": transition["fase_corrente"],
+                "fase_successiva": transition["fase_successiva"],
+                "stato_ordine": ordine.StatoOrdine,
+                "chiusura_parziale": chiusura_parziale,
+                "qty_da_lavorare": _norm_text(ordine.QtyDaLavorare),
+                "outbox_id": outbox.outbox_id if outbox else None,
+                "outbox_status": outbox.status if outbox else None,
                 "active_tab": tab,
                 "last_event_id": _last_change_event_id(),
                 "fragments": fragments,
@@ -1888,7 +2001,10 @@ def api_chiudi_ordine_montaggio_macchina():
             409,
         )
 
-    componenti_richiesti_lotto = _componenti_lotto_per_ordine(ordine)
+    componenti_richiesti_lotto = _componenti_lotto_per_ordine(
+        ordine,
+        include_senza_lotti=True,
+    )
     if componenti_richiesti_lotto and not lotti_input:
         return (
             jsonify(
@@ -1953,12 +2069,16 @@ def api_chiudi_ordine_montaggio_macchina():
                 ), 400
 
     try:
-        q_tot = _parse_qty_decimal(ordine.Quantita)
+        q_tot = _qty_da_lavorare_decimal(ordine)
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 400
 
     q_ok = q_tot
     q_nok = Decimal("0")
+    qty_residua = Decimal("0")
+    qty_residua_text = "0"
+    qty_lavorata_text = _decimal_to_text(q_tot)
+    chiusura_parziale = False
 
     now_dt = _now_rome_dt()
     now_iso = now_dt.isoformat(timespec="seconds")
@@ -2101,13 +2221,23 @@ def api_chiudi_ordine_montaggio_macchina():
                 IdRiga=ordine.IdRiga,
             )
         )
+    transition = _advance_or_finalize_phase(
+        ordine=ordine,
+        stato=stato,
+        fase_corrente=fase_corrente,
+        q_ok=q_ok,
+        q_nok=q_nok,
+        qty_residua=qty_residua,
+        qty_residua_text=qty_residua_text,
+        qty_lavorata_text=qty_lavorata_text,
+        chiusura_parziale=chiusura_parziale,
+        username=current_user.username,
+    )
 
     tab = _tab_from_ordine(ordine)
 
     if stato is not None:
         db.session.delete(stato)
-
-    ordine.StatoOrdine = "Pianificata"
 
     fragments = {}
     if tab:
@@ -2117,16 +2247,27 @@ def api_chiudi_ordine_montaggio_macchina():
 
     db.session.commit()
 
+    if transition["tipo"] == "finale":
+        message = "Ordine macchina chiuso definitivamente"
+    else:
+        message = (
+            f"Fase macchina {transition['fase_corrente']} consuntivata. "
+            f"Ordine riportato in pianificata sulla fase {transition['fase_successiva']}."
+        )
+
     return (
         jsonify(
             {
                 "ok": True,
                 "changed": True,
-                "message": "Fase macchina consuntivata",
+                "message": message,
                 "id_documento": id_documento,
                 "id_riga": id_riga,
                 "row_key": _row_key(id_documento, id_riga),
-                "fase": fase_corrente,
+                "fase": transition["fase_corrente"],
+                "fase_successiva": transition["fase_successiva"],
+                "stato_ordine": ordine.StatoOrdine,
+                "qty_da_lavorare": _norm_text(ordine.QtyDaLavorare),
                 "outbox_id": outbox.outbox_id,
                 "outbox_status": outbox.status,
                 "active_tab": tab,
@@ -2155,65 +2296,26 @@ def api_lotti_componenti():
     ordine = _get_visible_odp_by_key(policy, id_documento, id_riga)
 
     if is_macchina:
-        distinta = _parse_distinta_materiale(ordine)
-        fase_attiva = _fase_attiva_int(ordine)
-
-        componenti_lotto = []
-        codici_visti = set()
-
-        for comp in distinta:
-            if not isinstance(comp, dict):
-                continue
-
-            if fase_attiva is not None:
-                try:
-                    comp_fase = int(float(comp.get("NumFase", 0)))
-                except (ValueError, TypeError):
-                    comp_fase = 0
-                if comp_fase != fase_attiva:
-                    continue
-
-            cod_art = _norm_text(comp.get("CodArt", ""))
-            if not cod_art or cod_art in codici_visti:
-                continue
-
-            codici_visti.add(cod_art)
-
-            lotti_db = GiacenzaLotti.query.filter_by(CodArt=cod_art).all()
-            lotti_list = []
-
-            for lotto in lotti_db:
-                try:
-                    giacenza_val = int(float(_norm_text(lotto.Giacenza)))
-                except (ValueError, TypeError):
-                    giacenza_val = 0
-
-                if giacenza_val <= 0:
-                    continue
-
-                lotti_list.append(
-                    {
-                        "RifLottoAlfa": lotto.RifLottoAlfa,
-                        "Giacenza": giacenza_val,
-                        "CodMag": lotto.CodMag,
-                    }
-                )
-
-            componenti_lotto.append(
+        if _norm_text(ordine.GestioneLotto).lower() != "si":
+            return jsonify(
                 {
-                    "CodArt": cod_art,
-                    "DesArt": _norm_text(comp.get("DesArt", "")),
-                    "Quantita": comp.get("Quantita", 0),
-                    "NumFase": comp.get("NumFase", ""),
-                    "lotti": lotti_list,
+                    "ok": True,
+                    "gestioneLotto": False,
+                    "haComponentiLotto": False,
+                    "componenti": [],
                 }
             )
+
+        componenti_lotto = _componenti_lotto_per_ordine(
+            ordine,
+            include_senza_lotti=True,
+        )
 
         return jsonify(
             {
                 "ok": True,
                 "gestioneLotto": True,
-                "force_show_section": True,
+                "force_show_section": len(componenti_lotto) > 0,
                 "haComponentiLotto": any(
                     isinstance(c.get("lotti"), list) and len(c["lotti"]) > 0
                     for c in componenti_lotto
@@ -2236,7 +2338,6 @@ def api_lotti_componenti():
 
     componenti_lotto = _componenti_lotto_per_ordine(
         ordine,
-        modalita="sl",
         include_senza_lotti=True,
     )
 

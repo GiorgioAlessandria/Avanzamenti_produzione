@@ -1280,7 +1280,7 @@
     });
 </script>
 <!-- ============================================================ -->
-<!-- IIFE: Lotti + Chiusura MACCHINA (toast-7)                     -->
+<!-- IIFE: Lotti + Chiusura MACCHINA (toast_7)                     -->
 <!-- ============================================================ -->
 <script>
     (() => {
@@ -1724,7 +1724,7 @@
     })();
 </script>
 <!-- ============================================================ -->
-<!-- IIFE: Lotti + Chiusura SL (toast-4)                           -->
+<!-- IIFE: Lotti + Chiusura SL (toast_4)                           -->
 <!-- ============================================================ -->
 <script>
     (() => {
@@ -1779,6 +1779,42 @@
 
         function sameQty(a, b) {
             return Math.abs(Number(a || 0) - Number(b || 0)) < 0.000001;
+        }
+
+        function roundLottiQty(n) {
+            if (!Number.isFinite(n)) return 0;
+            return Math.round(n * 1000) / 1000;
+        }
+
+        function getQuantitaOrdineCorrente() {
+            return parseQtyOrZero(hidTot?.value);
+        }
+
+        function getQuantitaLavorataCorrente() {
+            const qConf = parseQtyOrZero(inpConf?.value);
+            const qNonConf = parseQtyOrZero(inpNonConf?.value);
+            return qConf + qNonConf;
+        }
+
+        function getQuantitaRichiestaComponente(comp) {
+            const baseQty = parseQtyOrZero(comp?.Quantita);
+            const qOrd = getQuantitaOrdineCorrente();
+            const qLavorata = getQuantitaLavorataCorrente();
+            const isParziale = chkParziale?.checked === true;
+
+            if (!isParziale) {
+                return baseQty;
+            }
+
+            if (!Number.isFinite(qOrd) || qOrd <= 0) {
+                return baseQty;
+            }
+
+            if (!Number.isFinite(qLavorata) || qLavorata <= 0) {
+                return 0;
+            }
+
+            return roundLottiQty(baseQty * (qLavorata / qOrd));
         }
 
         function isGestioneLottoSi(comp) {
@@ -1881,15 +1917,15 @@
             let html = "<strong>Riepilogo per componente:</strong><br>";
             for (const comp of _lottiData) {
                 const codArt = String(comp.CodArt || "");
-                const richiesto = parseQtyOrZero(comp.Quantita);
+                const richiesto = getQuantitaRichiestaComponente(comp);
                 const t = totals[codArt] || {ok: 0, ko: 0, totale: 0};
                 const ok = sameQty(t.totale, richiesto);
 
                 html += `
-                    <span class="${ok ? "text-success" : "text-danger"}">
-                        ${escHtml(codArt)}: ${t.totale}/${richiesto}
-                        (OK: ${t.ok}, KO: ${t.ko})${ok ? " ✓" : " ✗"}
-                    </span><br>`;
+            <span class="${ok ? "text-success" : "text-danger"}">
+                ${escHtml(codArt)}: ${t.totale}/${richiesto}
+                (OK: ${t.ok}, KO: ${t.ko})${ok ? " ✓" : " ✗"}
+            </span><br>`;
             }
 
             riepilogo.innerHTML = html;
@@ -2030,7 +2066,7 @@
 
             for (const comp of _lottiData) {
                 const codArt = String(comp.CodArt || "");
-                const richiesto = parseQtyOrZero(comp.Quantita);
+                const richiesto = getQuantitaRichiestaComponente(comp);
                 const totale = perCodice[codArt]?.totale || 0;
 
                 if (!sameQty(totale, richiesto)) {
@@ -2093,6 +2129,15 @@
                 updateRiepilogo();
             }
         });
+        [inpConf, inpNonConf].forEach(el => {
+            el?.addEventListener("input", () => {
+                if (_hasRequiredLotti) updateRiepilogo();
+            });
+        });
+
+        chkParziale?.addEventListener("change", () => {
+            if (_hasRequiredLotti) updateRiepilogo();
+        });
 
         document.addEventListener("click", function (e) {
             const btn = e.target.closest('[data-bs-target="#toast-4"]');
@@ -2118,55 +2163,49 @@
             const btn = this;
             const idDocumento = document.getElementById("toast-chiudi-sl-iddocumento")?.value?.trim() || "";
             const idRiga = document.getElementById("toast-chiudi-sl-idriga")?.value?.trim() || "";
-            const note = inpNote?.value?.trim() || "";
-            const chiusuraParziale = chkParziale?.checked === true;
-
-            const qOrd = parseQty(hidTot?.value);
-            const qConf = parseQty(inpConf.value);
-            const qNonConf = parseQty(inpNonConf.value);
+            const qOrd = document.getElementById("toast-chiudi-sl-quantita")?.value?.trim() || "";
+            const qConf = document.getElementById("toast-chiudi-sl-quantita-conforme")?.value?.trim() || "";
+            const qNonConf = document.getElementById("toast-chiudi-sl-quantita-non-conforme")?.value?.trim() || "";
+            const note = document.getElementById("toast-chiudi-sl-note")?.value?.trim() || "";
+            const chiusuraParziale = document.getElementById("toast-chiudi-sl-parziale")?.checked === true;
 
             if (!idDocumento || !idRiga) {
                 alert("Ordine non valido (IdDocumento/IdRiga mancanti).");
                 return;
             }
 
-            if (!Number.isFinite(qConf) || qConf < 0) {
+            // Validazione quantità
+            const nConf = Number(String(qConf).replace(",", "."));
+            const nNonConf = Number(String(qNonConf).replace(",", "."));
+            const nOrd = Number(String(qOrd).replace(",", "."));
+
+            if (!Number.isFinite(nConf) || nConf < 0) {
                 alert("Quantità conforme non valida.");
                 return;
             }
-
-            if (!Number.isFinite(qNonConf) || qNonConf < 0) {
+            if (!Number.isFinite(nNonConf) || nNonConf < 0) {
                 alert("Quantità KO non valida.");
                 return;
             }
 
-            if (!Number.isFinite(qOrd) || qOrd < 0) {
-                alert("Quantità ordine non valida.");
-                return;
+            const nLavorata = nConf + nNonConf;
+            if (chiusuraParziale) {
+                if (!Number.isFinite(nOrd) || nOrd <= 0) {
+                    alert("Quantità ordine non valida.");
+                    return;
+                }
+
+                if (nLavorata <= 0) {
+                    alert("Per la chiusura parziale devi indicare una quantità lavorata > 0.");
+                    return;
+                }
+
+                if (nLavorata >= nOrd) {
+                    alert("Nella chiusura parziale la quantità lavorata deve essere strettamente minore del totale ordine.");
+                    return;
+                }
             }
 
-            const qLavorata = qConf + qNonConf;
-            const qResidua = qOrd - qLavorata;
-
-            if (qLavorata <= 0) {
-                alert("Inserire una quantità lavorata maggiore di zero.");
-                return;
-            }
-
-            if (qLavorata > qOrd) {
-                alert("La quantità conforme + KO supera la quantità da lavorare.");
-                return;
-            }
-
-            if (!chiusuraParziale && !sameQty(qLavorata, qOrd)) {
-                alert("La quantità lavorata deve coincidere con la quantità da lavorare. Per lavorazioni incomplete attiva la chiusura parziale.");
-                return;
-            }
-
-            if (chiusuraParziale && qResidua <= 0) {
-                alert("La quantità residua è zero. Disattiva la chiusura parziale e chiudi normalmente l'ordine.");
-                return;
-            }
 
             let lottiPayload = [];
             if (_hasRequiredLotti) {
