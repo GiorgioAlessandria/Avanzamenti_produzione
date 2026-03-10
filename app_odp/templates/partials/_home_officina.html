@@ -265,6 +265,16 @@
             </div>
         </div>
 
+        <div class="form-check mt-3 mb-2">
+            <input class="form-check-input"
+                   type="checkbox"
+                   id="toast-chiudi-sl-parziale">
+            <label class="form-check-label"
+                   for="toast-chiudi-sl-parziale">
+                Chiusura parziale ordine
+            </label>
+        </div>
+
         <button class="btn btn-lg btn-primary mt-2"
                 type="button"
                 id="btn-conferma-chiusura-sl"
@@ -792,7 +802,7 @@
         // ---- Stato lotti SL ----
         let _lottiData = [];
         let _hasLotti = false;
-        let _rowCounter = 0;
+        let _hasSelectableLotti = false;
 
         // ---- DOM ----
         const toastEl = document.getElementById("toast-4");
@@ -817,6 +827,21 @@
             if (!alertEl) return;
             alertEl.textContent = msg;
             alertEl.style.display = msg ? "" : "none";
+        }
+
+        function isGestioneLottoSi(comp) {
+            const flag = String(
+                comp?.GestioneLotto
+                ?? comp?.gestione_lotto
+                ?? comp?.gestioneLotto
+                ?? ""
+            ).trim().toLowerCase();
+
+            if (flag) {
+                return flag === "si";
+            }
+
+            return Array.isArray(comp?.lotti) && comp.lotti.length > 0;
         }
 
         function parseNum(v) {
@@ -963,11 +988,15 @@
             riepilogo.innerHTML = "";
             _lottiData = [];
             _hasLotti = false;
+            _hasSelectableLotti = false;
 
             try {
                 const resp = await fetch("/api/ordini/lotti-componenti", {
                     method: "POST",
-                    headers: {"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"},
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-Requested-With": "XMLHttpRequest"
+                    },
                     credentials: "same-origin",
                     body: JSON.stringify({
                         id_documento: idDocumento,
@@ -975,28 +1004,54 @@
                         modalita: "sl"
                     })
                 });
+
                 const data = await resp.json();
 
                 if (!resp.ok || !data.ok) {
                     showAlert(data.error || "Errore nel caricamento dei lotti.");
-                    loading.style.display = "none";
                     return;
                 }
 
-                _lottiData = data.componenti || [];
-                _hasLotti = _lottiData.length > 0;
+                const forceShow = !!data.force_show_section;
+                const rawComponenti = Array.isArray(data.componenti) ? data.componenti : [];
 
-                if (!_hasLotti) {
+                _lottiData = rawComponenti.filter(comp => isGestioneLottoSi(comp));
+
+                const componentiConLotti = _lottiData.filter(
+                    comp => Array.isArray(comp.lotti) && comp.lotti.length > 0
+                );
+                const componentiSenzaLotti = _lottiData.filter(
+                    comp => !Array.isArray(comp.lotti) || comp.lotti.length === 0
+                );
+
+                _hasLotti = _lottiData.length > 0;
+                _hasSelectableLotti = componentiConLotti.length > 0;
+
+                if (!_hasLotti && !forceShow) {
                     section.style.display = "none";
-                    loading.style.display = "none";
                     return;
                 }
 
                 section.style.display = "";
 
-                for (const comp of _lottiData) {
+                for (const comp of componentiConLotti) {
                     addLottoRow(comp.CodArt, comp.DesArt, comp.lotti, true);
                 }
+
+                if (componentiSenzaLotti.length > 0) {
+                    const elenco = componentiSenzaLotti
+                        .map(comp => `- ${comp.CodArt}${comp.DesArt ? ` (${comp.DesArt})` : ""}`)
+                        .join("\n");
+
+                    showAlert(
+                        `Nessun lotto disponibile per i seguenti componenti della fase attiva:\n${elenco}`
+                    );
+                } else if (componentiConLotti.length === 0 && forceShow) {
+                    showAlert("Nessun lotto disponibile per i componenti della fase attiva con GestioneLotto = si.");
+                } else {
+                    showAlert("");
+                }
+
                 updateRiepilogo();
             } catch (err) {
                 console.error("Errore fetch lotti SL:", err);
@@ -1062,6 +1117,8 @@
             if (!btn) return;
 
             requestAnimationFrame(() => {
+                const chkParziale = document.getElementById("toast-chiudi-sl-parziale");
+                if (chkParziale) chkParziale.checked = false;
                 autofillQuantita();
 
                 const idDoc = document.getElementById("toast-chiudi-sl-iddocumento")?.value?.trim();
@@ -1085,6 +1142,7 @@
             const qConf = document.getElementById("toast-chiudi-sl-quantita-conforme")?.value?.trim() || "";
             const qNonConf = document.getElementById("toast-chiudi-sl-quantita-non-conforme")?.value?.trim() || "";
             const note = document.getElementById("toast-chiudi-sl-note")?.value?.trim() || "";
+            const chiusuraParziale = document.getElementById("toast-chiudi-sl-parziale")?.checked === true;
 
             if (!idDocumento || !idRiga) {
                 alert("Ordine non valido (IdDocumento/IdRiga mancanti).");
@@ -1113,15 +1171,32 @@
                 return;
             }
 
+            const nLavorata = nConf + nNonConf;
+            if (!chiusuraParziale && Number.isFinite(nOrd) && nLavorata < nOrd) {
+                alert("La quantità lavorata è inferiore alla quantità da lavorare. Attiva la chiusura parziale oppure completa l'ordine.");
+                return;
+            }
+            if (chiusuraParziale && Number.isFinite(nOrd) && nLavorata >= nOrd) {
+                alert("La quantità residua è zero. Disattiva la chiusura parziale e chiudi normalmente l'ordine.");
+                return;
+            }
+
             // Validazione lotti
             let lottiPayload = [];
             if (_hasLotti) {
+                if (!_hasSelectableLotti) {
+                    alert("Impossibile chiudere l'ordine: mancano i lotti necessari per i componenti obbligatori.");
+                    return;
+                }
+
                 const validation = validateLotti();
                 if (!validation.valid) return;
                 lottiPayload = validation.lottiPayload;
 
-                // Check coerenza lotti KO vs quantità (BLOCCANTE)
-                const totKoLotti = lottiPayload.filter(l => l.Esito === "ko").reduce((s, l) => s + l.Quantita, 0);
+                const totKoLotti = lottiPayload
+                    .filter(l => l.Esito === "ko")
+                    .reduce((s, l) => s + l.Quantita, 0);
+
                 if (nNonConf === 0 && totKoLotti > 0) {
                     alert("Hai lotti marcati KO ma quantità non conforme = 0. Correggere prima di procedere.");
                     return;
@@ -1145,6 +1220,7 @@
                         quantita_conforme: qConf,
                         quantita_non_conforme: qNonConf,
                         note: note,
+                        chiusura_parziale: chiusuraParziale,
                         lotti: lottiPayload,
                     })
                 });
@@ -1177,6 +1253,7 @@
                 tbody.innerHTML = "";
                 _lottiData = [];
                 _hasLotti = false;
+                _hasSelectableLotti = false;
 
             } catch (err) {
                 console.error("Errore fetch chiusura SL:", err);

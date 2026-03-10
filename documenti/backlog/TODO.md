@@ -11,7 +11,7 @@
 
 Procedura per la chiusura degli ordini di produzione nella totalità dei casi previsti a gestionale e interni
 
-#### Fase 1: Procedura normale - Integrata
+#### Fase 1: Procedura normale - __Integrato__
 
 1. L'operatore selezione la linea da chiudere in un table in corso. Si apre un toast html e inserisce la quantità di
    componenti prodotti e la quantità di componenti scartati.
@@ -25,9 +25,9 @@ Procedura per la chiusura degli ordini di produzione nella totalità dei casi pr
 4. Il programma cancella da change_event,
    input_odp, odp_in_carico tutte le voci riguardanti l'ordine selezionato
 
-#### Fase 2: Eccezione 1 - Ordini parziali - In corso
+#### Fase 2: Eccezione 1 - Ordini parziali - __Integrato__
 
-1. __Integrato__ Creare una colonna nella tabella ordini che prevede una colonna per il materiale parziale e cambiare la
+1. Creare una colonna nella tabella ordini che prevede una colonna per il materiale parziale e cambiare la
    colonna dove
    punta la table html (QtyDaLavorare)
 2. Attivare la spunta per la chiusura parziale in modo da scalare un parziale e poi sospendere automaticamente l'ordine.
