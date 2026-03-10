@@ -642,12 +642,13 @@ def elaborazione_dati(session: Session) -> None:
 
     ensure_init()
     global nuovo_ciclo
-    # righe_inserite = int(0)
     df_odp = leggi_view(
         table="vwESOdP",
         colonna_filtro_esclusi="CodArt",
         colonna_filtro_stato="StatoOrdine",
     )
+    df_odp["QtyDaLavorare"] = df_odp["Quantita"]
+
     df_odpfasi = (
         pd.DataFrame(
             leggi_view(table="vwESOdPFasi", colonna_filtro_esclusi="CodRisorsaProd")
