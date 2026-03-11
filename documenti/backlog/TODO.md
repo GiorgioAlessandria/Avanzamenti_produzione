@@ -11,7 +11,7 @@
 
 Procedura per la chiusura degli ordini di produzione nella totalità dei casi previsti a gestionale e interni
 
-#### Fase 1: Procedura normale - __Integrato__
+#### Fase 1: Procedura normale - OK
 
 1. L'operatore selezione la linea da chiudere in un table in corso. Si apre un toast html e inserisce la quantità di
    componenti prodotti e la quantità di componenti scartati.
@@ -25,7 +25,7 @@ Procedura per la chiusura degli ordini di produzione nella totalità dei casi pr
 4. Il programma cancella da change_event,
    input_odp, odp_in_carico tutte le voci riguardanti l'ordine selezionato
 
-#### Fase 2: Eccezione 1 - Ordini parziali - __Integrato__
+#### Fase 2: Eccezione 1 - Ordini parziali - OK
 
 1. Creare una colonna nella tabella ordini che prevede una colonna per il materiale parziale e cambiare la
    colonna dove
@@ -34,7 +34,7 @@ Procedura per la chiusura degli ordini di produzione nella totalità dei casi pr
 3. L'evento diventa "chiusura parziale" con le quantità prodotte.
 4. L'ordine di produzione viene sospeso e viene modificata la tabella con la quantità rimanente
 
-#### Fase 3: Eccezione 2 - Componenti multifase - In integrazione
+#### Fase 3: Eccezione 2 - Componenti multifase - da verificare
 
 1. l'operatore apre e chiude l'ordine con fase 1
 2. il sistema genera la chiusura della fase 1 dell'ordine con gli eventuali lotti (deve essere anche pensato per gli
@@ -42,17 +42,17 @@ Procedura per la chiusura degli ordini di produzione nella totalità dei casi pr
 3. all'ordine in input_odp viene cambiata fase attiva e torna nella table da eseguire con stato Pianificata.
 4. Il procedimento si ripete fino a quando si raggiunge l'ultima fase che invece deve prevedere una chiusura normale
 
-#### Fase 3.1 Ordini parziali - lotti - Da integrare __ISSUE__
+#### Fase 3.1 Ordini parziali - lotti - OK
 
 Quando un ordine viene chiuso in maniera parziale il sistema deve fare riferimento alla quantità parziale per scalare i
 lotti.
 
-#### Fase 3.2 Logica ok/ko macchine - Da integrare
+#### Fase 3.2 Logica ok/ko macchine - OK
 
-Rimuovere la logica di ok/ko a livello di macchina oltre alle quantità. Il sistema dovrà prevedere di inserire
-automaticamente ok e 1 con la logica m
+Rimuovere la logica di ok/ko a livello di macchina. Il sistema dovrà prevedere di inserire
+automaticamente ok la logica m
 
-#### Fase 4 Blocco chiusura dell'ordine in sospeso - Da integrare
+#### Fase 4 Blocco chiusura dell'ordine in sospeso - Rifiutato
 
 Se l'ordine è in sospeso l'operatore non può chiudere l'ordine, ma deve riattivarlo e chiuderlo di conseguenza
 
@@ -72,6 +72,19 @@ Integrare la logica nella policy per il responsabile di qualità
 1. Verificare che la policy per il responsabile di qualità sia correttamente implementata e funzioni come previsto
 2. Eseguire test approfonditi per identificare e risolvere eventuali bug o problemi di funzionalità
 3. Assicurarsi che la pagina collaudo sia accessibile solo agli utenti con il ruolo di responsabile di qualità
+
+## 02 - Responsabile di qualità
+
+    - Stato: da iniziare
+    - Descrizione: implementazione pagina collaudo
+    - Priorità: medio-alta
+    - Area: app_odp/policy e templates
+
+### Obiettivo
+
+Integrare la logica nella policy per il responsabile di qualità
+
+#### Fase 1: Debug e test
 
 ## 03 - Implementazione pagine di supporto
 

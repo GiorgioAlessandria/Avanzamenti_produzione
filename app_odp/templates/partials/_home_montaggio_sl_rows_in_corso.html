@@ -1,5 +1,5 @@
 {% for singolo_odp in odp %}
-    {% if singolo_odp.GestioneMatricola == 'no' and singolo_odp.StatoOrdine != "Pianificata" %}
+    {% if singolo_odp.GestioneMatricola == "no" and singolo_odp.StatoOrdine != "Pianificata" and singolo_odp.StatoOrdine != "Chiusa" %}
         <tr data-row-key="{{ singolo_odp.IdDocumento }}|{{ singolo_odp.IdRiga }}"
             data-iddocumento="{{ singolo_odp.IdDocumento }}"
             data-idriga="{{ singolo_odp.IdRiga }}"
@@ -7,10 +7,11 @@
             data-codice="{{ singolo_odp.CodArt }}"
             data-descrizione="{{ singolo_odp.DesArt }}"
             data-quantita="{{ singolo_odp.QtyDaLavorare or singolo_odp.Quantita }}"
-            data-fase="{{ singolo_odp.FaseAttiva }}"
+            data-quantita-totale="{{ singolo_odp.Quantita }}"
+            data-fase="{{ singolo_odp.NumFase }}"
             data-datacons="{{ singolo_odp.DataFineSched }}"
             data-risorsaprod="{{ singolo_odp.CodRisorsaProd }}"
-            data-stato="{{ singolo_odp.StatoOrdine }}">
+            data-statoordine="{{ singolo_odp.StatoOrdine }}">
             <td>{{ singolo_odp.RifRegistraz }}</td>
             <td>
                 <button

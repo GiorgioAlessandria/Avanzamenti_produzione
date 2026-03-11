@@ -338,7 +338,7 @@
                         </tr>
                         </thead>
                         <tbody id="tbody_ordini_da_eseguire">
-                        {% include "partials/_home_officina_rows_da_eseguire.html" %}
+                        {% include "partials/old/_home_officina_rows_da_eseguire.html" %}
                         </tbody>
                     </table>
                 </div>
@@ -397,7 +397,7 @@
                         </tr>
                         </thead>
                         <tbody id="tbody_ordini_in_corso">
-                        {% include "partials/_home_officina_rows_in_corso.html" %}
+                        {% include "partials/old/_home_officina_rows_in_corso.html" %}
                         </tbody>
                     </table>
                 </div>
@@ -780,17 +780,24 @@
             return Array.isArray(comp?.lotti) && comp.lotti.length > 0;
         }
 
-        function parseNum(v) {
+        function parseIntQty(v) {
             let s = String(v ?? "").trim().replace(/\s+/g, "");
             if (!s) return NaN;
-            if (s.includes(",") && s.includes(".")) s = s.replace(/\./g, "");
-            s = s.replace(",", ".");
+
+            if (s.includes(",") || s.includes(".")) {
+                return NaN;
+            }
+
+            if (!/^\d+$/.test(s)) {
+                return NaN;
+            }
+
             const n = Number(s);
-            return Number.isFinite(n) ? n : NaN;
+            return Number.isSafeInteger(n) ? n : NaN;
         }
 
         function parseQtyOrZero(v) {
-            const n = parseNum(v);
+            const n = parseIntQty(v);
             return Number.isFinite(n) ? n : 0;
         }
 
@@ -829,7 +836,7 @@
         // ---- Autofill quantità all'apertura ----
         function autofillQuantita() {
             if (!hidTot || !inpConf || !inpNonConf) return;
-            const qOrd = parseNum(hidTot.value);
+            const qOrd = parseIntQty(hidTot.value);
             if (Number.isFinite(qOrd)) {
                 inpConf.value = String(qOrd);
             }
@@ -1171,23 +1178,27 @@
                 alert("Quantità KO non valida.");
                 return;
             }
-            if (nNonConf > nConf) {
-                alert("La quantità KO non può superare la quantità conforme.");
-                return;
-            }
-            if (Number.isFinite(nOrd) && nConf > nOrd) {
-                alert("La quantità conforme non può superare la quantità ordine.");
-                return;
-            }
 
             const nLavorata = nConf + nNonConf;
-            if (!chiusuraParziale && Number.isFinite(nOrd) && nLavorata < nOrd) {
-                alert("La quantità lavorata è inferiore alla quantità da lavorare. Attiva la chiusura parziale oppure completa l'ordine.");
-                return;
-            }
-            if (chiusuraParziale && Number.isFinite(nOrd) && nLavorata >= nOrd) {
-                alert("La quantità residua è zero. Disattiva la chiusura parziale e chiudi normalmente l'ordine.");
-                return;
+
+// Regole:
+// - SL totale: nessun controllo min/max
+// - SL parziale: quantità lavorata > 0 e strettamente minore del totale ordine
+            if (chiusuraParziale) {
+                if (!Number.isFinite(nOrd) || nOrd <= 0) {
+                    alert("Quantità ordine non valida.");
+                    return;
+                }
+
+                if (nLavorata <= 0) {
+                    alert("Per la chiusura parziale devi indicare una quantità lavorata > 0.");
+                    return;
+                }
+
+                if (nLavorata >= nOrd) {
+                    alert("Nella chiusura parziale la quantità lavorata deve essere strettamente minore del totale ordine.");
+                    return;
+                }
             }
 
             // Validazione lotti
