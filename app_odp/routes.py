@@ -5,7 +5,6 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from flask import Blueprint, render_template, request, url_for, abort, jsonify
 from flask_login import login_required, current_user
 from sqlalchemy import func, select
-
 from app_odp.models import (
     InputOdp,
     StatoOdp,
@@ -15,10 +14,13 @@ from app_odp.models import (
     GiacenzaLotti,
     LottiUsatiLog,
     ErpOutbox,
+    InputOdpLog,
+    StatoOdpLog,
+    ChangeEventLog,
+    LottiGeneratiLog,
 )
 from app_odp.policy.decorator import require_perm
 from app_odp.policy.policy import RbacPolicy
-from app_odp.models import InputOdpLog, StatoOdpLog, ChangeEventLog
 
 try:
     from icecream import ic
@@ -413,6 +415,29 @@ def _normalize_lotti_for_payload(lotti_input: list[dict]) -> list[dict]:
     return rows
 
 
+def _normalize_lotto_prodotto_for_payload(lotto: dict | None) -> dict | None:
+    if not lotto:
+        return None
+
+    parent_lotti = []
+    for row in lotto.get("ParentLotti") or []:
+        parent_lotti.append(
+            {
+                "cod_art": _norm_text(row.get("CodArt")),
+                "rif_lotto_alfa": _norm_text(row.get("RifLottoAlfa")),
+                "quantita": _norm_text(row.get("Quantita")),
+            }
+        )
+
+    return {
+        "cod_art": _norm_text(lotto.get("CodArt")),
+        "rif_lotto_alfa": _norm_text(lotto.get("RifLottoAlfa")),
+        "quantita": _norm_text(lotto.get("Quantita")),
+        "fase": _norm_text(lotto.get("Fase")),
+        "parent_lotti": parent_lotti,
+    }
+
+
 def _build_phase_payload(
     ordine,
     fase_corrente: str,
@@ -420,6 +445,7 @@ def _build_phase_payload(
     q_nok: Decimal,
     tempo_finale: str,
     lotti_input: list[dict],
+    lotto_prodotto: dict | None,
     note: str,
     now_iso: str,
 ) -> dict:
@@ -439,6 +465,7 @@ def _build_phase_payload(
         "tempo_funzionamento": tempo_finale,
         "note": note,
         "lotti": _normalize_lotti_for_payload(lotti_input),
+        "lotto_prodotto": _normalize_lotto_prodotto_for_payload(lotto_prodotto),
         "created_at": now_iso,
         "created_by": current_user.username,
         "chiusura_parziale": False,
@@ -588,10 +615,10 @@ def _render_bridge_collaudo(odp):
             "partials/_home_montaggio_sl_rows_in_corso.html", odp=odp
         ),
         "tbody_tbl_da_eseguire_m": render_template(
-            "partials/_home_collaudo_m_rows_da_eseguire.html", odp=odp
+            "partials/old/_home_collaudo_m_rows_da_eseguire.html", odp=odp
         ),
         "tbody_ordini_in_corso_m": render_template(
-            "partials/_home_collaudo_m_rows_in_corso.html", odp=odp
+            "partials/old/_home_collaudo_m_rows_in_corso.html", odp=odp
         ),
     }
 
@@ -1702,6 +1729,32 @@ def api_chiudi_ordine():
 
     now_dt = _now_rome_dt()
     now_iso = now_dt.isoformat(timespec="seconds")
+    lotto_prodotto = None
+
+    if _norm_text(ordine.GestioneLotto).lower() == "si" and q_ok > 0:
+        rif_lotto_prodotto = generazione_lotti(now_dt)
+
+        parent_lotti_ok = []
+        for row in lotti_input:
+            esito_row = _norm_text(row.get("Esito", "ok")).lower()
+            if esito_row != "ok":
+                continue
+
+            parent_lotti_ok.append(
+                {
+                    "CodArt": _norm_text(row.get("CodArt")),
+                    "RifLottoAlfa": _norm_text(row.get("RifLottoAlfa")),
+                    "Quantita": str(row.get("Quantita", 0)),
+                }
+            )
+
+        lotto_prodotto = {
+            "CodArt": ordine.CodArt,
+            "RifLottoAlfa": rif_lotto_prodotto,
+            "Quantita": _decimal_to_text(q_ok),
+            "Fase": fase_corrente,
+            "ParentLotti": parent_lotti_ok,
+        }
 
     stato = StatoOdp.query.filter_by(
         IdDocumento=ordine.IdDocumento, IdRiga=ordine.IdRiga
@@ -1757,6 +1810,7 @@ def api_chiudi_ordine():
                 "richiede_export_erp": True,
                 "erp_export_kind": "consuntivo_fase_parziale",
                 "erp_outbox_flag_only": True,
+                "lotto_prodotto": lotto_prodotto,
             },
         )
     else:
@@ -1767,6 +1821,7 @@ def api_chiudi_ordine():
             q_nok=q_nok,
             tempo_finale=tempo_finale,
             lotti_input=lotti_input,
+            lotto_prodotto=lotto_prodotto,
             note=note,
             now_iso=now_iso,
         )
@@ -1790,6 +1845,7 @@ def api_chiudi_ordine():
                 "outbox_id": outbox.outbox_id,
                 "export_status": outbox.status,
                 "chiusura_parziale": False,
+                "lotto_prodotto": lotto_prodotto,
             },
         )
 
@@ -1870,6 +1926,23 @@ def api_chiudi_ordine():
             if hasattr(LottiUsatiLog, "Fase"):
                 lotto_log.Fase = fase_corrente
             db.session.add(lotto_log)
+    if lotto_prodotto is not None:
+        db.session.add(
+            LottiGeneratiLog(
+                IdDocumento=ordine.IdDocumento,
+                IdRiga=ordine.IdRiga,
+                RifRegistraz=ordine.RifRegistraz,
+                CodArt=lotto_prodotto["CodArt"],
+                RifLottoAlfa=lotto_prodotto["RifLottoAlfa"],
+                Quantita=lotto_prodotto["Quantita"],
+                Fase=lotto_prodotto["Fase"],
+                ParentLottiJson=json.dumps(
+                    lotto_prodotto["ParentLotti"], ensure_ascii=False
+                ),
+                ClosedBy=current_user.username,
+                ClosedAt=now_iso,
+            )
+        )
 
     ce_rows = (
         ChangeEvent.query.filter(ChangeEvent.payload_json.isnot(None))
@@ -2131,9 +2204,11 @@ def api_chiudi_ordine_montaggio_macchina():
         q_nok=q_nok,
         tempo_finale=tempo_finale,
         lotti_input=lotti_input,
+        lotto_prodotto=None,
         note=note,
         now_iso=now_iso,
     )
+
     outbox = _queue_phase_export(
         ordine=ordine,
         fase_corrente=fase_corrente,
@@ -2374,3 +2449,8 @@ def api_lotti_componenti():
             "componenti": componenti_lotto,
         }
     )
+
+
+def generazione_lotti(dt=None) -> str:
+    dt = dt or _now_rome_dt()
+    return dt.strftime("%Y%m%d")
