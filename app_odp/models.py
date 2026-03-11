@@ -733,3 +733,29 @@ class ErpOutbox(db.Model):
     attempts = db.Column(db.Integer, nullable=False, default=0)
     last_error = db.Column(db.Text)
     exported_at = db.Column(db.Text)
+
+
+class LottiGeneratiLog(db.Model):
+    __bind_key__ = "log"
+
+    __tablename__ = "lotti_generati_log"
+
+    log_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    # models.py
+    logged_at = db.Column(
+        db.Text,
+        nullable=False,
+        default=lambda: datetime.now(ZoneInfo("Europe/Rome")).isoformat(
+            timespec="seconds"
+        ),
+    )
+    IdDocumento = db.Column(db.Text, nullable=False)
+    IdRiga = db.Column(db.Text, nullable=False)
+    RifRegistraz = db.Column(db.Text)
+    CodArt = db.Column(db.Text, nullable=False)
+    RifLottoAlfa = db.Column(db.Text, nullable=False)
+    Quantita = db.Column(db.Text, nullable=False)
+    Fase = db.Column(db.Text)
+    ParentLottiJson = db.Column(db.Text)
+    ClosedBy = db.Column(db.Text)
+    ClosedAt = db.Column(db.Text)

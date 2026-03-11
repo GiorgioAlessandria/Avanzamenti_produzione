@@ -16,8 +16,6 @@
     <div class="toast-body d-flex flex-column justify-content-center align-items-center"
          role="alert"
          style="opacity: 1;width: auto;height: auto;">
-        <p style="font-size: 20px;">Stai prendendo in carico un nuovo ordine</p>
-
         <input type="hidden"
                data-bind="iddocumento"
                id="toast-presa-iddocumento">
@@ -64,8 +62,6 @@
     <div class="toast-body d-flex flex-column justify-content-center align-items-center"
          role="alert"
          style="opacity: 1;width: auto;height: auto;">
-        <p style="font-size: 20px;">Stai prendendo in carico un ordine macchina</p>
-
         <input type="hidden"
                data-bind="iddocumento"
                id="toast-presa-m-iddocumento">
@@ -124,7 +120,6 @@
     <div class="toast-body d-flex flex-column justify-content-center align-items-center"
          role="alert"
          style="opacity: 1;width: auto;height: auto;">
-        <p style="font-size: 20px;">Stai sospendendo l'ordine</p>
         <form method="post">
             <input type="hidden"
                    data-bind="iddocumento"
@@ -178,7 +173,6 @@
     <div class="toast-body d-flex flex-column justify-content-center align-items-center"
          role="alert"
          style="opacity: 1;width: auto;height: auto;">
-        <p style="font-size: 20px;">Stai riattivando l'ordine</p>
         <form method="post">
             <input type="hidden"
                    data-bind="iddocumento"
@@ -208,10 +202,10 @@
     </div>
 </div>
 <!--toast chiusura ordine SL -->
-<div class="toast lh-lg hide"
+<div class="toast  fluid hide"
      role="alert"
      id="toast-4"
-     style="width: max-content; max-width: 90vw; height: max-content; position: fixed; top: 1rem; right: 1rem; z-index: 2000; opacity: 1;">
+     style="width: max-content; max-width: 90vw;padding:8px; height: max-content;max-width: 70vw; position: fixed; top: 1rem; right: 1rem; z-index: 2000; opacity: 10000;">
     <div class="toast-header">
         <strong class="me-auto"
                 style="font-size: 25px;">
@@ -226,13 +220,15 @@
     </div>
     <div class="toast-body d-flex flex-column justify-content-center align-items-center"
          role="alert"
-         style="opacity: 1; max-height: 80vh; overflow-y: auto;">
-        <p style="font-size: 20px;">Stai chiudendo l'ordine</p>
+         style="opacity: 1; height: auto; overflow-y: auto;">
 
         <!-- Hidden fields -->
         <input type="hidden"
                data-bind="iddocumento"
                id="toast-chiudi-sl-iddocumento">
+        <input type="hidden"
+               data-bind="quantitaTotale"
+               id="toast-chiudi-sl-quantita-totale">
         <input type="hidden"
                data-bind="idriga"
                id="toast-chiudi-sl-idriga">
@@ -248,40 +244,52 @@
         <input type="hidden"
                data-bind="fase"
                id="toast-chiudi-sl-fase">
+        <div class="container">
+            <!-- Quantità conforme / non conforme -->
+            <div class="row">
+                <div class="col">
+                    <label for="toast-chiudi-sl-quantita-conforme"
+                           style="font-size: 20px;">
+                        Quantità conforme:<br>
+                        <input type="number"
+                               id="toast-chiudi-sl-quantita-conforme"
+                               min="0"
+                               step="1"
+                               required>
+                    </label>
+                </div>
+                <div class="col">
+                    <label for="toast-chiudi-sl-quantita-non-conforme"
+                           style="font-size: 20px;">
+                        Quantità KO:<br>
+                        <input type="number"
+                               id="toast-chiudi-sl-quantita-non-conforme"
+                               min="0"
+                               step="1"
+                               required>
+                    </label>
+                </div>
+            </div>
 
-        <!-- Quantità conforme / non conforme -->
-        <label for="toast-chiudi-sl-quantita-conforme"
-               style="font-size: 20px;">
-            Quantità conforme:<br>
-            <input type="number"
-                   id="toast-chiudi-sl-quantita-conforme"
-                   min="0"
-                   step="1"
-                   required>
-        </label><br>
-        <label for="toast-chiudi-sl-quantita-non-conforme"
-               style="font-size: 20px;">
-            Quantità KO:<br>
-            <input type="number"
-                   id="toast-chiudi-sl-quantita-non-conforme"
-                   min="0"
-                   step="1"
-                   required>
-        </label><br>
+            <div class="row">
+                <div class="col"
+                     style="width: max-content">
+                    <!-- Note -->
 
-        <!-- Note -->
-        <label for="toast-chiudi-sl-note"
-               style="font-size: 20px;">
-            Note:<br>
-            <textarea id="toast-chiudi-sl-note"
-                      rows="2"
-                      cols="30"></textarea>
-        </label><br>
+                    <label for="toast-chiudi-sl-note"
+                           style="font-size: 20px; width: max-content">
+                        Note:<br>
+                        <textarea id="toast-chiudi-sl-note"
+                                  rows="2"
+                                  cols="100"></textarea>
+                    </label>
 
+                </div>
+            </div>
+        </div>
         <!-- Sezione Lotti (nascosta di default) -->
         <div id="lotti-section-sl"
-             style="display: none; width: 100%;">
-            <hr>
+             style="display: none; width: 100%; padding:10px; font-size: 20px">
             <h5 class="text-center mb-2">Assegnazione Lotti Materiale</h5>
 
             <div id="lotti-loading-sl"
@@ -299,7 +307,8 @@
             <div class="table-responsive"
                  style="max-height: 350px; overflow-y: auto;">
                 <table class="table table-sm table-striped table-bordered align-middle mb-1"
-                       id="tbl-lotti-sl">
+                       id="tbl-lotti-sl"
+                       style="font-size: 20px">
                     <thead class="table-light"
                            style="position: sticky; top: 0; z-index: 1;">
                     <tr>
@@ -316,32 +325,50 @@
                         <th style="width: 70px;"></th>
                     </tr>
                     </thead>
-                    <tbody id="tbody-lotti-sl"></tbody>
+                    <tbody id="tbody-lotti-sl"
+                           style="font-size: 20px"></tbody>
                 </table>
             </div>
 
             <div id="lotti-riepilogo-sl"
                  class="mt-2 mb-2"
-                 style="font-size: 13px; background: #f8f9fa; padding: 8px; border-radius: 4px;">
+                 style="font-size: 20px; background: #f8f9fa; padding: 8px; border-radius: 4px;">
             </div>
         </div>
-
-        <div class="form-check mt-3 mb-2">
-            <input class="form-check-input"
-                   type="checkbox"
-                   id="toast-chiudi-sl-parziale">
-            <label class="form-check-label"
-                   for="toast-chiudi-sl-parziale">
-                Chiusura parziale ordine
-            </label>
+        <div class="container-sm"
+             style="padding:15px">
+            <div class="row">
+                <div class="form-check mt-1 mb-1 col"
+                     style="font-size: 20px; background: #f8f9fa; border-radius: 4px;">
+                    <input class="form-check-input"
+                           type="checkbox"
+                           id="toast-chiudi-sl-parziale">
+                    <label class="form-check-label"
+                           for="toast-chiudi-sl-parziale">
+                        Chiusura parziale ordine
+                    </label>
+                </div>
+                <div class="form-check mt-1 mb-1 col"
+                     style="font-size: 20px; background: #f8f9fa; border-radius: 4px;">
+                    <input class="form-check-input"
+                           type="checkbox"
+                           id="toast-chiudi-sl-totale">
+                    <label class="form-check-label"
+                           for="toast-chiudi-sl-totale">
+                        Chiusura totale ordine
+                    </label>
+                </div>
+            </div>
         </div>
-
-        <button class="btn btn-lg btn-primary mt-2"
-                type="button"
-                id="btn-conferma-chiusura-sl"
-                style="font-size: 25px;">
-            Conferma
-        </button>
+        <br>
+        <div>
+            <button class="btn btn-lg btn-primary mt-2"
+                    type="button"
+                    id="btn-conferma-chiusura-sl"
+                    style="font-size: 22px;">
+                Conferma
+            </button>
+        </div>
     </div>
 </div>
 
@@ -364,8 +391,6 @@
     <div class="toast-body d-flex flex-column justify-content-center align-items-center"
          role="alert"
          style="opacity: 1;width: auto;height: auto;">
-        <p style="font-size: 20px;">Stai sospendendo un ordine macchina</p>
-
         <form method="post">
             <input type="hidden"
                    data-bind="iddocumento"
@@ -422,7 +447,6 @@
     <div class="toast-body d-flex flex-column justify-content-center align-items-center"
          role="alert"
          style="opacity: 1;width: auto;height: auto;">
-        <p style="font-size: 20px;">Stai riattivando l'ordine macchina</p>
         <form method="post">
             <input type="hidden"
                    data-bind="iddocumento"
@@ -474,8 +498,6 @@
     <div class="toast-body d-flex flex-column justify-content-center align-items-center"
          role="alert"
          style="opacity: 1; max-height: 80vh; overflow-y: auto;">
-        <p style="font-size: 20px;">Stai chiudendo l'ordine macchina</p>
-
         <!-- Hidden fields -->
         <input type="hidden"
                data-bind="iddocumento"
@@ -500,12 +522,17 @@
                id="toast-chiudi-m-matricola">
 
         <!-- Note -->
-        <label for="toast-chiudi-m-note"
-               style="font-size: 20px;">Note:<br>
-            <textarea id="toast-chiudi-m-note"
-                      rows="2"
-                      cols="30"></textarea>
-        </label><br>
+        <div class="container">
+            <div class="row">
+                <label for="toast-chiudi-m-note"
+                       style="font-size: 20px;">Note:<br>
+                    <textarea id="toast-chiudi-m-note"
+                              rows="2"
+                              cols="100"></textarea>
+                </label>
+
+            </div>
+        </div>
 
         <!-- Sezione Lotti (nascosta di default) -->
         <div id="lotti-section-m"
@@ -523,7 +550,7 @@
 
             <div id="lotti-alert-m"
                  class="alert alert-danger mb-2"
-                 style="display: none; font-size: 14px; white-space: pre-line;"></div>
+                 style="display: none; font-size: 20px; white-space: pre-line;"></div>
 
             <div class="table-responsive"
                  style="max-height: 350px; overflow-y: auto;">
@@ -541,7 +568,6 @@
                         <th style="min-width: 100px;"
                             class="text-end">Qtà utilizzata
                         </th>
-                        <th style="min-width: 70px;">Esito</th>
                         <th style="width: 70px;"></th>
                     </tr>
                     </thead>
@@ -551,14 +577,14 @@
 
             <div id="lotti-riepilogo-m"
                  class="mt-2 mb-2"
-                 style="font-size: 13px; background: #f8f9fa; padding: 8px; border-radius: 4px;">
+                 style="font-size: 20px; background: #f8f9fa; padding: 8px; border-radius: 4px;">
             </div>
         </div>
 
         <button class="btn btn-lg btn-primary mt-2"
                 type="button"
                 id="btn-conferma-chiusura-m"
-                style="font-size: 25px;">
+                style="font-size: 22px;">
             Conferma
         </button>
     </div>
@@ -736,6 +762,17 @@
                     <label><input
                             type="text"
                             class="js-table-filter form-control form-control-sm"
+                            placeholder="Filtra per matricola..."
+                            data-target-table="ordini_da_eseguire_m"
+                            data-filter-mode="dataset"
+                            data-filter-key="matricola"
+                            autocomplete="off"
+                    ></label>
+                </div>
+                <div class="col mb-1">
+                    <label><input
+                            type="text"
+                            class="js-table-filter form-control form-control-sm"
                             placeholder="Filtra per articolo..."
                             data-target-table="ordini_da_eseguire_m"
                             data-filter-mode="dataset"
@@ -787,6 +824,17 @@
                             data-target-table="ordini_in_corso_m"
                             data-filter-mode="dataset"
                             data-filter-key="ordine"
+                            autocomplete="off"
+                    ></label>
+                </div>
+                <div class="col mb-1">
+                    <label><input
+                            type="text"
+                            class="js-table-filter form-control form-control-sm"
+                            placeholder="Filtra per matricola..."
+                            data-target-table="ordini_in_corso_m"
+                            data-filter-mode="dataset"
+                            data-filter-key="matricola"
                             autocomplete="off"
                     ></label>
                 </div>
@@ -1082,7 +1130,12 @@
                     method: "POST",
                     headers: {"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"},
                     credentials: "same-origin",
-                    body: JSON.stringify({id_documento: idDocumento, id_riga: idRiga, causale: causale, modalita: "sl"})
+                    body: JSON.stringify({
+                        id_documento: idDocumento,
+                        id_riga: idRiga,
+                        causale: causale,
+                        modalita: "sl"
+                    })
                 });
                 let data = {};
                 try {
@@ -1247,7 +1300,12 @@
                     method: "POST",
                     headers: {"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"},
                     credentials: "same-origin",
-                    body: JSON.stringify({id_documento: idDocumento, id_riga: idRiga, matricola: matricola, fase: fase})
+                    body: JSON.stringify({
+                        id_documento: idDocumento,
+                        id_riga: idRiga,
+                        matricola: matricola,
+                        fase: fase
+                    })
                 });
                 let data = {};
                 try {
@@ -1280,9 +1338,9 @@
     });
 </script>
 <!-- ============================================================ -->
-<!-- IIFE: Lotti + Chiusura MACCHINA (toast-7)                     -->
+<!-- IIFE: Lotti + Chiusura MACCHINA (toast_7)                     -->
 <!-- ============================================================ -->
-<script>
+<script id="toast_7">
     (() => {
         let _lottiData = [];
         let _hasRequiredLotti = false;
@@ -1324,19 +1382,9 @@
 
         function sameQty(a, b) {
             return Math.abs(Number(a || 0) - Number(b || 0)) < 0.000001;
+
         }
 
-        function isGestioneLottoSi(comp) {
-            const flag = String(
-                comp?.GestioneLotto
-                ?? comp?.gestione_lotto
-                ?? comp?.gestioneLotto
-                ?? ""
-            ).trim().toLowerCase();
-
-            if (flag) return flag === "si";
-            return Array.isArray(comp?.lotti) && comp.lotti.length > 0;
-        }
 
         function buildLottoSelect(lotti, selectedLotto = "") {
             let html = '<select class="form-select form-select-sm lotto-select-m">';
@@ -1357,16 +1405,28 @@
             return html;
         }
 
+        function componenteRichiedeLotto(comp) {
+            const flag = String(
+                comp?.GestioneLotto
+                ?? comp?.gestione_lotto
+                ?? comp?.gestioneLotto
+                ?? ""
+            ).trim().toLowerCase();
+
+            if (flag) return flag === "si";
+            return Array.isArray(comp?.lotti) && comp.lotti.length > 0;
+        }
+
         function addLottoRow(codArt, desArt, lotti, isInitial) {
             _rowCounter++;
             const tr = document.createElement("tr");
             tr.id = `lotto-m-row-${_rowCounter}`;
             tr.dataset.codart = codArt;
             tr.innerHTML = `
-                <td class="fw-semibold" style="font-size:13px;">${escHtml(codArt)}</td>
-                <td style="font-size:13px;">${escHtml(desArt || "")}</td>
+                <td class="fw-semibold" style="font-size:20px;">${escHtml(codArt)}</td>
+                <td style="font-size:20px;">${escHtml(desArt || "")}</td>
                 <td>${buildLottoSelect(lotti)}</td>
-                <td class="text-end giacenza-cell-m" style="font-size:13px;">-</td>
+                <td class="text-end giacenza-cell-m" style="font-size:20px;">-</td>
                 <td>
                     <input type="number"
                            class="form-control form-control-sm lotto-qty-m text-end"
@@ -1375,12 +1435,6 @@
                            value=""
                            placeholder="0"
                            style="width:90px;">
-                </td>
-                <td>
-                    <select class="form-select form-select-sm lotto-esito-m" style="width:70px;">
-                        <option value="ok">OK</option>
-                        <option value="ko">KO</option>
-                    </select>
                 </td>
                 <td class="text-center">
                     <button type="button"
@@ -1403,26 +1457,22 @@
             tbody.querySelectorAll("tr").forEach(row => {
                 const cod = row.dataset.codart || "";
                 const qty = parseQty(row.querySelector(".lotto-qty-m")?.value);
-                const esito = row.querySelector(".lotto-esito-m")?.value || "ok";
 
-                if (!totals[cod]) totals[cod] = {ok: 0, ko: 0, totale: 0};
-                if (esito === "ok") totals[cod].ok += qty;
-                else totals[cod].ko += qty;
-                totals[cod].totale += qty;
+                if (!totals[cod]) totals[cod] = 0;
+                totals[cod] += qty;
             });
 
             let html = "<strong>Riepilogo per componente:</strong><br>";
             for (const comp of _lottiData) {
                 const codArt = String(comp.CodArt || "");
                 const richiesto = parseQty(comp.Quantita);
-                const t = totals[codArt] || {ok: 0, ko: 0, totale: 0};
-                const ok = sameQty(t.totale, richiesto);
+                const totale = totals[codArt] || 0;
+                const ok = sameQty(totale, richiesto);
 
                 html += `
-                    <span class="${ok ? "text-success" : "text-danger"}">
-                        ${escHtml(codArt)}: ${t.totale}/${richiesto}
-                        (OK: ${t.ok}, KO: ${t.ko})${ok ? " ✓" : " ✗"}
-                    </span><br>`;
+            <span class="${ok ? "text-success" : "text-danger"}">
+                ${escHtml(codArt)}: ${totale}/${richiesto}${ok ? " ✓" : " ✗"}
+            </span><br>`;
             }
 
             riepilogo.innerHTML = html;
@@ -1463,7 +1513,7 @@
                 const rawComponenti = Array.isArray(data.componenti) ? data.componenti : [];
                 const forceShow = !!data.force_show_section;
 
-                _lottiData = rawComponenti.filter(comp => isGestioneLottoSi(comp));
+                _lottiData = rawComponenti.filter(comp => componenteRichiedeLotto(comp));
 
                 const componentiConLotti = _lottiData.filter(
                     comp => Array.isArray(comp.lotti) && comp.lotti.length > 0
@@ -1520,7 +1570,6 @@
                 const lottoVal = row.querySelector(".lotto-select-m")?.value || "";
                 const giacenza = parseQty(row.querySelector(".giacenza-cell-m")?.textContent);
                 const qty = parseQty(row.querySelector(".lotto-qty-m")?.value);
-                const esito = row.querySelector(".lotto-esito-m")?.value || "ok";
 
                 if (qty > 0 && !lottoVal) {
                     errors.push(`${cod}: selezionare un lotto.`);
@@ -1543,23 +1592,21 @@
                 }
                 usati.add(key);
 
-                if (!perCodice[cod]) perCodice[cod] = {ok: 0, ko: 0, totale: 0};
-                if (esito === "ok") perCodice[cod].ok += qty;
-                else perCodice[cod].ko += qty;
-                perCodice[cod].totale += qty;
+                if (!perCodice[cod]) perCodice[cod] = 0;
+                perCodice[cod] += qty;
 
                 lottiPayload.push({
                     CodArt: cod,
                     RifLottoAlfa: lottoVal,
                     Quantita: qty,
-                    Esito: esito
+                    Esito: "ok"
                 });
             });
 
             for (const comp of _lottiData) {
                 const codArt = String(comp.CodArt || "");
                 const richiesto = parseQty(comp.Quantita);
-                const totale = perCodice[codArt]?.totale || 0;
+                const totale = perCodice[codArt] || 0;
 
                 if (!sameQty(totale, richiesto)) {
                     errors.push(`${codArt}: somma lotti (${totale}) ≠ richiesta (${richiesto}).`);
@@ -1724,9 +1771,9 @@
     })();
 </script>
 <!-- ============================================================ -->
-<!-- IIFE: Lotti + Chiusura SL (toast-4)                           -->
+<!-- IIFE: Lotti + Chiusura SL (toast_4)                           -->
 <!-- ============================================================ -->
-<script>
+<script id="toast_4">
     (() => {
         let _lottiData = [];
         let _hasRequiredLotti = false;
@@ -1740,7 +1787,8 @@
         const tbody = document.getElementById("tbody-lotti-sl");
         const riepilogo = document.getElementById("lotti-riepilogo-sl");
 
-        const hidTot = document.getElementById("toast-chiudi-sl-quantita");
+        const hidQtyResidua = document.getElementById("toast-chiudi-sl-quantita");
+        const hidQtyTotale = document.getElementById("toast-chiudi-sl-quantita-totale");
         const inpConf = document.getElementById("toast-chiudi-sl-quantita-conforme");
         const inpNonConf = document.getElementById("toast-chiudi-sl-quantita-non-conforme");
         const inpNote = document.getElementById("toast-chiudi-sl-note");
@@ -1763,17 +1811,24 @@
             alertEl.style.display = msg ? "" : "none";
         }
 
-        function parseQty(v) {
+        function parseIntQty(v) {
             let s = String(v ?? "").trim().replace(/\s+/g, "");
             if (!s) return NaN;
-            if (s.includes(",") && s.includes(".")) s = s.replace(/\./g, "");
-            s = s.replace(",", ".");
+
+            if (s.includes(",") || s.includes(".")) {
+                return NaN;
+            }
+
+            if (!/^\d+$/.test(s)) {
+                return NaN;
+            }
+
             const n = Number(s);
-            return Number.isFinite(n) ? n : NaN;
+            return Number.isSafeInteger(n) ? n : NaN;
         }
 
         function parseQtyOrZero(v) {
-            const n = parseQty(v);
+            const n = parseIntQty(v);
             return Number.isFinite(n) ? n : 0;
         }
 
@@ -1781,7 +1836,64 @@
             return Math.abs(Number(a || 0) - Number(b || 0)) < 0.000001;
         }
 
-        function isGestioneLottoSi(comp) {
+        function sanitizeIntegerInput(el) {
+            if (!el) return;
+
+            el.setAttribute("inputmode", "numeric");
+            el.setAttribute("step", "1");
+            el.setAttribute("min", "0");
+            el.setAttribute("pattern", "\\d*");
+
+            el.addEventListener("input", () => {
+                const cleaned = String(el.value ?? "").replace(/[^\d]/g, "");
+                if (el.value !== cleaned) {
+                    el.value = cleaned;
+                }
+            });
+
+            el.addEventListener("blur", () => {
+                const raw = String(el.value ?? "").trim();
+                if (!raw) {
+                    el.value = "0";
+                    return;
+                }
+                const n = parseIntQty(raw);
+                el.value = Number.isFinite(n) ? String(n) : "0";
+            });
+        }
+
+        function getQuantitaOrdineCorrente() {
+            const n = parseSystemQty(hidTot?.value);
+            return Number.isFinite(n) ? n : 0;
+        }
+
+        function getQuantitaLavorataCorrente() {
+            const qConf = parseQtyOrZero(inpConf?.value);
+            const qNonConf = parseQtyOrZero(inpNonConf?.value);
+            return qConf + qNonConf;
+        }
+
+        function getQuantitaRichiestaComponente(comp) {
+            const baseQty = parseSystemQty(comp?.Quantita);          // quantità distinta riferita all’ordine totale
+            const qOrdTotale = getQuantitaTotaleOrdine();            // ordine nominale originale
+            const qLavorata = getQuantitaLavorataCorrente();         // OK + KO effettivi inseriti nel toast
+
+            if (!Number.isFinite(baseQty) || baseQty <= 0) return 0;
+            if (!Number.isFinite(qLavorata) || qLavorata <= 0) return 0;
+
+            // fallback prudente se manca la quantità totale ordine
+            if (!Number.isFinite(qOrdTotale) || qOrdTotale <= 0) {
+                return Math.round(baseQty);
+            }
+
+            const richiesto = (baseQty * qLavorata) / qOrdTotale;
+
+            if (!Number.isFinite(richiesto)) return 0;
+
+            return Math.round(richiesto);
+        }
+
+        function componenteRichiedeLotto(comp) {
             const flag = String(
                 comp?.GestioneLotto
                 ?? comp?.gestione_lotto
@@ -1793,13 +1905,34 @@
             return Array.isArray(comp?.lotti) && comp.lotti.length > 0;
         }
 
+        function parseSystemQty(v) {
+            let s = String(v ?? "").trim().replace(/\s+/g, "");
+            if (!s) return NaN;
+            if (s.includes(",") && s.includes(".")) s = s.replace(/\./g, "");
+            s = s.replace(",", ".");
+            const n = Number(s);
+            return Number.isFinite(n) ? n : NaN;
+        }
+
+        function getQuantitaResiduaCorrente() {
+            const n = parseSystemQty(hidQtyResidua?.value);
+            return Number.isFinite(n) ? n : 0;
+        }
+
+        function getQuantitaTotaleOrdine() {
+            const n = parseSystemQty(hidQtyTotale?.value);
+            return Number.isFinite(n) ? n : 0;
+        }
+
         function resetQuantitaInputs() {
-            const qOrd = parseQty(hidTot?.value);
-            if (Number.isFinite(qOrd)) {
-                inpConf.value = String(qOrd);
+            const qResidua = getQuantitaResiduaCorrente();
+
+            if (Number.isFinite(qResidua) && qResidua > 0) {
+                inpConf.value = String(Math.round(qResidua));
             } else {
                 inpConf.value = "";
             }
+
             inpNonConf.value = "0";
             if (inpNote) inpNote.value = "";
             if (chkParziale) chkParziale.checked = false;
@@ -1830,10 +1963,10 @@
             tr.id = `lotto-sl-row-${_rowCounter}`;
             tr.dataset.codart = codArt;
             tr.innerHTML = `
-                <td class="fw-semibold" style="font-size:13px;">${escHtml(codArt)}</td>
-                <td style="font-size:13px;">${escHtml(desArt || "")}</td>
+                <td class="fw-semibold" style="font-size:20px;">${escHtml(codArt)}</td>
+                <td style="font-size:20px;">${escHtml(desArt || "")}</td>
                 <td>${buildLottoSelect(lotti)}</td>
-                <td class="text-end giacenza-cell-sl" style="font-size:13px;">-</td>
+                <td class="text-end giacenza-cell-sl" style="font-size:20px;">-</td>
                 <td>
                     <input type="number"
                            class="form-control form-control-sm lotto-qty-sl text-end"
@@ -1860,6 +1993,7 @@
                     ${isInitial ? "" : '<button type="button" class="btn btn-sm btn-outline-danger btn-rem-lotto-sl" title="Rimuovi">−</button>'}
                 </td>`;
             tbody.appendChild(tr);
+            sanitizeIntegerInput(tr.querySelector(".lotto-qty-sl"));
             return tr;
         }
 
@@ -1881,15 +2015,15 @@
             let html = "<strong>Riepilogo per componente:</strong><br>";
             for (const comp of _lottiData) {
                 const codArt = String(comp.CodArt || "");
-                const richiesto = parseQtyOrZero(comp.Quantita);
+                const richiesto = getQuantitaRichiestaComponente(comp);
                 const t = totals[codArt] || {ok: 0, ko: 0, totale: 0};
                 const ok = sameQty(t.totale, richiesto);
 
                 html += `
-                    <span class="${ok ? "text-success" : "text-danger"}">
-                        ${escHtml(codArt)}: ${t.totale}/${richiesto}
-                        (OK: ${t.ok}, KO: ${t.ko})${ok ? " ✓" : " ✗"}
-                    </span><br>`;
+            <span class="${ok ? "text-success" : "text-danger"}">
+                ${escHtml(codArt)}: ${t.totale}/${richiesto}
+                (OK: ${t.ok}, KO: ${t.ko})${ok ? " ✓" : " ✗"}
+            </span><br>`;
             }
 
             riepilogo.innerHTML = html;
@@ -1935,7 +2069,7 @@
                 const rawComponenti = Array.isArray(data.componenti) ? data.componenti : [];
                 const forceShow = !!data.force_show_section;
 
-                _lottiData = rawComponenti.filter(comp => isGestioneLottoSi(comp));
+                _lottiData = rawComponenti.filter(comp => componenteRichiedeLotto(comp));
 
                 const componentiConLotti = _lottiData.filter(
                     comp => Array.isArray(comp.lotti) && comp.lotti.length > 0
@@ -2030,7 +2164,7 @@
 
             for (const comp of _lottiData) {
                 const codArt = String(comp.CodArt || "");
-                const richiesto = parseQtyOrZero(comp.Quantita);
+                const richiesto = getQuantitaRichiestaComponente(comp);
                 const totale = perCodice[codArt]?.totale || 0;
 
                 if (!sameQty(totale, richiesto)) {
@@ -2046,6 +2180,7 @@
             showAlert("");
             return {valid: true, lottiPayload};
         }
+
 
         tbody.addEventListener("change", function (e) {
             const sel = e.target.closest(".lotto-select-sl");
@@ -2093,6 +2228,17 @@
                 updateRiepilogo();
             }
         });
+        sanitizeIntegerInput(inpConf);
+        sanitizeIntegerInput(inpNonConf);
+        [inpConf, inpNonConf].forEach(el => {
+            el?.addEventListener("input", () => {
+                if (_hasRequiredLotti) updateRiepilogo();
+            });
+        });
+
+        chkParziale?.addEventListener("change", () => {
+            if (_hasRequiredLotti) updateRiepilogo();
+        });
 
         document.addEventListener("click", function (e) {
             const btn = e.target.closest('[data-bs-target="#toast-4"]');
@@ -2118,55 +2264,61 @@
             const btn = this;
             const idDocumento = document.getElementById("toast-chiudi-sl-iddocumento")?.value?.trim() || "";
             const idRiga = document.getElementById("toast-chiudi-sl-idriga")?.value?.trim() || "";
-            const note = inpNote?.value?.trim() || "";
-            const chiusuraParziale = chkParziale?.checked === true;
-
-            const qOrd = parseQty(hidTot?.value);
-            const qConf = parseQty(inpConf.value);
-            const qNonConf = parseQty(inpNonConf.value);
+            const qOrd = document.getElementById("toast-chiudi-sl-quantita")?.value?.trim() || "";
+            const qConf = document.getElementById("toast-chiudi-sl-quantita-conforme")?.value?.trim() || "";
+            const qNonConf = document.getElementById("toast-chiudi-sl-quantita-non-conforme")?.value?.trim() || "";
+            const note = document.getElementById("toast-chiudi-sl-note")?.value?.trim() || "";
+            const chiusuraParziale = document.getElementById("toast-chiudi-sl-parziale")?.checked === true;
 
             if (!idDocumento || !idRiga) {
                 alert("Ordine non valido (IdDocumento/IdRiga mancanti).");
                 return;
             }
 
-            if (!Number.isFinite(qConf) || qConf < 0) {
-                alert("Quantità conforme non valida.");
+            // Validazione quantità
+            const nConf = parseIntQty(qConf);
+            const nNonConf = parseIntQty(qNonConf);
+
+            const qOrdResiduaRaw = document.getElementById("toast-chiudi-sl-quantita")?.value?.trim() || "";
+            const nOrdResiduaRaw = parseSystemQty(qOrdResiduaRaw);
+            const nOrdResidua = Number.isFinite(nOrdResiduaRaw) ? Math.round(nOrdResiduaRaw) : NaN;
+            if (!Number.isInteger(nConf) || nConf < 0) {
+                alert("Quantità conforme non valida: inserire un numero intero >= 0.");
+                return;
+            }
+            if (!Number.isInteger(nNonConf) || nNonConf < 0) {
+                alert("Quantità KO non valida: inserire un numero intero >= 0.");
                 return;
             }
 
-            if (!Number.isFinite(qNonConf) || qNonConf < 0) {
+            if (!Number.isFinite(nConf) || nConf < 0) {
+                alert("Quantità conforme non valida.");
+                return;
+            }
+            if (!Number.isFinite(nNonConf) || nNonConf < 0) {
                 alert("Quantità KO non valida.");
                 return;
             }
 
-            if (!Number.isFinite(qOrd) || qOrd < 0) {
-                alert("Quantità ordine non valida.");
+            const nLavorata = nConf + nNonConf;
+
+            if (nLavorata <= 0) {
+                alert("Devi indicare una quantità lavorata > 0.");
                 return;
             }
 
-            const qLavorata = qConf + qNonConf;
-            const qResidua = qOrd - qLavorata;
+            if (chiusuraParziale) {
+                if (!Number.isFinite(nOrdResidua) || nOrdResidua <= 0) {
+                    alert("Quantità residua ordine non valida.");
+                    return;
+                }
 
-            if (qLavorata <= 0) {
-                alert("Inserire una quantità lavorata maggiore di zero.");
-                return;
+                if (nLavorata >= nOrdResidua) {
+                    alert("Nella chiusura parziale la quantità lavorata deve essere strettamente minore della quantità residua dell'ordine.");
+                    return;
+                }
             }
 
-            if (qLavorata > qOrd) {
-                alert("La quantità conforme + KO supera la quantità da lavorare.");
-                return;
-            }
-
-            if (!chiusuraParziale && !sameQty(qLavorata, qOrd)) {
-                alert("La quantità lavorata deve coincidere con la quantità da lavorare. Per lavorazioni incomplete attiva la chiusura parziale.");
-                return;
-            }
-
-            if (chiusuraParziale && qResidua <= 0) {
-                alert("La quantità residua è zero. Disattiva la chiusura parziale e chiudi normalmente l'ordine.");
-                return;
-            }
 
             let lottiPayload = [];
             if (_hasRequiredLotti) {
@@ -2207,14 +2359,11 @@
                     body: JSON.stringify({
                         id_documento: idDocumento,
                         id_riga: idRiga,
-                        quantita_conforme: String(qConf),
-                        quantita_non_conforme: String(qNonConf),
+                        quantita_conforme: String(nConf),
+                        quantita_non_conforme: String(nNonConf),
                         note: note,
                         lotti: lottiPayload,
-
-                        chiusura_parziale: chiusuraParziale,
-                        quantita_residua: String(Math.max(qResidua, 0)),
-                        qty_da_lavorare: String(Math.max(qResidua, 0))
+                        chiusura_parziale: chiusuraParziale
                     })
                 });
 

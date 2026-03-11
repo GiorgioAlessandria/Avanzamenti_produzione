@@ -17,8 +17,6 @@
     <div class="toast-body d-flex flex-column justify-content-center align-items-center"
          role="alert"
          style="opacity: 1;width: auto;height: auto;">
-        <p style="font-size: 20px;">Stai prendendo in carico un nuovo ordine</p>
-
         <input type="hidden"
                data-bind="iddocumento"
                id="toast1-iddocumento">
@@ -64,7 +62,6 @@
     <div class="toast-body d-flex flex-column justify-content-center align-items-center"
          role="alert"
          style="opacity: 1;width: auto;height: auto;">
-        <p style="font-size: 20px;">Stai sospendendo l'ordine</p>
         <form method="post">
             <input type="hidden"
                    id="toast2-iddocumento"
@@ -117,7 +114,6 @@
     <div class="toast-body d-flex flex-column justify-content-center align-items-center"
          role="alert"
          style="opacity: 1;width: auto;height: auto;">
-        <p style="font-size: 20px;">Stai riattivando l'ordine</p>
         <form method="post">
             <input type="hidden"
                    data-bind="iddocumento"
@@ -166,12 +162,13 @@
     <div class="toast-body d-flex flex-column justify-content-center align-items-center"
          role="alert"
          style="opacity: 1; max-height: 80vh; overflow-y: auto;">
-        <p style="font-size: 20px;">Stai chiudendo l'ordine</p>
-
         <!-- Hidden fields -->
         <input type="hidden"
                data-bind="iddocumento"
                id="toast-chiudi-sl-iddocumento">
+        <input type="hidden"
+               data-bind="quantitaTotale"
+               id="toast-chiudi-sl-quantita-totale">
         <input type="hidden"
                data-bind="idriga"
                id="toast-chiudi-sl-idriga">
@@ -188,34 +185,49 @@
                data-bind="fase"
                id="toast-chiudi-sl-fase">
 
-        <!-- Quantità conforme / non conforme -->
-        <label for="toast-chiudi-sl-quantita-conforme"
-               style="font-size: 20px;">
-            Quantità conforme:<br>
-            <input type="number"
-                   id="toast-chiudi-sl-quantita-conforme"
-                   min="0"
-                   step="1"
-                   required>
-        </label><br>
-        <label for="toast-chiudi-sl-quantita-non-conforme"
-               style="font-size: 20px;">
-            Quantità KO:<br>
-            <input type="number"
-                   id="toast-chiudi-sl-quantita-non-conforme"
-                   min="0"
-                   step="1"
-                   required>
-        </label><br>
+        <div class="container">
+            <!-- Quantità conforme / non conforme -->
+            <div class="row">
+                <div class="col">
+                    <label for="toast-chiudi-sl-quantita-conforme"
+                           style="font-size: 20px;">
+                        Quantità conforme:<br>
+                        <input type="number"
+                               id="toast-chiudi-sl-quantita-conforme"
+                               min="0"
+                               step="1"
+                               required>
+                    </label>
+                </div>
+                <div class="col">
+                    <label for="toast-chiudi-sl-quantita-non-conforme"
+                           style="font-size: 20px;">
+                        Quantità KO:<br>
+                        <input type="number"
+                               id="toast-chiudi-sl-quantita-non-conforme"
+                               min="0"
+                               step="1"
+                               required>
+                    </label>
+                </div>
+            </div>
 
-        <!-- Note -->
-        <label for="toast-chiudi-sl-note"
-               style="font-size: 20px;">
-            Note:<br>
-            <textarea id="toast-chiudi-sl-note"
-                      rows="2"
-                      cols="30"></textarea>
-        </label><br>
+            <div class="row">
+                <div class="col"
+                     style="width: max-content">
+                    <!-- Note -->
+
+                    <label for="toast-chiudi-sl-note"
+                           style="font-size: 20px; width: max-content">
+                        Note:<br>
+                        <textarea id="toast-chiudi-sl-note"
+                                  rows="2"
+                                  cols="100"></textarea>
+                    </label>
+
+                </div>
+            </div>
+        </div>
 
         <!-- Sezione Lotti (nascosta di default) -->
         <div id="lotti-section-sl"
@@ -265,20 +277,36 @@
             </div>
         </div>
 
-        <div class="form-check mt-3 mb-2">
-            <input class="form-check-input"
-                   type="checkbox"
-                   id="toast-chiudi-sl-parziale">
-            <label class="form-check-label"
-                   for="toast-chiudi-sl-parziale">
-                Chiusura parziale ordine
-            </label>
+        <div class="container-sm"
+             style="padding:15px">
+            <div class="row">
+                <div class="form-check mt-1 mb-1 col"
+                     style="font-size: 20px; background: #f8f9fa; border-radius: 4px;">
+                    <input class="form-check-input"
+                           type="checkbox"
+                           id="toast-chiudi-sl-parziale">
+                    <label class="form-check-label"
+                           for="toast-chiudi-sl-parziale">
+                        Chiusura parziale ordine
+                    </label>
+                </div>
+                <div class="form-check mt-1 mb-1 col"
+                     style="font-size: 20px; background: #f8f9fa; border-radius: 4px;">
+                    <input class="form-check-input"
+                           type="checkbox"
+                           id="toast-chiudi-sl-totale">
+                    <label class="form-check-label"
+                           for="toast-chiudi-sl-totale">
+                        Chiusura totale ordine
+                    </label>
+                </div>
+            </div>
         </div>
 
         <button class="btn btn-lg btn-primary mt-2"
                 type="button"
                 id="btn-conferma-chiusura-sl"
-                style="font-size: 25px;">
+                style="font-size: 22px;">
             Conferma
         </button>
     </div>
@@ -286,7 +314,7 @@
 
 
 <main class="d-flex flex-column w-100 mt-3 mb-3"
-      data-bridge-tab="carpenteria"
+      data-bridge-tab="home_standard"
       style="height: fit-content;width: fit-content;">
     <div class="container-fluid w-100 h-100 ps-0 pe-0 mx-0"
          style="width: auto;height: auto;">
@@ -338,7 +366,7 @@
                         </tr>
                         </thead>
                         <tbody id="tbody_ordini_da_eseguire">
-                        {% include "partials/_home_carpenteria_rows_da_eseguire.html" %}
+                        {% include "partials/_home_standard_rows_da_eseguire.html" %}
                         </tbody>
                     </table>
                 </div>
@@ -397,7 +425,7 @@
                         </tr>
                         </thead>
                         <tbody id="tbody_ordini_in_corso">
-                        {% include "partials/_home_carpenteria_rows_in_corso.html" %}
+                        {% include "partials/_home_standard_rows_in_corso.html" %}
                         </tbody>
                     </table>
                 </div>
@@ -716,6 +744,7 @@
         let _lottiData = [];
         let _hasLotti = false;
         let _hasSelectableLotti = false;
+        let _rowCounter = 0;
 
         // ---- DOM ----
         const toastEl = document.getElementById("toast-4");
@@ -724,9 +753,11 @@
         const alertEl = document.getElementById("lotti-alert-sl");
         const tbody = document.getElementById("tbody-lotti-sl");
         const riepilogo = document.getElementById("lotti-riepilogo-sl");
-        const hidTot = document.getElementById("toast-chiudi-sl-quantita");
+        const hidQtyResidua = document.getElementById("toast-chiudi-sl-quantita");
+        const hidQtyTotale = document.getElementById("toast-chiudi-sl-quantita-totale");
         const inpConf = document.getElementById("toast-chiudi-sl-quantita-conforme");
         const inpNonConf = document.getElementById("toast-chiudi-sl-quantita-non-conforme");
+        const chkParziale = document.getElementById("toast-chiudi-sl-parziale");
 
         if (!toastEl || !section || !tbody) return;
 
@@ -757,39 +788,138 @@
             return Array.isArray(comp?.lotti) && comp.lotti.length > 0;
         }
 
-        function parseNum(v) {
+        function parseIntQty(v) {
             let s = String(v ?? "").trim().replace(/\s+/g, "");
             if (!s) return NaN;
-            if (s.includes(",") && s.includes(".")) s = s.replace(/\./g, "");
+
+            if (s.includes(",") || s.includes(".")) {
+                return NaN;
+            }
+
+            if (!/^\d+$/.test(s)) {
+                return NaN;
+            }
+
+            const n = Number(s);
+            return Number.isSafeInteger(n) ? n : NaN;
+        }
+
+        function parseQtyOrZero(v) {
+            const n = parseIntQty(v);
+            return Number.isFinite(n) ? n : 0;
+        }
+
+        function parseSystemQty(v) {
+            let s = String(v ?? "").trim().replace(/\s+/g, "");
+            if (!s) return NaN;
+
+            if (s.includes(",") && s.includes(".")) {
+                s = s.replace(/\./g, "");
+            }
+
             s = s.replace(",", ".");
             const n = Number(s);
             return Number.isFinite(n) ? n : NaN;
         }
 
-        // ---- Autofill quantità all'apertura ----
-        function autofillQuantita() {
-            if (!hidTot || !inpConf || !inpNonConf) return;
-            const qOrd = parseNum(hidTot.value);
-            if (Number.isFinite(qOrd)) {
-                inpConf.value = String(qOrd);
+        function sanitizeIntegerInput(el) {
+            if (!el) return;
+
+            el.setAttribute("inputmode", "numeric");
+            el.setAttribute("step", "1");
+            el.setAttribute("min", "0");
+            el.setAttribute("pattern", "\\d*");
+
+            el.addEventListener("input", () => {
+                const cleaned = String(el.value ?? "").replace(/[^\d]/g, "");
+                if (el.value !== cleaned) {
+                    el.value = cleaned;
+                }
+            });
+
+            el.addEventListener("blur", () => {
+                const raw = String(el.value ?? "").trim();
+                if (!raw) {
+                    el.value = "0";
+                    return;
+                }
+                const n = parseIntQty(raw);
+                el.value = Number.isFinite(n) ? String(n) : "0";
+            });
+        }
+
+        function sameQty(a, b) {
+            return Math.abs(Number(a || 0) - Number(b || 0)) < 0.000001;
+        }
+
+        function getQuantitaResiduaCorrente() {
+            const n = parseSystemQty(hidQtyResidua?.value);
+            return Number.isFinite(n) ? n : 0;
+        }
+
+        function getQuantitaTotaleOrdine() {
+            const n = parseSystemQty(hidQtyTotale?.value);
+            return Number.isFinite(n) ? n : 0;
+        }
+
+        function getQuantitaLavorataCorrente() {
+            const qConf = parseQtyOrZero(inpConf?.value);
+            const qNonConf = parseQtyOrZero(inpNonConf?.value);
+            return qConf + qNonConf;
+        }
+
+        function getQuantitaRichiestaComponente(comp) {
+            const baseQty = parseSystemQty(comp?.Quantita);
+            const qOrdTotale = getQuantitaTotaleOrdine();
+            const qLavorata = getQuantitaLavorataCorrente();
+
+            if (!Number.isFinite(baseQty) || baseQty <= 0) return 0;
+            if (!Number.isFinite(qLavorata) || qLavorata <= 0) return 0;
+
+            if (!Number.isFinite(qOrdTotale) || qOrdTotale <= 0) {
+                return Math.round(baseQty);
             }
-            if (!String(inpNonConf.value || "").trim()) {
-                inpNonConf.value = "0";
+
+            const richiesto = (baseQty * qLavorata) / qOrdTotale;
+
+            if (!Number.isFinite(richiesto)) return 0;
+
+            return Math.round(richiesto);
+        }
+
+        function resetQuantitaInputs() {
+            const qResidua = getQuantitaResiduaCorrente();
+
+            if (Number.isFinite(qResidua) && qResidua > 0) {
+                inpConf.value = String(Math.round(qResidua));
+            } else {
+                inpConf.value = "";
             }
+
+            inpNonConf.value = "0";
+            if (chkParziale) chkParziale.checked = false;
+
+            const noteEl = document.getElementById("toast-chiudi-sl-note");
+            if (noteEl) noteEl.value = "";
         }
 
         // ---- Dropdown lotti ----
-        function buildLottoSelect(codArt, lotti) {
+        function buildLottoSelect(lotti, selectedLotto = "") {
             let html = '<select class="form-select form-select-sm lotto-select-sl">';
             html += '<option value="">-- Seleziona lotto --</option>';
-            for (const l of lotti) {
-                html += `<option value="${escHtml(l.RifLottoAlfa)}" `
-                    + `data-giacenza="${l.Giacenza}" `
-                    + `data-codmag="${escHtml(l.CodMag || "")}">`
-                    + `${escHtml(l.RifLottoAlfa)} (mag: ${escHtml(l.CodMag || "-")})`
-                    + `</option>`;
+            for (const l of (lotti || [])) {
+                const value = String(l.RifLottoAlfa || "");
+                const giacenza = parseSystemQty(l.Giacenza);
+                const codMag = String(l.CodMag || "");
+                const sel = value === selectedLotto ? " selected" : "";
+                html += `
+            <option value="${escHtml(value)}"
+                    data-giacenza="${Number.isFinite(giacenza) ? giacenza : 0}"
+                    data-codmag="${escHtml(codMag)}"${sel}>
+                ${escHtml(value)} (mag: ${escHtml(codMag || "-")})
+            </option>`;
             }
-            html += '</select>';
+            html += "</select>";
             return html;
         }
 
@@ -801,10 +931,10 @@
             tr.dataset.codart = codArt;
 
             tr.innerHTML = `
-            <td class="fw-semibold" style="font-size: 13px;">${escHtml(codArt)}</td>
-            <td style="font-size: 13px;">${escHtml(desArt)}</td>
-            <td>${buildLottoSelect(codArt, lotti)}</td>
-            <td class="text-end giacenza-cell-sl" style="font-size: 13px;">-</td>
+            <td class="fw-semibold" style="font-size: 20px;">${escHtml(codArt)}</td>
+            <td style="font-size: 20px;">${escHtml(desArt)}</td>
+            <td>${buildLottoSelect(lotti)}</td>
+            <td class="text-end giacenza-cell-sl" style="font-size: 20px;">-</td>
             <td>
                 <input type="number" class="form-control form-control-sm lotto-qty-sl text-end"
                        min="0" step="1" value="" placeholder="0" style="width: 90px;">
@@ -823,8 +953,22 @@
             </td>
         `;
             tbody.appendChild(tr);
+            sanitizeIntegerInput(tr.querySelector(".lotto-qty-sl"));
             return tr;
         }
+
+        sanitizeIntegerInput(inpConf);
+        sanitizeIntegerInput(inpNonConf);
+
+        [inpConf, inpNonConf].forEach(el => {
+            el?.addEventListener("input", () => {
+                if (_hasLotti) updateRiepilogo();
+            });
+        });
+
+        chkParziale?.addEventListener("change", () => {
+            if (_hasLotti) updateRiepilogo();
+        });
 
         // ---- Aggiorna giacenza al cambio lotto ----
         tbody.addEventListener("change", function (e) {
@@ -835,9 +979,9 @@
             const qtyInput = row.querySelector(".lotto-qty-sl");
             const opt = sel.options[sel.selectedIndex];
             if (opt && opt.value) {
-                const g = parseInt(opt.dataset.giacenza || "0", 10);
-                giacCell.textContent = g;
-                qtyInput.max = g;
+                const g = parseSystemQty(opt.dataset.giacenza);
+                giacCell.textContent = Number.isFinite(g) ? g : 0;
+                qtyInput.max = Number.isFinite(g) ? String(g) : "";
             } else {
                 giacCell.textContent = "-";
                 qtyInput.max = "";
@@ -870,25 +1014,33 @@
         // ---- Riepilogo ----
         function updateRiepilogo() {
             if (!riepilogo) return;
+
             const totals = {};
             tbody.querySelectorAll("tr").forEach(row => {
                 const cod = row.dataset.codart || "";
-                const qty = parseFloat(row.querySelector(".lotto-qty-sl")?.value || "0") || 0;
+                const qty = parseQtyOrZero(row.querySelector(".lotto-qty-sl")?.value);
                 const esito = row.querySelector(".lotto-esito-sl")?.value || "ok";
+
                 if (!totals[cod]) totals[cod] = {ok: 0, ko: 0, totale: 0};
-                if (esito === "ok") totals[cod].ok += qty; else totals[cod].ko += qty;
+                if (esito === "ok") totals[cod].ok += qty;
+                else totals[cod].ko += qty;
                 totals[cod].totale += qty;
             });
 
             let html = "<strong>Riepilogo per componente:</strong><br>";
             for (const comp of _lottiData) {
-                const t = totals[comp.CodArt] || {ok: 0, ko: 0, totale: 0};
-                const rich = comp.Quantita || 0;
-                const ok = (t.totale === rich);
-                html += `<span class="${ok ? "text-success" : "text-danger"}">`
-                    + `${escHtml(comp.CodArt)}: ${t.totale}/${rich} (OK: ${t.ok}, KO: ${t.ko})`
-                    + `${ok ? " ✓" : " ✗"}</span><br>`;
+                const codArt = String(comp.CodArt || "");
+                const richiesto = getQuantitaRichiestaComponente(comp);
+                const t = totals[codArt] || {ok: 0, ko: 0, totale: 0};
+                const ok = sameQty(t.totale, richiesto);
+
+                html += `
+            <span class="${ok ? "text-success" : "text-danger"}">
+                ${escHtml(codArt)}: ${t.totale}/${richiesto}
+                (OK: ${t.ok}, KO: ${t.ko})${ok ? " ✓" : " ✗"}
+            </span><br>`;
             }
+
             riepilogo.innerHTML = html;
         }
 
@@ -986,33 +1138,57 @@
             tbody.querySelectorAll("tr").forEach(row => {
                 const cod = row.dataset.codart || "";
                 const lottoVal = row.querySelector(".lotto-select-sl")?.value || "";
-                const giacenza = parseInt(row.querySelector(".giacenza-cell-sl")?.textContent || "0", 10) || 0;
-                const qty = parseFloat(row.querySelector(".lotto-qty-sl")?.value || "0") || 0;
+                const giacenza = parseQtyOrZero(row.querySelector(".giacenza-cell-sl")?.textContent);
                 const esito = row.querySelector(".lotto-esito-sl")?.value || "ok";
+                const qtyRaw = row.querySelector(".lotto-qty-sl")?.value;
+                const qty = parseIntQty(qtyRaw);
+
+                if (!Number.isInteger(qty) || qty <= 0) {
+                    errors.push(`${cod} lotto ${lottoVal}: inserire una quantità intera > 0.`);
+                    return;
+                }
 
                 if (qty > 0 && !lottoVal) {
                     errors.push(`${cod}: selezionare un lotto.`);
                     return;
                 }
+
                 if (!lottoVal) return;
-                if (qty > giacenza) errors.push(`${cod} lotto ${lottoVal}: qtà ${qty} > giacenza ${giacenza}.`);
-                if (qty <= 0) errors.push(`${cod} lotto ${lottoVal}: inserire qtà > 0.`);
+
+                if (qty <= 0) {
+                    errors.push(`${cod} lotto ${lottoVal}: inserire qtà > 0.`);
+                }
+
+                if (qty > giacenza) {
+                    errors.push(`${cod} lotto ${lottoVal}: qtà ${qty} > giacenza ${giacenza}.`);
+                }
 
                 const key = `${cod}|${lottoVal}`;
-                if (usati.has(key)) errors.push(`${cod}: lotto ${lottoVal} duplicato.`);
+                if (usati.has(key)) {
+                    errors.push(`${cod}: lotto ${lottoVal} duplicato.`);
+                }
                 usati.add(key);
 
                 if (!perCodice[cod]) perCodice[cod] = {ok: 0, ko: 0, totale: 0};
-                if (esito === "ok") perCodice[cod].ok += qty; else perCodice[cod].ko += qty;
+                if (esito === "ok") perCodice[cod].ok += qty;
+                else perCodice[cod].ko += qty;
                 perCodice[cod].totale += qty;
 
-                lottiPayload.push({CodArt: cod, RifLottoAlfa: lottoVal, Quantita: qty, Esito: esito});
+                lottiPayload.push({
+                    CodArt: cod,
+                    RifLottoAlfa: lottoVal,
+                    Quantita: qty,
+                    Esito: esito
+                });
             });
 
             for (const comp of _lottiData) {
-                const t = perCodice[comp.CodArt] || {totale: 0};
-                if (t.totale !== parseFloat(comp.Quantita || 0)) {
-                    errors.push(`${comp.CodArt}: somma lotti (${t.totale}) ≠ richiesta (${comp.Quantita}).`);
+                const codArt = String(comp.CodArt || "");
+                const richiesto = getQuantitaRichiestaComponente(comp);
+                const totale = perCodice[codArt]?.totale || 0;
+
+                if (!sameQty(totale, richiesto)) {
+                    errors.push(`${codArt}: somma lotti (${totale}) ≠ richiesta (${richiesto}).`);
                 }
             }
 
@@ -1020,6 +1196,7 @@
                 showAlert(errors.join("\n"));
                 return {valid: false, lottiPayload: []};
             }
+
             showAlert("");
             return {valid: true, lottiPayload};
         }
@@ -1030,12 +1207,11 @@
             if (!btn) return;
 
             requestAnimationFrame(() => {
-                const chkParziale = document.getElementById("toast-chiudi-sl-parziale");
-                if (chkParziale) chkParziale.checked = false;
-                autofillQuantita();
+                resetQuantitaInputs();
 
-                const idDoc = document.getElementById("toast-chiudi-sl-iddocumento")?.value?.trim();
-                const idRiga = document.getElementById("toast-chiudi-sl-idriga")?.value?.trim();
+                const idDoc = document.getElementById("toast-chiudi-sl-iddocumento")?.value?.trim() || "";
+                const idRiga = document.getElementById("toast-chiudi-sl-idriga")?.value?.trim() || "";
+
                 if (idDoc && idRiga) {
                     fetchLottiData(idDoc, idRiga);
                 } else {
@@ -1063,9 +1239,20 @@
             }
 
             // Validazione quantità
-            const nConf = Number(String(qConf).replace(",", "."));
-            const nNonConf = Number(String(qNonConf).replace(",", "."));
-            const nOrd = Number(String(qOrd).replace(",", "."));
+            const nConf = parseIntQty(qConf);
+            const nNonConf = parseIntQty(qNonConf);
+
+            const qOrdResiduaRaw = document.getElementById("toast-chiudi-sl-quantita")?.value?.trim() || "";
+            const nOrdResiduaRaw = parseSystemQty(qOrdResiduaRaw);
+            const nOrdResidua = Number.isFinite(nOrdResiduaRaw) ? Math.round(nOrdResiduaRaw) : NaN;
+            if (!Number.isInteger(nConf) || nConf < 0) {
+                alert("Quantità conforme non valida: inserire un numero intero >= 0.");
+                return;
+            }
+            if (!Number.isInteger(nNonConf) || nNonConf < 0) {
+                alert("Quantità KO non valida: inserire un numero intero >= 0.");
+                return;
+            }
 
             if (!Number.isFinite(nConf) || nConf < 0) {
                 alert("Quantità conforme non valida.");
@@ -1075,23 +1262,23 @@
                 alert("Quantità KO non valida.");
                 return;
             }
-            if (nNonConf > nConf) {
-                alert("La quantità KO non può superare la quantità conforme.");
-                return;
-            }
-            if (Number.isFinite(nOrd) && nConf > nOrd) {
-                alert("La quantità conforme non può superare la quantità ordine.");
+
+            const nLavorata = nConf + nNonConf;
+            if (nLavorata <= 0) {
+                alert("Devi indicare una quantità lavorata > 0.");
                 return;
             }
 
-            const nLavorata = nConf + nNonConf;
-            if (!chiusuraParziale && Number.isFinite(nOrd) && nLavorata < nOrd) {
-                alert("La quantità lavorata è inferiore alla quantità da lavorare. Attiva la chiusura parziale oppure completa l'ordine.");
-                return;
-            }
-            if (chiusuraParziale && Number.isFinite(nOrd) && nLavorata >= nOrd) {
-                alert("La quantità residua è zero. Disattiva la chiusura parziale e chiudi normalmente l'ordine.");
-                return;
+            if (chiusuraParziale) {
+                if (!Number.isFinite(nOrdResidua) || nOrdResidua <= 0) {
+                    alert("Quantità residua ordine non valida.");
+                    return;
+                }
+
+                if (nLavorata >= nOrdResidua) {
+                    alert("Nella chiusura parziale la quantità lavorata deve essere strettamente minore della quantità residua dell'ordine.");
+                    return;
+                }
             }
 
             // Validazione lotti
@@ -1130,11 +1317,11 @@
                     body: JSON.stringify({
                         id_documento: idDocumento,
                         id_riga: idRiga,
-                        quantita_conforme: qConf,
-                        quantita_non_conforme: qNonConf,
+                        quantita_conforme: String(nConf),
+                        quantita_non_conforme: String(nNonConf),
                         note: note,
-                        chiusura_parziale: chiusuraParziale,
                         lotti: lottiPayload,
+                        chiusura_parziale: chiusuraParziale
                     })
                 });
 
@@ -1158,8 +1345,8 @@
                 }
 
                 // Reset
-                const btnSosp = document.getElementById("sospensione_ordine_sl");
-                const btnRiatt = document.getElementById("riattivazione_ordine_sl");
+                const btnSosp = document.getElementById("sospensione_ordine");
+                const btnRiatt = document.getElementById("riattivazione_ordine");
                 if (btnSosp) btnSosp.disabled = true;
                 if (btnRiatt) btnRiatt.disabled = true;
                 section.style.display = "none";
