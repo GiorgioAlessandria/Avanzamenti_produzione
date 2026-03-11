@@ -66,7 +66,7 @@ HOME_TABS = {
     "70": {
         "tab": "collaudo",
         "label_fallback": "Collaudo",
-        "template": "partials/_home_collaudo.html",
+        "template": "partials/_home_montaggio.html",
     },
 }
 
@@ -78,7 +78,7 @@ TAB_TO_TEMPLATE = {
         {"reparto": "30", "perm": "home"},
     ),
     "collaudo": (
-        "partials/_home_collaudo.html",
+        "partials/_home_montaggio.html",
         {"reparto": "70", "perm": "home"},
     ),
 }
@@ -192,16 +192,48 @@ def _fase_to_int(value) -> int | None:
         return None
 
 
-def _phase_sequence_for_ordine(ordine) -> list[str]:
-    totale_fasi = _fase_to_int(getattr(ordine, "NumFase", ""))
-
-    if totale_fasi is None or totale_fasi <= 0:
-        fase_corrente = _fase_to_int(getattr(ordine, "FaseAttiva", ""))
-        if fase_corrente is not None and fase_corrente > 0:
-            return [str(fase_corrente)]
+def _parse_phase_list(value) -> list[str]:
+    raw = _norm_text(value)
+    if not raw:
         return []
 
-    return [str(i) for i in range(1, totale_fasi + 1)]
+    # Caso JSON/lista: "[1.0, 2.0]"
+    try:
+        parsed = json.loads(raw)
+    except Exception:
+        parsed = None
+
+    if isinstance(parsed, list):
+        out = []
+        for item in parsed:
+            try:
+                fase_int = int(float(item))
+            except (TypeError, ValueError):
+                continue
+            if fase_int > 0:
+                s = str(fase_int)
+                if s not in out:
+                    out.append(s)
+        return out
+
+    # Caso legacy: "2" = totale fasi
+    totale_fasi = _fase_to_int(raw)
+    if totale_fasi is not None and totale_fasi > 0:
+        return [str(i) for i in range(1, totale_fasi + 1)]
+
+    return []
+
+
+def _phase_sequence_for_ordine(ordine) -> list[str]:
+    fasi = _parse_phase_list(getattr(ordine, "NumFase", ""))
+    if fasi:
+        return fasi
+
+    fase_corrente = _fase_to_int(getattr(ordine, "FaseAttiva", ""))
+    if fase_corrente is not None and fase_corrente > 0:
+        return [str(fase_corrente)]
+
+    return []
 
 
 def _get_phase_transition(ordine, fase_corrente: str) -> tuple[bool, str | None]:
@@ -299,9 +331,9 @@ def _fase_corrente_for_export(ordine, stato=None, fase_override="") -> str:
     if fase_int is not None and fase_int > 0:
         return str(fase_int)
 
-    totale = _fase_to_int(getattr(ordine, "NumFase", ""))
-    if totale == 1:
-        return "1"
+    fasi = _phase_sequence_for_ordine(ordine)
+    if len(fasi) == 1:
+        return fasi[0]
 
     return ""
 
@@ -615,10 +647,10 @@ def _render_bridge_collaudo(odp):
             "partials/_home_montaggio_sl_rows_in_corso.html", odp=odp
         ),
         "tbody_tbl_da_eseguire_m": render_template(
-            "partials/old/_home_collaudo_m_rows_da_eseguire.html", odp=odp
+            "partials/_home_montaggio_m_rows_da_eseguire.html", odp=odp
         ),
         "tbody_ordini_in_corso_m": render_template(
-            "partials/old/_home_collaudo_m_rows_in_corso.html", odp=odp
+            "partials/_home_montaggio_m_rows_in_corso.html", odp=odp
         ),
     }
 

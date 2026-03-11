@@ -68,23 +68,6 @@
                 {% elif current_user.is_authenticated and current_user.has_role('responsabile_qualita') %}
                     <h1 class="mb-0">{{ policy.allowed_reparti_descr[0] }}
                         - Benvenut{{ genere }} {{ current_user.username }}</h1>
-                    <div class="btn-group dropup d-flex"
-                         style="margin: 10px;">
-
-                        <button class=" dropdown-toggle btn-lg text-center d-flex w-100 h-100 flex-column justify-content-center ms-2
-                                me-2 mt-4 mb-4"
-                                data-bs-toggle="dropdown"
-                                type="button">
-                            Cambia pagina
-                        </button>
-
-                        <ul class="dropdown-menu">
-                            {% for it in home_switch_items %}
-                                <li><h4><a class="dropdown-item"
-                                           href="{{ it.url }}">{{ it.label }}</a></h4></li>
-                            {% endfor %}
-                        </ul>
-                    </div>
 
                 {% elif current_user.is_authenticated and current_user.has_role('responsabile_produzione') %}
                     <h1 class="mb-0">Responsabile di produzione
@@ -116,8 +99,7 @@
                         height="89"
                         src="{{ url_for('static', filename='assets/img/logo_completo.jpg') }}"
                         style="text-align: right;"
-                        alt="logo_completo"
-                />
+                        alt="logo_completo"/>
             </div>
         </div>
     </div>

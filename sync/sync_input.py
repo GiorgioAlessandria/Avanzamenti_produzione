@@ -632,6 +632,19 @@ def filtri_giacenza_lotti(df_giacenza_lotti: pd.DataFrame) -> pd.DataFrame:
     return df_giacenza_lotti_filtered_regexLotto_Articolo
 
 
+def estrai_lavorazione_attiva(x):
+    if pd.isna(x):
+        return None
+
+    if isinstance(x, str):
+        x = json.loads(x)
+
+    if isinstance(x, (list, tuple)):
+        return x[0] if x else None
+
+    return None
+
+
 def elaborazione_dati(session: Session) -> None:
     """
     Funzione per l'inserimento dei dati nella tabella input_odp da inserire a db
@@ -712,6 +725,10 @@ def elaborazione_dati(session: Session) -> None:
     df_new = df_input_odp.loc[mask_new].copy().drop_duplicates(subset=pk_cols)
     df_new["FaseAttiva"] = 1
 
+    df_new["LavorazioneAttiva"] = df_new["CodLavorazione"].apply(
+        estrai_lavorazione_attiva
+    )
+    df_new["RisorsaAttiva"] = df_new["CodRisorsaProd"].apply(estrai_lavorazione_attiva)
     df_giacenza_lotti = leggi_view(table="vwESGiacenzaLotti").pipe(
         filtri_giacenza_lotti
     )

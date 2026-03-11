@@ -1,8 +1,8 @@
 # TODO delle task da integrare a progetto
 
-## 01 - Chiusura degli ordini di produzione
+## 01 - Chiusura degli ordini di produzione __INTEGRATO__
 
-    - Stato: in corso
+    - Stato: Integrato
     - Descrizione: Implementare le funzionalità per chiudere gli ordini di produzione
     - Priorità: alta
     - Area: app_odp e sync_odp
@@ -34,7 +34,7 @@ Procedura per la chiusura degli ordini di produzione nella totalità dei casi pr
 3. L'evento diventa "chiusura parziale" con le quantità prodotte.
 4. L'ordine di produzione viene sospeso e viene modificata la tabella con la quantità rimanente
 
-#### Fase 3: Eccezione 2 - Componenti multifase - da verificare
+#### Fase 3: Eccezione 2 - Componenti multifase - OK
 
 1. l'operatore apre e chiude l'ordine con fase 1
 2. il sistema genera la chiusura della fase 1 dell'ordine con gli eventuali lotti (deve essere anche pensato per gli
@@ -58,7 +58,7 @@ Se l'ordine è in sospeso l'operatore non può chiudere l'ordine, ma deve riatti
 
 ## 02 - Responsabile di qualità
 
-    - Stato: da iniziare
+    - Stato: In corso
     - Descrizione: implementazione pagina collaudo
     - Priorità: medio-alta
     - Area: app_odp/policy e templates
@@ -72,17 +72,18 @@ Integrare la logica nella policy per il responsabile di qualità
 1. Verificare che la policy per il responsabile di qualità sia correttamente implementata e funzioni come previsto
 2. Eseguire test approfonditi per identificare e risolvere eventuali bug o problemi di funzionalità
 3. Assicurarsi che la pagina collaudo sia accessibile solo agli utenti con il ruolo di responsabile di qualità
+4. Inserimento home collaudo con le varie impostazioni
 
-## 02 - Responsabile di qualità
+## 03 - Impostazioni utente
 
     - Stato: da iniziare
-    - Descrizione: implementazione pagina collaudo
+    - Descrizione: implementazione impostazioni utente e reparto
     - Priorità: medio-alta
     - Area: app_odp/policy e templates
 
 ### Obiettivo
 
-Integrare la logica nella policy per il responsabile di qualità
+Integrare le impostazioni utente e per reparto
 
 #### Fase 1: Debug e test
 
