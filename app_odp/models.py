@@ -246,6 +246,8 @@ class InputOdp(db.Model):
     FaseAttiva = db.Column(db.Text)
     Note = db.Column(db.Text)
     QtyDaLavorare = db.Column(db.Text)
+    RisorsaAttiva = db.Column(db.Text)
+    LavorazioneAttiva = db.Column(db.Text)
 
     __table_args__ = (db.PrimaryKeyConstraint("IdDocumento", "IdRiga"),)
 

@@ -200,8 +200,8 @@ class RbacPolicy:
 
         filters = [
             (InputOdp.CodReparto, self.allowed_reparti),
-            (InputOdp.CodRisorsaProd, self.allowed_risorse),
-            (InputOdp.CodLavorazione, self.allowed_lavorazioni),
+            (InputOdp.RisorsaAttiva, self.allowed_risorse),
+            (InputOdp.LavorazioneAttiva, self.allowed_lavorazioni),
             (InputOdp.CodFamiglia, self.allowed_famiglia),
             (InputOdp.CodMacrofamiglia, self.allowed_macrofamiglia),
             (InputOdp.CodMagPrincipale, self.allowed_magazzini),
@@ -209,13 +209,13 @@ class RbacPolicy:
 
         conds = []
         for col, allowed in filters:
-            if allowed:  # <-- se vuoto, skip
+            if allowed:
                 conds.append(_match(col, allowed))
 
         if not conds:
-            return q  # nessun filtro -> vedi tutto
+            return q
 
-        return q.filter(*conds)  # AND implicito
+        return q.filter(*conds)
 
     @cached_property
     def allowed_reparti_menu(self) -> list[tuple[str, str]]:

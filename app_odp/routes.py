@@ -66,7 +66,7 @@ HOME_TABS = {
     "70": {
         "tab": "collaudo",
         "label_fallback": "Collaudo",
-        "template": "partials/_home_collaudo.html",
+        "template": "partials/_home_montaggio.html",
     },
 }
 
@@ -78,7 +78,7 @@ TAB_TO_TEMPLATE = {
         {"reparto": "30", "perm": "home"},
     ),
     "collaudo": (
-        "partials/_home_collaudo.html",
+        "partials/_home_montaggio.html",
         {"reparto": "70", "perm": "home"},
     ),
 }
@@ -192,16 +192,41 @@ def _fase_to_int(value) -> int | None:
         return None
 
 
-def _phase_sequence_for_ordine(ordine) -> list[str]:
-    totale_fasi = _fase_to_int(getattr(ordine, "NumFase", ""))
-
-    if totale_fasi is None or totale_fasi <= 0:
-        fase_corrente = _fase_to_int(getattr(ordine, "FaseAttiva", ""))
-        if fase_corrente is not None and fase_corrente > 0:
-            return [str(fase_corrente)]
+def _parse_phase_list(value) -> list[str]:
+    raw = _norm_text(value)
+    if not raw:
         return []
 
-    return [str(i) for i in range(1, totale_fasi + 1)]
+    try:
+        parsed = json.loads(raw)
+    except Exception:
+        parsed = None
+
+    if isinstance(parsed, list):
+        out = []
+        for item in parsed:
+            fase_int = _fase_to_int(item)
+            if fase_int is not None and fase_int > 0:
+                out.append(str(fase_int))
+        return out
+
+    totale_fasi = _fase_to_int(raw)
+    if totale_fasi is not None and totale_fasi > 0:
+        return [str(i) for i in range(1, totale_fasi + 1)]
+
+    return []
+
+
+def _phase_sequence_for_ordine(ordine) -> list[str]:
+    fasi = _parse_phase_list(getattr(ordine, "NumFase", ""))
+    if fasi:
+        return fasi
+
+    fase_corrente = _fase_to_int(getattr(ordine, "FaseAttiva", ""))
+    if fase_corrente is not None and fase_corrente > 0:
+        return [str(fase_corrente)]
+
+    return []
 
 
 def _get_phase_transition(ordine, fase_corrente: str) -> tuple[bool, str | None]:
@@ -252,11 +277,11 @@ def _advance_or_finalize_phase(
 ):
     is_last_phase, next_phase = _get_phase_transition(ordine, fase_corrente)
 
-    # Chiusura parziale: stessa fase, ordine sospeso
     if chiusura_parziale:
         ordine.FaseAttiva = fase_corrente
         ordine.StatoOrdine = "In Sospeso"
         ordine.QtyDaLavorare = qty_residua_text
+        _sync_active_fields_for_phase(ordine, fase_corrente)
         _set_runtime_sospeso(stato, username, fase_corrente)
         return {
             "tipo": "parziale_stessa_fase",
@@ -264,21 +289,21 @@ def _advance_or_finalize_phase(
             "fase_successiva": fase_corrente,
         }
 
-    # Ultima fase: chiusura definitiva
     if is_last_phase:
         ordine.FaseAttiva = fase_corrente
         ordine.StatoOrdine = "Chiusa"
         ordine.QtyDaLavorare = "0"
+        _sync_active_fields_for_phase(ordine, fase_corrente)
         return {
             "tipo": "finale",
             "fase_corrente": fase_corrente,
             "fase_successiva": None,
         }
 
-    # Fase intermedia completa: passa alla successiva
     ordine.FaseAttiva = next_phase
     ordine.StatoOrdine = "Pianificata"
     ordine.QtyDaLavorare = _decimal_to_text(q_ok)
+    _sync_active_fields_for_phase(ordine, next_phase)
     _set_runtime_pianificata(stato, username)
 
     return {
@@ -294,16 +319,98 @@ def _fase_corrente_for_export(ordine, stato=None, fase_override="") -> str:
         or _norm_text(getattr(stato, "Fase", ""))
         or _norm_text(getattr(ordine, "FaseAttiva", ""))
     )
-
     fase_int = _fase_to_int(raw)
     if fase_int is not None and fase_int > 0:
         return str(fase_int)
 
-    totale = _fase_to_int(getattr(ordine, "NumFase", ""))
-    if totale == 1:
-        return "1"
+    fasi = _phase_sequence_for_ordine(ordine)
+    if len(fasi) == 1:
+        return fasi[0]
 
     return ""
+
+
+def _parse_jsonish_list(value) -> list[str]:
+    if value in (None, ""):
+        return []
+
+    if isinstance(value, (list, tuple, set)):
+        raw_items = list(value)
+    else:
+        raw = str(value).strip()
+        if not raw:
+            return []
+        try:
+            parsed = json.loads(raw)
+        except Exception:
+            return [raw]
+        raw_items = parsed if isinstance(parsed, list) else [parsed]
+
+    out = []
+    for item in raw_items:
+        s = _norm_text(item)
+        if s:
+            out.append(s)
+    return out
+
+
+def _parse_phase_list(value) -> list[str]:
+    raw_items = _parse_jsonish_list(value)
+    out = []
+
+    for item in raw_items:
+        fase_int = _fase_to_int(item)
+        if fase_int is not None and fase_int > 0:
+            out.append(str(fase_int))
+
+    # fallback legacy: NumFase = "2" inteso come totale fasi
+    if not out:
+        totale = _fase_to_int(value)
+        if totale is not None and totale > 0:
+            out = [str(i) for i in range(1, totale + 1)]
+
+    return out
+
+
+def _active_value_for_phase(raw_values, raw_phases, fase_corrente: str) -> str:
+    values = _parse_jsonish_list(raw_values)
+    phases = _parse_phase_list(raw_phases)
+    fase_corrente = _norm_text(fase_corrente)
+
+    if not values:
+        return ""
+
+    # caso migliore: liste allineate per fase
+    if phases and len(phases) == len(values):
+        for fase, value in zip(phases, values):
+            if fase == fase_corrente:
+                return _norm_text(value)
+
+    # fallback per indice fase (1-based)
+    fase_int = _fase_to_int(fase_corrente)
+    if fase_int is not None:
+        idx = fase_int - 1
+        if 0 <= idx < len(values):
+            return _norm_text(values[idx])
+
+    return _norm_text(values[0])
+
+
+def _sync_active_fields_for_phase(ordine, fase_corrente: str | None = None) -> None:
+    fase_ref = _norm_text(fase_corrente) or _norm_text(
+        getattr(ordine, "FaseAttiva", "")
+    )
+
+    ordine.LavorazioneAttiva = _active_value_for_phase(
+        getattr(ordine, "CodLavorazione", ""),
+        getattr(ordine, "NumFase", ""),
+        fase_ref,
+    )
+    ordine.RisorsaAttiva = _active_value_for_phase(
+        getattr(ordine, "CodRisorsaProd", ""),
+        getattr(ordine, "NumFase", ""),
+        fase_ref,
+    )
 
 
 def _componenti_lotto_per_ordine(
@@ -615,10 +722,10 @@ def _render_bridge_collaudo(odp):
             "partials/_home_montaggio_sl_rows_in_corso.html", odp=odp
         ),
         "tbody_tbl_da_eseguire_m": render_template(
-            "partials/old/_home_collaudo_m_rows_da_eseguire.html", odp=odp
+            "partials/_home_montaggio_m_rows_da_eseguire.html", odp=odp
         ),
         "tbody_ordini_in_corso_m": render_template(
-            "partials/old/_home_collaudo_m_rows_in_corso.html", odp=odp
+            "partials/_home_montaggio_m_rows_in_corso.html", odp=odp
         ),
     }
 

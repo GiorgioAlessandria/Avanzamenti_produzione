@@ -758,6 +758,7 @@
         const inpConf = document.getElementById("toast-chiudi-sl-quantita-conforme");
         const inpNonConf = document.getElementById("toast-chiudi-sl-quantita-non-conforme");
         const chkParziale = document.getElementById("toast-chiudi-sl-parziale");
+        const chkTotale = document.getElementById("toast-chiudi-sl-totale");
 
         if (!toastEl || !section || !tbody) return;
 
@@ -898,6 +899,7 @@
 
             inpNonConf.value = "0";
             if (chkParziale) chkParziale.checked = false;
+            if (chkTotale) chkTotale.checked = false;
 
             const noteEl = document.getElementById("toast-chiudi-sl-note");
             if (noteEl) noteEl.value = "";
@@ -967,6 +969,16 @@
         });
 
         chkParziale?.addEventListener("change", () => {
+            if (chkParziale.checked && chkTotale) {
+                chkTotale.checked = false;
+            }
+            if (_hasLotti) updateRiepilogo();
+        });
+
+        chkTotale?.addEventListener("change", () => {
+            if (chkTotale.checked && chkParziale) {
+                chkParziale.checked = false;
+            }
             if (_hasLotti) updateRiepilogo();
         });
 
@@ -1232,7 +1244,12 @@
             const qNonConf = document.getElementById("toast-chiudi-sl-quantita-non-conforme")?.value?.trim() || "";
             const note = document.getElementById("toast-chiudi-sl-note")?.value?.trim() || "";
             const chiusuraParziale = document.getElementById("toast-chiudi-sl-parziale")?.checked === true;
+            const chiusuraTotale = document.getElementById("toast-chiudi-sl-totale")?.checked === true;
 
+            if (chiusuraParziale === chiusuraTotale) {
+                alert("Selezionare una sola modalità di chiusura: parziale oppure totale.");
+                return;
+            }
             if (!idDocumento || !idRiga) {
                 alert("Ordine non valido (IdDocumento/IdRiga mancanti).");
                 return;
