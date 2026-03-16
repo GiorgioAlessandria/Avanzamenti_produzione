@@ -464,30 +464,32 @@
                     let rows = "";
                     for (const item of materialiFiltrati) {
                         rows += `
-          <tr>
-            <td>${escapeHtml(item.CodArt ?? "")}</td>
-            <td>${escapeHtml(item.DesArt ?? "")}</td>
-            <td class="text-end">${formatQty(item.Quantita)}</td>
-          </tr>
-        `;
+      <tr>
+        <td>${escapeHtml(item.CodArt ?? "")}</td>
+        <td>${escapeHtml(item.DesArt ?? "")}</td>
+        <td class="text-end">${formatQty(item.Quantita)}</td>
+        <td>${escapeHtml(item.MagUM ?? "")}</td>
+      </tr>
+    `;
                     }
 
                     modalBody.innerHTML = `
-        <div class="table-responsive">
-          <table class="table table-sm table-striped table-hover align-middle mb-0">
-            <thead class="table-light">
-              <tr>
-                <th>Codice Articolo</th>
-                <th>Descrizione</th>
-                <th class="text-end">Quantità</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${rows}
-            </tbody>
-          </table>
-        </div>
-      `;
+  <div class="table-responsive">
+    <table class="table table-sm table-striped table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Codice Articolo</th>
+          <th>Descrizione</th>
+          <th class="text-end">Quantità</th>
+          <th>UdM</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows}
+      </tbody>
+    </table>
+  </div>
+`;
 
                     bootstrap.Modal.getInstance(modalEl)?.handleUpdate();
 
