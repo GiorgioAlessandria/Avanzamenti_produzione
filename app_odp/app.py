@@ -91,7 +91,11 @@ def create_app():
     app.config["SQLALCHEMY_BINDS"] = {
         "log": f"sqlite:///{configurazione['Percorsi']['percorso_db_log']}"
     }
+    app.config["ERP_EXPORT_DIR"] = configurazione["Percorsi"]["percorso_file_output"]
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+    app.config["DIMENSIONI"] = configurazione["parametri_etichette"]["dimensioni"]
+    app.config["DPI"] = configurazione["parametri_etichette"]["dpi"]
+    app.config["FONT_PATH"] = configurazione["parametri_etichette"]["font_path"]
     # inizializza estensioni
     db.init_app(app)
     register_filters(app)

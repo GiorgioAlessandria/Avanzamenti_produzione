@@ -1,10 +1,23 @@
+from ast import Str
 from datetime import datetime
 from zoneinfo import ZoneInfo
 import json
+import re
+from io import StringIO
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
-from flask import Blueprint, render_template, request, url_for, abort, jsonify
+from pathlib import Path
+from flask import (
+    Blueprint,
+    render_template,
+    request,
+    url_for,
+    abort,
+    jsonify,
+    current_app,
+)
 from flask_login import login_required, current_user
 from sqlalchemy import func, select
+from app_odp.etichette import gen_etichette
 from app_odp.models import (
     InputOdp,
     StatoOdp,
@@ -157,7 +170,7 @@ def _get_blocking_outbox_for_phase(
             IdRiga=id_riga,
             Fase=fase,
         )
-        .filter(ErpOutbox.status.in_(["pending", "exported", "error"]))
+        .filter(ErpOutbox.status.in_(["pending", "error"]))
         .order_by(ErpOutbox.outbox_id.desc())
         .first()
     )
@@ -555,6 +568,7 @@ def _build_phase_payload(
     lotto_prodotto: dict | None,
     note: str,
     now_iso: str,
+    chiusura_parziale: bool = False,
 ) -> dict:
     return {
         "kind": "consuntivo_fase",
@@ -575,7 +589,7 @@ def _build_phase_payload(
         "lotto_prodotto": _normalize_lotto_prodotto_for_payload(lotto_prodotto),
         "created_at": now_iso,
         "created_by": current_user.username,
-        "chiusura_parziale": False,
+        "chiusura_parziale": chiusura_parziale,
     }
 
 
@@ -594,6 +608,392 @@ def _queue_phase_export(ordine, fase_corrente: str, payload: dict):
     db.session.add(outbox)
     db.session.flush()
     return outbox
+
+
+def _safe_txt_suffix(value: str, fallback: str = "export") -> str:
+    raw = _norm_text(value)
+    if not raw:
+        return fallback
+
+    out = []
+    for ch in raw:
+        if ch.isalnum() or ch in ("-", "_"):
+            out.append(ch)
+        else:
+            out.append("_")
+
+    cleaned = "".join(out).strip("_")
+    return cleaned or fallback
+
+
+def _get_erp_export_dir() -> Path:
+    """
+    Recupera la cartella export dai config caricati nell'app factory.
+    Se manca, usa una cartella locale di fallback.
+    """
+    raw = current_app.config.get("ERP_EXPORT_DIR", "")
+    if raw:
+        export_dir = Path(raw)
+    else:
+        export_dir = Path(current_app.instance_path) / "erp_exports"
+
+    export_dir.mkdir(parents=True, exist_ok=True)
+    return export_dir
+
+
+def _build_export_txt_path(prefix: str = "AVPB", suffix: str = "") -> Path:
+    now_txt = _now_rome_dt().strftime("%Y%m%d_%H%M%S")
+    safe_suffix = _safe_txt_suffix(suffix, "export")
+    file_name = f"{prefix}_{safe_suffix}_{now_txt}.txt"
+    return _get_erp_export_dir() / file_name
+
+
+def _write_txt_content(
+    content: str,
+    *,
+    prefix: str = "AVPB",
+    suffix: str = "",
+    encoding: str = "utf-8-sig",
+) -> Path:
+    path_txt = _build_export_txt_path(prefix=prefix, suffix=suffix)
+    path_txt.write_text(content, encoding=encoding, newline="\n")
+    return path_txt
+
+
+AVP_COLUMNS = [
+    "TipoRecord",  # 1
+    "TESTipoDoc",  # 10
+    "TESDataReg",  # 20
+    "TESNReg",  # 30
+    "TESApp",  # 40
+    "RIGTipoOpAvp",  # 80
+    "RIGRifORP",  # 90
+    "RIGCodArt",  # 100
+    "RIGQta",  # 140
+    "RIGMagPrinc",  # 210
+    "RIGCodRisorsa",  # 300
+    "RIGCausalePrest",  # 310
+    "RIGOreLav",  # 322
+]
+
+AVP_DEFAULTS = {
+    # TES
+    "tes_tipo_documento": 704,
+    "tes_numero_registrazione": 0,
+    "tes_appendice": "",
+    # RIG
+    "rig_tipo_op_qta": 702,
+    "rig_tipo_op_ore": 709,
+    "rig_magazzino_principale": "0",
+    "rig_causale_prestazione": 0,
+    # campo 90
+    # possibili valori:
+    # - "raw_rif_registraz"
+    # - "riga"
+    # - "riga_fase"
+    # - "barcode17"
+    # - "barcode22"
+    "rif90_mode": "raw_rif_registraz",
+    # quantità esportata:
+    # - "ok"      => solo quantita_ok
+    # - "worked"  => quantita_ok + quantita_ko
+    "qta_mode": "ok",
+    # il file esempio che hai incollato NON è dello stesso tracciato,
+    # quindi l'header conviene lasciarlo disattivato di default
+    "include_header": False,
+}
+
+
+def _erp_avp_cfg() -> dict:
+    cfg = dict(AVP_DEFAULTS)
+    cfg.update(current_app.config.get("ERP_AVP_DEFAULTS", {}) or {})
+    return cfg
+
+
+def _json_loads_safe(raw, default):
+    try:
+        return json.loads(raw)
+    except Exception:
+        return default
+
+
+def _get_pending_avp_outbox() -> list[ErpOutbox]:
+    return (
+        ErpOutbox.query.filter(
+            ErpOutbox.kind == "consuntivo_fase",
+            ErpOutbox.status == "pending",
+        )
+        .order_by(ErpOutbox.outbox_id.asc())
+        .all()
+    )
+
+
+def _get_outbox_payload(outbox: ErpOutbox) -> dict:
+    payload = _json_loads_safe(outbox.payload_json or "{}", {})
+    return payload if isinstance(payload, dict) else {}
+
+
+def _get_export_source_row(outbox: ErpOutbox):
+    """
+    Prova prima su InputOdp corrente.
+    Se non esiste più, ripiega sull'ultimo snapshot InputOdpLog.
+    """
+    ordine = InputOdp.query.filter_by(
+        IdDocumento=outbox.IdDocumento,
+        IdRiga=outbox.IdRiga,
+    ).first()
+    if ordine is not None:
+        return ordine
+
+    return (
+        InputOdpLog.query.filter_by(
+            IdDocumento=outbox.IdDocumento,
+            IdRiga=outbox.IdRiga,
+        )
+        .order_by(InputOdpLog.log_id.desc())
+        .first()
+    )
+
+
+def _first_not_blank(*values, default=""):
+    for value in values:
+        text = _norm_text(value)
+        if text:
+            return text
+    return default
+
+
+def _format_datetime_for_avp(value) -> str:
+    raw = _norm_text(value)
+    if not raw:
+        return _now_rome_dt().strftime("%d/%m/%Y %H:%M:%S")
+
+    dt = _parse_iso_dt(raw)
+    if dt is not None:
+        return dt.strftime("%d/%m/%Y %H:%M:%S")
+
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%d/%m/%Y %H:%M:%S", "%Y-%m-%d"):
+        try:
+            dt = datetime.strptime(raw, fmt).replace(tzinfo=ROME_TZ)
+            return dt.strftime("%d/%m/%Y %H:%M:%S")
+        except ValueError:
+            pass
+
+    return raw
+
+
+def _format_decimal_it(value, places: int = 2) -> str:
+    try:
+        dec = _parse_qty_decimal(value)
+    except ValueError:
+        dec = Decimal("0")
+
+    quant = Decimal("1") if places <= 0 else Decimal("1." + ("0" * places))
+    dec = dec.quantize(quant, rounding=ROUND_HALF_UP)
+    return f"{dec:.{places}f}".replace(".", ",")
+
+
+def _zero_fill_digits(value, width: int) -> str:
+    raw = re.sub(r"\D+", "", _norm_text(value))
+    if not raw:
+        raw = "0"
+    return raw.zfill(width)
+
+
+def _build_rif_orp(payload: dict, cfg: dict) -> str:
+    mode = _norm_text(cfg.get("rif90_mode")) or "raw_rif_registraz"
+
+    rif_reg = _norm_text(payload.get("rif_registraz"))
+    id_doc = _norm_text(payload.get("id_documento"))
+    id_riga = _norm_text(payload.get("id_riga"))
+    fase = _norm_text(payload.get("fase"))
+
+    if mode == "raw_rif_registraz":
+        return rif_reg
+
+    if mode == "riga":
+        if rif_reg:
+            return ".".join([x for x in [rif_reg, id_riga] if x])
+        return ""
+
+    if mode == "riga_fase":
+        if rif_reg:
+            return ".".join([x for x in [rif_reg, id_riga, fase] if x])
+        return ""
+
+    if mode == "barcode17":
+        return (
+            f"{_zero_fill_digits(id_doc, 9)}"
+            f"{_zero_fill_digits(id_riga, 4)}"
+            f"{_zero_fill_digits(fase, 4)}"
+        )
+
+    if mode == "barcode22":
+        return (
+            f"{_zero_fill_digits(id_doc, 9)}"
+            f"{_zero_fill_digits(id_riga, 9)}"
+            f"{_zero_fill_digits(fase, 4)}"
+        )
+
+    return rif_reg
+
+
+def _pick_resource_code(source_row, fase_corrente: str) -> str:
+    if source_row is None:
+        return ""
+
+    raw_risorse = _norm_text(getattr(source_row, "CodRisorsaProd", ""))
+    raw_fasi = _norm_text(getattr(source_row, "NumFase", ""))
+
+    # Per l'export conta la risorsa della fase esportata,
+    # non la RisorsaAttiva corrente della riga.
+    by_phase = _active_value_for_phase(raw_risorse, raw_fasi, fase_corrente)
+    if by_phase:
+        return by_phase
+
+    risorsa_attiva = _norm_text(getattr(source_row, "RisorsaAttiva", ""))
+    if risorsa_attiva:
+        return risorsa_attiva
+
+    return raw_risorse
+
+
+def _pick_magazzino_principale(source_row, cfg: dict) -> str:
+    if source_row is None:
+        return _norm_text(cfg.get("rig_magazzino_principale", "0"))
+    return _first_not_blank(
+        getattr(source_row, "CodMagPrincipale", ""),
+        cfg.get("rig_magazzino_principale", "0"),
+    )
+
+
+def _pick_tipo_documento(source_row, cfg: dict):
+    tipo_doc = _norm_text(getattr(source_row, "CodTipoDoc", "")) if source_row else ""
+    return tipo_doc or cfg.get("tes_tipo_documento", 704)
+
+
+def _pick_qta_export(payload: dict, cfg: dict) -> Decimal:
+    try:
+        q_ok = _parse_qty_decimal(payload.get("quantita_ok"))
+    except ValueError:
+        q_ok = Decimal("0")
+
+    try:
+        q_ko = _parse_qty_decimal(payload.get("quantita_ko"))
+    except ValueError:
+        q_ko = Decimal("0")
+
+    mode = _norm_text(cfg.get("qta_mode")) or "ok"
+    if mode == "worked":
+        return q_ok + q_ko
+
+    return q_ok
+
+
+def _serialize_avp_cell(value, numeric: bool = False) -> str:
+    if value is None:
+        value = ""
+
+    text = str(value)
+
+    if numeric:
+        return text
+
+    escaped = text.replace('"', '""')
+    return f'"{escaped}"'
+
+
+def _serialize_avp_row(values: list, numeric_indexes: set[int] | None = None) -> str:
+    numeric_indexes = numeric_indexes or set()
+    rendered = []
+    for idx, value in enumerate(values):
+        rendered.append(_serialize_avp_cell(value, numeric=(idx in numeric_indexes)))
+    return ";".join(rendered)
+
+
+def _build_tes_row(first_payload: dict, source_row, cfg: dict) -> list:
+    tipo_doc = _pick_tipo_documento(source_row, cfg)
+    data_reg = _format_datetime_for_avp(first_payload.get("created_at"))
+    n_reg = cfg.get("tes_numero_registrazione", 0)
+    tes_app = cfg.get("tes_appendice", "")
+
+    return [
+        "TES",  # 1
+        tipo_doc,  # 10
+        data_reg,  # 20
+        n_reg,  # 30
+        tes_app,  # 40
+        0,  # 80
+        "",  # 90
+        "",  # 100
+        _format_decimal_it(0, 2),  # 140
+        "",  # 210
+        "",  # 300
+        0,  # 310
+        _format_decimal_it(0, 3),  # 322
+    ]
+
+
+def _build_rig_row(payload: dict, source_row, cfg: dict) -> list | None:
+    qta = _pick_qta_export(payload, cfg)
+
+    try:
+        ore = _parse_qty_decimal(payload.get("tempo_funzionamento"))
+    except ValueError:
+        ore = Decimal("0")
+
+    # se entrambe zero/non valorizzate, non esportare nulla
+    if qta <= 0 and ore <= 0:
+        return None
+
+    tipo_doc = _pick_tipo_documento(source_row, cfg)
+    data_reg = _format_datetime_for_avp(payload.get("created_at"))
+    n_reg = cfg.get("tes_numero_registrazione", 0)
+    tes_app = cfg.get("tes_appendice", "")
+
+    fase = _norm_text(payload.get("fase"))
+
+    return [
+        "RIG",  # 1
+        tipo_doc,  # 10
+        data_reg,  # 20
+        n_reg,  # 30
+        tes_app,  # 40
+        cfg.get("rig_tipo_op_qta", 702),  # 80
+        _build_rif_orp(payload, cfg),  # 90
+        _norm_text(payload.get("cod_art")),  # 100
+        _format_decimal_it(qta, 2),  # 140
+        _pick_magazzino_principale(source_row, cfg),  # 210
+        _pick_resource_code(source_row, fase),  # 300
+        cfg.get("rig_causale_prestazione", 0),  # 310
+        _format_decimal_it(ore, 3),  # 322
+    ]
+
+
+def _build_avp_txt_content(outbox_rows: list[ErpOutbox]) -> str:
+    if not outbox_rows:
+        raise ValueError("Nessun record pending da esportare")
+
+    cfg = _erp_avp_cfg()
+    lines = []
+
+    if cfg.get("include_header"):
+        lines.append(_serialize_avp_row(AVP_COLUMNS))
+
+    for outbox in outbox_rows:
+        payload = _get_outbox_payload(outbox)
+        source_row = _get_export_source_row(outbox)
+
+        rig_row = _build_rig_row(payload, source_row, cfg)
+        if rig_row is not None:
+            lines.append(
+                _serialize_avp_row(
+                    rig_row,
+                    numeric_indexes={1, 3, 5, 8, 11, 12},
+                )
+            )
+
+    return "\n".join(lines) + "\n"
 
 
 @main_bp.context_processor
@@ -1899,6 +2299,24 @@ def api_chiudi_ordine():
         ordine.StatoOrdine = "In Sospeso"
         ordine.QtyDaLavorare = qty_residua_text
 
+        payload = _build_phase_payload(
+            ordine=ordine,
+            fase_corrente=fase_corrente,
+            q_ok=q_ok,
+            q_nok=q_nok,
+            tempo_finale=tempo_finale,
+            lotti_input=lotti_input,
+            lotto_prodotto=lotto_prodotto,
+            note=note,
+            now_iso=now_iso,
+            chiusura_parziale=True,
+        )
+        outbox = _queue_phase_export(
+            ordine=ordine,
+            fase_corrente=fase_corrente,
+            payload=payload,
+        )
+
         _push_change_event(
             topic="fase_consuntivata_parziale",
             ordine=ordine,
@@ -1915,8 +2333,10 @@ def api_chiudi_ordine():
                 "lotti_count": len(lotti_input),
                 "chiusura_parziale": True,
                 "richiede_export_erp": True,
-                "erp_export_kind": "consuntivo_fase_parziale",
-                "erp_outbox_flag_only": True,
+                "erp_export_kind": "consuntivo_fase",
+                "erp_outbox_flag_only": False,
+                "outbox_id": outbox.outbox_id,
+                "export_status": outbox.status,
                 "lotto_prodotto": lotto_prodotto,
             },
         )
@@ -1931,6 +2351,7 @@ def api_chiudi_ordine():
             lotto_prodotto=lotto_prodotto,
             note=note,
             now_iso=now_iso,
+            chiusura_parziale=False,
         )
         outbox = _queue_phase_export(
             ordine=ordine,
@@ -2034,6 +2455,15 @@ def api_chiudi_ordine():
                 lotto_log.Fase = fase_corrente
             db.session.add(lotto_log)
     if lotto_prodotto is not None:
+        gen_etichette(
+            str(lotto_prodotto["CodArt"]),
+            ordine.DesArt,
+            str(lotto_prodotto["RifLottoAlfa"]),
+            ordine.Quantita,
+            current_app.config["DIMENSIONI"],
+            current_app.config["DPI"],
+            current_app.config["FONT_PATH"],
+        )
         db.session.add(
             LottiGeneratiLog(
                 IdDocumento=ordine.IdDocumento,
@@ -2561,3 +2991,72 @@ def api_lotti_componenti():
 def generazione_lotti(dt=None) -> str:
     dt = dt or _now_rome_dt()
     return dt.strftime("%Y%m%d")
+
+
+@main_bp.post("/api/erp/export/avp")
+@login_required
+@require_perm("home")
+def api_export_avp_txt():
+    data = request.get_json(silent=True) or {}
+    suffix = _norm_text(data.get("suffix")) or "manuale"
+
+    outbox_rows = _get_pending_avp_outbox()
+    if not outbox_rows:
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": "Nessun record ERP pending da esportare",
+                }
+            ),
+            404,
+        )
+
+    try:
+        content = _build_avp_txt_content(outbox_rows)
+        path_txt = _write_txt_content(
+            content,
+            prefix="AVPB",
+            suffix=suffix,
+            encoding="utf-8-sig",
+        )
+
+        now_iso = _now_rome_dt().isoformat(timespec="seconds")
+        for row in outbox_rows:
+            row.status = "exported"
+            row.exported_at = now_iso
+            row.last_error = None
+            row.attempts = int(row.attempts or 0) + 1
+
+        db.session.commit()
+
+        return jsonify(
+            {
+                "ok": True,
+                "message": "File AVP generato correttamente",
+                "file_name": path_txt.name,
+                "file_path": str(path_txt),
+                "records": len(outbox_rows),
+            }
+        )
+    except Exception as exc:
+        err = str(exc)
+
+        try:
+            for row in outbox_rows:
+                row.status = "error"
+                row.last_error = err
+                row.attempts = int(row.attempts or 0) + 1
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": f"Errore generazione file AVP: {err}",
+                }
+            ),
+            500,
+        )
