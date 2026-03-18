@@ -85,7 +85,7 @@ def invio_automatico(draw, text: str, font, max_width: int) -> str:
     return "\n".join(lines)
 
 
-def compose_label_normal(
+def gen_etichette(
     codice: str,
     descrizione: str,
     lotto: str,
@@ -157,26 +157,5 @@ def compose_label_normal(
     qr = make_qr(lotto, 250)
     img.paste(qr, (sesti_x * 3, terzo_y))
 
-    return img
-
-
-def gen_etichette(
-    codice: str,
-    descrizione: str,
-    lotto: str,
-    label_dimension: list[float],
-    dpi: int,
-    font_path: str,
-) -> Image.Image:
-    codice = "BE02-004-0200"
-    descrizione = "Piastra di supporto cuscinetti con boccola"
-    lotto = "123123"
-    qty = "50"
-    label_dimension = [80.0, 50.0]
-    dpi = 250
-    font_path = r"C:\Windows\Fonts\arial.ttf"
-    image_normal = compose_label_normal(
-        codice, descrizione, lotto, qty, label_dimension, dpi, font_path
-    )
-    image_normal.show()
-    return
+    img.show()
+    # return img

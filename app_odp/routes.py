@@ -2459,6 +2459,7 @@ def api_chiudi_ordine():
             str(lotto_prodotto["CodArt"]),
             ordine.DesArt,
             str(lotto_prodotto["RifLottoAlfa"]),
+            ordine.Quantita,
             current_app.config["DIMENSIONI"],
             current_app.config["DPI"],
             current_app.config["FONT_PATH"],

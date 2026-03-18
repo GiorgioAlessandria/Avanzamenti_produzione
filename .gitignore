@@ -182,3 +182,4 @@ cython_debug/
 
 temp/
 db
+/output/

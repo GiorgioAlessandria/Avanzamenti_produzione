@@ -1588,7 +1588,7 @@
 
                 const key = `${cod}|${lottoVal}`;
                 if (usati.has(key)) {
-                    errors.push(`${cod}: lotto ${lottoVal} duplicato.`);
+                    errors.push(`${cod}: lotto ${lottoVal} duplicato non consentito.`);
                 }
                 usati.add(key);
 
@@ -1624,28 +1624,32 @@
 
         tbody.addEventListener("change", function (e) {
             const sel = e.target.closest(".lotto-select-m");
-            if (!sel) return;
+            if (sel) {
+                const row = sel.closest("tr");
+                const giacCell = row.querySelector(".giacenza-cell-m");
+                const qtyInput = row.querySelector(".lotto-qty-m");
+                const opt = sel.options[sel.selectedIndex];
 
-            const row = sel.closest("tr");
-            const giacCell = row.querySelector(".giacenza-cell-m");
-            const qtyInput = row.querySelector(".lotto-qty-m");
-            const opt = sel.options[sel.selectedIndex];
-
-            if (opt && opt.value) {
-                const g = parseQty(opt.dataset.giacenza);
-                giacCell.textContent = g;
-                qtyInput.max = String(g);
-            } else {
-                giacCell.textContent = "-";
-                qtyInput.max = "";
+                if (opt && opt.value) {
+                    const g = parseQty(opt.dataset.giacenza);
+                    giacCell.textContent = g;
+                    qtyInput.max = String(g);
+                } else {
+                    giacCell.textContent = "-";
+                    qtyInput.max = "";
+                }
             }
 
-            updateRiepilogo();
+            if (e.target.closest(".lotto-select-m")) {
+                updateRiepilogo();
+                validateLotti();
+            }
         });
 
         tbody.addEventListener("input", function (e) {
             if (e.target.classList.contains("lotto-qty-m")) {
                 updateRiepilogo();
+                validateLotti();
             }
         });
 
@@ -1658,6 +1662,7 @@
                 if (comp && Array.isArray(comp.lotti) && comp.lotti.length > 0) {
                     addLottoRow(codArt, desArt, comp.lotti, false);
                     updateRiepilogo();
+                    validateLotti();
                 }
                 return;
             }
@@ -1666,6 +1671,7 @@
             if (btnRem) {
                 btnRem.closest("tr")?.remove();
                 updateRiepilogo();
+                validateLotti();
             }
         });
 
@@ -2126,14 +2132,22 @@
             const errors = [];
             const perCodice = {};
             const lottiPayload = [];
-            const usati = new Set();
+
+            // Raggruppamento per CodArt + Lotto
+            const perLotto = {};
 
             tbody.querySelectorAll("tr").forEach(row => {
                 const cod = row.dataset.codart || "";
                 const lottoVal = row.querySelector(".lotto-select-sl")?.value || "";
                 const giacenza = parseQtyOrZero(row.querySelector(".giacenza-cell-sl")?.textContent);
-                const qty = parseQtyOrZero(row.querySelector(".lotto-qty-sl")?.value);
                 const esito = row.querySelector(".lotto-esito-sl")?.value || "ok";
+                const qtyRaw = row.querySelector(".lotto-qty-sl")?.value;
+                const qty = parseIntQty(qtyRaw);
+
+                if (!Number.isInteger(qty) || qty <= 0) {
+                    errors.push(`${cod} lotto ${lottoVal}: inserire una quantità intera > 0.`);
+                    return;
+                }
 
                 if (qty > 0 && !lottoVal) {
                     errors.push(`${cod}: selezionare un lotto.`);
@@ -2150,11 +2164,26 @@
                     errors.push(`${cod} lotto ${lottoVal}: qtà ${qty} > giacenza ${giacenza}.`);
                 }
 
-                const key = `${cod}|${lottoVal}`;
-                if (usati.has(key)) {
-                    errors.push(`${cod}: lotto ${lottoVal} duplicato.`);
+                const lottoKey = `${cod}|${lottoVal}`;
+                if (!perLotto[lottoKey]) {
+                    perLotto[lottoKey] = {
+                        cod,
+                        lottoVal,
+                        giacenza,
+                        totale: 0,
+                        ok: 0,
+                        ko: 0,
+                        righe: 0
+                    };
                 }
-                usati.add(key);
+
+                perLotto[lottoKey].totale += qty;
+                perLotto[lottoKey].righe += 1;
+                if (esito === "ok") {
+                    perLotto[lottoKey].ok += qty;
+                } else {
+                    perLotto[lottoKey].ko += qty;
+                }
 
                 if (!perCodice[cod]) perCodice[cod] = {ok: 0, ko: 0, totale: 0};
                 if (esito === "ok") perCodice[cod].ok += qty;
@@ -2169,6 +2198,29 @@
                 });
             });
 
+            // Regole duplicati stesso lotto
+            for (const key of Object.keys(perLotto)) {
+                const info = perLotto[key];
+
+                if (info.righe <= 1) continue;
+
+                // Se tutte le righe del lotto sono OK, il duplicato non è ammesso
+                if (info.ko === 0) {
+                    errors.push(
+                        `${info.cod}: lotto ${info.lottoVal} duplicato non consentito su più righe OK.`
+                    );
+                    continue;
+                }
+
+                // Se esiste almeno una KO, il duplicato è ammesso solo entro la giacenza
+                if (info.totale > info.giacenza) {
+                    errors.push(
+                        `${info.cod}: lotto ${info.lottoVal} duplicato con KO ma somma quantità ${info.totale} > giacenza ${info.giacenza}.`
+                    );
+                }
+            }
+
+            // Controllo totale per componente
             for (const comp of _lottiData) {
                 const codArt = String(comp.CodArt || "");
                 const richiesto = getQuantitaRichiestaComponente(comp);
@@ -2189,30 +2241,38 @@
         }
 
 
+        // ---- Aggiorna giacenza al cambio lotto ----
         tbody.addEventListener("change", function (e) {
             const sel = e.target.closest(".lotto-select-sl");
-            if (!sel) return;
+            if (sel) {
+                const row = sel.closest("tr");
+                const giacCell = row.querySelector(".giacenza-cell-sl");
+                const qtyInput = row.querySelector(".lotto-qty-sl");
+                const opt = sel.options[sel.selectedIndex];
 
-            const row = sel.closest("tr");
-            const giacCell = row.querySelector(".giacenza-cell-sl");
-            const qtyInput = row.querySelector(".lotto-qty-sl");
-            const opt = sel.options[sel.selectedIndex];
-
-            if (opt && opt.value) {
-                const g = parseQtyOrZero(opt.dataset.giacenza);
-                giacCell.textContent = g;
-                qtyInput.max = String(g);
-            } else {
-                giacCell.textContent = "-";
-                qtyInput.max = "";
+                if (opt && opt.value) {
+                    const g = parseSystemQty(opt.dataset.giacenza);
+                    giacCell.textContent = Number.isFinite(g) ? g : 0;
+                    qtyInput.max = Number.isFinite(g) ? String(g) : "";
+                } else {
+                    giacCell.textContent = "-";
+                    qtyInput.max = "";
+                }
             }
 
-            updateRiepilogo();
+            if (
+                e.target.closest(".lotto-select-sl") ||
+                e.target.closest(".lotto-esito-sl")
+            ) {
+                updateRiepilogo();
+                validateLotti();
+            }
         });
 
         tbody.addEventListener("input", function (e) {
             if (e.target.classList.contains("lotto-qty-sl")) {
                 updateRiepilogo();
+                validateLotti();
             }
         });
 
@@ -2225,6 +2285,7 @@
                 if (comp && Array.isArray(comp.lotti) && comp.lotti.length > 0) {
                     addLottoRow(codArt, desArt, comp.lotti, false);
                     updateRiepilogo();
+                    validateLotti();
                 }
                 return;
             }
@@ -2233,6 +2294,7 @@
             if (btnRem) {
                 btnRem.closest("tr")?.remove();
                 updateRiepilogo();
+                validateLotti();
             }
         });
         sanitizeIntegerInput(inpConf);
