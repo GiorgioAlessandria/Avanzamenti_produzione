@@ -1,6 +1,7 @@
 {% for singolo_odp in odp %}
     {% if singolo_odp.GestioneMatricola == 'si' and singolo_odp.StatoOrdine != "Pianificata" and singolo_odp.StatoOrdine != "Chiusa" %}
         <tr data-row-key="{{ singolo_odp.IdDocumento }}|{{ singolo_odp.IdRiga }}"
+            data-tipodocumento="{{ singolo_odp.CodTipoDoc }}"
             data-iddocumento="{{ singolo_odp.IdDocumento }}"
             data-idriga="{{ singolo_odp.IdRiga }}"
             data-ordine="{{ singolo_odp.RifRegistraz }}"

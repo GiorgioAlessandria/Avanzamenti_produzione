@@ -923,7 +923,7 @@
                     <span>Materiale necessario</span>
                     <span class="text-muted"
                           id="modal-codart"></span>
-                </h5
+                </h5>
                 <button type="button"
                         class="btn-close"
                         data-bs-dismiss="modal"
@@ -1744,6 +1744,11 @@
                     return;
                 }
 
+                const exportResult = await exportAvpTxt({suffix: "montaggio_m"});
+                if (!exportResult.ok) {
+                    alert(exportResult.error || "Ordine chiuso, ma file ERP non generato.");
+                }
+
                 bootstrap.Toast.getOrCreateInstance(toastEl).hide();
 
                 if (data.fragments && window.applyHomeFragments) {
@@ -2396,6 +2401,17 @@
                     return;
                 }
 
+                const exportResult = await exportAvpTxt({suffix: "montaggio_sl"});
+                if (!exportResult.ok) {
+                    alert(exportResult.error || "Ordine chiuso, ma file ERP non generato.");
+                }
+
+                bootstrap.Toast.getOrCreateInstance(toastEl).hide();
+
+                if (data.fragments && window.applyHomeFragments) {
+                    window.applyHomeFragments(data.fragments);
+                }
+
                 bootstrap.Toast.getOrCreateInstance(toastEl).hide();
 
                 if (data.fragments && window.applyHomeFragments) {
@@ -2422,4 +2438,41 @@
             }
         });
     })();
+</script>
+<script>
+    async function exportAvpTxt({suffix = "montaggio"} = {}) {
+        try {
+            const resp = await fetch("/api/erp/export/avp", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-Requested-With": "XMLHttpRequest"
+                },
+                credentials: "same-origin",
+                body: JSON.stringify({suffix})
+            });
+
+            let data = {};
+            try {
+                data = await resp.json();
+            } catch (_) {
+                data = {};
+            }
+
+            if (!resp.ok || data.ok === false) {
+                return {
+                    ok: false,
+                    error: data.error || "Errore durante la generazione del file ERP."
+                };
+            }
+
+            return {ok: true, data};
+        } catch (err) {
+            console.error("Errore export AVP:", err);
+            return {
+                ok: false,
+                error: "Errore di comunicazione durante la generazione del file ERP."
+            };
+        }
+    }
 </script>

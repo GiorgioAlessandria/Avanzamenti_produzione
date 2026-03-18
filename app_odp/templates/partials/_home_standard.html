@@ -1355,6 +1355,11 @@
                     return;
                 }
 
+                const exportResult = await exportAvpTxt({suffix: "officina"});
+                if (!exportResult.ok) {
+                    alert(exportResult.error || "Ordine chiuso, ma file ERP non generato.");
+                }
+
                 bootstrap.Toast.getOrCreateInstance(toastEl).hide();
 
                 if (data.fragments && window.applyHomeFragments) {
@@ -1380,4 +1385,41 @@
             }
         });
     })();
+</script>
+<script>
+    async function exportAvpTxt({suffix = "officina"} = {}) {
+        try {
+            const resp = await fetch("/api/erp/export/avp", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-Requested-With": "XMLHttpRequest"
+                },
+                credentials: "same-origin",
+                body: JSON.stringify({suffix})
+            });
+
+            let data = {};
+            try {
+                data = await resp.json();
+            } catch (_) {
+                data = {};
+            }
+
+            if (!resp.ok || data.ok === false) {
+                return {
+                    ok: false,
+                    error: data.error || "Errore durante la generazione del file ERP."
+                };
+            }
+
+            return {ok: true, data};
+        } catch (err) {
+            console.error("Errore export AVP:", err);
+            return {
+                ok: false,
+                error: "Errore di comunicazione durante la generazione del file ERP."
+            };
+        }
+    }
 </script>

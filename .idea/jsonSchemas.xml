@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="JsonSchemaMappingsProjectConfiguration">
+    <state>
+      <map>
+        <entry key="Python script metadata">
+          <value>
+            <SchemaInfo>
+              <option name="name" value="Python script metadata" />
+              <option name="relativePathToSchema" value="https://raw.githubusercontent.com/SchemaStore/schemastore/master/src/schemas/json/pep-723.json" />
+              <option name="applicationDefined" value="true" />
+              <option name="patterns">
+                <list>
+                  <Item>
+                    <option name="path" value="app_odp/static/config.toml" />
+                  </Item>
+                </list>
+              </option>
+            </SchemaInfo>
+          </value>
+        </entry>
+      </map>
+    </state>
+  </component>
+</project>
