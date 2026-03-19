@@ -32,6 +32,7 @@ from app_odp.models import (
     ChangeEventLog,
     LottiGeneratiLog,
 )
+from sqlalchemy.orm import selectinload
 from app_odp.policy.decorator import require_perm
 from app_odp.policy.policy import RbacPolicy
 
@@ -104,8 +105,15 @@ BRIDGE_CONFIG = {
 
 
 def _tab_scoped_odp(policy: RbacPolicy, reparto_code: str):
-    q = InputOdp.query
+    q = _base_odp_query()
     return policy.filter_input_odp_for_reparto(q, reparto_code)
+
+
+def _base_odp_query():
+    return InputOdp.query.options(
+        selectinload(InputOdp.runtime_row),
+        selectinload(InputOdp.stato_row),
+    )
 
 
 def _last_change_event_id() -> int:
@@ -656,7 +664,8 @@ def _write_txt_content(
     encoding: str = "utf-8-sig",
 ) -> Path:
     path_txt = _build_export_txt_path(prefix=prefix, suffix=suffix)
-    path_txt.write_text(content, encoding=encoding, newline="\n")
+    newline_character = "\n"
+    path_txt.write_text(content, encoding=encoding, newline=newline_character)
     return path_txt
 
 
@@ -1069,7 +1078,7 @@ def home():
 
 
 def _query_for_tab(policy, reparto_code):
-    q = InputOdp.query
+    q = _base_odp_query()
     q = policy.filter_input_odp_for_reparto(q, reparto_code)
     return q
 
@@ -1311,23 +1320,22 @@ def _extract_codes_from_cell(value) -> list[str]:
 def _get_visible_odp_by_key(
     policy: RbacPolicy, id_documento: str, id_riga: str
 ) -> InputOdp:
-    """
-    Cerca l'ordine nel perimetro RBAC dell'utente.
-    Se esiste ma è fuori perimetro -> 403
-    Se non esiste -> 404
-    """
     ordine = (
-        policy.filter_input_odp(InputOdp.query)
+        policy.filter_input_odp(_base_odp_query())
         .filter_by(IdDocumento=id_documento, IdRiga=id_riga)
         .first()
     )
     if ordine:
         return ordine
 
-    exists_anyway = InputOdp.query.filter_by(
-        IdDocumento=id_documento,
-        IdRiga=id_riga,
-    ).first()
+    exists_anyway = (
+        _base_odp_query()
+        .filter_by(
+            IdDocumento=id_documento,
+            IdRiga=id_riga,
+        )
+        .first()
+    )
 
     if exists_anyway is None:
         abort(404)

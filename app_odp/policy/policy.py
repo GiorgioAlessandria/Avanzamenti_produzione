@@ -4,10 +4,10 @@ from sqlalchemy import false, select, and_, or_, func, exists, cast, String
 from dataclasses import dataclass
 from functools import cached_property
 
-from app_odp.models import db
 from app_odp.models import (
     Famiglia,
     InputOdp,
+    InputOdpRuntime,
     Lavorazioni,
     Macrofamiglia,
     Magazzini,
@@ -198,10 +198,18 @@ class RbacPolicy:
         if self.can("odp.read_all"):
             return q
 
+        q = q.outerjoin(
+            InputOdpRuntime,
+            and_(
+                InputOdp.IdDocumento == InputOdpRuntime.IdDocumento,
+                InputOdp.IdRiga == InputOdpRuntime.IdRiga,
+            ),
+        )
+
         filters = [
             (InputOdp.CodReparto, self.allowed_reparti),
-            (InputOdp.RisorsaAttiva, self.allowed_risorse),
-            (InputOdp.LavorazioneAttiva, self.allowed_lavorazioni),
+            (InputOdpRuntime.RisorsaAttiva, self.allowed_risorse),
+            (InputOdpRuntime.LavorazioneAttiva, self.allowed_lavorazioni),
             (InputOdp.CodFamiglia, self.allowed_famiglia),
             (InputOdp.CodMacrofamiglia, self.allowed_macrofamiglia),
             (InputOdp.CodMagPrincipale, self.allowed_magazzini),
