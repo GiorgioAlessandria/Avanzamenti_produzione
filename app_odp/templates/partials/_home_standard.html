@@ -1,0 +1,1481 @@
+<!--toast nuovo ordine in carico -->
+<div class="toast lh-lg hide"
+
+     role="alert"
+     id="toast-1"
+     style="width: max-content;height: max-content;position: fixed; top: 1rem; right: 1rem; z-index: 2000;opacity: 1;filter: blur(0px);">
+    <div class="toast-header">
+        <strong class="me-auto"
+                style="font-size: 25px;">Presa in carico dell'ordine
+            <span data-bind-text="ordine"></span></strong>
+        <button class="btn-close ms-2 mb-1 close"
+                type="button"
+                aria-label="Close"
+                data-bs-dismiss="toast"
+                style="font-size: 25px;"></button>
+    </div>
+    <div class="toast-body d-flex flex-column justify-content-center align-items-center"
+         role="alert"
+         style="opacity: 1;width: auto;height: auto;">
+        <input type="hidden"
+               data-bind="iddocumento"
+               id="toast1-iddocumento">
+        <input type="hidden"
+               data-bind="idriga"
+               id="toast1-idriga">
+        <input type="hidden"
+               data-bind="ordine"
+               id="toast1-ordine">
+        <input type="hidden"
+               data-bind="codice"
+               id="toast1-codice">
+        <input type="hidden"
+               data-bind="quantita"
+               id="toast1-quantita">
+        <input type="hidden"
+               data-bind="fase"
+               id="toast1-fase">
+
+        <button class="btn btn-primary"
+                id="btn-prendi-ordine"
+                type="button">
+            Preso in carico
+        </button>
+    </div>
+</div>
+
+<!--toast sospensione ordine -->
+<div class="toast lh-lg hide"
+     role="alert"
+     id="toast-2"
+     style="width: max-content;height: max-content;position: fixed; top: 1rem; right: 1rem; z-index: 2000;opacity: 1;filter: blur(0px);">
+    <div class="toast-header">
+        <strong class="me-auto"
+                style="font-size: 25px;">Sospensione dell'ordine
+            <span data-bind-text="ordine"></span></strong>
+        <button class="btn-close ms-2 mb-1 close"
+                type="button"
+                aria-label="Close"
+                data-bs-dismiss="toast"
+                style="font-size: 25px;"></button>
+    </div>
+    <div class="toast-body d-flex flex-column justify-content-center align-items-center"
+         role="alert"
+         style="opacity: 1;width: auto;height: auto;">
+        <form method="post">
+            <input type="hidden"
+                   id="toast2-iddocumento"
+                   data-bind="iddocumento">
+            <input type="hidden"
+                   id="toast2-idriga"
+                   data-bind="idriga">
+            <input type="hidden"
+                   id="toast2-ordine"
+                   data-bind="ordine">
+            <input type="hidden"
+                   id="toast2-codice"
+                   data-bind="codice">
+            <input type="hidden"
+                   id="toast2-quantita"
+                   data-bind="quantita">
+            <input type="hidden"
+                   id="toast2-fase"
+                   data-bind="fase">
+
+            <select id="causale_attivita_sl">
+                {% for causale in causali_attivita %}
+                    <option value="{{ causale }}">{{ causale }}</option>
+                {% endfor %}
+            </select>
+
+            <input class="btn btn-lg btn-primary"
+                   type="submit"
+                   id="btn-conferma-sospensione-sl"
+                   value="Conferma"
+                   style="font-size: 25px;">
+        </form>
+    </div>
+</div>
+<!--toast riattivazione ordine -->
+<div class="toast lh-lg hide"
+     role="alert"
+     id="toast-3"
+     style="width: max-content;height: max-content;position: fixed; top: 1rem; right: 1rem; z-index: 2000;opacity: 1;filter: blur(0px);">
+    <div class="toast-header">
+        <strong class="me-auto"
+                style="font-size: 25px;">Riattivazione dell'ordine
+            <span data-bind-text="ordine"></span></strong>
+        <button class="btn-close ms-2 mb-1 close"
+                type="button"
+                aria-label="Close"
+                data-bs-dismiss="toast"
+                style="font-size: 25px;"></button>
+    </div>
+    <div class="toast-body d-flex flex-column justify-content-center align-items-center"
+         role="alert"
+         style="opacity: 1;width: auto;height: auto;">
+        <form method="post">
+            <input type="hidden"
+                   data-bind="iddocumento"
+                   id="toast-riatt-sl-iddocumento">
+            <input type="hidden"
+                   data-bind="idriga"
+                   id="toast-riatt-sl-idriga">
+            <input type="hidden"
+                   data-bind="ordine"
+                   id="toast-riatt-sl-ordine">
+            <input type="hidden"
+                   data-bind="codice"
+                   id="toast-riatt-sl-codice">
+            <input type="hidden"
+                   data-bind="quantita"
+                   id="toast-riatt-sl-quantita">
+            <input type="hidden"
+                   data-bind="fase"
+                   id="toast-riatt-sl-fase">
+
+            <input class="btn btn-lg btn-primary"
+                   type="submit"
+                   id="btn-conferma-riattivazione-sl"
+                   value="Conferma"
+                   style="font-size: 25px;">
+        </form>
+    </div>
+</div>
+<!--toast chiusura ordine -->
+<div class="toast lh-lg hide"
+     role="alert"
+     id="toast-4"
+     style="width: max-content; max-width: 90vw; height: max-content; position: fixed; top: 1rem; right: 1rem; z-index: 2000; opacity: 1;">
+    <div class="toast-header">
+        <strong class="me-auto"
+                style="font-size: 25px;">
+            Chiusura dell'ordine
+            <span data-bind-text="ordine"></span>
+        </strong>
+        <button class="btn-close ms-2 mb-1"
+                type="button"
+                aria-label="Close"
+                data-bs-dismiss="toast"
+                style="font-size: 25px;"></button>
+    </div>
+    <div class="toast-body d-flex flex-column justify-content-center align-items-center"
+         role="alert"
+         style="opacity: 1; max-height: 80vh; overflow-y: auto;">
+        <!-- Hidden fields -->
+        <input type="hidden"
+               data-bind="iddocumento"
+               id="toast-chiudi-sl-iddocumento">
+        <input type="hidden"
+               data-bind="quantitaTotale"
+               id="toast-chiudi-sl-quantita-totale">
+        <input type="hidden"
+               data-bind="idriga"
+               id="toast-chiudi-sl-idriga">
+        <input type="hidden"
+               data-bind="ordine"
+               id="toast-chiudi-sl-ordine">
+        <input type="hidden"
+               data-bind="codice"
+               id="toast-chiudi-sl-codice">
+        <input type="hidden"
+               data-bind="quantita"
+               id="toast-chiudi-sl-quantita">
+        <input type="hidden"
+               data-bind="fase"
+               id="toast-chiudi-sl-fase">
+
+        <div class="container">
+            <!-- Quantità conforme / non conforme -->
+            <div class="row">
+                <div class="col">
+                    <label for="toast-chiudi-sl-quantita-conforme"
+                           style="font-size: 20px;">
+                        Quantità conforme:<br>
+                        <input type="number"
+                               id="toast-chiudi-sl-quantita-conforme"
+                               min="0"
+                               step="1"
+                               required>
+                    </label>
+                </div>
+                <div class="col">
+                    <label for="toast-chiudi-sl-quantita-non-conforme"
+                           style="font-size: 20px;">
+                        Quantità KO:<br>
+                        <input type="number"
+                               id="toast-chiudi-sl-quantita-non-conforme"
+                               min="0"
+                               step="1"
+                               required>
+                    </label>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col"
+                     style="width: max-content">
+                    <!-- Note -->
+
+                    <label for="toast-chiudi-sl-note"
+                           style="font-size: 20px; width: max-content">
+                        Note:<br>
+                        <textarea id="toast-chiudi-sl-note"
+                                  rows="2"
+                                  cols="100"></textarea>
+                    </label>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- Sezione Lotti (nascosta di default) -->
+        <div id="lotti-section-sl"
+             style="display: none; width: 100%;">
+            <hr>
+            <h5 class="text-center mb-2">Assegnazione Lotti Materiale</h5>
+
+            <div id="lotti-loading-sl"
+                 class="text-center my-2"
+                 style="display: none;">
+                <div class="spinner-border spinner-border-sm"
+                     role="status"></div>
+                <span class="ms-2">Caricamento lotti...</span>
+            </div>
+
+            <div id="lotti-alert-sl"
+                 class="alert alert-danger mb-2"
+                 style="display: none; font-size: 14px; white-space: pre-line;"></div>
+
+            <div class="table-responsive"
+                 style="max-height: 350px; overflow-y: auto;">
+                <table class="table table-sm table-striped table-bordered align-middle mb-1"
+                       id="tbl-lotti-sl">
+                    <thead class="table-light"
+                           style="position: sticky; top: 0; z-index: 1;">
+                    <tr>
+                        <th style="min-width: 140px;">Codice</th>
+                        <th style="min-width: 180px;">Descrizione</th>
+                        <th style="min-width: 160px;">Lotto</th>
+                        <th style="min-width: 80px;"
+                            class="text-end">Giacenza
+                        </th>
+                        <th style="min-width: 100px;"
+                            class="text-end">Qtà utilizzata
+                        </th>
+                        <th style="min-width: 70px;">Esito</th>
+                        <th style="width: 70px;"></th>
+                    </tr>
+                    </thead>
+                    <tbody id="tbody-lotti-sl"></tbody>
+                </table>
+            </div>
+
+            <div id="lotti-riepilogo-sl"
+                 class="mt-2 mb-2"
+                 style="font-size: 13px; background: #f8f9fa; padding: 8px; border-radius: 4px;">
+            </div>
+        </div>
+
+        <div class="container-sm"
+             style="padding:15px">
+            <div class="row">
+                <div class="form-check mt-1 mb-1 col"
+                     style="font-size: 20px; background: #f8f9fa; border-radius: 4px;">
+                    <input class="form-check-input"
+                           type="checkbox"
+                           id="toast-chiudi-sl-parziale">
+                    <label class="form-check-label"
+                           for="toast-chiudi-sl-parziale">
+                        Chiusura parziale ordine
+                    </label>
+                </div>
+                <div class="form-check mt-1 mb-1 col"
+                     style="font-size: 20px; background: #f8f9fa; border-radius: 4px;">
+                    <input class="form-check-input"
+                           type="checkbox"
+                           id="toast-chiudi-sl-totale">
+                    <label class="form-check-label"
+                           for="toast-chiudi-sl-totale">
+                        Chiusura totale ordine
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <button class="btn btn-lg btn-primary mt-2"
+                type="button"
+                id="btn-conferma-chiusura-sl"
+                style="font-size: 22px;">
+            Conferma
+        </button>
+    </div>
+</div>
+
+
+<main class="d-flex flex-column w-100 mt-3 mb-3"
+      data-bridge-tab="home_standard"
+      style="height: fit-content;width: fit-content;">
+    <div class="container-fluid w-100 h-100 ps-0 pe-0 mx-0"
+         style="width: auto;height: auto;">
+        <div class="row text-center w-100 h-100 align-items-start"
+             style="height: auto;width: auto;">
+            <div class="col w-100 h-100 ms-2 me-0"
+                 style="width: auto;height: auto;border-color: rgb(0,0,0);">
+                <h2 class="w-100 h-100 mb-3"
+                    style="width: auto;height: auto;">Ordini da eseguire</h2>
+                <div class="row mb-1">
+                    <div class="col">
+                        <label><input
+
+                                type="text"
+                                class="js-table-filter form-control form-control-sm"
+                                placeholder="Filtra per ordine..."
+                                data-target-table="ordini_da_eseguire"
+                                data-filter-mode="dataset"
+                                data-filter-key="ordine"
+                                autocomplete="off"
+                        ></label>
+                    </div>
+                    <div class="col">
+                        <label><input
+                                type="text"
+                                class="js-table-filter form-control form-control-sm"
+                                placeholder="Filtra per articolo..."
+                                data-target-table="ordini_da_eseguire"
+                                data-filter-mode="dataset"
+                                data-filter-key="codice"
+                                autocomplete="off"
+                        ></label>
+                    </div>
+                </div>
+                <div class="table-responsive text-capitalize fw-semibold text-center w-100 h-100 justify-content-start align-items-start mb-0 pb-0"
+                     style="width: auto;height: auto;color: rgb(0,0,0);border-color: rgb(0,0,0);border-top-color: #000000;display: block;overflow: auto;max-height: 640px">
+                    <table class="table table-striped table-sortable table-hover table-selectable table-responsive table-sticky-wrap text-capitalize fw-semibold text-center justify-content-start align-items-start"
+                           id="ordini_da_eseguire">
+                        <thead>
+                        <tr>
+                            <th data-sort="text">Ordine</th>
+                            <th data-sort="text">Codice</th>
+                            <th data-sort="text">Descrizione</th>
+                            <th data-sort="num">Quantità</th>
+                            <th data-sort="date"
+                                data-date-format="dd/mm/yyyy">Consegna
+                            </th>
+                            <th data-sort="text">Risorsa</th>
+                        </tr>
+                        </thead>
+                        <tbody id="tbody_ordini_da_eseguire">
+                        {% include "partials/_home_standard_rows_da_eseguire.html" %}
+                        </tbody>
+                    </table>
+                </div>
+                <button class="btn btn-primary m-2"
+                        type="button"
+                        data-bs-target="#toast-1"
+                        data-use-selected="#ordini_da_eseguire"
+                        data-fill-target="#toast-1"
+                        data-bs-toggle="toast">Attiva ordine
+                </button>
+            </div>
+            <div class="col w-100 h-100 ms-0"
+                 style="width: auto;height: auto;">
+                <h2 class="w-100 h-100 mb-3"
+                    style="width: auto;height: auto;">Ordini attivi</h2>
+                <div class="row mb-1">
+                    <div class="col">
+                        <label><input
+                                type="text"
+                                class="js-table-filter form-control form-control-sm"
+                                placeholder="Filtra per ordine..."
+                                data-target-table="ordini_in_corso"
+                                data-filter-mode="dataset"
+                                data-filter-key="ordine"
+                                autocomplete="off"
+                        ></label>
+                    </div>
+                    <div class="col">
+                        <label>
+                            <input
+                                    type="text"
+                                    class="js-table-filter form-control form-control-sm"
+                                    placeholder="Filtra per articolo..."
+                                    data-target-table="ordini_in_corso"
+                                    data-filter-mode="dataset"
+                                    data-filter-key="codice"
+                                    autocomplete="off"
+                            ></label>
+                    </div>
+                </div>
+                <div class="table-responsive text-capitalize fw-semibold text-center w-100 h-100 justify-content-start align-items-start"
+                     style="width: auto;height: auto;color: rgb(0,0,0);border-color: rgb(0,0,0);border-top-color: #000000;display: block;overflow: auto;max-height: 640px">
+                    <table class="table table-striped table-state-rowcolor table-sortable table-hover table-responsive
+                    table-selectable table-sticky-wrap text-capitalize fw-semibold text-center w-100 h-100
+                    justify-content-start align-items-start"
+                           id="ordini_in_corso">
+                        <thead>
+                        <tr>
+                            <th data-sort="text">Ordine</th>
+                            <th data-sort="text">Codice</th>
+                            <th data-sort="text">Descrizione</th>
+                            <th data-sort="text">Quantità</th>
+                            <th data-sort="text">Data</th>
+                            <th data-sort="text">Risorsa</th>
+                            <th data-sort="text">Stato</th>
+                        </tr>
+                        </thead>
+                        <tbody id="tbody_ordini_in_corso">
+                        {% include "partials/_home_standard_rows_in_corso.html" %}
+                        </tbody>
+                    </table>
+                </div>
+                <section class="text-center d-flex w-100 h-100 align-items-center"
+                         style="width: auto;height: auto;">
+                    <section class="d-flex flex-grow-1 justify-content-start m-2"
+                             style="width: fit-content;height: fit-content;">
+                        <button class="btn btn-primary m-2 btn-warning"
+                                type="button"
+                                id="sospensione_ordine"
+                                data-bs-target="#toast-2"
+                                data-use-selected="#ordini_in_corso"
+                                data-fill-target="#toast-2"
+                                data-bs-toggle="toast"
+                                disabled>
+                            Sospendi ordine
+                        </button>
+                        <button class="btn btn-primary m-2 btn-success"
+                                id="riattivazione_ordine"
+                                type="button"
+                                data-bs-target="#toast-3"
+                                data-use-selected="#ordini_in_corso"
+                                data-fill-target="#toast-3"
+                                data-bs-toggle="toast"
+                                disabled>Riattiva ordine
+                        </button>
+                    </section>
+                    <section class="text-end d-flex flex-grow-1 justify-content-end m-2"
+                             style="width: auto;height: auto;">
+                        <button class="btn btn-primary m-2"
+                                type="button"
+                                id="chiusura_ordine"
+                                data-bs-target="#toast-4"
+                                data-use-selected="#ordini_in_corso"
+                                data-fill-target="#toast-4"
+                                data-bs-toggle="toast">Chiudi ordine
+                        </button>
+                    </section>
+                </section>
+            </div>
+        </div>
+    </div>
+</main>
+
+<div class="modal fade"
+     id="modalMaterialiOrdine"
+     tabindex="-1"
+     aria-labelledby="modalMaterialiOrdineLabel"
+     aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title d-flex align-items-center gap-2"
+                    id="modalMaterialiOrdineLabel">
+                    <span>Materiale necessario</span>
+                    <span class="text-muted"
+                          id="modal-codart"></span>
+                </h5>
+                <button type="button"
+                        class="btn-close"
+                        data-bs-dismiss="modal"
+                        aria-label="Chiudi"></button>
+            </div>
+
+            <div class="modal-body"
+                 id="modal-materiali-body">
+                <div class="text-muted">Seleziona un ordine.</div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button"
+                        class="btn btn-secondary"
+                        data-bs-dismiss="modal">Chiudi
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+    function getStatoOrdine(source) {
+        if (!source) return "";
+
+        if (source.dataset?.statoordine) {
+            return source.dataset.statoordine.trim();
+        }
+
+        const withState = source.closest?.("[data-statoordine]");
+        if (withState?.dataset?.statoordine) {
+            return withState.dataset.statoordine.trim();
+        }
+
+        const row = source.closest?.("tr");
+        if (row) {
+            if (row.dataset?.statoordine) {
+                return row.dataset.statoordine.trim();
+            }
+
+            const innerWithState = row.querySelector("[data-statoordine]");
+            if (innerWithState?.dataset?.statoordine) {
+                return innerWithState.dataset.statoordine.trim();
+            }
+
+            const statoCell = row.querySelector('td[data-col="stato"]');
+            if (statoCell) {
+                return statoCell.textContent.trim();
+            }
+        }
+
+        return "";
+    }
+
+    function aggiornaBottoniOrdine(source) {
+        const btnSospensione = document.getElementById("sospensione_ordine");
+        const btnRiattivazione = document.getElementById("riattivazione_ordine");
+
+        if (!btnSospensione || !btnRiattivazione) return;
+
+        const stato = getStatoOrdine(source);
+
+        if (stato === "Attivo") {
+            btnSospensione.disabled = false;
+            btnRiattivazione.disabled = true;
+            return;
+        }
+
+        if (stato === "In Sospeso") {
+            btnSospensione.disabled = true;
+            btnRiattivazione.disabled = false;
+            return;
+        }
+
+        btnSospensione.disabled = true;
+        btnRiattivazione.disabled = true;
+    }
+
+    document.addEventListener("click", function (event) {
+        const row = event.target.closest("tr[data-row-key]");
+        if (!row) return;
+
+        aggiornaBottoniOrdine(event.target);
+    });
+
+</script>
+<script>
+    document.getElementById("btn-prendi-ordine")?.addEventListener("click", async function () {
+        const btn = this;
+        const idDocumento = document.getElementById("toast1-iddocumento")?.value?.trim() || "";
+        const idRiga = document.getElementById("toast1-idriga")?.value?.trim() || "";
+
+        if (!idDocumento || !idRiga) {
+            console.error("IdDocumento o IdRiga mancanti");
+            return;
+        }
+
+        btn.disabled = true;
+
+        try {
+            const resp = await fetch("/api/ordini/presa", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-Requested-With": "XMLHttpRequest"
+                },
+                credentials: "same-origin",
+                body: JSON.stringify({
+                    id_documento: idDocumento,
+                    id_riga: idRiga
+                })
+            });
+
+            let data = {};
+            try {
+                data = await resp.json();
+            } catch (_) {
+                data = {};
+            }
+
+            if (!resp.ok || data.ok === false) {
+                console.error("Errore nella presa in carico:", data);
+                alert(data.error || "Errore durante la presa in carico dell'ordine.");
+                return;
+            }
+
+            const toastEl = document.getElementById("toast-1");
+            bootstrap.Toast.getOrCreateInstance(toastEl).hide();
+
+            if (data.fragments && window.applyHomeFragments) {
+                window.applyHomeFragments(data.fragments);
+            } else {
+                const rowKey = data.row_key || `${idDocumento}|${idRiga}`;
+                const selectedRow = document.querySelector(
+                    `tr[data-row-key="${CSS.escape(rowKey)}"]`
+                );
+                if (selectedRow) {
+                    selectedRow.remove();
+                }
+            }
+
+            document.getElementById("sospensione_ordine")?.setAttribute("disabled", "disabled");
+            document.getElementById("riattivazione_ordine")?.setAttribute("disabled", "disabled");
+
+        } catch (err) {
+            console.error("Errore fetch presa ordine:", err);
+            alert("Errore di comunicazione con il server.");
+        } finally {
+            btn.disabled = false;
+        }
+    });
+</script>
+<script>
+    document.getElementById("btn-conferma-sospensione-sl")?.addEventListener("click", async function (event) {
+        event.preventDefault();
+
+        const idDocumento = document.getElementById("toast2-iddocumento")?.value?.trim() || "";
+        const idRiga = document.getElementById("toast2-idriga")?.value?.trim() || "";
+        const causale = document.getElementById("causale_attivita_sl")?.value?.trim() || "";
+
+        if (!idDocumento || !idRiga) return;
+
+        const resp = await fetch("/api/ordini/sospendi", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-Requested-With": "XMLHttpRequest"
+            },
+            credentials: "same-origin",
+            body: JSON.stringify({
+                id_documento: idDocumento,
+                id_riga: idRiga,
+                causale: causale,
+                modalita: "sl"
+            })
+        });
+
+        const data = await resp.json();
+
+        if (!resp.ok || data.ok === false) {
+            alert(data.error || "Errore durante la sospensione del semilavorato.");
+            return;
+        }
+
+        bootstrap.Toast.getOrCreateInstance(document.getElementById("toast-2")).hide();
+
+        if (data.fragments && window.applyHomeFragments) {
+            window.applyHomeFragments(data.fragments);
+        }
+
+        document.getElementById("sospensione_ordine")?.setAttribute("disabled", "disabled");
+        document.getElementById("riattivazione_ordine")?.setAttribute("disabled", "disabled");
+    });
+</script>
+<script>
+    document.getElementById("btn-conferma-riattivazione-sl")?.addEventListener("click", async function (event) {
+        event.preventDefault();
+
+        const btn = this;
+        const idDocumento = document.getElementById("toast-riatt-sl-iddocumento")?.value?.trim() || "";
+        const idRiga = document.getElementById("toast-riatt-sl-idriga")?.value?.trim() || "";
+
+        if (!idDocumento || !idRiga) {
+            console.error("IdDocumento o IdRiga mancanti");
+            return;
+        }
+
+        btn.disabled = true;
+
+        try {
+            const resp = await fetch("/api/ordini/riattiva", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-Requested-With": "XMLHttpRequest"
+                },
+                credentials: "same-origin",
+                body: JSON.stringify({
+                    id_documento: idDocumento,
+                    id_riga: idRiga,
+                    modalita: "sl"
+                })
+            });
+
+            let data = {};
+            try {
+                data = await resp.json();
+            } catch (_) {
+            }
+
+            if (!resp.ok || data.ok === false) {
+                alert(data.error || "Errore durante la riattivazione dell'ordine.");
+                return;
+            }
+
+            bootstrap.Toast.getOrCreateInstance(document.getElementById("toast-3")).hide();
+
+            if (data.fragments && window.applyHomeFragments) {
+                window.applyHomeFragments(data.fragments);
+            }
+
+            const btnSosp = document.getElementById("sospensione_ordine");
+            const btnRiatt = document.getElementById("riattivazione_ordine");
+            if (btnSosp) btnSosp.disabled = true;
+            if (btnRiatt) btnRiatt.disabled = true;
+
+        } catch (err) {
+            console.error("Errore fetch riattivazione SL:", err);
+            alert("Errore di comunicazione con il server.");
+        } finally {
+            btn.disabled = false;
+        }
+    });
+</script>
+
+<script>
+    (() => {
+        // ---- Stato lotti SL ----
+        let _lottiData = [];
+        let _hasLotti = false;
+        let _hasSelectableLotti = false;
+        let _rowCounter = 0;
+
+        // ---- DOM ----
+        const toastEl = document.getElementById("toast-4");
+        const section = document.getElementById("lotti-section-sl");
+        const loading = document.getElementById("lotti-loading-sl");
+        const alertEl = document.getElementById("lotti-alert-sl");
+        const tbody = document.getElementById("tbody-lotti-sl");
+        const riepilogo = document.getElementById("lotti-riepilogo-sl");
+        const hidQtyResidua = document.getElementById("toast-chiudi-sl-quantita");
+        const hidQtyTotale = document.getElementById("toast-chiudi-sl-quantita-totale");
+        const inpConf = document.getElementById("toast-chiudi-sl-quantita-conforme");
+        const inpNonConf = document.getElementById("toast-chiudi-sl-quantita-non-conforme");
+        const chkParziale = document.getElementById("toast-chiudi-sl-parziale");
+        const chkTotale = document.getElementById("toast-chiudi-sl-totale");
+
+        if (!toastEl || !section || !tbody) return;
+
+        // ---- Utility ----
+        function escHtml(s) {
+            return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+        }
+
+        function showAlert(msg) {
+            if (!alertEl) return;
+            alertEl.textContent = msg;
+            alertEl.style.display = msg ? "" : "none";
+        }
+
+        function isGestioneLottoSi(comp) {
+            const flag = String(
+                comp?.GestioneLotto
+                ?? comp?.gestione_lotto
+                ?? comp?.gestioneLotto
+                ?? ""
+            ).trim().toLowerCase();
+
+            if (flag) {
+                return flag === "si";
+            }
+
+            return Array.isArray(comp?.lotti) && comp.lotti.length > 0;
+        }
+
+        function parseIntQty(v) {
+            let s = String(v ?? "").trim().replace(/\s+/g, "");
+            if (!s) return NaN;
+
+            if (s.includes(",") || s.includes(".")) {
+                return NaN;
+            }
+
+            if (!/^\d+$/.test(s)) {
+                return NaN;
+            }
+
+            const n = Number(s);
+            return Number.isSafeInteger(n) ? n : NaN;
+        }
+
+        function parseQtyOrZero(v) {
+            const n = parseIntQty(v);
+            return Number.isFinite(n) ? n : 0;
+        }
+
+        function parseSystemQty(v) {
+            let s = String(v ?? "").trim().replace(/\s+/g, "");
+            if (!s) return NaN;
+
+            if (s.includes(",") && s.includes(".")) {
+                s = s.replace(/\./g, "");
+            }
+
+            s = s.replace(",", ".");
+            const n = Number(s);
+            return Number.isFinite(n) ? n : NaN;
+        }
+
+        function sanitizeIntegerInput(el) {
+            if (!el) return;
+
+            el.setAttribute("inputmode", "numeric");
+            el.setAttribute("step", "1");
+            el.setAttribute("min", "0");
+            el.setAttribute("pattern", "\\d*");
+
+            el.addEventListener("input", () => {
+                const cleaned = String(el.value ?? "").replace(/[^\d]/g, "");
+                if (el.value !== cleaned) {
+                    el.value = cleaned;
+                }
+            });
+
+            el.addEventListener("blur", () => {
+                const raw = String(el.value ?? "").trim();
+                if (!raw) {
+                    el.value = "0";
+                    return;
+                }
+                const n = parseIntQty(raw);
+                el.value = Number.isFinite(n) ? String(n) : "0";
+            });
+        }
+
+        function sameQty(a, b) {
+            return Math.abs(Number(a || 0) - Number(b || 0)) < 0.000001;
+        }
+
+        function getQuantitaResiduaCorrente() {
+            const n = parseSystemQty(hidQtyResidua?.value);
+            return Number.isFinite(n) ? n : 0;
+        }
+
+        function getQuantitaTotaleOrdine() {
+            const n = parseSystemQty(hidQtyTotale?.value);
+            return Number.isFinite(n) ? n : 0;
+        }
+
+        function getQuantitaLavorataCorrente() {
+            const qConf = parseQtyOrZero(inpConf?.value);
+            const qNonConf = parseQtyOrZero(inpNonConf?.value);
+            return qConf + qNonConf;
+        }
+
+        function getQuantitaRichiestaComponente(comp) {
+            const baseQty = parseSystemQty(comp?.Quantita);
+            const qOrdTotale = getQuantitaTotaleOrdine();
+            const qLavorata = getQuantitaLavorataCorrente();
+
+            if (!Number.isFinite(baseQty) || baseQty <= 0) return 0;
+            if (!Number.isFinite(qLavorata) || qLavorata <= 0) return 0;
+
+            if (!Number.isFinite(qOrdTotale) || qOrdTotale <= 0) {
+                return Math.round(baseQty);
+            }
+
+            const richiesto = (baseQty * qLavorata) / qOrdTotale;
+
+            if (!Number.isFinite(richiesto)) return 0;
+
+            return Math.round(richiesto);
+        }
+
+        function resetQuantitaInputs() {
+            const qResidua = getQuantitaResiduaCorrente();
+
+            if (Number.isFinite(qResidua) && qResidua > 0) {
+                inpConf.value = String(Math.round(qResidua));
+            } else {
+                inpConf.value = "";
+            }
+
+            inpNonConf.value = "0";
+            if (chkParziale) chkParziale.checked = false;
+            if (chkTotale) chkTotale.checked = false;
+
+            const noteEl = document.getElementById("toast-chiudi-sl-note");
+            if (noteEl) noteEl.value = "";
+        }
+
+        // ---- Dropdown lotti ----
+        function buildLottoSelect(lotti, selectedLotto = "") {
+            let html = '<select class="form-select form-select-sm lotto-select-sl">';
+            html += '<option value="">-- Seleziona lotto --</option>';
+            for (const l of (lotti || [])) {
+                const value = String(l.RifLottoAlfa || "");
+                const giacenza = parseSystemQty(l.Giacenza);
+                const codMag = String(l.CodMag || "");
+                const sel = value === selectedLotto ? " selected" : "";
+                html += `
+            <option value="${escHtml(value)}"
+                    data-giacenza="${Number.isFinite(giacenza) ? giacenza : 0}"
+                    data-codmag="${escHtml(codMag)}"${sel}>
+                ${escHtml(value)} (mag: ${escHtml(codMag || "-")})
+            </option>`;
+            }
+            html += "</select>";
+            return html;
+        }
+
+        // ---- Crea riga lotto ----
+        function addLottoRow(codArt, desArt, lotti, isInitial) {
+            _rowCounter++;
+            const tr = document.createElement("tr");
+            tr.id = `lotto-sl-row-${_rowCounter}`;
+            tr.dataset.codart = codArt;
+
+            tr.innerHTML = `
+            <td class="fw-semibold" style="font-size: 20px;">${escHtml(codArt)}</td>
+            <td style="font-size: 20px;">${escHtml(desArt)}</td>
+            <td>${buildLottoSelect(lotti)}</td>
+            <td class="text-end giacenza-cell-sl" style="font-size: 20px;">-</td>
+            <td>
+                <input type="number" class="form-control form-control-sm lotto-qty-sl text-end"
+                       min="0" step="1" value="" placeholder="0" style="width: 90px;">
+            </td>
+            <td>
+                <select class="form-select form-select-sm lotto-esito-sl" style="width: 70px;">
+                    <option value="ok">OK</option>
+                    <option value="ko">KO</option>
+                </select>
+            </td>
+            <td class="text-center">
+                <button type="button" class="btn btn-sm btn-outline-primary btn-add-lotto-sl me-1"
+                        title="Aggiungi riga" data-codart="${escHtml(codArt)}"
+                        data-desart="${escHtml(desArt)}">+</button>
+                ${isInitial ? "" : '<button type="button" class="btn btn-sm btn-outline-danger btn-rem-lotto-sl" title="Rimuovi">−</button>'}
+            </td>
+        `;
+            tbody.appendChild(tr);
+            sanitizeIntegerInput(tr.querySelector(".lotto-qty-sl"));
+            return tr;
+        }
+
+        sanitizeIntegerInput(inpConf);
+        sanitizeIntegerInput(inpNonConf);
+
+        [inpConf, inpNonConf].forEach(el => {
+            el?.addEventListener("input", () => {
+                if (_hasLotti) updateRiepilogo();
+            });
+        });
+
+        chkParziale?.addEventListener("change", () => {
+            if (chkParziale.checked && chkTotale) {
+                chkTotale.checked = false;
+            }
+            if (_hasLotti) updateRiepilogo();
+        });
+
+        chkTotale?.addEventListener("change", () => {
+            if (chkTotale.checked && chkParziale) {
+                chkParziale.checked = false;
+            }
+            if (_hasLotti) updateRiepilogo();
+        });
+
+        // ---- Aggiorna giacenza al cambio lotto ----
+        tbody.addEventListener("change", function (e) {
+            const sel = e.target.closest(".lotto-select-sl");
+            if (sel) {
+                const row = sel.closest("tr");
+                const giacCell = row.querySelector(".giacenza-cell-sl");
+                const qtyInput = row.querySelector(".lotto-qty-sl");
+                const opt = sel.options[sel.selectedIndex];
+
+                if (opt && opt.value) {
+                    const g = parseSystemQty(opt.dataset.giacenza);
+                    giacCell.textContent = Number.isFinite(g) ? g : 0;
+                    qtyInput.max = Number.isFinite(g) ? String(g) : "";
+                } else {
+                    giacCell.textContent = "-";
+                    qtyInput.max = "";
+                }
+            }
+
+            if (
+                e.target.closest(".lotto-select-sl") ||
+                e.target.closest(".lotto-esito-sl")
+            ) {
+                updateRiepilogo();
+                validateLotti();
+            }
+        });
+
+        tbody.addEventListener("input", function (e) {
+            if (e.target.classList.contains("lotto-qty-sl")) {
+                updateRiepilogo();
+                validateLotti();
+            }
+        });
+
+        tbody.addEventListener("input", function (e) {
+            if (e.target.classList.contains("lotto-qty-sl")) updateRiepilogo();
+        });
+
+        // ---- +/- righe ----
+        tbody.addEventListener("click", function (e) {
+            const btnAdd = e.target.closest(".btn-add-lotto-sl");
+            if (btnAdd) {
+                const codArt = btnAdd.dataset.codart;
+                const desArt = btnAdd.dataset.desart;
+                const comp = _lottiData.find(c => c.CodArt === codArt);
+                if (comp) addLottoRow(codArt, desArt, comp.lotti, false);
+                updateRiepilogo();
+                return;
+            }
+            const btnRem = e.target.closest(".btn-rem-lotto-sl");
+            if (btnRem) {
+                btnRem.closest("tr")?.remove();
+                updateRiepilogo();
+            }
+        });
+
+        // ---- Riepilogo ----
+        function updateRiepilogo() {
+            if (!riepilogo) return;
+
+            const totals = {};
+            tbody.querySelectorAll("tr").forEach(row => {
+                const cod = row.dataset.codart || "";
+                const qty = parseQtyOrZero(row.querySelector(".lotto-qty-sl")?.value);
+                const esito = row.querySelector(".lotto-esito-sl")?.value || "ok";
+
+                if (!totals[cod]) totals[cod] = {ok: 0, ko: 0, totale: 0};
+                if (esito === "ok") totals[cod].ok += qty;
+                else totals[cod].ko += qty;
+                totals[cod].totale += qty;
+            });
+
+            let html = "<strong>Riepilogo per componente:</strong><br>";
+            for (const comp of _lottiData) {
+                const codArt = String(comp.CodArt || "");
+                const richiesto = getQuantitaRichiestaComponente(comp);
+                const t = totals[codArt] || {ok: 0, ko: 0, totale: 0};
+                const ok = sameQty(t.totale, richiesto);
+
+                html += `
+            <span class="${ok ? "text-success" : "text-danger"}">
+                ${escHtml(codArt)}: ${t.totale}/${richiesto}
+                (OK: ${t.ok}, KO: ${t.ko})${ok ? " ✓" : " ✗"}
+            </span><br>`;
+            }
+
+            riepilogo.innerHTML = html;
+        }
+
+        // ---- Carica lotti dal server ----
+        async function fetchLottiData(idDocumento, idRiga) {
+            section.style.display = "none";
+            loading.style.display = "";
+            tbody.innerHTML = "";
+            showAlert("");
+            riepilogo.innerHTML = "";
+            _lottiData = [];
+            _hasLotti = false;
+            _hasSelectableLotti = false;
+
+            try {
+                const resp = await fetch("/api/ordini/lotti-componenti", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-Requested-With": "XMLHttpRequest"
+                    },
+                    credentials: "same-origin",
+                    body: JSON.stringify({
+                        id_documento: idDocumento,
+                        id_riga: idRiga,
+                        modalita: "sl"
+                    })
+                });
+
+                const data = await resp.json();
+
+                if (!resp.ok || !data.ok) {
+                    showAlert(data.error || "Errore nel caricamento dei lotti.");
+                    return;
+                }
+
+                const forceShow = !!data.force_show_section;
+                const rawComponenti = Array.isArray(data.componenti) ? data.componenti : [];
+
+                _lottiData = rawComponenti.filter(comp => isGestioneLottoSi(comp));
+
+                const componentiConLotti = _lottiData.filter(
+                    comp => Array.isArray(comp.lotti) && comp.lotti.length > 0
+                );
+                const componentiSenzaLotti = _lottiData.filter(
+                    comp => !Array.isArray(comp.lotti) || comp.lotti.length === 0
+                );
+
+                _hasLotti = _lottiData.length > 0;
+                _hasSelectableLotti = componentiConLotti.length > 0;
+
+                if (!_hasLotti && !forceShow) {
+                    section.style.display = "none";
+                    return;
+                }
+
+                section.style.display = "";
+
+                for (const comp of componentiConLotti) {
+                    addLottoRow(comp.CodArt, comp.DesArt, comp.lotti, true);
+                }
+
+                if (componentiSenzaLotti.length > 0) {
+                    const elenco = componentiSenzaLotti
+                        .map(comp => `- ${comp.CodArt}${comp.DesArt ? ` (${comp.DesArt})` : ""}`)
+                        .join("\n");
+
+                    showAlert(
+                        `Nessun lotto disponibile per i seguenti componenti della fase attiva:\n${elenco}`
+                    );
+                } else if (componentiConLotti.length === 0 && forceShow) {
+                    showAlert("Nessun lotto disponibile per i componenti della fase attiva con GestioneLotto = si.");
+                } else {
+                    showAlert("");
+                }
+
+                updateRiepilogo();
+            } catch (err) {
+                console.error("Errore fetch lotti SL:", err);
+                showAlert("Errore di comunicazione.");
+            } finally {
+                loading.style.display = "none";
+            }
+        }
+
+        // ---- Validazione lotti ----
+        function validateLotti() {
+            if (!_hasLotti) return {valid: true, lottiPayload: []};
+
+            const errors = [];
+            const perCodice = {};
+            const lottiPayload = [];
+
+            // Raggruppamento per CodArt + Lotto
+            const perLotto = {};
+
+            tbody.querySelectorAll("tr").forEach(row => {
+                const cod = row.dataset.codart || "";
+                const lottoVal = row.querySelector(".lotto-select-sl")?.value || "";
+                const giacenza = parseQtyOrZero(row.querySelector(".giacenza-cell-sl")?.textContent);
+                const esito = row.querySelector(".lotto-esito-sl")?.value || "ok";
+                const qtyRaw = row.querySelector(".lotto-qty-sl")?.value;
+                const qty = parseIntQty(qtyRaw);
+
+                if (!Number.isInteger(qty) || qty <= 0) {
+                    errors.push(`${cod} lotto ${lottoVal}: inserire una quantità intera > 0.`);
+                    return;
+                }
+
+                if (qty > 0 && !lottoVal) {
+                    errors.push(`${cod}: selezionare un lotto.`);
+                    return;
+                }
+
+                if (!lottoVal) return;
+
+                if (qty <= 0) {
+                    errors.push(`${cod} lotto ${lottoVal}: inserire qtà > 0.`);
+                }
+
+                if (qty > giacenza) {
+                    errors.push(`${cod} lotto ${lottoVal}: qtà ${qty} > giacenza ${giacenza}.`);
+                }
+
+                const lottoKey = `${cod}|${lottoVal}`;
+                if (!perLotto[lottoKey]) {
+                    perLotto[lottoKey] = {
+                        cod,
+                        lottoVal,
+                        giacenza,
+                        totale: 0,
+                        ok: 0,
+                        ko: 0,
+                        righe: 0
+                    };
+                }
+
+                perLotto[lottoKey].totale += qty;
+                perLotto[lottoKey].righe += 1;
+                if (esito === "ok") {
+                    perLotto[lottoKey].ok += qty;
+                } else {
+                    perLotto[lottoKey].ko += qty;
+                }
+
+                if (!perCodice[cod]) perCodice[cod] = {ok: 0, ko: 0, totale: 0};
+                if (esito === "ok") perCodice[cod].ok += qty;
+                else perCodice[cod].ko += qty;
+                perCodice[cod].totale += qty;
+
+                lottiPayload.push({
+                    CodArt: cod,
+                    RifLottoAlfa: lottoVal,
+                    Quantita: qty,
+                    Esito: esito
+                });
+            });
+
+            // Regole duplicati stesso lotto
+            for (const key of Object.keys(perLotto)) {
+                const info = perLotto[key];
+
+                if (info.righe <= 1) continue;
+
+                // Se tutte le righe del lotto sono OK, il duplicato non è ammesso
+                if (info.ko === 0) {
+                    errors.push(
+                        `${info.cod}: lotto ${info.lottoVal} duplicato non consentito su più righe OK.`
+                    );
+                    continue;
+                }
+
+                // Se esiste almeno una KO, il duplicato è ammesso solo entro la giacenza
+                if (info.totale > info.giacenza) {
+                    errors.push(
+                        `${info.cod}: lotto ${info.lottoVal} duplicato con KO ma somma quantità ${info.totale} > giacenza ${info.giacenza}.`
+                    );
+                }
+            }
+
+            // Controllo totale per componente
+            for (const comp of _lottiData) {
+                const codArt = String(comp.CodArt || "");
+                const richiesto = getQuantitaRichiestaComponente(comp);
+                const totale = perCodice[codArt]?.totale || 0;
+
+                if (!sameQty(totale, richiesto)) {
+                    errors.push(`${codArt}: somma lotti (${totale}) ≠ richiesta (${richiesto}).`);
+                }
+            }
+
+            if (errors.length > 0) {
+                showAlert(errors.join("\n"));
+                return {valid: false, lottiPayload: []};
+            }
+
+            showAlert("");
+            return {valid: true, lottiPayload};
+        }
+
+        // ---- Apertura toast: autofill + carica lotti ----
+        document.addEventListener("click", function (e) {
+            const btn = e.target.closest('[data-bs-target="#toast-4"]');
+            if (!btn) return;
+
+            requestAnimationFrame(() => {
+                resetQuantitaInputs();
+
+                const idDoc = document.getElementById("toast-chiudi-sl-iddocumento")?.value?.trim() || "";
+                const idRiga = document.getElementById("toast-chiudi-sl-idriga")?.value?.trim() || "";
+
+                if (idDoc && idRiga) {
+                    fetchLottiData(idDoc, idRiga);
+                } else {
+                    section.style.display = "none";
+                }
+            });
+        });
+
+        // ---- Conferma chiusura SL ----
+        document.getElementById("btn-conferma-chiusura-sl")?.addEventListener("click", async function (event) {
+            event.preventDefault();
+
+            const btn = this;
+            const idDocumento = document.getElementById("toast-chiudi-sl-iddocumento")?.value?.trim() || "";
+            const idRiga = document.getElementById("toast-chiudi-sl-idriga")?.value?.trim() || "";
+            const qOrd = document.getElementById("toast-chiudi-sl-quantita")?.value?.trim() || "";
+            const qConf = document.getElementById("toast-chiudi-sl-quantita-conforme")?.value?.trim() || "";
+            const qNonConf = document.getElementById("toast-chiudi-sl-quantita-non-conforme")?.value?.trim() || "";
+            const note = document.getElementById("toast-chiudi-sl-note")?.value?.trim() || "";
+            const chiusuraParziale = document.getElementById("toast-chiudi-sl-parziale")?.checked === true;
+            const chiusuraTotale = document.getElementById("toast-chiudi-sl-totale")?.checked === true;
+
+            if (chiusuraParziale === chiusuraTotale) {
+                alert("Selezionare una sola modalità di chiusura: parziale oppure totale.");
+                return;
+            }
+            if (!idDocumento || !idRiga) {
+                alert("Ordine non valido (IdDocumento/IdRiga mancanti).");
+                return;
+            }
+
+            // Validazione quantità
+            const nConf = parseIntQty(qConf);
+            const nNonConf = parseIntQty(qNonConf);
+
+            const qOrdResiduaRaw = document.getElementById("toast-chiudi-sl-quantita")?.value?.trim() || "";
+            const nOrdResiduaRaw = parseSystemQty(qOrdResiduaRaw);
+            const nOrdResidua = Number.isFinite(nOrdResiduaRaw) ? Math.round(nOrdResiduaRaw) : NaN;
+            if (!Number.isInteger(nConf) || nConf < 0) {
+                alert("Quantità conforme non valida: inserire un numero intero >= 0.");
+                return;
+            }
+            if (!Number.isInteger(nNonConf) || nNonConf < 0) {
+                alert("Quantità KO non valida: inserire un numero intero >= 0.");
+                return;
+            }
+
+            if (!Number.isFinite(nConf) || nConf < 0) {
+                alert("Quantità conforme non valida.");
+                return;
+            }
+            if (!Number.isFinite(nNonConf) || nNonConf < 0) {
+                alert("Quantità KO non valida.");
+                return;
+            }
+
+            const nLavorata = nConf + nNonConf;
+            if (nLavorata <= 0) {
+                alert("Devi indicare una quantità lavorata > 0.");
+                return;
+            }
+
+            if (chiusuraParziale) {
+                if (!Number.isFinite(nOrdResidua) || nOrdResidua <= 0) {
+                    alert("Quantità residua ordine non valida.");
+                    return;
+                }
+
+                if (nLavorata >= nOrdResidua) {
+                    alert("Nella chiusura parziale la quantità lavorata deve essere strettamente minore della quantità residua dell'ordine.");
+                    return;
+                }
+            }
+
+            // Validazione lotti
+            let lottiPayload = [];
+            if (_hasLotti) {
+                if (!_hasSelectableLotti) {
+                    alert("Impossibile chiudere l'ordine: mancano i lotti necessari per i componenti obbligatori.");
+                    return;
+                }
+
+                const validation = validateLotti();
+                if (!validation.valid) return;
+                lottiPayload = validation.lottiPayload;
+
+                const totKoLotti = lottiPayload
+                    .filter(l => l.Esito === "ko")
+                    .reduce((s, l) => s + l.Quantita, 0);
+
+                if (nNonConf === 0 && totKoLotti > 0) {
+                    alert("Hai lotti marcati KO ma quantità non conforme = 0. Correggere prima di procedere.");
+                    return;
+                }
+                if (nNonConf > 0 && totKoLotti === 0) {
+                    alert("Quantità non conforme > 0 ma nessun lotto è marcato KO. Correggere prima di procedere.");
+                    return;
+                }
+            }
+
+            btn.disabled = true;
+
+            try {
+                const resp = await fetch("/api/ordini/chiudi", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"},
+                    credentials: "same-origin",
+                    body: JSON.stringify({
+                        id_documento: idDocumento,
+                        id_riga: idRiga,
+                        quantita_conforme: String(nConf),
+                        quantita_non_conforme: String(nNonConf),
+                        note: note,
+                        lotti: lottiPayload,
+                        chiusura_parziale: chiusuraParziale
+                    })
+                });
+
+                let data = {};
+                try {
+                    data = await resp.json();
+                } catch (_) {
+                    data = {};
+                }
+
+                if (!resp.ok || data.ok === false) {
+                    console.error("Errore chiusura SL:", data);
+                    alert(data.error || "Errore durante la chiusura dell'ordine.");
+                    return;
+                }
+
+                const exportResult = await exportAvpTxt({suffix: "officina"});
+                if (!exportResult.ok) {
+                    alert(exportResult.error || "Ordine chiuso, ma file ERP non generato.");
+                }
+
+                bootstrap.Toast.getOrCreateInstance(toastEl).hide();
+
+                if (data.fragments && window.applyHomeFragments) {
+                    window.applyHomeFragments(data.fragments);
+                }
+
+                // Reset
+                const btnSosp = document.getElementById("sospensione_ordine");
+                const btnRiatt = document.getElementById("riattivazione_ordine");
+                if (btnSosp) btnSosp.disabled = true;
+                if (btnRiatt) btnRiatt.disabled = true;
+                section.style.display = "none";
+                tbody.innerHTML = "";
+                _lottiData = [];
+                _hasLotti = false;
+                _hasSelectableLotti = false;
+
+            } catch (err) {
+                console.error("Errore fetch chiusura SL:", err);
+                alert("Errore di comunicazione con il server.");
+            } finally {
+                btn.disabled = false;
+            }
+        });
+    })();
+</script>
+<script>
+    async function exportAvpTxt({suffix = "officina"} = {}) {
+        try {
+            const resp = await fetch("/api/erp/export/avp", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-Requested-With": "XMLHttpRequest"
+                },
+                credentials: "same-origin",
+                body: JSON.stringify({suffix})
+            });
+
+            let data = {};
+            try {
+                data = await resp.json();
+            } catch (_) {
+                data = {};
+            }
+
+            if (!resp.ok || data.ok === false) {
+                return {
+                    ok: false,
+                    error: data.error || "Errore durante la generazione del file ERP."
+                };
+            }
+
+            return {ok: true, data};
+        } catch (err) {
+            console.error("Errore export AVP:", err);
+            return {
+                ok: false,
+                error: "Errore di comunicazione durante la generazione del file ERP."
+            };
+        }
+    }
+</script>

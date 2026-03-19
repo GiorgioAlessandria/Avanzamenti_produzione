@@ -1,6 +1,7 @@
+<!--toast nuovo ordine in carico SL -->
 <div class="toast lh-lg hide"
      role="alert"
-     id="toast-ordine-sl"
+     id="toast-1"
      style="width: max-content;height: max-content;position: fixed; top: 1rem; right: 1rem; z-index: 2000;opacity: 1;filter: blur(0px);">
     <div class="toast-header">
         <strong class="me-auto"
@@ -15,35 +16,42 @@
     <div class="toast-body d-flex flex-column justify-content-center align-items-center"
          role="alert"
          style="opacity: 1;width: auto;height: auto;">
-        <p style="font-size: 20px;">Stai prendendo in carico un nuovo ordine</p>
-        <form method="post">
-            <input type="hidden"
-                   name="Ordine"
-                   data-bind="ordine">
-            <input type="hidden"
-                   name="CodArt"
-                   data-bind="codice">
-            <input type="hidden"
-                   name="Quantita"
-                   data-bind="quantita">
-            <input type="hidden"
-                   name="NumFase"
-                   data-bind="fase">
-            <input class="btn btn-lg btn-primary"
-                   type="submit"
-                   name="Inserimento"
-                   value="Preso in carico"
-                   style="font-size: 25px;">
-        </form>
+        <input type="hidden"
+               data-bind="iddocumento"
+               id="toast-presa-iddocumento">
+        <input type="hidden"
+               data-bind="idriga"
+               id="toast-presa-idriga">
+        <input type="hidden"
+               data-bind="ordine"
+               id="toast-presa-ordine">
+        <input type="hidden"
+               data-bind="codice"
+               id="toast-presa-codice">
+        <input type="hidden"
+               data-bind="quantita"
+               id="toast-presa-quantita">
+        <input type="hidden"
+               data-bind="fase"
+               id="toast-presa-fase">
+
+        <button class="btn btn-lg btn-primary"
+                type="button"
+                id="btn-prendi-ordine"
+                style="font-size: 25px;">
+            Preso in carico
+        </button>
     </div>
 </div>
+
+<!--toast presa in carico ordine MACCHINA -->
 <div class="toast lh-lg hide"
      role="alert"
-     id="toast-ordine-m"
+     id="toast-1-m"
      style="width: max-content;height: max-content;position: fixed; top: 1rem; right: 1rem; z-index: 2000;opacity: 1;filter: blur(0px);">
     <div class="toast-header">
         <strong class="me-auto"
-                style="font-size: 25px;">Presa in carico dell'ordine
+                style="font-size: 25px;">Presa in carico ordine macchina
             <span data-bind-text="ordine"></span></strong>
         <button class="btn-close ms-2 mb-1 close"
                 type="button"
@@ -54,29 +62,536 @@
     <div class="toast-body d-flex flex-column justify-content-center align-items-center"
          role="alert"
          style="opacity: 1;width: auto;height: auto;">
-        <p style="font-size: 20px;">Stai prendendo in carico un nuovo ordine</p>
+        <input type="hidden"
+               data-bind="iddocumento"
+               id="toast-presa-m-iddocumento">
+        <input type="hidden"
+               data-bind="idriga"
+               id="toast-presa-m-idriga">
+        <input type="hidden"
+               data-bind="ordine"
+               id="toast-presa-m-ordine">
+        <input type="hidden"
+               data-bind="codice"
+               id="toast-presa-m-codice">
+        <input type="hidden"
+               data-bind="matricola"
+               id="toast-presa-m-matricola">
+        <input type="hidden"
+               data-bind="fase"
+               id="toast-presa-m-fase">
+
+        <table class="table table-sm table-borderless mb-2"
+               style="font-size: 18px; max-width: 400px;">
+            <tr>
+                <td class="fw-semibold">Matricola:</td>
+                <td><span data-bind-text="matricola"></span></td>
+            </tr>
+            <tr>
+                <td class="fw-semibold">Fase:</td>
+                <td><span data-bind-text="fase"></span></td>
+            </tr>
+        </table>
+
+        <button class="btn btn-lg btn-primary"
+                type="button"
+                id="btn-prendi-ordine-m"
+                style="font-size: 25px;">
+            Preso in carico
+        </button>
+    </div>
+</div>
+
+<!--toast sospensione ordine -->
+<div class="toast lh-lg hide"
+     role="alert"
+     id="toast-2"
+     style="width: max-content;height: max-content;position: fixed; top: 1rem; right: 1rem; z-index: 2000;opacity: 1;filter: blur(0px);">
+    <div class="toast-header">
+        <strong class="me-auto"
+                style="font-size: 25px;">Sospensione dell'ordine
+            <span data-bind-text="ordine"></span></strong>
+        <button class="btn-close ms-2 mb-1 close"
+                type="button"
+                aria-label="Close"
+                data-bs-dismiss="toast"
+                style="font-size: 25px;"></button>
+    </div>
+    <div class="toast-body d-flex flex-column justify-content-center align-items-center"
+         role="alert"
+         style="opacity: 1;width: auto;height: auto;">
         <form method="post">
             <input type="hidden"
-                   name="Ordine"
-                   data-bind="ordine">
+                   data-bind="iddocumento"
+                   id="toast-sosp-iddocumento">
             <input type="hidden"
-                   name="CodArt"
-                   data-bind="codice">
+                   data-bind="idriga"
+                   id="toast-sosp-idriga">
             <input type="hidden"
-                   name="Quantita"
-                   data-bind="quantita">
+                   data-bind="ordine"
+                   id="toast-sosp-ordine">
             <input type="hidden"
-                   name="NumFase"
-                   data-bind="fase">
+                   data-bind="codice"
+                   id="toast-sosp-codice">
+            <input type="hidden"
+                   data-bind="quantita"
+                   id="toast-sosp-quantita">
+            <input type="hidden"
+                   data-bind="fase"
+                   id="toast-sosp-fase">
+            <label for="causale_attivita"
+                   style="font-size: 20px;"> Inserire la causale della sospensione:<br>
+                <select id="causale_attivita">
+                    {% for causale in causali_attivita %}
+                        <option value="{{ causale }}">{{ causale }}</option>
+                    {% endfor %}
+                </select>
+            </label><br>
             <input class="btn btn-lg btn-primary"
                    type="submit"
-                   name="Inserimento"
-                   value="Preso in carico"
+                   id="btn-conferma-sospensione"
+                   value="Conferma"
                    style="font-size: 25px;">
         </form>
     </div>
 </div>
+<!--toast riattivazione ordine semilavorato -->
+<div class="toast lh-lg hide"
+     role="alert"
+     id="toast-3"
+     style="width: max-content;height: max-content;position: fixed; top: 1rem; right: 1rem; z-index: 2000;opacity: 1;filter: blur(0px);">
+    <div class="toast-header">
+        <strong class="me-auto"
+                style="font-size: 25px;">Riattivazione dell'ordine
+            <span data-bind-text="ordine"></span></strong>
+        <button class="btn-close ms-2 mb-1 close"
+                type="button"
+                aria-label="Close"
+                data-bs-dismiss="toast"
+                style="font-size: 25px;"></button>
+    </div>
+    <div class="toast-body d-flex flex-column justify-content-center align-items-center"
+         role="alert"
+         style="opacity: 1;width: auto;height: auto;">
+        <form method="post">
+            <input type="hidden"
+                   data-bind="iddocumento"
+                   id="toast-riatt-sl-iddocumento">
+            <input type="hidden"
+                   data-bind="idriga"
+                   id="toast-riatt-sl-idriga">
+            <input type="hidden"
+                   data-bind="ordine"
+                   id="toast-riatt-sl-ordine">
+            <input type="hidden"
+                   data-bind="codice"
+                   id="toast-riatt-sl-codice">
+            <input type="hidden"
+                   data-bind="quantita"
+                   id="toast-riatt-sl-quantita">
+            <input type="hidden"
+                   data-bind="fase"
+                   id="toast-riatt-sl-fase">
+
+            <input class="btn btn-lg btn-primary"
+                   type="submit"
+                   id="btn-conferma-riattivazione-sl"
+                   value="Conferma"
+                   style="font-size: 25px;">
+        </form>
+    </div>
+</div>
+<!--toast chiusura ordine SL -->
+<div class="toast  fluid hide"
+     role="alert"
+     id="toast-4"
+     style="width: max-content; max-width: 90vw;padding:8px; height: max-content;max-width: 70vw; position: fixed; top: 1rem; right: 1rem; z-index: 2000; opacity: 10000;">
+    <div class="toast-header">
+        <strong class="me-auto"
+                style="font-size: 25px;">
+            Chiusura dell'ordine
+            <span data-bind-text="ordine"></span>
+        </strong>
+        <button class="btn-close ms-2 mb-1"
+                type="button"
+                aria-label="Close"
+                data-bs-dismiss="toast"
+                style="font-size: 25px;"></button>
+    </div>
+    <div class="toast-body d-flex flex-column justify-content-center align-items-center"
+         role="alert"
+         style="opacity: 1; height: auto; overflow-y: auto;">
+
+        <!-- Hidden fields -->
+        <input type="hidden"
+               data-bind="iddocumento"
+               id="toast-chiudi-sl-iddocumento">
+        <input type="hidden"
+               data-bind="quantitaTotale"
+               id="toast-chiudi-sl-quantita-totale">
+        <input type="hidden"
+               data-bind="idriga"
+               id="toast-chiudi-sl-idriga">
+        <input type="hidden"
+               data-bind="ordine"
+               id="toast-chiudi-sl-ordine">
+        <input type="hidden"
+               data-bind="codice"
+               id="toast-chiudi-sl-codice">
+        <input type="hidden"
+               data-bind="quantita"
+               id="toast-chiudi-sl-quantita">
+        <input type="hidden"
+               data-bind="fase"
+               id="toast-chiudi-sl-fase">
+        <div class="container">
+            <!-- Quantità conforme / non conforme -->
+            <div class="row">
+                <div class="col">
+                    <label for="toast-chiudi-sl-quantita-conforme"
+                           style="font-size: 20px;">
+                        Quantità conforme:<br>
+                        <input type="number"
+                               id="toast-chiudi-sl-quantita-conforme"
+                               min="0"
+                               step="1"
+                               required>
+                    </label>
+                </div>
+                <div class="col">
+                    <label for="toast-chiudi-sl-quantita-non-conforme"
+                           style="font-size: 20px;">
+                        Quantità KO:<br>
+                        <input type="number"
+                               id="toast-chiudi-sl-quantita-non-conforme"
+                               min="0"
+                               step="1"
+                               required>
+                    </label>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col"
+                     style="width: max-content">
+                    <!-- Note -->
+
+                    <label for="toast-chiudi-sl-note"
+                           style="font-size: 20px; width: max-content">
+                        Note:<br>
+                        <textarea id="toast-chiudi-sl-note"
+                                  rows="2"
+                                  cols="100"></textarea>
+                    </label>
+
+                </div>
+            </div>
+        </div>
+        <!-- Sezione Lotti (nascosta di default) -->
+        <div id="lotti-section-sl"
+             style="display: none; width: 100%; padding:10px; font-size: 20px">
+            <h5 class="text-center mb-2">Assegnazione Lotti Materiale</h5>
+
+            <div id="lotti-loading-sl"
+                 class="text-center my-2"
+                 style="display: none;">
+                <div class="spinner-border spinner-border-sm"
+                     role="status"></div>
+                <span class="ms-2">Caricamento lotti...</span>
+            </div>
+
+            <div id="lotti-alert-sl"
+                 class="alert alert-danger mb-2"
+                 style="display: none; font-size: 14px; white-space: pre-line;"></div>
+
+            <div class="table-responsive"
+                 style="max-height: 350px; overflow-y: auto;">
+                <table class="table table-sm table-striped table-bordered align-middle mb-1"
+                       id="tbl-lotti-sl"
+                       style="font-size: 20px">
+                    <thead class="table-light"
+                           style="position: sticky; top: 0; z-index: 1;">
+                    <tr>
+                        <th style="min-width: 140px;">Codice</th>
+                        <th style="min-width: 180px;">Descrizione</th>
+                        <th style="min-width: 160px;">Lotto</th>
+                        <th style="min-width: 80px;"
+                            class="text-end">Giacenza
+                        </th>
+                        <th style="min-width: 100px;"
+                            class="text-end">Qtà utilizzata
+                        </th>
+                        <th style="min-width: 70px;">Esito</th>
+                        <th style="width: 70px;"></th>
+                    </tr>
+                    </thead>
+                    <tbody id="tbody-lotti-sl"
+                           style="font-size: 20px"></tbody>
+                </table>
+            </div>
+
+            <div id="lotti-riepilogo-sl"
+                 class="mt-2 mb-2"
+                 style="font-size: 20px; background: #f8f9fa; padding: 8px; border-radius: 4px;">
+            </div>
+        </div>
+        <div class="container-sm"
+             style="padding:15px">
+            <div class="row">
+                <div class="form-check mt-1 mb-1 col"
+                     style="font-size: 20px; background: #f8f9fa; border-radius: 4px;">
+                    <input class="form-check-input"
+                           type="checkbox"
+                           id="toast-chiudi-sl-parziale">
+                    <label class="form-check-label"
+                           for="toast-chiudi-sl-parziale">
+                        Chiusura parziale ordine
+                    </label>
+                </div>
+                <div class="form-check mt-1 mb-1 col"
+                     style="font-size: 20px; background: #f8f9fa; border-radius: 4px;">
+                    <input class="form-check-input"
+                           type="checkbox"
+                           id="toast-chiudi-sl-totale">
+                    <label class="form-check-label"
+                           for="toast-chiudi-sl-totale">
+                        Chiusura totale ordine
+                    </label>
+                </div>
+            </div>
+        </div>
+        <br>
+        <div>
+            <button class="btn btn-lg btn-primary mt-2"
+                    type="button"
+                    id="btn-conferma-chiusura-sl"
+                    style="font-size: 22px;">
+                Conferma
+            </button>
+        </div>
+    </div>
+</div>
+
+<!--toast sospensione ordine macchina -->
+<div class="toast lh-lg hide"
+     role="alert"
+     id="toast-5"
+     style="width: max-content;height: max-content;position: fixed; top: 1rem; right: 1rem; z-index: 2000;opacity: 1;filter: blur(0px);">
+    <div class="toast-header">
+        <strong class="me-auto"
+                style="font-size: 25px;">Sospensione ordine macchina
+            <span data-bind-text="ordine"></span></strong>
+        <button class="btn-close ms-2 mb-1 close"
+                type="button"
+                aria-label="Close"
+                data-bs-dismiss="toast"
+                style="font-size: 25px;"></button>
+    </div>
+
+    <div class="toast-body d-flex flex-column justify-content-center align-items-center"
+         role="alert"
+         style="opacity: 1;width: auto;height: auto;">
+        <form method="post">
+            <input type="hidden"
+                   data-bind="iddocumento"
+                   id="toast-sosp-m-iddocumento">
+            <input type="hidden"
+                   data-bind="idriga"
+                   id="toast-sosp-m-idriga">
+            <input type="hidden"
+                   data-bind="ordine"
+                   id="toast-sosp-m-ordine">
+            <input type="hidden"
+                   data-bind="codice"
+                   id="toast-sosp-m-codice">
+            <input type="hidden"
+                   data-bind="fase"
+                   id="toast-sosp-m-fase">
+            <input type="hidden"
+                   data-bind="matricola"
+                   id="toast-sosp-m-matricola">
+
+            <label for="causale_attivita_m"
+                   style="font-size: 20px;">
+                Inserire la causale della sospensione:<br>
+                <select id="causale_attivita_m">
+                    {% for causale in causali_attivita %}
+                        <option value="{{ causale }}">{{ causale }}</option>
+                    {% endfor %}
+                </select>
+            </label><br>
+
+            <input class="btn btn-lg btn-primary"
+                   type="submit"
+                   id="btn-conferma-sospensione-m"
+                   value="Conferma"
+                   style="font-size: 25px;">
+        </form>
+    </div>
+</div>
+<!--toast riattivazione ordine macchina -->
+<div class="toast lh-lg hide"
+     role="alert"
+     id="toast-6"
+     style="width: max-content;height: max-content;position: fixed; top: 1rem; right: 1rem; z-index: 2000;opacity: 1;filter: blur(0px);">
+    <div class="toast-header">
+        <strong class="me-auto"
+                style="font-size: 25px;">Riattivazione dell'ordine
+            <span data-bind-text="ordine"></span></strong>
+        <button class="btn-close ms-2 mb-1 close"
+                type="button"
+                aria-label="Close"
+                data-bs-dismiss="toast"
+                style="font-size: 25px;"></button>
+    </div>
+    <div class="toast-body d-flex flex-column justify-content-center align-items-center"
+         role="alert"
+         style="opacity: 1;width: auto;height: auto;">
+        <form method="post">
+            <input type="hidden"
+                   data-bind="iddocumento"
+                   id="toast-riatt-m-iddocumento">
+            <input type="hidden"
+                   data-bind="idriga"
+                   id="toast-riatt-m-idriga">
+            <input type="hidden"
+                   data-bind="ordine"
+                   id="toast-riatt-m-ordine">
+            <input type="hidden"
+                   data-bind="codice"
+                   id="toast-riatt-m-codice">
+            <input type="hidden"
+                   data-bind="quantita"
+                   id="toast-riatt-m-quantita">
+            <input type="hidden"
+                   data-bind="fase"
+                   id="toast-riatt-m-fase">
+            <input type="hidden"
+                   data-bind="matricola"
+                   id="toast-riatt-m-matricola">
+
+            <input class="btn btn-lg btn-primary"
+                   type="submit"
+                   id="btn-conferma-riattivazione-m"
+                   value="Conferma"
+                   style="font-size: 25px;">
+        </form>
+    </div>
+</div>
+<!--toast chiusura ordine macchina con lotti -->
+<div class="toast lh-lg hide"
+     role="alert"
+     id="toast-7"
+     style="width: max-content; max-width: 90vw; height: max-content; position: fixed; top: 1rem; right: 1rem; z-index: 2000; opacity: 1;">
+    <div class="toast-header">
+        <strong class="me-auto"
+                style="font-size: 25px;">
+            Chiusura ordine macchina
+            <span data-bind-text="ordine"></span>
+        </strong>
+        <button class="btn-close ms-2 mb-1"
+                type="button"
+                aria-label="Close"
+                data-bs-dismiss="toast"
+                style="font-size: 25px;"></button>
+    </div>
+    <div class="toast-body d-flex flex-column justify-content-center align-items-center"
+         role="alert"
+         style="opacity: 1; max-height: 80vh; overflow-y: auto;">
+        <!-- Hidden fields -->
+        <input type="hidden"
+               data-bind="iddocumento"
+               id="toast-chiudi-m-iddocumento">
+        <input type="hidden"
+               data-bind="idriga"
+               id="toast-chiudi-m-idriga">
+        <input type="hidden"
+               data-bind="ordine"
+               id="toast-chiudi-m-ordine">
+        <input type="hidden"
+               data-bind="codice"
+               id="toast-chiudi-m-codice">
+        <input type="hidden"
+               data-bind="quantita"
+               id="toast-chiudi-m-quantita">
+        <input type="hidden"
+               data-bind="fase"
+               id="toast-chiudi-m-fase">
+        <input type="hidden"
+               data-bind="matricola"
+               id="toast-chiudi-m-matricola">
+
+        <!-- Note -->
+        <div class="container">
+            <div class="row">
+                <label for="toast-chiudi-m-note"
+                       style="font-size: 20px;">Note:<br>
+                    <textarea id="toast-chiudi-m-note"
+                              rows="2"
+                              cols="100"></textarea>
+                </label>
+
+            </div>
+        </div>
+
+        <!-- Sezione Lotti (nascosta di default) -->
+        <div id="lotti-section-m"
+             style="display: none; width: 100%;">
+            <hr>
+            <h5 class="text-center mb-2">Assegnazione Lotti Materiale</h5>
+
+            <div id="lotti-loading-m"
+                 class="text-center my-2"
+                 style="display: none;">
+                <div class="spinner-border spinner-border-sm"
+                     role="status"></div>
+                <span class="ms-2">Caricamento lotti...</span>
+            </div>
+
+            <div id="lotti-alert-m"
+                 class="alert alert-danger mb-2"
+                 style="display: none; font-size: 20px; white-space: pre-line;"></div>
+
+            <div class="table-responsive"
+                 style="max-height: 350px; overflow-y: auto;">
+                <table class="table table-sm table-striped table-bordered align-middle mb-1"
+                       id="tbl-lotti-m">
+                    <thead class="table-light"
+                           style="position: sticky; top: 0; z-index: 1;">
+                    <tr>
+                        <th style="min-width: 140px;">Codice</th>
+                        <th style="min-width: 180px;">Descrizione</th>
+                        <th style="min-width: 160px;">Lotto</th>
+                        <th style="min-width: 80px;"
+                            class="text-end">Giacenza
+                        </th>
+                        <th style="min-width: 100px;"
+                            class="text-end">Qtà utilizzata
+                        </th>
+                        <th style="width: 70px;"></th>
+                    </tr>
+                    </thead>
+                    <tbody id="tbody-lotti-m"></tbody>
+                </table>
+            </div>
+
+            <div id="lotti-riepilogo-m"
+                 class="mt-2 mb-2"
+                 style="font-size: 20px; background: #f8f9fa; padding: 8px; border-radius: 4px;">
+            </div>
+        </div>
+
+        <button class="btn btn-lg btn-primary mt-2"
+                type="button"
+                id="btn-conferma-chiusura-m"
+                style="font-size: 22px;">
+            Conferma
+        </button>
+    </div>
+</div>
+
 <main class="d-flex flex-column w-100 mt-1 mb-1"
+      data-bridge-tab="montaggio"
       style="height: fit-content;">
     <div class="row text-center w-100 align-items-start mx-0"
          style="width: auto;height: auto;">
@@ -86,33 +601,32 @@
                 style="width: auto;height: auto;">Ordini semilavorati da eseguire</h2>
             <div class="row mb-1">
                 <div class="col mb-1">
-                    <input
-
+                    <label><input
                             type="text"
                             class="js-table-filter form-control form-control-sm"
                             placeholder="Filtra per ordine..."
-                            data-target-table="tbl-da-eseguire-sl"
+                            data-target-table="ordini_da_eseguire_sl"
                             data-filter-mode="dataset"
                             data-filter-key="ordine"
                             autocomplete="off"
-                    >
+                    ></label>
                 </div>
                 <div class="col mb-1">
-                    <input
+                    <label><input
                             type="text"
                             class="js-table-filter form-control form-control-sm"
                             placeholder="Filtra per articolo..."
-                            data-target-table="tbl-da-eseguire-sl"
+                            data-target-table="ordini_da_eseguire_sl"
                             data-filter-mode="dataset"
                             data-filter-key="codice"
                             autocomplete="off"
-                    >
+                    ></label>
                 </div>
             </div>
             <div class="table-responsive text-capitalize fw-semibold text-center w-100 h-100 justify-content-start align-items-start mb-0 pb-0"
                  style="width: auto;height: auto;color: rgb(0,0,0);display: block;overflow: auto;max-height: 275px">
                 <table class="table table-striped table-sortable table-hover table-selectable table-responsive table-sticky-wrap text-capitalize fw-semibold text-center justify-content-start align-items-start"
-                       id="tbl-da-eseguire-sl">
+                       id="ordini_da_eseguire_sl">
                     <thead>
                     <tr>
                         <th data-sort="text">Ordine</th>
@@ -122,40 +636,21 @@
                         <th data-sort="date"
                             data-date-format="dd/mm/yyyy">Consegna
                         </th>
-                        <th data-sort="text">Lavorazione</th>
                         <th data-sort="text">Risorsa</th>
                     </tr>
                     </thead>
-                    <tbody>
-                    {% for singolo_odp in odp %}
-                        {% if singolo_odp.GestioneMatricola == "no" and singolo_odp.StatoOrdine == "Pianificata" %}
-                            <tr data-ordine="{{ singolo_odp.RifRegistraz }}"
-                                data-codice="{{ singolo_odp.CodArt }}"
-                                data-descrizione="{{ singolo_odp.DesArt }}"
-                                data-quantita="{{ singolo_odp.Quantita }}"
-                                data-datacons="{{ singolo_odp.DataFineSched }}"
-                                data-lavorazione="{{ singolo_odp.CodLavorazione }}"
-                                data-risorsaprod="{{ singolo_odp.CodRisorsaProd }}"
-                            >
-                                <td>{{ singolo_odp.RifRegistraz }}</td>
-                                <td>{{ singolo_odp.CodArt }}</td>
-                                <td>{{ singolo_odp.DesArt }}</td>
-                                <td>{{ singolo_odp.Quantita }}</td>
-                                <td>{{ singolo_odp.DataFineSched | db_date("%Y-%m-%d %H:%M:%S","%d/%m/%Y") }}</td>
-                                <td>{{ singolo_odp.CodLavorazione | db_list_display }}</td>
-                                <td>{{ singolo_odp.CodRisorsaProd | db_list_display }}</td>
-                            </tr>
-                        {% endif %}
-                    {% endfor %}
+                    <tbody id="tbody_ordini_da_eseguire_sl">
+                    {% include "partials/_home_montaggio_sl_rows_da_eseguire.html" %}
                     </tbody>
                 </table>
             </div>
             <button class="btn btn-primary m-2"
                     type="button"
-                    data-bs-target="#toast-ordine-sl"
-                    data-use-selected="#tbl-da-eseguire-sl"
-                    data-fill-target="#toast-ordine-sl"
-                    data-bs-toggle="toast">Attiva ordine SL
+                    data-bs-target="#toast-1"
+                    data-use-selected="#ordini_da_eseguire_sl"
+                    data-fill-target="#toast-1"
+                    data-bs-toggle="toast">
+                Attiva ordine semilavorati
             </button>
         </div>
         <div class="col w-100 h-100 ms-0"
@@ -164,8 +659,7 @@
                 style="width: auto;height: auto;">Ordini semilavorati attivi</h2>
             <div class="row mb-1">
                 <div class="col mb-1">
-                    <input
-
+                    <label><input
                             type="text"
                             class="js-table-filter form-control form-control-sm"
                             placeholder="Filtra per ordine..."
@@ -173,10 +667,10 @@
                             data-filter-mode="dataset"
                             data-filter-key="ordine"
                             autocomplete="off"
-                    >
+                    ></label>
                 </div>
                 <div class="col mb-1">
-                    <input
+                    <label><input
                             type="text"
                             class="js-table-filter form-control form-control-sm"
                             placeholder="Filtra per articolo..."
@@ -184,7 +678,7 @@
                             data-filter-mode="dataset"
                             data-filter-key="codice"
                             autocomplete="off"
-                    >
+                    ></label>
                 </div>
             </div>
             <div class="table-responsive text-capitalize fw-semibold text-center w-100 h-100 justify-content-start align-items-start"
@@ -200,34 +694,12 @@
                         <th data-sort="date"
                             data-date-format="dd/mm/yyyy">Consegna
                         </th>
-                        <th data-sort="text">Lavorazione</th>
                         <th data-sort="text">Risorsa</th>
                         <th data-sort="text">Stato</th>
                     </tr>
                     </thead>
-                    <tbody>
-                    {% for singolo_odp in odp %}
-                        {% if singolo_odp.GestioneMatricola == 'no' and singolo_odp.StatoOrdine != "Pianificata" %}
-                            <tr data-ordine="{{ singolo_odp.RifRegistraz }}"
-                                data-codice="{{ singolo_odp.CodArt }}"
-                                data-descrizione="{{ singolo_odp.DesArt }}"
-                                data-quantita="{{ singolo_odp.Quantita }}"
-                                data-datacons="{{ singolo_odp.DataFineSched }}"
-                                data-lavorazione="{{ singolo_odp.CodLavorazione }}"
-                                data-risorsaprod="{{ singolo_odp.CodRisorsaProd }}"
-                                data-statoordine="{{ singolo_odp.StatoOrdine }}"
-                            >
-                                <td>{{ singolo_odp.RifRegistraz }}</td>
-                                <td>{{ singolo_odp.CodArt }}</td>
-                                <td>{{ singolo_odp.DesArt }}</td>
-                                <td>{{ singolo_odp.Quantita }}</td>
-                                <td>{{ singolo_odp.DataFineSched | db_date("%Y-%m-%d %H:%M:%S","%d/%m/%Y") }}</td>
-                                <td>{{ singolo_odp.CodLavorazione | db_list_display }}</td>
-                                <td>{{ singolo_odp.CodRisorsaProd | db_list_display }}</td>
-                                <td data-col="stato">{{ singolo_odp.StatoOrdine }}</td>
-                            </tr>
-                        {% endif %}
-                    {% endfor %}
+                    <tbody id="tbody_ordini_in_corso_sl">
+                    {% include "partials/_home_montaggio_sl_rows_in_corso.html" %}
                     </tbody>
                 </table>
             </div>
@@ -235,25 +707,34 @@
                      style="width: auto;height: auto;">
                 <section class="d-flex flex-grow-1 justify-content-start m-2"
                          style="width: fit-content;height: fit-content;">
-                    <button class="btn btn-primary mx-2"
+                    <button class="btn btn-primary m-2 btn-warning"
                             type="button"
-                            style="margin: 1px;"
-                            data-bs-target="#toast-1"
-                            data-bs-toggle="toast">
-                        Sospendi
-                        ordine
+                            id="sospensione_ordine_sl"
+                            data-bs-target="#toast-2"
+                            data-use-selected="#ordini_in_corso_sl"
+                            data-fill-target="#toast-2"
+                            data-bs-toggle="toast"
+                            disabled>
+                        Sospendi ordine
                     </button>
-                    <button class="btn btn-primary disabled mx-2"
+                    <button class="btn btn-primary m-2 btn-success"
+                            id="riattivazione_ordine_sl"
                             type="button"
-                            style="margin: 1px;"
-                            disabled="">Riattiva ordine
+                            data-bs-target="#toast-3"
+                            data-use-selected="#ordini_in_corso_sl"
+                            data-fill-target="#toast-3"
+                            data-bs-toggle="toast"
+                            disabled>Riattiva ordine
                     </button>
                 </section>
                 <section class="text-end d-flex flex-grow-1 justify-content-end m-2"
                          style="width: auto;height: auto;">
-                    <button class="btn btn-primary"
-                            type="button">Chiudi
-                                          ordine
+                    <button class="btn btn-primary m-2"
+                            type="button"
+                            data-bs-target="#toast-4"
+                            data-use-selected="#ordini_in_corso_sl"
+                            data-fill-target="#toast-4"
+                            data-bs-toggle="toast">Chiudi ordine
                     </button>
                 </section>
             </section>
@@ -267,72 +748,67 @@
                 style="width: auto;height: auto;">Ordini macchina da eseguire</h2>
             <div class="row mb-1">
                 <div class="col mb-1">
-                    <input
+                    <label><input
                             type="text"
                             class="js-table-filter form-control form-control-sm"
                             placeholder="Filtra per ordine..."
-                            data-target-table="tbl-da-eseguire-m"
+                            data-target-table="ordini_da_eseguire_m"
                             data-filter-mode="dataset"
                             data-filter-key="ordine"
                             autocomplete="off"
-                    >
+                    ></label>
                 </div>
                 <div class="col mb-1">
-                    <input
+                    <label><input
+                            type="text"
+                            class="js-table-filter form-control form-control-sm"
+                            placeholder="Filtra per matricola..."
+                            data-target-table="ordini_da_eseguire_m"
+                            data-filter-mode="dataset"
+                            data-filter-key="matricola"
+                            autocomplete="off"
+                    ></label>
+                </div>
+                <div class="col mb-1">
+                    <label><input
                             type="text"
                             class="js-table-filter form-control form-control-sm"
                             placeholder="Filtra per articolo..."
-                            data-target-table="tbl-da-eseguire-m"
+                            data-target-table="ordini_da_eseguire_m"
                             data-filter-mode="dataset"
                             data-filter-key="codice"
                             autocomplete="off"
-                    >
+                    ></label>
                 </div>
             </div>
             <div class="table-responsive text-capitalize fw-semibold text-center justify-content-start align-items-center mb-0 pb-0"
                  style="width: auto;height: auto;display: block;max-height: 275px">
                 <table class="table table-striped table-sortable table-selectable table-hover table-responsive table-sticky-wrap text-capitalize fw-semibold text-center w-100 h-100 justify-content-start align-items-start"
-                       id="tbl-da-eseguire-m">
+                       id="ordini_da_eseguire_m">
                     <thead style="background: var(--bs-info);">
                     <tr>
                         <th data-sort="text">Ordine</th>
                         <th data-sort="text">Codice</th>
                         <th data-sort="text">Descrizione</th>
                         <th data-sort="text">Matricola</th>
-                        <th data-sort="text">Cliente</th>
+                        <th data-sort="text">Fase</th>
                         <th data-sort="date"
                             data-date-format="dd/mm/yyyy">Consegna
                         </th>
                     </tr>
                     </thead>
-                    <tbody>
-                    {% for singolo_odp in odp %}
-                        {% if singolo_odp.GestioneMatricola == 'si' and singolo_odp.StatoOrdine == "Pianificata" %}
-                            <tr data-ordine="{{ singolo_odp.RifRegistraz }}"
-                                data-codice="{{ singolo_odp.CodArt }}"
-                                data-descrizione="{{ singolo_odp.DesArt }}"
-                                data-matricola="{{ singolo_odp.CodMatricola }}"
-                                data-cliente="0"
-                                data-datacons="{{ singolo_odp.DataFineSched }}"
-                            >
-                                <td>{{ singolo_odp.RifRegistraz }}</td>
-                                <td>{{ singolo_odp.CodArt }}</td>
-                                <td>{{ singolo_odp.DesArt }}</td>
-                                <td>{{ singolo_odp.CodMatricola }}</td>
-                                <td></td>
-                                <td>{{ singolo_odp.DataFineSched | db_date("%Y-%m-%d %H:%M:%S","%d/%m/%Y") }}</td>
-                            </tr>
-                        {% endif %}
-                    {% endfor %}
+                    <tbody id="tbody_ordini_da_eseguire_m">
+                    {% include "partials/_home_montaggio_m_rows_da_eseguire.html" %}
                     </tbody>
                 </table>
             </div>
             <button class="btn btn-primary m-2"
                     type="button"
-                    data-bs-target="#toast-ordine-m"
-                    data-use-selected="#tbl-da-eseguire-m"
-                    data-fill-target="#toast-ordine-m"
-                    data-bs-toggle="toast">Attiva ordine macchina
+                    data-bs-target="#toast-1-m"
+                    data-use-selected="#ordini_da_eseguire_m"
+                    data-fill-target="#toast-1-m"
+                    data-bs-toggle="toast">
+                Attiva ordine macchina
             </button>
         </div>
         <div class="col w-100 h-100 mb-1"
@@ -341,7 +817,7 @@
                 style="width: auto;height: auto;">Ordini macchina attivi</h2>
             <div class="row mb-1">
                 <div class="col mb-1">
-                    <input
+                    <label><input
                             type="text"
                             class="js-table-filter form-control form-control-sm"
                             placeholder="Filtra per ordine..."
@@ -349,10 +825,21 @@
                             data-filter-mode="dataset"
                             data-filter-key="ordine"
                             autocomplete="off"
-                    >
+                    ></label>
                 </div>
                 <div class="col mb-1">
-                    <input
+                    <label><input
+                            type="text"
+                            class="js-table-filter form-control form-control-sm"
+                            placeholder="Filtra per matricola..."
+                            data-target-table="ordini_in_corso_m"
+                            data-filter-mode="dataset"
+                            data-filter-key="matricola"
+                            autocomplete="off"
+                    ></label>
+                </div>
+                <div class="col mb-1">
+                    <label><input
                             type="text"
                             class="js-table-filter form-control form-control-sm"
                             placeholder="Filtra per articolo..."
@@ -360,7 +847,7 @@
                             data-filter-mode="dataset"
                             data-filter-key="codice"
                             autocomplete="off"
-                    >
+                    ></label>
                 </div>
             </div>
             <div class="table-responsive text-capitalize fw-semibold text-center w-100 h-100 justify-content-start align-items-start"
@@ -375,59 +862,47 @@
                         <th data-sort="text">Matricola</th>
                         <th data-sort="date"
                             data-date-format="dd/mm/yyyy">Consegna
+                        </th>
+                        <th data-sort="text">Fase</th>
                         <th data-sort="text">Stato</th>
                     </tr>
                     </thead>
-                    <tbody>
-                    {% for singolo_odp in odp %}
-                        {% if singolo_odp.GestioneMatricola == 'si' and singolo_odp.StatoOrdine != "Pianificata" %}
-                            <tr data-ordine="{{ singolo_odp.RifRegistraz }}"
-                                data-codice="{{ singolo_odp.CodArt }}"
-                                data-descrizione="{{ singolo_odp.DesArt }}"
-                                data-matricola="{{ singolo_odp.CodMatricola }}"
-                                data-datacons="{{ singolo_odp.DataFineSched }}"
-                                data-stato="{{ singolo_odp.StatoOrdine }}"
-                            >
-                                <td>{{ singolo_odp.RifRegistraz }}</td>
-                                <td>{{ singolo_odp.CodArt }}</td>
-                                <td>{{ singolo_odp.DesArt }}</td>
-                                <td>{{ singolo_odp.CodMatricola }}</td>
-                                <td>{{ singolo_odp.DataFineSched | db_date("%Y-%m-%d %H:%M:%S","%d/%m/%Y") }}</td>
-                                <td data-col="stato">{{ singolo_odp.StatoOrdine }}</td>
-                            </tr>
-                        {% endif %}
-                    {% endfor %}
+                    <tbody id="tbody_ordini_in_corso_m">
+                    {% include "partials/_home_montaggio_m_rows_in_corso.html" %}
                     </tbody>
-
                 </table>
             </div>
             <section class="text-center d-flex w-100 h-100 align-items-center"
                      style="width: auto;height: auto;">
-                <section class="d-flex flex-grow-1 justify-content-start m-1"
+                <section class="d-flex flex-grow-1 justify-content-start m-2"
                          style="width: fit-content;height: fit-content;">
-                    <button class="btn btn-primary mx-2"
+                    <button class="btn btn-primary m-2 btn-warning"
                             type="button"
-                            style="margin: 1px;"
-                            data-bs-target="#toast-6"
-                            data-bs-toggle="toast">
-                        Sospendi
-                        ordine
+                            id="sospensione_ordine_m"
+                            data-bs-target="#toast-5"
+                            data-use-selected="#ordini_in_corso_m"
+                            data-fill-target="#toast-5"
+                            data-bs-toggle="toast"
+                            disabled>
+                        Sospendi ordine
                     </button>
-                    <button class="btn btn-primary disabled mx-2"
+                    <button class="btn btn-primary m-2 btn-success"
+                            id="riattivazione_ordine_m"
                             type="button"
-                            style="margin: 1px;"
-                            disabled=""
-                            data-bs-target="#toast-8"
-                            data-bs-toggle="toast">
-                        Riattiva
-                        ordine
+                            data-bs-target="#toast-6"
+                            data-use-selected="#ordini_in_corso_m"
+                            data-fill-target="#toast-6"
+                            data-bs-toggle="toast"
+                            disabled>Riattiva ordine
                     </button>
                 </section>
                 <section class="text-end d-flex flex-grow-1 justify-content-end m-2"
                          style="width: auto;height: auto;">
-                    <button class="btn btn-primary"
+                    <button class="btn btn-primary m-2"
                             type="button"
                             data-bs-target="#toast-7"
+                            data-use-selected="#ordini_in_corso_m"
+                            data-fill-target="#toast-7"
                             data-bs-toggle="toast">Chiudi ordine
                     </button>
                 </section>
@@ -435,3 +910,1631 @@
         </div>
     </div>
 </main>
+<div class="modal fade"
+     id="modalMaterialiOrdine"
+     tabindex="-1"
+     aria-labelledby="modalMaterialiOrdineLabel"
+     aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title d-flex align-items-center gap-2"
+                    id="modalMaterialiOrdineLabel">
+                    <span>Materiale necessario</span>
+                    <span class="text-muted"
+                          id="modal-codart"></span>
+                </h5>
+                <button type="button"
+                        class="btn-close"
+                        data-bs-dismiss="modal"
+                        aria-label="Chiudi"></button>
+            </div>
+
+            <div class="modal-body"
+                 id="modal-materiali-body">
+                <div class="text-muted">Seleziona un ordine.</div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button"
+                        class="btn btn-secondary"
+                        data-bs-dismiss="modal">Chiudi
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SCRIPTS                                                       -->
+<!-- ============================================================ -->
+
+<!-- Stato bottoni SL / Macchina -->
+<script>
+    function getStatoOrdine(row) {
+        if (!row) return "";
+        if (row.dataset?.stato) return row.dataset.stato.trim();
+        const statoCell = row.querySelector('td[data-col="stato"]');
+        if (statoCell) return statoCell.textContent.trim();
+        return "";
+    }
+
+    function aggiornaBottoniOrdine(row, btnSospensioneId, btnRiattivazioneId) {
+        const btnSospensione = document.getElementById(btnSospensioneId);
+        const btnRiattivazione = document.getElementById(btnRiattivazioneId);
+        if (!btnSospensione || !btnRiattivazione) return;
+
+        const stato = getStatoOrdine(row);
+        btnSospensione.disabled = true;
+        btnRiattivazione.disabled = true;
+
+        if (stato === "Attivo") {
+            btnSospensione.disabled = false;
+        } else if (stato === "In Sospeso") {
+            btnRiattivazione.disabled = false;
+        }
+    }
+
+    const tabellaSl = document.getElementById("ordini_in_corso_sl");
+    if (tabellaSl) {
+        tabellaSl.addEventListener("click", function (event) {
+            const row = event.target.closest("tbody tr");
+            if (!row) return;
+            aggiornaBottoniOrdine(row, "sospensione_ordine_sl", "riattivazione_ordine_sl");
+        });
+    }
+
+    const tabellaM = document.getElementById("ordini_in_corso_m");
+    if (tabellaM) {
+        tabellaM.addEventListener("click", function (event) {
+            const row = event.target.closest("tbody tr");
+            if (!row) return;
+            aggiornaBottoniOrdine(row, "sospensione_ordine_m", "riattivazione_ordine_m");
+        });
+    }
+</script>
+
+<!-- Presa in carico SL + MACCHINA (event delegation) -->
+<script>
+    document.addEventListener("click", async function (e) {
+        // --- SL: btn-prendi-ordine ---
+        const btnSl = e.target.closest("#btn-prendi-ordine");
+        if (btnSl) {
+            e.preventDefault();
+            const idDocumento = document.getElementById("toast-presa-iddocumento")?.value?.trim() || "";
+            const idRiga = document.getElementById("toast-presa-idriga")?.value?.trim() || "";
+
+            if (!idDocumento || !idRiga) {
+                alert("Errore: IdDocumento o IdRiga mancanti. Seleziona una riga prima di attivare.");
+                return;
+            }
+
+            btnSl.disabled = true;
+
+            try {
+                const resp = await fetch("/api/ordini/presa", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"},
+                    credentials: "same-origin",
+                    body: JSON.stringify({id_documento: idDocumento, id_riga: idRiga})
+                });
+                let data = {};
+                try {
+                    data = await resp.json();
+                } catch (_) {
+                    data = {};
+                }
+
+                if (!resp.ok || data.ok === false) {
+                    alert(data.error || "Errore durante la presa in carico dell'ordine.");
+                    return;
+                }
+
+                const toastEl = document.getElementById("toast-1");
+                if (toastEl) bootstrap.Toast.getOrCreateInstance(toastEl).hide();
+
+                if (data.fragments && window.applyHomeFragments) {
+                    window.applyHomeFragments(data.fragments);
+                }
+
+                ["sospensione_ordine_sl", "riattivazione_ordine_sl", "sospensione_ordine_m", "riattivazione_ordine_m"]
+                    .forEach(id => {
+                        const b = document.getElementById(id);
+                        if (b) b.disabled = true;
+                    });
+
+            } catch (err) {
+                console.error("Errore fetch presa ordine:", err);
+                alert("Errore di comunicazione con il server.");
+            } finally {
+                btnSl.disabled = false;
+            }
+            return;
+        }
+
+        // --- MACCHINA: btn-prendi-ordine-m ---
+        const btnM = e.target.closest("#btn-prendi-ordine-m");
+        if (btnM) {
+            e.preventDefault();
+            const idDocumento = document.getElementById("toast-presa-m-iddocumento")?.value?.trim() || "";
+            const idRiga = document.getElementById("toast-presa-m-idriga")?.value?.trim() || "";
+
+            if (!idDocumento || !idRiga) {
+                alert("Errore: IdDocumento o IdRiga mancanti (macchina). Seleziona una riga prima di attivare.");
+                return;
+            }
+
+            btnM.disabled = true;
+
+            try {
+                const resp = await fetch("/api/ordini/presa", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"},
+                    credentials: "same-origin",
+                    body: JSON.stringify({id_documento: idDocumento, id_riga: idRiga})
+                });
+                let data = {};
+                try {
+                    data = await resp.json();
+                } catch (_) {
+                    data = {};
+                }
+
+                if (!resp.ok || data.ok === false) {
+                    alert(data.error || "Errore durante la presa in carico dell'ordine macchina.");
+                    return;
+                }
+
+                const toastEl = document.getElementById("toast-1-m");
+                if (toastEl) bootstrap.Toast.getOrCreateInstance(toastEl).hide();
+
+                if (data.fragments && window.applyHomeFragments) {
+                    window.applyHomeFragments(data.fragments);
+                }
+
+                const btnSospM = document.getElementById("sospensione_ordine_m");
+                const btnRiattM = document.getElementById("riattivazione_ordine_m");
+                if (btnSospM) btnSospM.disabled = true;
+                if (btnRiattM) btnRiattM.disabled = true;
+
+            } catch (err) {
+                console.error("Errore fetch presa ordine macchina:", err);
+                alert("Errore di comunicazione con il server.");
+            } finally {
+                btnM.disabled = false;
+            }
+            return;
+        }
+    });
+</script>
+
+<!-- Sospensione SL + Macchina (event delegation) -->
+<script>
+    document.addEventListener("click", async function (e) {
+        // --- SL: btn-conferma-sospensione ---
+        const btnSosp = e.target.closest("#btn-conferma-sospensione");
+        if (btnSosp) {
+            e.preventDefault();
+            const idDocumento = document.getElementById("toast-sosp-iddocumento")?.value?.trim() || "";
+            const idRiga = document.getElementById("toast-sosp-idriga")?.value?.trim() || "";
+            const causale = document.getElementById("causale_attivita")?.value?.trim() || "";
+
+            if (!idDocumento || !idRiga) {
+                alert("IdDocumento o IdRiga mancanti.");
+                return;
+            }
+            btnSosp.disabled = true;
+
+            try {
+                const resp = await fetch("/api/ordini/sospendi", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"},
+                    credentials: "same-origin",
+                    body: JSON.stringify({
+                        id_documento: idDocumento,
+                        id_riga: idRiga,
+                        causale: causale,
+                        modalita: "sl"
+                    })
+                });
+                let data = {};
+                try {
+                    data = await resp.json();
+                } catch (_) {
+                    data = {};
+                }
+
+                if (!resp.ok || data.ok === false) {
+                    alert(data.error || "Errore durante la sospensione dell'ordine.");
+                    return;
+                }
+
+                const toastEl = document.getElementById("toast-2");
+                if (toastEl) bootstrap.Toast.getOrCreateInstance(toastEl).hide();
+                if (data.fragments && window.applyHomeFragments) window.applyHomeFragments(data.fragments);
+
+                const b1 = document.getElementById("sospensione_ordine_sl");
+                const b2 = document.getElementById("riattivazione_ordine_sl");
+                if (b1) b1.disabled = true;
+                if (b2) b2.disabled = true;
+
+            } catch (err) {
+                console.error("Errore fetch sospensione:", err);
+                alert("Errore di comunicazione con il server.");
+            } finally {
+                btnSosp.disabled = false;
+            }
+            return;
+        }
+
+        // --- MACCHINA: btn-conferma-sospensione-m ---
+        const btnSospM = e.target.closest("#btn-conferma-sospensione-m");
+        if (btnSospM) {
+            e.preventDefault();
+            const idDocumento = document.getElementById("toast-sosp-m-iddocumento")?.value?.trim() || "";
+            const idRiga = document.getElementById("toast-sosp-m-idriga")?.value?.trim() || "";
+            const causale = document.getElementById("causale_attivita_m")?.value?.trim() || "";
+            const matricola = document.getElementById("toast-sosp-m-matricola")?.value?.trim() || "";
+            const fase = document.getElementById("toast-sosp-m-fase")?.value?.trim() || "";
+
+            if (!idDocumento || !idRiga) {
+                alert("IdDocumento o IdRiga mancanti.");
+                return;
+            }
+            btnSospM.disabled = true;
+
+            try {
+                const resp = await fetch("/api/ordini/montaggio/macchina/sospendi", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"},
+                    credentials: "same-origin",
+                    body: JSON.stringify({
+                        id_documento: idDocumento,
+                        id_riga: idRiga,
+                        causale: causale,
+                        matricola: matricola,
+                        fase: fase
+                    })
+                });
+                let data = {};
+                try {
+                    data = await resp.json();
+                } catch (_) {
+                    data = {};
+                }
+
+                if (!resp.ok || data.ok === false) {
+                    alert(data.error || "Errore durante la sospensione dell'ordine macchina.");
+                    return;
+                }
+
+                const toastEl = document.getElementById("toast-5");
+                if (toastEl) bootstrap.Toast.getOrCreateInstance(toastEl).hide();
+                if (data.fragments && window.applyHomeFragments) window.applyHomeFragments(data.fragments);
+
+                const b1 = document.getElementById("sospensione_ordine_m");
+                const b2 = document.getElementById("riattivazione_ordine_m");
+                if (b1) b1.disabled = true;
+                if (b2) b2.disabled = true;
+
+            } catch (err) {
+                console.error("Errore fetch sospensione macchina:", err);
+                alert("Errore di comunicazione con il server.");
+            } finally {
+                btnSospM.disabled = false;
+            }
+            return;
+        }
+    });
+</script>
+
+<!-- Riattivazione SL + Macchina (event delegation) -->
+<script>
+    document.addEventListener("click", async function (e) {
+        // --- SL: btn-conferma-riattivazione-sl ---
+        const btnRiattSl = e.target.closest("#btn-conferma-riattivazione-sl");
+        if (btnRiattSl) {
+            e.preventDefault();
+            const idDocumento = document.getElementById("toast-riatt-sl-iddocumento")?.value?.trim() || "";
+            const idRiga = document.getElementById("toast-riatt-sl-idriga")?.value?.trim() || "";
+
+            if (!idDocumento || !idRiga) {
+                alert("IdDocumento o IdRiga mancanti.");
+                return;
+            }
+            btnRiattSl.disabled = true;
+
+            try {
+                const resp = await fetch("/api/ordini/riattiva", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"},
+                    credentials: "same-origin",
+                    body: JSON.stringify({id_documento: idDocumento, id_riga: idRiga, modalita: "sl"})
+                });
+                let data = {};
+                try {
+                    data = await resp.json();
+                } catch (_) {
+                }
+
+                if (!resp.ok || data.ok === false) {
+                    alert(data.error || "Errore durante la riattivazione dell'ordine.");
+                    return;
+                }
+
+                const toastEl = document.getElementById("toast-3");
+                if (toastEl) bootstrap.Toast.getOrCreateInstance(toastEl).hide();
+                if (data.fragments && window.applyHomeFragments) window.applyHomeFragments(data.fragments);
+
+                const b1 = document.getElementById("sospensione_ordine_sl");
+                const b2 = document.getElementById("riattivazione_ordine_sl");
+                if (b1) b1.disabled = true;
+                if (b2) b2.disabled = true;
+
+            } catch (err) {
+                console.error("Errore fetch riattivazione SL:", err);
+                alert("Errore di comunicazione con il server.");
+            } finally {
+                btnRiattSl.disabled = false;
+            }
+            return;
+        }
+
+        // --- MACCHINA: btn-conferma-riattivazione-m ---
+        const btnRiattM = e.target.closest("#btn-conferma-riattivazione-m");
+        if (btnRiattM) {
+            e.preventDefault();
+            const idDocumento = document.getElementById("toast-riatt-m-iddocumento")?.value?.trim() || "";
+            const idRiga = document.getElementById("toast-riatt-m-idriga")?.value?.trim() || "";
+            const matricola = document.getElementById("toast-riatt-m-matricola")?.value?.trim() || "";
+            const fase = document.getElementById("toast-riatt-m-fase")?.value?.trim() || "";
+
+            if (!idDocumento || !idRiga) {
+                alert("IdDocumento o IdRiga mancanti.");
+                return;
+            }
+            btnRiattM.disabled = true;
+
+            try {
+                const resp = await fetch("/api/ordini/montaggio/macchina/riattiva", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"},
+                    credentials: "same-origin",
+                    body: JSON.stringify({
+                        id_documento: idDocumento,
+                        id_riga: idRiga,
+                        matricola: matricola,
+                        fase: fase
+                    })
+                });
+                let data = {};
+                try {
+                    data = await resp.json();
+                } catch (_) {
+                }
+
+                if (!resp.ok || data.ok === false) {
+                    alert(data.error || "Errore durante la riattivazione dell'ordine macchina.");
+                    return;
+                }
+
+                const toastEl = document.getElementById("toast-6");
+                if (toastEl) bootstrap.Toast.getOrCreateInstance(toastEl).hide();
+                if (data.fragments && window.applyHomeFragments) window.applyHomeFragments(data.fragments);
+
+                const b1 = document.getElementById("sospensione_ordine_m");
+                const b2 = document.getElementById("riattivazione_ordine_m");
+                if (b1) b1.disabled = true;
+                if (b2) b2.disabled = true;
+
+            } catch (err) {
+                console.error("Errore fetch riattivazione macchina:", err);
+                alert("Errore di comunicazione con il server.");
+            } finally {
+                btnRiattM.disabled = false;
+            }
+            return;
+        }
+    });
+</script>
+<!-- ============================================================ -->
+<!-- IIFE: Lotti + Chiusura MACCHINA (toast_7)                     -->
+<!-- ============================================================ -->
+<script id="toast_7">
+    (() => {
+        let _lottiData = [];
+        let _hasRequiredLotti = false;
+        let _hasSelectableLotti = false;
+        let _rowCounter = 0;
+
+        const toastEl = document.getElementById("toast-7");
+        const section = document.getElementById("lotti-section-m");
+        const loading = document.getElementById("lotti-loading-m");
+        const alertEl = document.getElementById("lotti-alert-m");
+        const tbody = document.getElementById("tbody-lotti-m");
+        const riepilogo = document.getElementById("lotti-riepilogo-m");
+
+        if (!toastEl || !section || !tbody) return;
+
+        function escHtml(s) {
+            return String(s)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        function showAlert(msg) {
+            if (!alertEl) return;
+            alertEl.textContent = msg;
+            alertEl.style.display = msg ? "" : "none";
+        }
+
+        function parseQty(v) {
+            let s = String(v ?? "").trim().replace(/\s+/g, "");
+            if (!s) return 0;
+            if (s.includes(",") && s.includes(".")) s = s.replace(/\./g, "");
+            s = s.replace(",", ".");
+            const n = Number(s);
+            return Number.isFinite(n) ? n : 0;
+        }
+
+        function sameQty(a, b) {
+            return Math.abs(Number(a || 0) - Number(b || 0)) < 0.000001;
+
+        }
+
+
+        function buildLottoSelect(lotti, selectedLotto = "") {
+            let html = '<select class="form-select form-select-sm lotto-select-m">';
+            html += '<option value="">-- Seleziona lotto --</option>';
+            for (const l of (lotti || [])) {
+                const value = String(l.RifLottoAlfa || "");
+                const giacenza = parseQty(l.Giacenza);
+                const codMag = String(l.CodMag || "");
+                const sel = value === selectedLotto ? " selected" : "";
+                html += `
+                    <option value="${escHtml(value)}"
+                            data-giacenza="${giacenza}"
+                            data-codmag="${escHtml(codMag)}"${sel}>
+                        ${escHtml(value)} (mag: ${escHtml(codMag || "-")})
+                    </option>`;
+            }
+            html += "</select>";
+            return html;
+        }
+
+        function componenteRichiedeLotto(comp) {
+            const flag = String(
+                comp?.GestioneLotto
+                ?? comp?.gestione_lotto
+                ?? comp?.gestioneLotto
+                ?? ""
+            ).trim().toLowerCase();
+
+            if (flag) return flag === "si";
+            return Array.isArray(comp?.lotti) && comp.lotti.length > 0;
+        }
+
+        function addLottoRow(codArt, desArt, lotti, isInitial) {
+            _rowCounter++;
+            const tr = document.createElement("tr");
+            tr.id = `lotto-m-row-${_rowCounter}`;
+            tr.dataset.codart = codArt;
+            tr.innerHTML = `
+                <td class="fw-semibold" style="font-size:20px;">${escHtml(codArt)}</td>
+                <td style="font-size:20px;">${escHtml(desArt || "")}</td>
+                <td>${buildLottoSelect(lotti)}</td>
+                <td class="text-end giacenza-cell-m" style="font-size:20px;">-</td>
+                <td>
+                    <input type="number"
+                           class="form-control form-control-sm lotto-qty-m text-end"
+                           min="0"
+                           step="1"
+                           value=""
+                           placeholder="0"
+                           style="width:90px;">
+                </td>
+                <td class="text-center">
+                    <button type="button"
+                            class="btn btn-sm btn-outline-primary btn-add-lotto-m me-1"
+                            title="Aggiungi riga"
+                            data-codart="${escHtml(codArt)}"
+                            data-desart="${escHtml(desArt || "")}">
+                        +
+                    </button>
+                    ${isInitial ? "" : '<button type="button" class="btn btn-sm btn-outline-danger btn-rem-lotto-m" title="Rimuovi">−</button>'}
+                </td>`;
+            tbody.appendChild(tr);
+            return tr;
+        }
+
+        function updateRiepilogo() {
+            if (!riepilogo) return;
+
+            const totals = {};
+            tbody.querySelectorAll("tr").forEach(row => {
+                const cod = row.dataset.codart || "";
+                const qty = parseQty(row.querySelector(".lotto-qty-m")?.value);
+
+                if (!totals[cod]) totals[cod] = 0;
+                totals[cod] += qty;
+            });
+
+            let html = "<strong>Riepilogo per componente:</strong><br>";
+            for (const comp of _lottiData) {
+                const codArt = String(comp.CodArt || "");
+                const richiesto = parseQty(comp.Quantita);
+                const totale = totals[codArt] || 0;
+                const ok = sameQty(totale, richiesto);
+
+                html += `
+            <span class="${ok ? "text-success" : "text-danger"}">
+                ${escHtml(codArt)}: ${totale}/${richiesto}${ok ? " ✓" : " ✗"}
+            </span><br>`;
+            }
+
+            riepilogo.innerHTML = html;
+        }
+
+        async function fetchLottiData(idDocumento, idRiga) {
+            section.style.display = "none";
+            loading.style.display = "";
+            tbody.innerHTML = "";
+            showAlert("");
+            riepilogo.innerHTML = "";
+            _lottiData = [];
+            _hasRequiredLotti = false;
+            _hasSelectableLotti = false;
+
+            try {
+                const resp = await fetch("/api/ordini/lotti-componenti", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-Requested-With": "XMLHttpRequest"
+                    },
+                    credentials: "same-origin",
+                    body: JSON.stringify({
+                        id_documento: idDocumento,
+                        id_riga: idRiga,
+                        modalita: "m"
+                    })
+                });
+
+                const data = await resp.json();
+
+                if (!resp.ok || !data.ok) {
+                    showAlert(data.error || "Errore nel caricamento dei lotti.");
+                    return;
+                }
+
+                const rawComponenti = Array.isArray(data.componenti) ? data.componenti : [];
+                const forceShow = !!data.force_show_section;
+
+                _lottiData = rawComponenti.filter(comp => componenteRichiedeLotto(comp));
+
+                const componentiConLotti = _lottiData.filter(
+                    comp => Array.isArray(comp.lotti) && comp.lotti.length > 0
+                );
+                const componentiSenzaLotti = _lottiData.filter(
+                    comp => !Array.isArray(comp.lotti) || comp.lotti.length === 0
+                );
+
+                _hasRequiredLotti = _lottiData.length > 0;
+                _hasSelectableLotti = componentiConLotti.length > 0;
+
+                if (!_hasRequiredLotti && !forceShow) {
+                    section.style.display = "none";
+                    return;
+                }
+
+                section.style.display = "";
+
+                for (const comp of componentiConLotti) {
+                    addLottoRow(comp.CodArt, comp.DesArt, comp.lotti, true);
+                }
+
+                if (componentiSenzaLotti.length > 0) {
+                    const elenco = componentiSenzaLotti
+                        .map(comp => `- ${comp.CodArt}${comp.DesArt ? ` (${comp.DesArt})` : ""}`)
+                        .join("\n");
+
+                    showAlert(
+                        `Nessun lotto disponibile per i seguenti componenti obbligatori della fase attiva:\n${elenco}`
+                    );
+                } else {
+                    showAlert("");
+                }
+
+                updateRiepilogo();
+            } catch (err) {
+                console.error("Errore fetch lotti macchina:", err);
+                showAlert("Errore di comunicazione.");
+            } finally {
+                loading.style.display = "none";
+            }
+        }
+
+        function validateLotti() {
+            if (!_hasRequiredLotti) return {valid: true, lottiPayload: []};
+
+            const errors = [];
+            const perCodice = {};
+            const lottiPayload = [];
+            const usati = new Set();
+
+            tbody.querySelectorAll("tr").forEach(row => {
+                const cod = row.dataset.codart || "";
+                const lottoVal = row.querySelector(".lotto-select-m")?.value || "";
+                const giacenza = parseQty(row.querySelector(".giacenza-cell-m")?.textContent);
+                const qty = parseQty(row.querySelector(".lotto-qty-m")?.value);
+
+                if (qty > 0 && !lottoVal) {
+                    errors.push(`${cod}: selezionare un lotto.`);
+                    return;
+                }
+
+                if (!lottoVal) return;
+
+                if (qty <= 0) {
+                    errors.push(`${cod} lotto ${lottoVal}: inserire qtà > 0.`);
+                }
+
+                if (qty > giacenza) {
+                    errors.push(`${cod} lotto ${lottoVal}: qtà ${qty} > giacenza ${giacenza}.`);
+                }
+
+                const key = `${cod}|${lottoVal}`;
+                if (usati.has(key)) {
+                    errors.push(`${cod}: lotto ${lottoVal} duplicato non consentito.`);
+                }
+                usati.add(key);
+
+                if (!perCodice[cod]) perCodice[cod] = 0;
+                perCodice[cod] += qty;
+
+                lottiPayload.push({
+                    CodArt: cod,
+                    RifLottoAlfa: lottoVal,
+                    Quantita: qty,
+                    Esito: "ok"
+                });
+            });
+
+            for (const comp of _lottiData) {
+                const codArt = String(comp.CodArt || "");
+                const richiesto = parseQty(comp.Quantita);
+                const totale = perCodice[codArt] || 0;
+
+                if (!sameQty(totale, richiesto)) {
+                    errors.push(`${codArt}: somma lotti (${totale}) ≠ richiesta (${richiesto}).`);
+                }
+            }
+
+            if (errors.length > 0) {
+                showAlert(errors.join("\n"));
+                return {valid: false, lottiPayload: []};
+            }
+
+            showAlert("");
+            return {valid: true, lottiPayload};
+        }
+
+        tbody.addEventListener("change", function (e) {
+            const sel = e.target.closest(".lotto-select-m");
+            if (sel) {
+                const row = sel.closest("tr");
+                const giacCell = row.querySelector(".giacenza-cell-m");
+                const qtyInput = row.querySelector(".lotto-qty-m");
+                const opt = sel.options[sel.selectedIndex];
+
+                if (opt && opt.value) {
+                    const g = parseQty(opt.dataset.giacenza);
+                    giacCell.textContent = g;
+                    qtyInput.max = String(g);
+                } else {
+                    giacCell.textContent = "-";
+                    qtyInput.max = "";
+                }
+            }
+
+            if (e.target.closest(".lotto-select-m")) {
+                updateRiepilogo();
+                validateLotti();
+            }
+        });
+
+        tbody.addEventListener("input", function (e) {
+            if (e.target.classList.contains("lotto-qty-m")) {
+                updateRiepilogo();
+                validateLotti();
+            }
+        });
+
+        tbody.addEventListener("click", function (e) {
+            const btnAdd = e.target.closest(".btn-add-lotto-m");
+            if (btnAdd) {
+                const codArt = btnAdd.dataset.codart || "";
+                const desArt = btnAdd.dataset.desart || "";
+                const comp = _lottiData.find(c => String(c.CodArt || "") === codArt);
+                if (comp && Array.isArray(comp.lotti) && comp.lotti.length > 0) {
+                    addLottoRow(codArt, desArt, comp.lotti, false);
+                    updateRiepilogo();
+                    validateLotti();
+                }
+                return;
+            }
+
+            const btnRem = e.target.closest(".btn-rem-lotto-m");
+            if (btnRem) {
+                btnRem.closest("tr")?.remove();
+                updateRiepilogo();
+                validateLotti();
+            }
+        });
+
+        document.addEventListener("click", function (e) {
+            const btn = e.target.closest('[data-bs-target="#toast-7"]');
+            if (!btn) return;
+
+            requestAnimationFrame(() => {
+                const idDoc = document.getElementById("toast-chiudi-m-iddocumento")?.value?.trim() || "";
+                const idRiga = document.getElementById("toast-chiudi-m-idriga")?.value?.trim() || "";
+
+                if (idDoc && idRiga) {
+                    fetchLottiData(idDoc, idRiga);
+                } else {
+                    section.style.display = "none";
+                }
+            });
+        });
+
+        document.getElementById("btn-conferma-chiusura-m")?.addEventListener("click", async function (event) {
+            event.preventDefault();
+
+            const btn = this;
+            const idDocumento = document.getElementById("toast-chiudi-m-iddocumento")?.value?.trim() || "";
+            const idRiga = document.getElementById("toast-chiudi-m-idriga")?.value?.trim() || "";
+            const matricola = document.getElementById("toast-chiudi-m-matricola")?.value?.trim() || "";
+            const fase = document.getElementById("toast-chiudi-m-fase")?.value?.trim() || "";
+            const note = document.getElementById("toast-chiudi-m-note")?.value?.trim() || "";
+
+            if (!idDocumento || !idRiga) {
+                alert("Ordine non valido (IdDocumento/IdRiga mancanti).");
+                return;
+            }
+
+            let lottiPayload = [];
+            if (_hasRequiredLotti) {
+                if (!_hasSelectableLotti) {
+                    alert("Impossibile chiudere l'ordine macchina: mancano i lotti necessari per i componenti obbligatori.");
+                    return;
+                }
+
+                const validation = validateLotti();
+                if (!validation.valid) return;
+                lottiPayload = validation.lottiPayload;
+            }
+
+            btn.disabled = true;
+
+            try {
+                const resp = await fetch("/api/ordini/montaggio/macchina/chiudi", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-Requested-With": "XMLHttpRequest"
+                    },
+                    credentials: "same-origin",
+                    body: JSON.stringify({
+                        id_documento: idDocumento,
+                        id_riga: idRiga,
+                        matricola: matricola,
+                        fase: fase,
+                        note: note,
+                        lotti: lottiPayload
+                    })
+                });
+
+                let data = {};
+                try {
+                    data = await resp.json();
+                } catch (_) {
+                    data = {};
+                }
+
+                if (!resp.ok || data.ok === false) {
+                    alert(data.error || "Errore durante la chiusura dell'ordine macchina.");
+                    return;
+                }
+
+                const exportResult = await exportAvpTxt({suffix: "montaggio_m"});
+                if (!exportResult.ok) {
+                    alert(exportResult.error || "Ordine chiuso, ma file ERP non generato.");
+                }
+
+                bootstrap.Toast.getOrCreateInstance(toastEl).hide();
+
+                if (data.fragments && window.applyHomeFragments) {
+                    window.applyHomeFragments(data.fragments);
+                }
+
+                const btnSosp = document.getElementById("sospensione_ordine_m");
+                const btnRiatt = document.getElementById("riattivazione_ordine_m");
+                if (btnSosp) btnSosp.disabled = true;
+                if (btnRiatt) btnRiatt.disabled = true;
+
+                section.style.display = "none";
+                tbody.innerHTML = "";
+                riepilogo.innerHTML = "";
+                _lottiData = [];
+                _hasRequiredLotti = false;
+                _hasSelectableLotti = false;
+            } catch (err) {
+                console.error("Errore fetch chiusura macchina:", err);
+                alert("Errore di comunicazione con il server.");
+            } finally {
+                btn.disabled = false;
+            }
+        });
+    })();
+</script>
+<!-- ============================================================ -->
+<!-- IIFE: Lotti + Chiusura SL (toast_4)                           -->
+<!-- ============================================================ -->
+<script id="toast_4">
+    (() => {
+        let _lottiData = [];
+        let _hasRequiredLotti = false;
+        let _hasSelectableLotti = false;
+        let _rowCounter = 0;
+
+        const toastEl = document.getElementById("toast-4");
+        const section = document.getElementById("lotti-section-sl");
+        const loading = document.getElementById("lotti-loading-sl");
+        const alertEl = document.getElementById("lotti-alert-sl");
+        const tbody = document.getElementById("tbody-lotti-sl");
+        const riepilogo = document.getElementById("lotti-riepilogo-sl");
+
+        const hidQtyResidua = document.getElementById("toast-chiudi-sl-quantita");
+        const hidQtyTotale = document.getElementById("toast-chiudi-sl-quantita-totale");
+        const inpConf = document.getElementById("toast-chiudi-sl-quantita-conforme");
+        const inpNonConf = document.getElementById("toast-chiudi-sl-quantita-non-conforme");
+        const inpNote = document.getElementById("toast-chiudi-sl-note");
+        const chkParziale = document.getElementById("toast-chiudi-sl-parziale");
+        const chkTotale = document.getElementById("toast-chiudi-sl-totale");
+
+        if (!toastEl || !section || !tbody || !inpConf || !inpNonConf) return;
+
+        function escHtml(s) {
+            return String(s)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        function showAlert(msg) {
+            if (!alertEl) return;
+            alertEl.textContent = msg;
+            alertEl.style.display = msg ? "" : "none";
+        }
+
+        function parseIntQty(v) {
+            let s = String(v ?? "").trim().replace(/\s+/g, "");
+            if (!s) return NaN;
+
+            if (s.includes(",") || s.includes(".")) {
+                return NaN;
+            }
+
+            if (!/^\d+$/.test(s)) {
+                return NaN;
+            }
+
+            const n = Number(s);
+            return Number.isSafeInteger(n) ? n : NaN;
+        }
+
+        function parseQtyOrZero(v) {
+            const n = parseIntQty(v);
+            return Number.isFinite(n) ? n : 0;
+        }
+
+        function sameQty(a, b) {
+            return Math.abs(Number(a || 0) - Number(b || 0)) < 0.000001;
+        }
+
+        function sanitizeIntegerInput(el) {
+            if (!el) return;
+
+            el.setAttribute("inputmode", "numeric");
+            el.setAttribute("step", "1");
+            el.setAttribute("min", "0");
+            el.setAttribute("pattern", "\\d*");
+
+            el.addEventListener("input", () => {
+                const cleaned = String(el.value ?? "").replace(/[^\d]/g, "");
+                if (el.value !== cleaned) {
+                    el.value = cleaned;
+                }
+            });
+
+            el.addEventListener("blur", () => {
+                const raw = String(el.value ?? "").trim();
+                if (!raw) {
+                    el.value = "0";
+                    return;
+                }
+                const n = parseIntQty(raw);
+                el.value = Number.isFinite(n) ? String(n) : "0";
+            });
+        }
+
+        function getQuantitaOrdineCorrente() {
+            const n = parseSystemQty(hidTot?.value);
+            return Number.isFinite(n) ? n : 0;
+        }
+
+        function getQuantitaLavorataCorrente() {
+            const qConf = parseQtyOrZero(inpConf?.value);
+            const qNonConf = parseQtyOrZero(inpNonConf?.value);
+            return qConf + qNonConf;
+        }
+
+        function getQuantitaRichiestaComponente(comp) {
+            const baseQty = parseSystemQty(comp?.Quantita);          // quantità distinta riferita all’ordine totale
+            const qOrdTotale = getQuantitaTotaleOrdine();            // ordine nominale originale
+            const qLavorata = getQuantitaLavorataCorrente();         // OK + KO effettivi inseriti nel toast
+
+            if (!Number.isFinite(baseQty) || baseQty <= 0) return 0;
+            if (!Number.isFinite(qLavorata) || qLavorata <= 0) return 0;
+
+            // fallback prudente se manca la quantità totale ordine
+            if (!Number.isFinite(qOrdTotale) || qOrdTotale <= 0) {
+                return Math.round(baseQty);
+            }
+
+            const richiesto = (baseQty * qLavorata) / qOrdTotale;
+
+            if (!Number.isFinite(richiesto)) return 0;
+
+            return Math.round(richiesto);
+        }
+
+        function componenteRichiedeLotto(comp) {
+            const flag = String(
+                comp?.GestioneLotto
+                ?? comp?.gestione_lotto
+                ?? comp?.gestioneLotto
+                ?? ""
+            ).trim().toLowerCase();
+
+            if (flag) return flag === "si";
+            return Array.isArray(comp?.lotti) && comp.lotti.length > 0;
+        }
+
+        function parseSystemQty(v) {
+            let s = String(v ?? "").trim().replace(/\s+/g, "");
+            if (!s) return NaN;
+            if (s.includes(",") && s.includes(".")) s = s.replace(/\./g, "");
+            s = s.replace(",", ".");
+            const n = Number(s);
+            return Number.isFinite(n) ? n : NaN;
+        }
+
+        function getQuantitaResiduaCorrente() {
+            const n = parseSystemQty(hidQtyResidua?.value);
+            return Number.isFinite(n) ? n : 0;
+        }
+
+        function getQuantitaTotaleOrdine() {
+            const n = parseSystemQty(hidQtyTotale?.value);
+            return Number.isFinite(n) ? n : 0;
+        }
+
+        function resetQuantitaInputs() {
+            const qResidua = getQuantitaResiduaCorrente();
+
+            if (Number.isFinite(qResidua) && qResidua > 0) {
+                inpConf.value = String(Math.round(qResidua));
+            } else {
+                inpConf.value = "";
+            }
+
+            inpNonConf.value = "0";
+            if (inpNote) inpNote.value = "";
+            if (chkParziale) chkParziale.checked = false;
+            if (chkTotale) chkTotale.checked = false;
+        }
+
+        function buildLottoSelect(lotti, selectedLotto = "") {
+            let html = '<select class="form-select form-select-sm lotto-select-sl">';
+            html += '<option value="">-- Seleziona lotto --</option>';
+            for (const l of (lotti || [])) {
+                const value = String(l.RifLottoAlfa || "");
+                const giacenza = parseQtyOrZero(l.Giacenza);
+                const codMag = String(l.CodMag || "");
+                const sel = value === selectedLotto ? " selected" : "";
+                html += `
+                    <option value="${escHtml(value)}"
+                            data-giacenza="${giacenza}"
+                            data-codmag="${escHtml(codMag)}"${sel}>
+                        ${escHtml(value)} (mag: ${escHtml(codMag || "-")})
+                    </option>`;
+            }
+            html += "</select>";
+            return html;
+        }
+
+        function addLottoRow(codArt, desArt, lotti, isInitial) {
+            _rowCounter++;
+            const tr = document.createElement("tr");
+            tr.id = `lotto-sl-row-${_rowCounter}`;
+            tr.dataset.codart = codArt;
+            tr.innerHTML = `
+                <td class="fw-semibold" style="font-size:20px;">${escHtml(codArt)}</td>
+                <td style="font-size:20px;">${escHtml(desArt || "")}</td>
+                <td>${buildLottoSelect(lotti)}</td>
+                <td class="text-end giacenza-cell-sl" style="font-size:20px;">-</td>
+                <td>
+                    <input type="number"
+                           class="form-control form-control-sm lotto-qty-sl text-end"
+                           min="0"
+                           step="1"
+                           value=""
+                           placeholder="0"
+                           style="width:90px;">
+                </td>
+                <td>
+                    <select class="form-select form-select-sm lotto-esito-sl" style="width:70px;">
+                        <option value="ok">OK</option>
+                        <option value="ko">KO</option>
+                    </select>
+                </td>
+                <td class="text-center">
+                    <button type="button"
+                            class="btn btn-sm btn-outline-primary btn-add-lotto-sl me-1"
+                            title="Aggiungi riga"
+                            data-codart="${escHtml(codArt)}"
+                            data-desart="${escHtml(desArt || "")}">
+                        +
+                    </button>
+                    ${isInitial ? "" : '<button type="button" class="btn btn-sm btn-outline-danger btn-rem-lotto-sl" title="Rimuovi">−</button>'}
+                </td>`;
+            tbody.appendChild(tr);
+            sanitizeIntegerInput(tr.querySelector(".lotto-qty-sl"));
+            return tr;
+        }
+
+        function updateRiepilogo() {
+            if (!riepilogo) return;
+
+            const totals = {};
+            tbody.querySelectorAll("tr").forEach(row => {
+                const cod = row.dataset.codart || "";
+                const qty = parseQtyOrZero(row.querySelector(".lotto-qty-sl")?.value);
+                const esito = row.querySelector(".lotto-esito-sl")?.value || "ok";
+
+                if (!totals[cod]) totals[cod] = {ok: 0, ko: 0, totale: 0};
+                if (esito === "ok") totals[cod].ok += qty;
+                else totals[cod].ko += qty;
+                totals[cod].totale += qty;
+            });
+
+            let html = "<strong>Riepilogo per componente:</strong><br>";
+            for (const comp of _lottiData) {
+                const codArt = String(comp.CodArt || "");
+                const richiesto = getQuantitaRichiestaComponente(comp);
+                const t = totals[codArt] || {ok: 0, ko: 0, totale: 0};
+                const ok = sameQty(t.totale, richiesto);
+
+                html += `
+            <span class="${ok ? "text-success" : "text-danger"}">
+                ${escHtml(codArt)}: ${t.totale}/${richiesto}
+                (OK: ${t.ok}, KO: ${t.ko})${ok ? " ✓" : " ✗"}
+            </span><br>`;
+            }
+
+            riepilogo.innerHTML = html;
+        }
+
+        async function fetchLottiData(idDocumento, idRiga) {
+            section.style.display = "none";
+            loading.style.display = "";
+            tbody.innerHTML = "";
+            showAlert("");
+            riepilogo.innerHTML = "";
+            _lottiData = [];
+            _hasRequiredLotti = false;
+            _hasSelectableLotti = false;
+
+            try {
+                const resp = await fetch("/api/ordini/lotti-componenti", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-Requested-With": "XMLHttpRequest"
+                    },
+                    credentials: "same-origin",
+                    body: JSON.stringify({
+                        id_documento: idDocumento,
+                        id_riga: idRiga,
+                        modalita: "sl"
+                    })
+                });
+
+                const data = await resp.json();
+
+                if (!resp.ok || !data.ok) {
+                    showAlert(data.error || "Errore nel caricamento dei lotti.");
+                    return;
+                }
+
+                if (!data.gestioneLotto) {
+                    section.style.display = "none";
+                    return;
+                }
+
+                const rawComponenti = Array.isArray(data.componenti) ? data.componenti : [];
+                const forceShow = !!data.force_show_section;
+
+                _lottiData = rawComponenti.filter(comp => componenteRichiedeLotto(comp));
+
+                const componentiConLotti = _lottiData.filter(
+                    comp => Array.isArray(comp.lotti) && comp.lotti.length > 0
+                );
+                const componentiSenzaLotti = _lottiData.filter(
+                    comp => !Array.isArray(comp.lotti) || comp.lotti.length === 0
+                );
+
+                _hasRequiredLotti = _lottiData.length > 0;
+                _hasSelectableLotti = componentiConLotti.length > 0;
+
+                if (!_hasRequiredLotti && !forceShow) {
+                    section.style.display = "none";
+                    return;
+                }
+
+                section.style.display = "";
+
+                for (const comp of componentiConLotti) {
+                    addLottoRow(comp.CodArt, comp.DesArt, comp.lotti, true);
+                }
+
+                if (componentiSenzaLotti.length > 0) {
+                    const elenco = componentiSenzaLotti
+                        .map(comp => `- ${comp.CodArt}${comp.DesArt ? ` (${comp.DesArt})` : ""}`)
+                        .join("\n");
+
+                    showAlert(
+                        `Nessun lotto disponibile per i seguenti componenti obbligatori della fase attiva:\n${elenco}`
+                    );
+                } else {
+                    showAlert("");
+                }
+
+                updateRiepilogo();
+            } catch (err) {
+                console.error("Errore fetch lotti SL:", err);
+                showAlert("Errore di comunicazione.");
+            } finally {
+                loading.style.display = "none";
+            }
+        }
+
+        function validateLotti() {
+            if (!_hasRequiredLotti) return {valid: true, lottiPayload: []};
+
+            const errors = [];
+            const perCodice = {};
+            const lottiPayload = [];
+
+            // Raggruppamento per CodArt + Lotto
+            const perLotto = {};
+
+            tbody.querySelectorAll("tr").forEach(row => {
+                const cod = row.dataset.codart || "";
+                const lottoVal = row.querySelector(".lotto-select-sl")?.value || "";
+                const giacenza = parseQtyOrZero(row.querySelector(".giacenza-cell-sl")?.textContent);
+                const esito = row.querySelector(".lotto-esito-sl")?.value || "ok";
+                const qtyRaw = row.querySelector(".lotto-qty-sl")?.value;
+                const qty = parseIntQty(qtyRaw);
+
+                if (!Number.isInteger(qty) || qty <= 0) {
+                    errors.push(`${cod} lotto ${lottoVal}: inserire una quantità intera > 0.`);
+                    return;
+                }
+
+                if (qty > 0 && !lottoVal) {
+                    errors.push(`${cod}: selezionare un lotto.`);
+                    return;
+                }
+
+                if (!lottoVal) return;
+
+                if (qty <= 0) {
+                    errors.push(`${cod} lotto ${lottoVal}: inserire qtà > 0.`);
+                }
+
+                if (qty > giacenza) {
+                    errors.push(`${cod} lotto ${lottoVal}: qtà ${qty} > giacenza ${giacenza}.`);
+                }
+
+                const lottoKey = `${cod}|${lottoVal}`;
+                if (!perLotto[lottoKey]) {
+                    perLotto[lottoKey] = {
+                        cod,
+                        lottoVal,
+                        giacenza,
+                        totale: 0,
+                        ok: 0,
+                        ko: 0,
+                        righe: 0
+                    };
+                }
+
+                perLotto[lottoKey].totale += qty;
+                perLotto[lottoKey].righe += 1;
+                if (esito === "ok") {
+                    perLotto[lottoKey].ok += qty;
+                } else {
+                    perLotto[lottoKey].ko += qty;
+                }
+
+                if (!perCodice[cod]) perCodice[cod] = {ok: 0, ko: 0, totale: 0};
+                if (esito === "ok") perCodice[cod].ok += qty;
+                else perCodice[cod].ko += qty;
+                perCodice[cod].totale += qty;
+
+                lottiPayload.push({
+                    CodArt: cod,
+                    RifLottoAlfa: lottoVal,
+                    Quantita: qty,
+                    Esito: esito
+                });
+            });
+
+            // Regole duplicati stesso lotto
+            for (const key of Object.keys(perLotto)) {
+                const info = perLotto[key];
+
+                if (info.righe <= 1) continue;
+
+                // Se tutte le righe del lotto sono OK, il duplicato non è ammesso
+                if (info.ko === 0) {
+                    errors.push(
+                        `${info.cod}: lotto ${info.lottoVal} duplicato non consentito su più righe OK.`
+                    );
+                    continue;
+                }
+
+                // Se esiste almeno una KO, il duplicato è ammesso solo entro la giacenza
+                if (info.totale > info.giacenza) {
+                    errors.push(
+                        `${info.cod}: lotto ${info.lottoVal} duplicato con KO ma somma quantità ${info.totale} > giacenza ${info.giacenza}.`
+                    );
+                }
+            }
+
+            // Controllo totale per componente
+            for (const comp of _lottiData) {
+                const codArt = String(comp.CodArt || "");
+                const richiesto = getQuantitaRichiestaComponente(comp);
+                const totale = perCodice[codArt]?.totale || 0;
+
+                if (!sameQty(totale, richiesto)) {
+                    errors.push(`${codArt}: somma lotti (${totale}) ≠ richiesta (${richiesto}).`);
+                }
+            }
+
+            if (errors.length > 0) {
+                showAlert(errors.join("\n"));
+                return {valid: false, lottiPayload: []};
+            }
+
+            showAlert("");
+            return {valid: true, lottiPayload};
+        }
+
+
+        // ---- Aggiorna giacenza al cambio lotto ----
+        tbody.addEventListener("change", function (e) {
+            const sel = e.target.closest(".lotto-select-sl");
+            if (sel) {
+                const row = sel.closest("tr");
+                const giacCell = row.querySelector(".giacenza-cell-sl");
+                const qtyInput = row.querySelector(".lotto-qty-sl");
+                const opt = sel.options[sel.selectedIndex];
+
+                if (opt && opt.value) {
+                    const g = parseSystemQty(opt.dataset.giacenza);
+                    giacCell.textContent = Number.isFinite(g) ? g : 0;
+                    qtyInput.max = Number.isFinite(g) ? String(g) : "";
+                } else {
+                    giacCell.textContent = "-";
+                    qtyInput.max = "";
+                }
+            }
+
+            if (
+                e.target.closest(".lotto-select-sl") ||
+                e.target.closest(".lotto-esito-sl")
+            ) {
+                updateRiepilogo();
+                validateLotti();
+            }
+        });
+
+        tbody.addEventListener("input", function (e) {
+            if (e.target.classList.contains("lotto-qty-sl")) {
+                updateRiepilogo();
+                validateLotti();
+            }
+        });
+
+        tbody.addEventListener("click", function (e) {
+            const btnAdd = e.target.closest(".btn-add-lotto-sl");
+            if (btnAdd) {
+                const codArt = btnAdd.dataset.codart || "";
+                const desArt = btnAdd.dataset.desart || "";
+                const comp = _lottiData.find(c => String(c.CodArt || "") === codArt);
+                if (comp && Array.isArray(comp.lotti) && comp.lotti.length > 0) {
+                    addLottoRow(codArt, desArt, comp.lotti, false);
+                    updateRiepilogo();
+                    validateLotti();
+                }
+                return;
+            }
+
+            const btnRem = e.target.closest(".btn-rem-lotto-sl");
+            if (btnRem) {
+                btnRem.closest("tr")?.remove();
+                updateRiepilogo();
+                validateLotti();
+            }
+        });
+        sanitizeIntegerInput(inpConf);
+        sanitizeIntegerInput(inpNonConf);
+        [inpConf, inpNonConf].forEach(el => {
+            el?.addEventListener("input", () => {
+                if (_hasRequiredLotti) updateRiepilogo();
+            });
+        });
+
+        chkParziale?.addEventListener("change", () => {
+            if (chkParziale.checked && chkTotale) {
+                chkTotale.checked = false;
+            }
+            if (_hasRequiredLotti) updateRiepilogo();
+        });
+
+        chkTotale?.addEventListener("change", () => {
+            if (chkTotale.checked && chkParziale) {
+                chkParziale.checked = false;
+            }
+            if (_hasRequiredLotti) updateRiepilogo();
+        });
+
+        document.addEventListener("click", function (e) {
+            const btn = e.target.closest('[data-bs-target="#toast-4"]');
+            if (!btn) return;
+
+            requestAnimationFrame(() => {
+                resetQuantitaInputs();
+
+                const idDoc = document.getElementById("toast-chiudi-sl-iddocumento")?.value?.trim() || "";
+                const idRiga = document.getElementById("toast-chiudi-sl-idriga")?.value?.trim() || "";
+
+                if (idDoc && idRiga) {
+                    fetchLottiData(idDoc, idRiga);
+                } else {
+                    section.style.display = "none";
+                }
+            });
+        });
+
+        document.getElementById("btn-conferma-chiusura-sl")?.addEventListener("click", async function (event) {
+            event.preventDefault();
+
+            const btn = this;
+            const idDocumento = document.getElementById("toast-chiudi-sl-iddocumento")?.value?.trim() || "";
+            const idRiga = document.getElementById("toast-chiudi-sl-idriga")?.value?.trim() || "";
+            const qOrd = document.getElementById("toast-chiudi-sl-quantita")?.value?.trim() || "";
+            const qConf = document.getElementById("toast-chiudi-sl-quantita-conforme")?.value?.trim() || "";
+            const qNonConf = document.getElementById("toast-chiudi-sl-quantita-non-conforme")?.value?.trim() || "";
+            const note = document.getElementById("toast-chiudi-sl-note")?.value?.trim() || "";
+            const chiusuraParziale = document.getElementById("toast-chiudi-sl-parziale")?.checked === true;
+            const chiusuraTotale = document.getElementById("toast-chiudi-sl-totale")?.checked === true;
+
+            if (chiusuraParziale === chiusuraTotale) {
+                alert("Selezionare una sola modalità di chiusura: parziale oppure totale.");
+                return;
+            }
+            if (!idDocumento || !idRiga) {
+                alert("Ordine non valido (IdDocumento/IdRiga mancanti).");
+                return;
+            }
+
+            // Validazione quantità
+            const nConf = parseIntQty(qConf);
+            const nNonConf = parseIntQty(qNonConf);
+
+            const qOrdResiduaRaw = document.getElementById("toast-chiudi-sl-quantita")?.value?.trim() || "";
+            const nOrdResiduaRaw = parseSystemQty(qOrdResiduaRaw);
+            const nOrdResidua = Number.isFinite(nOrdResiduaRaw) ? Math.round(nOrdResiduaRaw) : NaN;
+            if (!Number.isInteger(nConf) || nConf < 0) {
+                alert("Quantità conforme non valida: inserire un numero intero >= 0.");
+                return;
+            }
+            if (!Number.isInteger(nNonConf) || nNonConf < 0) {
+                alert("Quantità KO non valida: inserire un numero intero >= 0.");
+                return;
+            }
+
+            if (!Number.isFinite(nConf) || nConf < 0) {
+                alert("Quantità conforme non valida.");
+                return;
+            }
+            if (!Number.isFinite(nNonConf) || nNonConf < 0) {
+                alert("Quantità KO non valida.");
+                return;
+            }
+
+            const nLavorata = nConf + nNonConf;
+
+            if (nLavorata <= 0) {
+                alert("Devi indicare una quantità lavorata > 0.");
+                return;
+            }
+
+            if (chiusuraParziale) {
+                if (!Number.isFinite(nOrdResidua) || nOrdResidua <= 0) {
+                    alert("Quantità residua ordine non valida.");
+                    return;
+                }
+
+                if (nLavorata >= nOrdResidua) {
+                    alert("Nella chiusura parziale la quantità lavorata deve essere strettamente minore della quantità residua dell'ordine.");
+                    return;
+                }
+            }
+
+
+            let lottiPayload = [];
+            if (_hasRequiredLotti) {
+                if (!_hasSelectableLotti) {
+                    alert("Impossibile chiudere l'ordine: mancano i lotti necessari per i componenti obbligatori.");
+                    return;
+                }
+
+                const validation = validateLotti();
+                if (!validation.valid) return;
+                lottiPayload = validation.lottiPayload;
+
+                const totKoLotti = lottiPayload
+                    .filter(l => String(l.Esito || "").toLowerCase() === "ko")
+                    .reduce((s, l) => s + parseQtyOrZero(l.Quantita), 0);
+
+                if (sameQty(qNonConf, 0) && totKoLotti > 0) {
+                    alert("Hai lotti marcati KO ma quantità non conforme = 0.");
+                    return;
+                }
+
+                if (qNonConf > 0 && sameQty(totKoLotti, 0)) {
+                    alert("Quantità non conforme > 0 ma nessun lotto è marcato KO.");
+                    return;
+                }
+            }
+
+            btn.disabled = true;
+
+            try {
+                const resp = await fetch("/api/ordini/chiudi", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-Requested-With": "XMLHttpRequest"
+                    },
+                    credentials: "same-origin",
+                    body: JSON.stringify({
+                        id_documento: idDocumento,
+                        id_riga: idRiga,
+                        quantita_conforme: String(nConf),
+                        quantita_non_conforme: String(nNonConf),
+                        note: note,
+                        lotti: lottiPayload,
+                        chiusura_parziale: chiusuraParziale
+                    })
+                });
+
+                let data = {};
+                try {
+                    data = await resp.json();
+                } catch (_) {
+                    data = {};
+                }
+
+                if (!resp.ok || data.ok === false) {
+                    alert(data.error || "Errore durante la chiusura dell'ordine.");
+                    return;
+                }
+
+                const exportResult = await exportAvpTxt({suffix: "montaggio_sl"});
+                if (!exportResult.ok) {
+                    alert(exportResult.error || "Ordine chiuso, ma file ERP non generato.");
+                }
+
+                bootstrap.Toast.getOrCreateInstance(toastEl).hide();
+
+                if (data.fragments && window.applyHomeFragments) {
+                    window.applyHomeFragments(data.fragments);
+                }
+
+                bootstrap.Toast.getOrCreateInstance(toastEl).hide();
+
+                if (data.fragments && window.applyHomeFragments) {
+                    window.applyHomeFragments(data.fragments);
+                }
+
+                const btnSosp = document.getElementById("sospensione_ordine_sl");
+                const btnRiatt = document.getElementById("riattivazione_ordine_sl");
+                if (btnSosp) btnSosp.disabled = true;
+                if (btnRiatt) btnRiatt.disabled = true;
+
+                section.style.display = "none";
+                tbody.innerHTML = "";
+                riepilogo.innerHTML = "";
+                _lottiData = [];
+                _hasRequiredLotti = false;
+                _hasSelectableLotti = false;
+                resetQuantitaInputs();
+            } catch (err) {
+                console.error("Errore fetch chiusura SL:", err);
+                alert("Errore di comunicazione con il server.");
+            } finally {
+                btn.disabled = false;
+            }
+        });
+    })();
+</script>
+<script>
+    async function exportAvpTxt({suffix = "montaggio"} = {}) {
+        try {
+            const resp = await fetch("/api/erp/export/avp", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-Requested-With": "XMLHttpRequest"
+                },
+                credentials: "same-origin",
+                body: JSON.stringify({suffix})
+            });
+
+            let data = {};
+            try {
+                data = await resp.json();
+            } catch (_) {
+                data = {};
+            }
+
+            if (!resp.ok || data.ok === false) {
+                return {
+                    ok: false,
+                    error: data.error || "Errore durante la generazione del file ERP."
+                };
+            }
+
+            return {ok: true, data};
+        } catch (err) {
+            console.error("Errore export AVP:", err);
+            return {
+                ok: false,
+                error: "Errore di comunicazione durante la generazione del file ERP."
+            };
+        }
+    }
+</script>

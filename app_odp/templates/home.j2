@@ -3,3 +3,84 @@
 {% block content %}
     {% include active_partial %}
 {% endblock %}
+
+{% block extra_js %}
+    {{ super() }}
+    <script>
+        window.homeBridgeConfig = {
+            url: {{ bridge_url|tojson }},
+            lastEventId: {{ bridge_last_event_id | int }},
+            intervalMs: 2000
+        };
+
+        (() => {
+            const cfg = window.homeBridgeConfig;
+            if (!cfg || !cfg.url) return;
+
+            let lastEventId = Number(cfg.lastEventId || 0);
+            const intervalMs = Number(cfg.intervalMs || 2000);
+            let inFlight = false;
+
+            function applyFragments(fragments) {
+                if (!fragments || typeof fragments !== "object") return;
+
+                Object.entries(fragments).forEach(([targetId, html]) => {
+                    const el = document.getElementById(targetId);
+                    if (el) {
+                        el.innerHTML = html;
+                    }
+                });
+
+                if (window.applyRowColors) window.applyRowColors();
+                if (window.restoreSelectedRows) window.restoreSelectedRows();
+
+                document.querySelectorAll(".js-table-filter").forEach((input) => {
+                    input.dispatchEvent(new Event("input", {bubbles: true}));
+                });
+            }
+
+            window.applyHomeFragments = applyFragments;
+
+            async function fetchUpdates() {
+                if (inFlight) return;
+                inFlight = true;
+
+                try {
+                    const url = new URL(cfg.url, window.location.origin);
+                    url.searchParams.set("after", String(lastEventId));
+
+                    const res = await fetch(url.toString(), {
+                        method: "GET",
+                        headers: {
+                            "X-Requested-With": "XMLHttpRequest"
+                        },
+                        credentials: "same-origin",
+                        cache: "no-store"
+                    });
+
+                    if (!res.ok) {
+                        console.error("Errore bridge:", res.status, res.statusText);
+                        return;
+                    }
+
+                    const data = await res.json();
+
+                    if (typeof data.last_event_id === "number") {
+                        lastEventId = data.last_event_id;
+                    }
+
+                    if (!data.changed) return;
+
+                    applyFragments(data.fragments);
+                } catch (err) {
+                    console.error("Errore nel polling", err);
+                } finally {
+                    inFlight = false;
+                }
+            }
+
+            fetchUpdates();
+            setInterval(fetchUpdates, intervalMs);
+        })();
+    </script>
+{% endblock %}

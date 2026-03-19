@@ -36,7 +36,6 @@ config = None
 sqlite_engine_app = None
 sqlserver_engine_app = None
 
-COUNTER_RIGHE = 0
 ALLOWED_WEEKDAYS = None
 START_H = None
 END_H = None
@@ -51,6 +50,8 @@ logging.basicConfig(
     level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s"
 )
 
+nuovo_ciclo = 0
+
 
 def init(config_path: str | pathlib.Path = None, *, force: bool = False):
     """
@@ -59,7 +60,7 @@ def init(config_path: str | pathlib.Path = None, *, force: bool = False):
     - force: se True reinizializza anche se era già stato fatto
     """
     global CONFIG, config, sqlite_engine_app, sqlserver_engine_app
-    global COUNTER_RIGHE, ALLOWED_WEEKDAYS, START_H, END_H, TIMEZONE, POLL_SECONDS_DEFAULT
+    global ALLOWED_WEEKDAYS, START_H, END_H, TIMEZONE, POLL_SECONDS_DEFAULT
     global ELEMENTI_ESCLUSI, ELEMENTI_SELEZIONATI
     global _INITIALIZED
 
@@ -77,8 +78,6 @@ def init(config_path: str | pathlib.Path = None, *, force: bool = False):
     sync_cfg = CONFIG["sync_config"]
     ELEMENTI_ESCLUSI = CONFIG["Elementi_esclusi"]
     ELEMENTI_SELEZIONATI = CONFIG["Elementi_selezionati"]
-
-    COUNTER_RIGHE = int(sync_cfg.get("counter_righe", 0))
     ALLOWED_WEEKDAYS = set(sync_cfg["giorni_settimanali"])
     START_H = int(sync_cfg["ora_inizio"])
     END_H = int(sync_cfg["ora_fine"])
@@ -174,7 +173,7 @@ def filtra_odpfasi_con_odp(
     :type df_odpfasi: pd.DataFrame
     :param df_odp: dataframe con gli ordini di produzione
     :type df_odp: pd.DataFrame
-    :return: DataFrame filtrato per IdDocumento e IdRiga di df_odpkssk
+    :return: DataFrame filtrato per IdDocumento e IdRiga di df_odp
     :rtype: pd.DataFrame
     """
     df_odpfasi_filtered = df_odpfasi.merge(
@@ -233,11 +232,11 @@ def inserimento_reparto_da_risorsa(
 
 
 def unione_fasi_componenti(
-    df_fasi: pd.DataFrame, df_componenti: pd.DataFrame
+    df_fasi: pd.DataFrame, df_componenti: pd.DataFrame, df_articoli: pd.DataFrame
 ) -> pd.DataFrame:
     """
     Join tra il df delle fasi e quello dei componenti per fase. Al df_componenti vengono rinominate le righe IdRigaPadre e IdRiga rispettivamente in IdRiga e IdRigacomponente
-
+    Viene inoltre aggiunta la descrizione del componente per codice articolo
     :param df_fasi: dataframe fasi
     :type df_fasi: pd.DataFrame
     :param df_componenti: dataframe componenti per fase
@@ -259,6 +258,11 @@ def unione_fasi_componenti(
         how="left",
     )
     df_fasi_componenti = df_fasi_componenti.reset_index(drop=False)
+    df_fasi_componenti = df_fasi_componenti.merge(
+        df_articoli[["CodArt", "DesArt", "MagUM", "GestioneLotto"]],
+        on="CodArt",
+        how="left",
+    )
     return df_fasi_componenti
 
 
@@ -299,6 +303,23 @@ def generazione_lista(
     return componenti_per_odp
 
 
+def _sanitize_json_scalar(value):
+    """
+    Converte i valori pandas/numpy non JSON-validi in None.
+    Evita che json.dumps serializzi NaN come token non valido per il frontend.
+    """
+    if pd.isna(value):
+        return None
+    return value
+
+
+def _sanitize_records_for_json(records: list[dict]) -> list[dict]:
+    return [
+        {key: _sanitize_json_scalar(value) for key, value in record.items()}
+        for record in records
+    ]
+
+
 def generazione_dizionario(
     df: pd.DataFrame,
     chiavi: list[str],
@@ -325,19 +346,30 @@ def generazione_dizionario(
     :rtype: pd.DataFrame
     """
 
+    df = df.copy()
+
+    # DistintaMateriale: elimina le pseudo-righe create dalle fasi senza componenti
+    # (tipicamente CodArt/DesArt/Quantita/GestioneLotto tutti NaN).
+    if rename_col == "DistintaMateriale" and "CodArt" in list_columns:
+        codici = df["CodArt"].astype("string").str.strip()
+        df = df[codici.notna() & codici.ne("")]
+
     df = df.set_index(chiavi)
     if data_in == "data":
         df[rename_col] = df[rename_col].dt.strftime("%d/%m/%Y %H:%M:%S")
-    else:
-        pass
+
     componenti_per_odp = (
         df.groupby(chiavi)
-        .apply((lambda g: g[list_columns].to_dict("records")))
+        .apply(lambda g: _sanitize_records_for_json(g[list_columns].to_dict("records")))
         .rename(rename_col)
         .reset_index()
     )
     componenti_per_odp[rename_col] = componenti_per_odp[rename_col].apply(
-        lambda x: json.dumps(x) if isinstance(x, (list, tuple)) else None
+        lambda x: (
+            json.dumps(x, ensure_ascii=False, allow_nan=False)
+            if isinstance(x, (list, tuple))
+            else None
+        )
     )
     return componenti_per_odp
 
@@ -536,33 +568,206 @@ def inserisci_o_ignora(sqltable, conn, keys, data_iter) -> int:
 # endregion
 # region ELABORAZIONE
 
+PK_COLS = ("IdDocumento", "IdRiga")
 
-def _chunked(seq, size: int):
-    for i in range(0, len(seq), size):
-        yield seq[i : i + size]
+INPUT_ODP_ERP_COLS = [
+    "IdDocumento",
+    "IdRiga",
+    "RifRegistraz",
+    "CodArt",
+    "DesArt",
+    "Quantita",
+    "NumFase",
+    "CodLavorazione",
+    "CodRisorsaProd",
+    "DataInizioSched",
+    "DataFineSched",
+    "GestioneLotto",
+    "GestioneMatricola",
+    "DistintaMateriale",
+    "CodMatricola",
+    "StatoRiga",
+    "CodFamiglia",
+    "CodMacrofamiglia",
+    "CodMagPrincipale",
+    "CodReparto",
+    "TempoPrevistoLavoraz",
+    "StatoOrdine",
+    "CodClassifTecnica",
+    "CodTipoDoc",
+]
+
+INPUT_ODP_RUNTIME_COLS = [
+    "IdDocumento",
+    "IdRiga",
+    "FaseAttiva",
+    "Note",
+    "QtyDaLavorare",
+    "RisorsaAttiva",
+    "LavorazioneAttiva",
+]
+
+INPUT_ODP_ERP_UPDATE_COLS = [c for c in INPUT_ODP_ERP_COLS if c not in PK_COLS]
 
 
 def _fetch_existing_pks(
-    engine, pk_tuples, pk_cols=("IdDocumento", "IdRiga")
+    engine,
+    pk_tuples,
+    pk_cols=("IdDocumento", "IdRiga"),
+    table_name="input_odp",
 ) -> set[tuple]:
     """
-    Ritorna un set di PK (IdDocumento, IdRiga) già presenti in input_odp.
+    Ritorna un set di PK già presenti nella tabella indicata.
     Chunking per evitare limiti di parametri SQLite.
     """
     if not pk_tuples:
         return set()
 
     md = sa.MetaData()
-    t = sa.Table("input_odp", md, autoload_with=engine)
+    t = sa.Table(table_name, md, autoload_with=engine)
     tpl = sa.tuple_(t.c[pk_cols[0]], t.c[pk_cols[1]])
 
     existing = set()
-    # chunk conservativo (SQLite ha limiti, 400-500 tuple è ok in genere)
     for chunk in _chunked(pk_tuples, 400):
         q = sa.select(t.c[pk_cols[0]], t.c[pk_cols[1]]).where(tpl.in_(chunk))
         with engine.connect() as conn:
-            existing.update(conn.execute(q).fetchall())
+            rows = conn.execute(q).fetchall()
+            existing.update(tuple(r) for r in rows)
+
     return existing
+
+
+def _update_rows_by_pk(
+    engine,
+    df: pd.DataFrame,
+    *,
+    table_name: str,
+    pk_cols: tuple[str, str] = ("IdDocumento", "IdRiga"),
+    update_cols: list[str],
+    chunk_size: int = 500,
+) -> int:
+    """
+    UPDATE batch (executemany) su SQLite.
+    Aggiorna solo le colonne indicate in update_cols.
+    """
+    if df.empty or not update_cols:
+        return 0
+
+    md = sa.MetaData()
+    t = sa.Table(table_name, md, autoload_with=engine)
+
+    pk_bind_names = {
+        pk_cols[0]: f"b_pk_{pk_cols[0]}",
+        pk_cols[1]: f"b_pk_{pk_cols[1]}",
+    }
+
+    where_clause = sa.and_(
+        t.c[pk_cols[0]] == sa.bindparam(pk_bind_names[pk_cols[0]]),
+        t.c[pk_cols[1]] == sa.bindparam(pk_bind_names[pk_cols[1]]),
+    )
+
+    stmt = (
+        sa.update(t)
+        .where(where_clause)
+        .values(**{c: sa.bindparam(c) for c in update_cols})
+    )
+
+    needed_cols = [*pk_cols, *update_cols]
+    df_exec = df[needed_cols].copy()
+    df_exec = df_exec.where(pd.notna(df_exec), None)
+
+    records = []
+    for rec in df_exec.to_dict("records"):
+        row = dict(rec)
+        row[pk_bind_names[pk_cols[0]]] = row.pop(pk_cols[0])
+        row[pk_bind_names[pk_cols[1]]] = row.pop(pk_cols[1])
+        records.append(row)
+
+    updated = 0
+    with engine.begin() as conn:
+        for chunk in _chunked(records, chunk_size):
+            res = conn.execute(stmt, chunk)
+            if getattr(res, "rowcount", None) is not None and res.rowcount >= 0:
+                updated += int(res.rowcount)
+            else:
+                updated += len(chunk)
+
+    return updated
+
+
+def _build_runtime_seed(df_input_odp: pd.DataFrame) -> pd.DataFrame:
+    """
+    Costruisce il seed iniziale per input_odp_runtime a partire dallo snapshot ERP.
+    Va usato solo per le PK mancanti nella tabella runtime.
+    """
+    df_runtime = df_input_odp[
+        ["IdDocumento", "IdRiga", "Quantita", "CodLavorazione", "CodRisorsaProd"]
+    ].copy()
+
+    df_runtime["FaseAttiva"] = "1"
+    df_runtime["Note"] = None
+    df_runtime["QtyDaLavorare"] = df_runtime["Quantita"]
+    df_runtime["RisorsaAttiva"] = df_runtime["CodRisorsaProd"].apply(
+        estrai_lavorazione_attiva
+    )
+    df_runtime["LavorazioneAttiva"] = df_runtime["CodLavorazione"].apply(
+        estrai_lavorazione_attiva
+    )
+
+    return df_runtime[INPUT_ODP_RUNTIME_COLS].copy()
+
+
+def _chunked(seq, size: int):
+    for i in range(0, len(seq), size):
+        yield seq[i : i + size]
+
+
+def int_format(x):
+    try:
+        return int(x)
+    except (ValueError, TypeError):
+        return 0
+
+
+def filtri_giacenza_lotti(df_giacenza_lotti: pd.DataFrame) -> pd.DataFrame:
+    """
+    Filtra il dataframe della giacenza lotti per mantenere solo le righe con giacenza maggiore di 0
+
+    :param df_giacenza_lotti: Dataframe con la giacenza dei lotti
+    :type df_giacenza_lotti: pd.DataFrame
+    :return: Dataframe filtrato con solo i lotti con giacenza maggiore di 0
+    :rtype: pd.DataFrame
+    """
+    df_giacenza_lotti["Giacenza"] = df_giacenza_lotti["Giacenza"].apply(int_format)
+    df_giacenza_lotti_filtered = df_giacenza_lotti.loc[
+        df_giacenza_lotti["Giacenza"] > 0
+    ]
+    df_giacenza_lotti_filtered_regexLotto = df_giacenza_lotti_filtered[
+        df_giacenza_lotti_filtered["RifLottoAlfa"]
+        .astype("string")
+        .str.fullmatch(r"^\d{8}$")
+    ]
+    df_giacenza_lotti_filtered_regexLotto_Articolo = (
+        df_giacenza_lotti_filtered_regexLotto[
+            df_giacenza_lotti_filtered_regexLotto["CodArt"]
+            .astype("string")
+            .str.fullmatch(r"^[A-Z]{2}\d{2}-\d{3}-\d{4}$")
+        ]
+    )
+    return df_giacenza_lotti_filtered_regexLotto_Articolo
+
+
+def estrai_lavorazione_attiva(x):
+    if pd.isna(x):
+        return None
+
+    if isinstance(x, str):
+        x = json.loads(x)
+
+    if isinstance(x, (list, tuple)):
+        return x[0] if x else None
+
+    return None
 
 
 def elaborazione_dati(session: Session) -> None:
@@ -572,9 +777,9 @@ def elaborazione_dati(session: Session) -> None:
     :param session: sessione Sqlalchemy ORM
     :type session: Session
     """
+
     ensure_init()
-    global COUNTER_RIGHE
-    # righe_inserite = int(0)
+    global nuovo_ciclo
     df_odp = leggi_view(
         table="vwESOdP",
         colonna_filtro_esclusi="CodArt",
@@ -596,14 +801,23 @@ def elaborazione_dati(session: Session) -> None:
     df_odpcomponenti = leggi_view("vwESOdPComponenti").pipe(
         filtra_odp_componenti_con_odp, df_odp=df_odp
     )
-    df_fasi_componenti = unione_fasi_componenti(df_odpfasi, df_odpcomponenti)
+    df_articoli = leggi_view("vwESArticoli")
+    df_fasi_componenti = unione_fasi_componenti(
+        df_odpfasi, df_odpcomponenti, df_articoli
+    )
     distinta_componenti = generazione_dizionario(
         df=df_fasi_componenti,
         chiavi=chiavi,
         rename_col="DistintaMateriale",
-        list_columns=["CodArt", "Quantita", "NumFase"],
+        list_columns=[
+            "CodArt",
+            "DesArt",
+            "Quantita",
+            "NumFase",
+            "MagUM",
+            "GestioneLotto",
+        ],
     )
-    df_articoli = leggi_view("vwESArticoli")
     df_input_odp = (
         inserimento_distinta_in_odp(
             df_odp=df_odp, componenti_per_odp=distinta_componenti, chiavi=chiavi
@@ -618,58 +832,148 @@ def elaborazione_dati(session: Session) -> None:
         )
         .drop(columns=["DataInizioProduzione"])
     )
-    pk_cols = ["IdDocumento", "IdRiga"]
+    # --- payload ERP puro ---
+    for col in INPUT_ODP_ERP_COLS:
+        if col not in df_input_odp.columns:
+            df_input_odp[col] = None
 
-    # 1) dedup PK nel batch (e normalizza tipo)
-    df_pk = df_input_odp[pk_cols].astype(str).drop_duplicates()
+    df_input_odp = df_input_odp[INPUT_ODP_ERP_COLS].copy()
+    df_input_odp = df_input_odp.where(pd.notna(df_input_odp), None)
+    df_input_odp = df_input_odp.drop_duplicates(subset=list(PK_COLS))
+
+    # --- seed runtime iniziale ---
+    df_runtime_seed = _build_runtime_seed(df_input_odp)
+
+    # PK del batch corrente
+    df_pk = df_input_odp[list(PK_COLS)].astype(str).drop_duplicates()
     pk_tuples = list(map(tuple, df_pk.to_numpy()))
 
-    # 2) chiavi già presenti
-    existing = _fetch_existing_pks(sqlite_engine_app, pk_tuples, tuple(pk_cols))
+    # PK già presenti nelle due tabelle
+    existing_erp = _fetch_existing_pks(
+        sqlite_engine_app,
+        pk_tuples,
+        pk_cols=PK_COLS,
+        table_name="input_odp",
+    )
+    existing_runtime = _fetch_existing_pks(
+        sqlite_engine_app,
+        pk_tuples,
+        pk_cols=PK_COLS,
+        table_name="input_odp_runtime",
+    )
 
-    # 3) filtra nuove righe + dedup finale PK
-    mask_new = [
-        tuple(x) not in existing for x in df_input_odp[pk_cols].astype(str).to_numpy()
+    # split ERP: nuove righe vs righe già esistenti da aggiornare
+    mask_new_erp = [
+        tuple(x) not in existing_erp
+        for x in df_input_odp[list(PK_COLS)].astype(str).to_numpy()
     ]
-    df_new = df_input_odp.loc[mask_new].copy().drop_duplicates(subset=pk_cols)
+    mask_existing_erp = [
+        tuple(x) in existing_erp
+        for x in df_input_odp[list(PK_COLS)].astype(str).to_numpy()
+    ]
 
-    # 4) nuovo_ciclo deve essere PRIMA (quando counter==0)
-    if COUNTER_RIGHE == 0:
+    df_new_erp = df_input_odp.loc[mask_new_erp].copy()
+    df_existing_erp = df_input_odp.loc[mask_existing_erp].copy()
+
+    # runtime: crea solo le PK mancanti
+    mask_new_runtime = [
+        tuple(x) not in existing_runtime
+        for x in df_runtime_seed[list(PK_COLS)].astype(str).to_numpy()
+    ]
+    df_new_runtime = df_runtime_seed.loc[mask_new_runtime].copy()
+
+    df_giacenza_lotti = leggi_view(table="vwESGiacenzaLotti").pipe(
+        filtri_giacenza_lotti
+    )
+
+    if nuovo_ciclo == 0:
         emit_event(session=session, topic="nuovo_ciclo")
+        nuovo_ciclo = 1
 
-    # 5) inserimento (None->0) + catch IntegrityError
+    righe_inserite_odp = 0
+    righe_aggiornate_odp = 0
+    righe_inserite_runtime = 0
+    righe_inserite_lotti = 0
+
     try:
-        righe_inserite = int(
-            df_new.to_sql(
-                name="input_odp",
-                con=sqlite_engine_app,
-                if_exists="append",
-                index=False,
-                method=inserisci_o_ignora,
+        if not df_new_erp.empty:
+            righe_inserite_odp = int(
+                df_new_erp.to_sql(
+                    name="input_odp",
+                    con=sqlite_engine_app,
+                    if_exists="append",
+                    index=False,
+                    method=inserisci_o_ignora,
+                )
+                or 0
             )
-            or 0
-        )
-    except sq.IntegrityError:
-        print("Tutte le celle sono uguali")
-        righe_inserite = 0
 
-    # 6) nuovo_ordine SOLO se cambia rispetto al counter
-    if (righe_inserite != 0) and (righe_inserite != COUNTER_RIGHE):
-        df_ev = df_new.sort_values(["IdDocumento", "IdRiga"], ascending=False).head(
-            righe_inserite
+        if not df_existing_erp.empty:
+            righe_aggiornate_odp = _update_rows_by_pk(
+                sqlite_engine_app,
+                df_existing_erp,
+                table_name="input_odp",
+                pk_cols=PK_COLS,
+                update_cols=INPUT_ODP_ERP_UPDATE_COLS,
+            )
+
+        if not df_new_runtime.empty:
+            righe_inserite_runtime = int(
+                df_new_runtime.to_sql(
+                    name="input_odp_runtime",
+                    con=sqlite_engine_app,
+                    if_exists="append",
+                    index=False,
+                    method=inserisci_o_ignora,
+                )
+                or 0
+            )
+
+        if not df_giacenza_lotti.empty:
+            righe_inserite_lotti = int(
+                df_giacenza_lotti.to_sql(
+                    name="giacenza_lotti",
+                    con=sqlite_engine_app,
+                    if_exists="append",
+                    index=False,
+                    method=inserisci_o_ignora,
+                )
+                or 0
+            )
+
+    except sq.IntegrityError:
+        logging.exception(
+            "Errore di integrità durante sync input_odp/input_odp_runtime"
+        )
+        righe_inserite_odp = 0
+        righe_aggiornate_odp = 0
+        righe_inserite_runtime = 0
+
+    logging.info(
+        "Sync input_odp completato | nuovi ERP=%s | aggiornati ERP=%s | nuovi runtime=%s | nuovi lotti=%s",
+        righe_inserite_odp,
+        righe_aggiornate_odp,
+        righe_inserite_runtime,
+        righe_inserite_lotti,
+    )
+
+    # evento nuovo ordine solo per righe ERP realmente nuove
+    if righe_inserite_odp > 0:
+        df_ev = df_new_erp.sort_values(["IdDocumento", "IdRiga"], ascending=False).head(
+            righe_inserite_odp
         )
         payload = (
             df_ev["IdDocumento"].astype(str) + "," + df_ev["IdRiga"].astype(str)
         ).tolist()
         scope = df_ev["CodReparto"].tolist()
+
         emit_event(
             session=session,
             topic="nuovo_ordine",
             scope=json.dumps(scope),
             payload_json=json.dumps(payload),
         )
-
-    COUNTER_RIGHE = righe_inserite
+        emit_event(session=session, topic="nuovo_ordine")
 
 
 # endregion
@@ -797,26 +1101,14 @@ def wait_if_not_allowed(start_h: int, end_h: int, allowed_weekdays: set[int]) ->
         time_mod.sleep(s)
 
 
-def emit_event(
-    session, topic: str, scope: str | None = None, payload_json: str | None = None
-) -> None:
-    """
-    Inserisce a db una stringa per identificare l'inserimento di un nuovo odp
-
-    :param session: Session database
-    :param topic: tipologia evento
-    :type topic: str
-    :param scope: non utilizzato
-    :type scope: str | None
-    :param payload_json: descrizione evento
-    :type payload_json: str | None
-    """
+def emit_event(session, topic, scope=None, payload_json=None) -> None:
     try:
         session.add(ChangeEvent(topic=topic, scope=scope, payload_json=payload_json))
-    except:
-        session.rollback()
-    else:
         session.commit()
+    except Exception:
+        session.rollback()
+        logging.exception("Errore emit_event topic=%s", topic)
+        raise
 
 
 def read_cycle() -> None:
@@ -830,7 +1122,7 @@ def read_cycle() -> None:
     list_sleep = []
     try:
         with Session(sqlite_engine_app) as session:
-            while True:
+            while counter < 2:
                 wait_if_not_allowed(START_H, END_H, ALLOWED_WEEKDAYS)
                 start = time_mod.time()
 
@@ -864,7 +1156,6 @@ def read_cycle() -> None:
                 )
                 media_riposo = statistics.mean(list_sleep[-1000 : len(list_sleep)])
                 logging.info("Media tempo riposo 1000 cicli %.3f", media_riposo)
-
             elif counter % 500 == 0:
                 media_tempo_ciclo = statistics.mean(
                     list_elapsed[-500 : len(list_elapsed)]
@@ -874,7 +1165,6 @@ def read_cycle() -> None:
                 )
                 media_riposo = statistics.mean(list_sleep[-500 : len(list_sleep)])
                 logging.info("Media tempo riposo 500 cicli %.3f", media_riposo)
-
             elif counter % 100 == 0:
                 media_tempo_ciclo = statistics.mean(
                     list_elapsed[-100 : len(list_elapsed)]
@@ -891,12 +1181,6 @@ def read_cycle() -> None:
 
         if list_sleep:
             logging.info("Media tempo riposo %.5f", statistics.mean(list_sleep))
-
-
-def server_system_event():
-    pass
-    # endregion
-    # region MAIN
 
 
 if __name__ == "__main__":

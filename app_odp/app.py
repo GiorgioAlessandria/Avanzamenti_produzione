@@ -7,16 +7,29 @@ from app_odp.auth import auth_bp
 from app_odp.routes import main_bp
 import tomllib
 from flask_login import current_user
-from app_odp.RBAC.policy import RbacPolicy
+from app_odp.policy.policy import RbacPolicy
 from pathlib import Path
 import logging
 from uuid import uuid4
+from sqlalchemy import event
+from sqlalchemy.engine import Engine
 
 try:
     from icecream import ic
 finally:
     pass
 CONFIG_PATH = Path("app_odp/static/config.toml")
+
+
+def _apply_sqlite_pragmas(engine: Engine) -> None:
+    @event.listens_for(engine, "connect")
+    def _set_pragmas(dbapi_connection, connection_record):
+        cursor = dbapi_connection.cursor()
+        try:
+            cursor.execute("PRAGMA busy_timeout=5000;")
+            cursor.execute("PRAGMA journal_mode=WAL;")
+        finally:
+            cursor.close()
 
 
 def load_config(config: Path) -> dict:
@@ -75,8 +88,14 @@ def create_app():
     app.config["SQLALCHEMY_DATABASE_URI"] = (
         f"sqlite:///{configurazione['Percorsi']['percorso_db']}"
     )
+    app.config["SQLALCHEMY_BINDS"] = {
+        "log": f"sqlite:///{configurazione['Percorsi']['percorso_db_log']}"
+    }
+    app.config["ERP_EXPORT_DIR"] = configurazione["Percorsi"]["percorso_file_output"]
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-
+    app.config["DIMENSIONI"] = configurazione["parametri_etichette"]["dimensioni"]
+    app.config["DPI"] = configurazione["parametri_etichette"]["dpi"]
+    app.config["FONT_PATH"] = configurazione["parametri_etichette"]["font_path"]
     # inizializza estensioni
     db.init_app(app)
     register_filters(app)
@@ -94,7 +113,10 @@ def create_app():
             return {"policy": RbacPolicy(current_user)}
         return {"policy": None}
 
+    with app.app_context():
+        for eng in db.engines.values():
+            _apply_sqlite_pragmas(eng)
+        db.create_all(bind_key="log")
     app.register_blueprint(auth_bp)
     app.register_blueprint(main_bp)
-
     return app

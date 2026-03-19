@@ -68,23 +68,6 @@
                 {% elif current_user.is_authenticated and current_user.has_role('responsabile_qualita') %}
                     <h1 class="mb-0">{{ policy.allowed_reparti_descr[0] }}
                         - Benvenut{{ genere }} {{ current_user.username }}</h1>
-                    <div class="btn-group dropup d-flex"
-                         style="margin: 10px;">
-
-                        <button class=" dropdown-toggle btn-lg text-center d-flex w-100 h-100 flex-column justify-content-center ms-2
-                                me-2 mt-4 mb-4"
-                                data-bs-toggle="dropdown"
-                                type="button">
-                            Cambia pagina
-                        </button>
-
-                        <ul class="dropdown-menu">
-                            {% for it in home_switch_items %}
-                                <li><h4><a class="dropdown-item"
-                                           href="{{ it.url }}">{{ it.label }}</a></h4></li>
-                            {% endfor %}
-                        </ul>
-                    </div>
 
                 {% elif current_user.is_authenticated and current_user.has_role('responsabile_produzione') %}
                     <h1 class="mb-0">Responsabile di produzione
@@ -116,14 +99,14 @@
                         height="89"
                         src="{{ url_for('static', filename='assets/img/logo_completo.jpg') }}"
                         style="text-align: right;"
-                        alt="logo_completo"
-                />
+                        alt="logo_completo"/>
             </div>
         </div>
     </div>
 </header>
-{% include "partials/_nav_offcanvas.html" %}
 
+{% include "partials/_nav_offcanvas.html" %}
+{% block content %}{% endblock %}
 {% block extra_js %}
     <script>
         document.addEventListener("DOMContentLoaded", () => {
@@ -433,12 +416,184 @@
             });
         })();
     </script>
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            const modalEl = document.getElementById("modalMaterialiOrdine");
+            const modalBody = document.getElementById("modal-materiali-body");
+            const modalCodArt = document.getElementById("modal-codart");
+
+            const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+
+            document.addEventListener("click", function (e) {
+                const trigger = e.target.closest(".open-materiali-modal");
+                if (!trigger) return;
+
+                e.preventDefault();
+
+                const codArt = trigger.dataset.codart || "";
+                const faseAttiva = Number(trigger.dataset.faseAttiva);
+                const distintaRaw = trigger.getAttribute("data-distinta") || "[]";
+
+                modalCodArt.textContent = codArt ? `- ${codArt}` : "";
+                modalBody.innerHTML = `
+      <div class="d-flex align-items-center gap-2">
+        <div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>
+        <span>Caricamento materiali...</span>
+      </div>
+    `;
+
+                modal.show();
+
+                try {
+                    const distinta = parseDistinta(distintaRaw);
+
+                    const materialiFiltrati = distinta.filter(item => {
+                        return Number(item.NumFase) === faseAttiva;
+                    });
+
+                    if (!materialiFiltrati.length) {
+                        modalBody.innerHTML = `
+          <div class="alert alert-warning mb-0">
+            Nessun materiale trovato per la fase attiva <strong>${escapeHtml(String(faseAttiva))}</strong>.
+          </div>
+        `;
+                        bootstrap.Modal.getInstance(modalEl)?.handleUpdate();
+                        return;
+                    }
+
+                    let rows = "";
+                    for (const item of materialiFiltrati) {
+                        rows += `
+      <tr>
+        <td>${escapeHtml(item.CodArt ?? "")}</td>
+        <td>${escapeHtml(item.DesArt ?? "")}</td>
+        <td class="text-end">${formatQty(item.Quantita)}</td>
+        <td>${escapeHtml(item.MagUM ?? "")}</td>
+      </tr>
+    `;
+                    }
+
+                    modalBody.innerHTML = `
+  <div class="table-responsive">
+    <table class="table table-sm table-striped table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Codice Articolo</th>
+          <th>Descrizione</th>
+          <th class="text-end">Quantità</th>
+          <th>UdM</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows}
+      </tbody>
+    </table>
+  </div>
+`;
+
+                    bootstrap.Modal.getInstance(modalEl)?.handleUpdate();
+
+                } catch (err) {
+                    console.error(err);
+                    modalBody.innerHTML = `
+        <div class="alert alert-danger mb-0">
+          Errore nel parsing della distinta materiali.
+        </div>
+      `;
+                    bootstrap.Modal.getInstance(modalEl)?.handleUpdate();
+                }
+            });
+
+            function parseDistinta(raw) {
+                let parsed = raw;
+
+                // Caso 1: data-distinta contiene già JSON array testuale
+                // Caso 2: data-distinta contiene una stringa JSON serializzata da tojson
+                parsed = JSON.parse(parsed);
+
+                // Se dopo il primo parse ottieni ancora una stringa, rifai parse
+                if (typeof parsed === "string") {
+                    parsed = JSON.parse(parsed);
+                }
+
+                if (!Array.isArray(parsed)) {
+                    return [];
+                }
+
+                return parsed;
+            }
+
+            function formatQty(value) {
+                const n = Number(value);
+                if (Number.isNaN(n)) return "";
+                return n.toLocaleString("it-IT", {
+                    minimumFractionDigits: 0,
+                    maximumFractionDigits: 3
+                });
+            }
+
+            function escapeHtml(value) {
+                return String(value)
+                    .replaceAll("&", "&amp;")
+                    .replaceAll("<", "&lt;")
+                    .replaceAll(">", "&gt;")
+                    .replaceAll('"', "&quot;")
+                    .replaceAll("'", "&#039;");
+            }
+        });
+    </script>
+    <script>
+        function selezionaRiga(riga) {
+            const bottone = document.getElementById("mioBottone");
+
+            // colonna 1 = Stato
+            const stato = riga.cells[1].textContent.trim();
+
+            bottone.disabled = (stato !== "Attivo");
+        }
+    </script>
+    <script>
+        window.selectedRowKeys = window.selectedRowKeys || {};
+
+        function markSelectedRow(row) {
+            const table = row.closest("table");
+            if (!table) return;
+
+            table.querySelectorAll("tbody tr.row-selected").forEach(tr => {
+                tr.classList.remove("row-selected");
+            });
+
+            row.classList.add("row-selected");
+            window.selectedRowKeys[table.id] = row.dataset.rowKey || "";
+        }
+
+        function restoreSelectedRows() {
+            document.querySelectorAll("table.table-selectable").forEach(table => {
+                const rowKey = window.selectedRowKeys[table.id];
+                if (!rowKey) return;
+
+                const row = table.querySelector(
+                    `tbody tr[data-row-key="${CSS.escape(rowKey)}"]`
+                );
+                if (row) {
+                    row.classList.add("row-selected");
+                }
+            });
+        }
+
+        window.restoreSelectedRows = restoreSelectedRows;
+
+        document.addEventListener("click", function (event) {
+            const row = event.target.closest("table.table-selectable tbody tr[data-row-key]");
+            if (!row) return;
+            markSelectedRow(row);
+        });
+    </script>
 {% endblock %}
 
-</body>
-{% block content %}{% endblock %}
 <script src="{{ url_for('static', filename='assets/js/jquery.min.js') }}"></script>
 <script src="{{ url_for('static', filename='assets/bootstrap/js/bootstrap.min.js') }}"></script>
 <script src="{{ url_for('static', filename='assets/js/bs-init.js') }}"></script>
 
+</body>
 </html>

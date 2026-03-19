@@ -15,7 +15,7 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 Base = declarative_base()
 metadata = Base.metadata
 
-# Tabelle ponte (nomi/colonne coerenti con RBAC.db)
+# Tabelle ponte (nomi/colonne coerenti con policy.db)
 user_roles = Table(
     "user_roles",
     metadata,
@@ -96,21 +96,21 @@ def _find_rbac_db() -> Path:
     env = os.environ.get("RBAC_DB_PATH")
     candidates = [
         Path(env) if env else None,
-        Path("app_odp/instance/RBAC.db"),
-        Path("app/instance/RBAC.db"),
-        Path("instance/RBAC.db"),
-        Path("RBAC.db"),
+        Path("app_odp/instance/policy.db"),
+        Path("app/instance/policy.db"),
+        Path("instance/policy.db"),
+        Path("policy.db"),
     ]
     for p in candidates:
         if p and p.is_file():
             return p
 
     # Fallback: cerca nel repo
-    for p in Path(".").rglob("RBAC.db"):
+    for p in Path(".").rglob("policy.db"):
         return p
 
     raise FileNotFoundError(
-        "RBAC.db non trovato. Imposta RBAC_DB_PATH oppure metti RBAC.db in una delle path standard."
+        "policy.db non trovato. Imposta RBAC_DB_PATH oppure metti policy.db in una delle path standard."
     )
 
 
@@ -167,7 +167,7 @@ def policy_mod(monkeypatch, db_session):
     - una sessione SQLAlchemy di test
     - modelli minimi coerenti con lo schema del DB
     """
-    import app_odp.RBAC.policy as policy  # <-- se il path nel tuo progetto è diverso, cambia qui
+    import app_odp.policy.policy as policy  # <-- se il path nel tuo progetto è diverso, cambia qui
 
     fake_db = SimpleNamespace(session=db_session)
 

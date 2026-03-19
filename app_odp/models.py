@@ -5,6 +5,8 @@ from flask_login import UserMixin
 import uuid
 import json
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import and_
+from sqlalchemy.orm import foreign
 
 db = SQLAlchemy()
 
@@ -216,11 +218,24 @@ class GiacenzaMateriale(db.Model):
         return f"<GiacenzaMateriale {self.__dict__}>"
 
 
-class InputOdp(db.Model):
-    __tablename__ = "input_odp"
+class InputOdpLog(db.Model):
+    __bind_key__ = "log"
+    __tablename__ = "input_odp_log"
 
-    IdDocumento = db.Column(db.Text)
-    IdRiga = db.Column(db.Text)
+    log_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    logged_at = db.Column(
+        db.Text,
+        nullable=False,
+        default=lambda: datetime.now(ZoneInfo("Europe/Rome")).isoformat(
+            timespec="seconds"
+        ),
+    )
+
+    # chiavi ordine
+    IdDocumento = db.Column(db.Text, nullable=False)
+    IdRiga = db.Column(db.Text, nullable=False)
+
+    # snapshot ERP
     RifRegistraz = db.Column(db.Text)
     CodArt = db.Column(db.Text)
     DesArt = db.Column(db.Text)
@@ -244,10 +259,22 @@ class InputOdp(db.Model):
     CodClassifTecnica = db.Column(db.Text)
     CodTipoDoc = db.Column(db.Text)
 
-    __table_args__ = (db.PrimaryKeyConstraint("IdDocumento", "IdRiga"),)
+    # snapshot runtime
+    FaseAttiva = db.Column(db.Text)
+    Note = db.Column(db.Text)
+    QtyDaLavorare = db.Column(db.Text)
+    RisorsaAttiva = db.Column(db.Text)
+    LavorazioneAttiva = db.Column(db.Text)
+
+    # dati chiusura
+    QuantitaConforme = db.Column(db.Text)
+    QuantitaNonConforme = db.Column(db.Text)
+    NoteChiusura = db.Column(db.Text)
+    ClosedBy = db.Column(db.Text)
+    ClosedAt = db.Column(db.Text)
 
     def __repr__(self):
-        return f"<{self.__dict__}>"
+        return f"<InputOdpLog {self.__dict__}>"
 
 
 class Lavorazioni(db.Model):
@@ -491,7 +518,7 @@ class User(UserMixin, db.Model):
         prefs[key] = value
         self.preferences = prefs
 
-    # --- helper RBAC ---
+    # --- helper policy ---
 
     def has_role(self, role_name: str) -> bool:
         return any(r.name == role_name for r in self.roles)
@@ -512,10 +539,6 @@ class User(UserMixin, db.Model):
     def has_permission(self, permission) -> bool:
         if permission is None:
             return False
-
-        perm_id = None
-        perm_code = None
-
         if isinstance(permission, Permissions):
             perm_id = permission.id
             perm_code = permission.Codice
@@ -539,22 +562,28 @@ class User(UserMixin, db.Model):
         return f"<Users {self.__dict__}>"
 
 
+class GiacenzaLotti(db.Model):
+    __tablename__ = "giacenza_lotti"
+
+    CodArt = db.Column(db.Text, primary_key=True)
+    RifLottoAlfa = db.Column(db.Text, primary_key=True)
+    Giacenza = db.Column(db.Text, nullable=False)
+    CodMag = db.Column(db.Text, nullable=False)
+
+
 class StatoOdp(db.Model):
     __tablename__ = "odp_in_carico"
 
-    RifRegistraz = db.Column(
-        db.Text,
-        db.ForeignKey("input_odp.RifRegistraz", ondelete="CASCADE"),
-        primary_key=True,
-    )
+    IdDocumento = db.Column(db.Text, primary_key=True)
+    IdRiga = db.Column(db.Text, primary_key=True)
+    RifRegistraz = db.Column(db.Text, index=True, nullable=False)
+
     Stato_odp = db.Column(db.Text)
     Data_in_carico = db.Column(db.Text)
     Tempo_funzionamento = db.Column(db.Text)
     Utente_operazione = db.Column(db.Text)
     Fase = db.Column(db.Text)
-
-    def __repr__(self):
-        return f"<StatoOdp {self.__dict__}>"
+    data_ultima_attivazione = db.Column(db.Text)
 
 
 class TipologieStato(db.Model):
@@ -565,3 +594,320 @@ class TipologieStato(db.Model):
 
     def __repr__(self):
         return f"<TipologieStato {self.__dict__}>"
+
+
+class InputOdp(db.Model):
+    __tablename__ = "input_odp"
+
+    IdDocumento = db.Column(db.Text)
+    IdRiga = db.Column(db.Text)
+    RifRegistraz = db.Column(db.Text)
+    CodArt = db.Column(db.Text)
+    DesArt = db.Column(db.Text)
+    Quantita = db.Column(db.Text)
+    NumFase = db.Column(db.Text)
+    CodLavorazione = db.Column(db.Text)
+    CodRisorsaProd = db.Column(db.Text)
+    DataInizioSched = db.Column(db.Text)
+    DataFineSched = db.Column(db.Text)
+    GestioneLotto = db.Column(db.Text)
+    GestioneMatricola = db.Column(db.Text)
+    DistintaMateriale = db.Column(db.Text)
+    CodMatricola = db.Column(db.Text)
+    StatoRiga = db.Column(db.Text)
+    CodFamiglia = db.Column(db.Text)
+    CodMacrofamiglia = db.Column(db.Text)
+    CodMagPrincipale = db.Column(db.Text)
+    CodReparto = db.Column(db.Text)
+    TempoPrevistoLavoraz = db.Column(db.Text)
+
+    # colonna ERP raw; il nome Python cambia per lasciare libero il property compatibile
+    StatoOrdineErp = db.Column("StatoOrdine", db.Text)
+
+    CodClassifTecnica = db.Column(db.Text)
+    CodTipoDoc = db.Column(db.Text)
+
+    __table_args__ = (db.PrimaryKeyConstraint("IdDocumento", "IdRiga"),)
+
+    runtime_row = db.relationship(
+        "InputOdpRuntime",
+        uselist=False,
+        lazy="selectin",
+        cascade="all, delete-orphan",
+        single_parent=True,
+        primaryjoin=lambda: and_(
+            InputOdp.IdDocumento == foreign(InputOdpRuntime.IdDocumento),
+            InputOdp.IdRiga == foreign(InputOdpRuntime.IdRiga),
+        ),
+    )
+
+    stato_row = db.relationship(
+        "StatoOdp",
+        uselist=False,
+        lazy="selectin",
+        primaryjoin=lambda: and_(
+            InputOdp.IdDocumento == foreign(StatoOdp.IdDocumento),
+            InputOdp.IdRiga == foreign(StatoOdp.IdRiga),
+        ),
+    )
+
+    @staticmethod
+    def _text(value) -> str:
+        return str(value or "").strip()
+
+    def _ensure_runtime_row(self) -> InputOdpRuntime:
+        row = self.runtime_row
+        if row is None:
+            row = InputOdpRuntime(
+                IdDocumento=self.IdDocumento,
+                IdRiga=self.IdRiga,
+            )
+            self.runtime_row = row
+            db.session.add(row)
+        return row
+
+    def _ensure_stato_row(self) -> StatoOdp:
+        row = self.stato_row
+        if row is None:
+            row = StatoOdp(
+                IdDocumento=self.IdDocumento,
+                IdRiga=self.IdRiga,
+                RifRegistraz=self.RifRegistraz,
+            )
+            self.stato_row = row
+            db.session.add(row)
+        return row
+
+    @property
+    def StatoOrdine(self) -> str:
+        stato_runtime = self._text(getattr(self.stato_row, "Stato_odp", ""))
+        if stato_runtime:
+            return stato_runtime
+
+        stato_erp = self._text(self.StatoOrdineErp)
+        if stato_erp:
+            return stato_erp
+
+        return "Pianificata"
+
+    @StatoOrdine.setter
+    def StatoOrdine(self, value):
+        row = self._ensure_stato_row()
+        row.Stato_odp = self._text(value)
+
+    @property
+    def FaseAttiva(self) -> str:
+        fase_runtime = self._text(getattr(self.runtime_row, "FaseAttiva", ""))
+        if fase_runtime:
+            return fase_runtime
+
+        fase_stato = self._text(getattr(self.stato_row, "Fase", ""))
+        if fase_stato:
+            return fase_stato
+
+        return "1"
+
+    @FaseAttiva.setter
+    def FaseAttiva(self, value):
+        value = self._text(value)
+        rt = self._ensure_runtime_row()
+        rt.FaseAttiva = value
+
+        stato = self._ensure_stato_row()
+        stato.Fase = value
+
+    @property
+    def Note(self) -> str:
+        return self._text(getattr(self.runtime_row, "Note", ""))
+
+    @Note.setter
+    def Note(self, value):
+        rt = self._ensure_runtime_row()
+        rt.Note = self._text(value)
+
+    @property
+    def QtyDaLavorare(self) -> str:
+        qty_runtime = self._text(getattr(self.runtime_row, "QtyDaLavorare", ""))
+        if qty_runtime:
+            return qty_runtime
+        return self._text(self.Quantita)
+
+    @QtyDaLavorare.setter
+    def QtyDaLavorare(self, value):
+        rt = self._ensure_runtime_row()
+        rt.QtyDaLavorare = self._text(value)
+
+    @property
+    def RisorsaAttiva(self) -> str:
+        return self._text(getattr(self.runtime_row, "RisorsaAttiva", ""))
+
+    @RisorsaAttiva.setter
+    def RisorsaAttiva(self, value):
+        rt = self._ensure_runtime_row()
+        rt.RisorsaAttiva = self._text(value)
+
+    @property
+    def LavorazioneAttiva(self) -> str:
+        return self._text(getattr(self.runtime_row, "LavorazioneAttiva", ""))
+
+    @LavorazioneAttiva.setter
+    def LavorazioneAttiva(self, value):
+        rt = self._ensure_runtime_row()
+        rt.LavorazioneAttiva = self._text(value)
+
+    def __repr__(self):
+        return f"<{self.__dict__}>"
+
+
+class StatoOdpLog(db.Model):
+    __bind_key__ = "log"
+    __tablename__ = "odp_in_carico_log"
+
+    log_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    logged_at = db.Column(
+        db.Text,
+        nullable=False,
+        default=lambda: datetime.now(ZoneInfo("Europe/Rome")).isoformat(
+            timespec="seconds"
+        ),
+    )
+
+    IdDocumento = db.Column(db.Text, nullable=False)
+    IdRiga = db.Column(db.Text, nullable=False)
+    RifRegistraz = db.Column(db.Text)
+
+    Stato_odp = db.Column(db.Text)
+    Data_in_carico = db.Column(db.Text)
+    Tempo_funzionamento = db.Column(db.Text)
+    Utente_operazione = db.Column(db.Text)
+    Fase = db.Column(db.Text)
+    data_ultima_attivazione = db.Column(db.Text)
+
+    ClosedBy = db.Column(db.Text)
+    ClosedAt = db.Column(db.Text)
+
+
+class ChangeEventLog(db.Model):
+    __bind_key__ = "log"
+    __tablename__ = "change_event_log"
+
+    log_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    logged_at = db.Column(
+        db.Text,
+        nullable=False,
+        default=lambda: datetime.now(ZoneInfo("Europe/Rome")).isoformat(
+            timespec="seconds"
+        ),
+    )
+
+    # riferimento evento originale
+    src_id = db.Column(db.Integer)
+    topic = db.Column(db.Text, nullable=False)
+    scope = db.Column(db.Text)
+    payload_json = db.Column(db.Text)
+    created_at = db.Column(db.Text)
+
+    # chiavi ordine “estratte” per query più facili
+    IdDocumento = db.Column(db.Text)
+    IdRiga = db.Column(db.Text)
+
+
+class LottiUsatiLog(db.Model):
+    __bind_key__ = "log"
+    __tablename__ = "lotti_usati_log"
+
+    log_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    logged_at = db.Column(
+        db.Text,
+        nullable=False,
+        default=lambda: datetime.now(ZoneInfo("Europe/Rome")).isoformat(
+            timespec="seconds"
+        ),
+    )
+
+    # Riferimento ordine
+    IdDocumento = db.Column(db.Text, nullable=False)
+    IdRiga = db.Column(db.Text, nullable=False)
+    RifRegistraz = db.Column(db.Text)
+
+    # Dati lotto
+    CodArt = db.Column(db.Text, nullable=False)  # codice componente
+    RifLottoAlfa = db.Column(db.Text, nullable=False)  # numero lotto
+    Quantita = db.Column(db.Text, nullable=False)  # quantità utilizzata
+    Esito = db.Column(db.Text)  # "ok" o "ko"
+
+    ClosedBy = db.Column(db.Text)
+    ClosedAt = db.Column(db.Text)
+    Fase = db.Column(db.Text)
+
+
+class ErpOutbox(db.Model):
+    __bind_key__ = "log"
+    __tablename__ = "erp_outbox"
+
+    outbox_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    created_at = db.Column(
+        db.Text,
+        nullable=False,
+        default=lambda: datetime.now(ZoneInfo("Europe/Rome")).isoformat(
+            timespec="seconds"
+        ),
+    )
+
+    kind = db.Column(db.Text, nullable=False)  # "consuntivo_fase"
+    status = db.Column(db.Text, nullable=False, default="pending")
+
+    IdDocumento = db.Column(db.Text, nullable=False)
+    IdRiga = db.Column(db.Text, nullable=False)
+    RifRegistraz = db.Column(db.Text)
+    CodArt = db.Column(db.Text)
+    Fase = db.Column(db.Text, nullable=False)
+    CodReparto = db.Column(db.Text)
+
+    payload_json = db.Column(db.Text, nullable=False)
+
+    attempts = db.Column(db.Integer, nullable=False, default=0)
+    last_error = db.Column(db.Text)
+    exported_at = db.Column(db.Text)
+
+
+class LottiGeneratiLog(db.Model):
+    __bind_key__ = "log"
+
+    __tablename__ = "lotti_generati_log"
+
+    log_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    # models.py
+    logged_at = db.Column(
+        db.Text,
+        nullable=False,
+        default=lambda: datetime.now(ZoneInfo("Europe/Rome")).isoformat(
+            timespec="seconds"
+        ),
+    )
+    IdDocumento = db.Column(db.Text, nullable=False)
+    IdRiga = db.Column(db.Text, nullable=False)
+    RifRegistraz = db.Column(db.Text)
+    CodArt = db.Column(db.Text, nullable=False)
+    RifLottoAlfa = db.Column(db.Text, nullable=False)
+    Quantita = db.Column(db.Text, nullable=False)
+    Fase = db.Column(db.Text)
+    ParentLottiJson = db.Column(db.Text)
+    ClosedBy = db.Column(db.Text)
+    ClosedAt = db.Column(db.Text)
+
+
+class InputOdpRuntime(db.Model):
+    __tablename__ = "input_odp_runtime"
+
+    IdDocumento = db.Column(db.Text, primary_key=True)
+    IdRiga = db.Column(db.Text, primary_key=True)
+
+    FaseAttiva = db.Column(db.Text)
+    Note = db.Column(db.Text)
+    QtyDaLavorare = db.Column(db.Text)
+    RisorsaAttiva = db.Column(db.Text)
+    LavorazioneAttiva = db.Column(db.Text)
+
+    def __repr__(self):
+        return f"<InputOdpRuntime {self.__dict__}>"
