@@ -3,9 +3,9 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 import json
 import re
-from io import StringIO
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
+from sqlalchemy.orm import selectinload
 from flask import (
     Blueprint,
     render_template,
@@ -32,7 +32,6 @@ from app_odp.models import (
     ChangeEventLog,
     LottiGeneratiLog,
 )
-from sqlalchemy.orm import selectinload
 from app_odp.policy.decorator import require_perm
 from app_odp.policy.policy import RbacPolicy
 
@@ -566,6 +565,15 @@ def _normalize_lotto_prodotto_for_payload(lotto: dict | None) -> dict | None:
     }
 
 
+def _current_username(default: str = "utente_sconosciuto") -> str:
+    return (
+        getattr(current_user, "username", None)
+        or getattr(current_user, "name", None)
+        or getattr(current_user, "email", None)
+        or str(getattr(current_user, "id", default))
+    )
+
+
 def _build_phase_payload(
     ordine,
     fase_corrente: str,
@@ -596,7 +604,7 @@ def _build_phase_payload(
         "lotti": _normalize_lotti_for_payload(lotti_input),
         "lotto_prodotto": _normalize_lotto_prodotto_for_payload(lotto_prodotto),
         "created_at": now_iso,
-        "created_by": current_user.username,
+        "created_by": _current_username(),
         "chiusura_parziale": chiusura_parziale,
     }
 
@@ -1468,7 +1476,7 @@ def api_prendi_ordine():
         stato = _ensure_stato_attivo(
             ordine=ordine,
             stato=stato,
-            username=current_user.username,
+            username=_current_username(),
             when_dt=now_dt,
             fase_corrente=fase_corrente,
         )
@@ -1478,7 +1486,7 @@ def api_prendi_ordine():
             ordine=ordine,
             extra_payload={
                 "azione": "presa_in_carico",
-                "utente": current_user.username,
+                "utente": _current_username(),
                 "fase": fase_corrente,
                 "data_ultima_attivazione": stato.data_ultima_attivazione,
                 "tempo_funzionamento": stato.Tempo_funzionamento,
@@ -1577,7 +1585,7 @@ def api_sospendi_ordine():
             )
 
         stato.Stato_odp = "In Sospeso"
-        stato.Utente_operazione = current_user.username
+        stato.Utente_operazione = _current_username()
 
         elapsed_seconds = _accumulate_runtime_until(stato, now_dt)
         stato.Stato_odp = "In Sospeso"
@@ -1588,7 +1596,7 @@ def api_sospendi_ordine():
             ordine=ordine,
             extra_payload={
                 "azione": "sospensione",
-                "utente": current_user.username,
+                "utente": _current_username(),
                 "causale": causale,
                 "elapsed_seconds": elapsed_seconds,
                 "tempo_funzionamento": tempo_funzionamento,
@@ -1713,7 +1721,7 @@ def api_sospendi_ordine_montaggio_macchina():
             )
 
         stato.Stato_odp = "In Sospeso"
-        stato.Utente_operazione = current_user.username
+        stato.Utente_operazione = _current_username()
 
         elapsed_seconds = _accumulate_runtime_until(stato, now_dt)
         stato.Stato_odp = "In Sospeso"
@@ -1724,7 +1732,7 @@ def api_sospendi_ordine_montaggio_macchina():
             ordine=ordine,
             extra_payload={
                 "azione": "sospensione_macchina",
-                "utente": current_user.username,
+                "utente": _current_username(),
                 "causale": causale,
                 "matricola": matricola,
                 "fase": fase,
@@ -1848,7 +1856,7 @@ def api_riattiva_ordine():
         stato = _ensure_stato_attivo(
             ordine=ordine,
             stato=stato,
-            username=current_user.username,
+            username=_current_username(),
             when_dt=now_dt,
             fase_corrente=fase_corrente,
         )
@@ -1858,7 +1866,7 @@ def api_riattiva_ordine():
             ordine=ordine,
             extra_payload={
                 "azione": "riattivazione",
-                "utente": current_user.username,
+                "utente": _current_username(),
                 "fase": fase_corrente,
                 "data_ultima_attivazione": stato.data_ultima_attivazione,
                 "tempo_funzionamento": stato.Tempo_funzionamento,
@@ -2002,7 +2010,7 @@ def api_riattiva_ordine_montaggio_macchina():
         stato = _ensure_stato_attivo(
             ordine=ordine,
             stato=stato,
-            username=current_user.username,
+            username=_current_username(),
             when_dt=now_dt,
             fase_corrente=fase_corrente,
         )
@@ -2012,7 +2020,7 @@ def api_riattiva_ordine_montaggio_macchina():
             ordine=ordine,
             extra_payload={
                 "azione": "riattivazione_macchina",
-                "utente": current_user.username,
+                "utente": _current_username(),
                 "matricola": matricola,
                 "fase": fase_corrente,
                 "data_ultima_attivazione": stato.data_ultima_attivazione,
@@ -2293,14 +2301,15 @@ def api_chiudi_ordine():
                 Stato_odp="In Sospeso",
                 Data_in_carico=now_iso,
                 Tempo_funzionamento=tempo_finale or "0",
-                Utente_operazione=current_user.username,
+                Utente_operazione=_current_username(),
                 Fase=fase_corrente,
                 data_ultima_attivazione=None,
             )
             db.session.add(stato)
         else:
             stato.Stato_odp = "In Sospeso"
-            stato.Utente_operazione = current_user.username
+            stato.Utente_operazione = _current_username()
+
             stato.Fase = fase_corrente
             stato.data_ultima_attivazione = None
 
@@ -2330,7 +2339,7 @@ def api_chiudi_ordine():
             ordine=ordine,
             extra_payload={
                 "azione": "consuntivo_fase_parziale",
-                "utente": current_user.username,
+                "utente": _current_username(),
                 "fase": fase_corrente,
                 "quantita_conforme": str(q_ok),
                 "quantita_non_conforme": str(q_nok),
@@ -2372,7 +2381,7 @@ def api_chiudi_ordine():
             ordine=ordine,
             extra_payload={
                 "azione": "consuntivo_fase",
-                "utente": current_user.username,
+                "utente": _current_username(),
                 "fase": fase_corrente,
                 "quantita_conforme": str(q_ok),
                 "quantita_non_conforme": str(q_nok),
@@ -2424,7 +2433,7 @@ def api_chiudi_ordine():
             QuantitaConforme=str(q_ok),
             QuantitaNonConforme=str(q_nok),
             NoteChiusura=note_chiusura_log,
-            ClosedBy=current_user.username,
+            ClosedBy=_current_username(),
             ClosedAt=now_iso,
         )
     )
@@ -2441,7 +2450,7 @@ def api_chiudi_ordine():
                 Utente_operazione=stato.Utente_operazione,
                 Fase=stato.Fase,
                 data_ultima_attivazione=stato.data_ultima_attivazione,
-                ClosedBy=current_user.username,
+                ClosedBy=_current_username(),
                 ClosedAt=now_iso,
             )
         )
@@ -2456,7 +2465,7 @@ def api_chiudi_ordine():
                 RifLottoAlfa=_norm_text(lotto_row.get("RifLottoAlfa")),
                 Quantita=str(lotto_row.get("Quantita", 0)),
                 Esito=_norm_text(lotto_row.get("Esito", "ok")),
-                ClosedBy=current_user.username,
+                ClosedBy=_current_username(),
                 ClosedAt=now_iso,
             )
             if hasattr(LottiUsatiLog, "Fase"):
@@ -2484,23 +2493,29 @@ def api_chiudi_ordine():
                 ParentLottiJson=json.dumps(
                     lotto_prodotto["ParentLotti"], ensure_ascii=False
                 ),
-                ClosedBy=current_user.username,
+                ClosedBy=_current_username(),
                 ClosedAt=now_iso,
             )
         )
 
-    ce_rows = (
-        ChangeEvent.query.filter(ChangeEvent.payload_json.isnot(None))
-        .filter(
-            func.json_extract(ChangeEvent.payload_json, "$.id_documento")
-            == ordine.IdDocumento
+    query = getattr(ChangeEvent, "query", None)
+
+    if query is not None and hasattr(query, "filter") and hasattr(query, "order_by"):
+        ce_rows = (
+            query.filter(ChangeEvent.payload_json.isnot(None))
+            .filter(
+                func.json_extract(ChangeEvent.payload_json, "$.id_documento")
+                == ordine.IdDocumento
+            )
+            .filter(
+                func.json_extract(ChangeEvent.payload_json, "$.id_riga")
+                == ordine.IdRiga
+            )
+            .order_by(ChangeEvent.id)
+            .all()
         )
-        .filter(
-            func.json_extract(ChangeEvent.payload_json, "$.id_riga") == ordine.IdRiga
-        )
-        .order_by(ChangeEvent.id)
-        .all()
-    )
+    else:
+        ce_rows = []
     for ce in ce_rows:
         db.session.add(
             ChangeEventLog(
@@ -2523,7 +2538,7 @@ def api_chiudi_ordine():
         qty_residua_text=qty_residua_text,
         qty_lavorata_text=qty_lavorata_text,
         chiusura_parziale=chiusura_parziale,
-        username=current_user.username,
+        username=_current_username(),
     )
 
     tab = _tab_from_ordine(ordine)
@@ -2765,7 +2780,7 @@ def api_chiudi_ordine_montaggio_macchina():
         ordine=ordine,
         extra_payload={
             "azione": "consuntivo_fase_macchina",
-            "utente": current_user.username,
+            "utente": _current_username(),
             "matricola": matricola,
             "fase": fase_corrente,
             "quantita_conforme": str(q_ok),
@@ -2809,7 +2824,7 @@ def api_chiudi_ordine_montaggio_macchina():
             QuantitaConforme=str(q_ok),
             QuantitaNonConforme=str(q_nok),
             NoteChiusura=note,
-            ClosedBy=current_user.username,
+            ClosedBy=_current_username(),
             ClosedAt=now_iso,
         )
     )
@@ -2826,7 +2841,7 @@ def api_chiudi_ordine_montaggio_macchina():
                 Utente_operazione=stato.Utente_operazione,
                 Fase=stato.Fase,
                 data_ultima_attivazione=stato.data_ultima_attivazione,
-                ClosedBy=current_user.username,
+                ClosedBy=_current_username(),
                 ClosedAt=now_iso,
             )
         )
@@ -2840,25 +2855,31 @@ def api_chiudi_ordine_montaggio_macchina():
             RifLottoAlfa=_norm_text(lotto_row.get("RifLottoAlfa")),
             Quantita=str(lotto_row.get("Quantita", 0)),
             Esito=_norm_text(lotto_row.get("Esito", "ok")),
-            ClosedBy=current_user.username,
+            ClosedBy=_current_username(),
             ClosedAt=now_iso,
         )
         if hasattr(LottiUsatiLog, "Fase"):
             lotto_log.Fase = fase_corrente
         db.session.add(lotto_log)
 
-    ce_rows = (
-        ChangeEvent.query.filter(ChangeEvent.payload_json.isnot(None))
-        .filter(
-            func.json_extract(ChangeEvent.payload_json, "$.id_documento")
-            == ordine.IdDocumento
+    query = getattr(ChangeEvent, "query", None)
+
+    if query is not None and hasattr(query, "filter") and hasattr(query, "order_by"):
+        ce_rows = (
+            query.filter(ChangeEvent.payload_json.isnot(None))
+            .filter(
+                func.json_extract(ChangeEvent.payload_json, "$.id_documento")
+                == ordine.IdDocumento
+            )
+            .filter(
+                func.json_extract(ChangeEvent.payload_json, "$.id_riga")
+                == ordine.IdRiga
+            )
+            .order_by(ChangeEvent.id)
+            .all()
         )
-        .filter(
-            func.json_extract(ChangeEvent.payload_json, "$.id_riga") == ordine.IdRiga
-        )
-        .order_by(ChangeEvent.id)
-        .all()
-    )
+    else:
+        ce_rows = []
     for ce in ce_rows:
         db.session.add(
             ChangeEventLog(
@@ -2881,7 +2902,7 @@ def api_chiudi_ordine_montaggio_macchina():
         qty_residua_text=qty_residua_text,
         qty_lavorata_text=qty_lavorata_text,
         chiusura_parziale=chiusura_parziale,
-        username=current_user.username,
+        username=_current_username(),
     )
 
     tab = _tab_from_ordine(ordine)
