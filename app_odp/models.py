@@ -571,21 +571,6 @@ class GiacenzaLotti(db.Model):
     CodMag = db.Column(db.Text, nullable=False)
 
 
-class StatoOdp(db.Model):
-    __tablename__ = "odp_in_carico"
-
-    IdDocumento = db.Column(db.Text, primary_key=True)
-    IdRiga = db.Column(db.Text, primary_key=True)
-    RifRegistraz = db.Column(db.Text, index=True, nullable=False)
-
-    Stato_odp = db.Column(db.Text)
-    Data_in_carico = db.Column(db.Text)
-    Tempo_funzionamento = db.Column(db.Text)
-    Utente_operazione = db.Column(db.Text)
-    Fase = db.Column(db.Text)
-    data_ultima_attivazione = db.Column(db.Text)
-
-
 class TipologieStato(db.Model):
     __tablename__ = "tipologie_stato"
 
@@ -621,10 +606,7 @@ class InputOdp(db.Model):
     CodReparto = db.Column(db.Text)
     TempoPrevistoLavoraz = db.Column(db.Text)
     IndiceModifica = db.Column(db.Text)
-
-    # colonna ERP raw; il nome Python cambia per lasciare libero il property compatibile
     StatoOrdineErp = db.Column("StatoOrdine", db.Text)
-
     CodClassifTecnica = db.Column(db.Text)
     CodTipoDoc = db.Column(db.Text)
 
@@ -642,16 +624,6 @@ class InputOdp(db.Model):
         ),
     )
 
-    stato_row = db.relationship(
-        "StatoOdp",
-        uselist=False,
-        lazy="selectin",
-        primaryjoin=lambda: and_(
-            InputOdp.IdDocumento == foreign(StatoOdp.IdDocumento),
-            InputOdp.IdRiga == foreign(StatoOdp.IdRiga),
-        ),
-    )
-
     @staticmethod
     def _text(value) -> str:
         return str(value or "").strip()
@@ -662,26 +634,15 @@ class InputOdp(db.Model):
             row = InputOdpRuntime(
                 IdDocumento=self.IdDocumento,
                 IdRiga=self.IdRiga,
+                RifRegistraz=self.RifRegistraz,
             )
             self.runtime_row = row
             db.session.add(row)
         return row
 
-    def _ensure_stato_row(self) -> StatoOdp:
-        row = self.stato_row
-        if row is None:
-            row = StatoOdp(
-                IdDocumento=self.IdDocumento,
-                IdRiga=self.IdRiga,
-                RifRegistraz=self.RifRegistraz,
-            )
-            self.stato_row = row
-            db.session.add(row)
-        return row
-
     @property
     def StatoOrdine(self) -> str:
-        stato_runtime = self._text(getattr(self.stato_row, "Stato_odp", ""))
+        stato_runtime = self._text(getattr(self.runtime_row, "Stato_odp", ""))
         if stato_runtime:
             return stato_runtime
 
@@ -693,7 +654,7 @@ class InputOdp(db.Model):
 
     @StatoOrdine.setter
     def StatoOrdine(self, value):
-        row = self._ensure_stato_row()
+        row = self._ensure_runtime_row()
         row.Stato_odp = self._text(value)
 
     @property
@@ -701,21 +662,13 @@ class InputOdp(db.Model):
         fase_runtime = self._text(getattr(self.runtime_row, "FaseAttiva", ""))
         if fase_runtime:
             return fase_runtime
-
-        fase_stato = self._text(getattr(self.stato_row, "Fase", ""))
-        if fase_stato:
-            return fase_stato
-
         return "1"
 
     @FaseAttiva.setter
     def FaseAttiva(self, value):
         value = self._text(value)
-        rt = self._ensure_runtime_row()
-        rt.FaseAttiva = value
-
-        stato = self._ensure_stato_row()
-        stato.Fase = value
+        stato = self._ensure_runtime_row()
+        stato.FaseAttiva = value
 
     @property
     def Note(self) -> str:
@@ -760,7 +713,7 @@ class InputOdp(db.Model):
         return f"<{self.__dict__}>"
 
 
-class StatoOdpLog(db.Model):
+class StatoOdpLog(db.Model):  # DA MODIFICARE
     __bind_key__ = "log"
     __tablename__ = "odp_in_carico_log"
 
@@ -900,15 +853,27 @@ class LottiGeneratiLog(db.Model):
 
 class InputOdpRuntime(db.Model):
     __tablename__ = "input_odp_runtime"
-
     IdDocumento = db.Column(db.Text, primary_key=True)
     IdRiga = db.Column(db.Text, primary_key=True)
-
+    RifRegistraz = db.Column(db.Text)
+    Stato_odp = db.Column(db.Text)
+    Data_in_carico = db.Column(db.Text)
+    Tempo_funzionamento = db.Column(db.Text)
+    Utente_operazione = db.Column(db.Text)
     FaseAttiva = db.Column(db.Text)
+    data_ultima_attivazione = db.Column(db.Text)
     Note = db.Column(db.Text)
     QtyDaLavorare = db.Column(db.Text)
     RisorsaAttiva = db.Column(db.Text)
     LavorazioneAttiva = db.Column(db.Text)
+
+    __table_args__ = (
+        db.ForeignKeyConstraint(
+            ["IdDocumento", "IdRiga"],
+            ["input_odp.IdDocumento", "input_odp.IdRiga"],
+            ondelete="CASCADE",
+        ),
+    )
 
     def __repr__(self):
         return f"<InputOdpRuntime {self.__dict__}>"

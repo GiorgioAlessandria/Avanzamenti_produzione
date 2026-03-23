@@ -1,4 +1,3 @@
-from ast import Str
 from datetime import datetime
 from zoneinfo import ZoneInfo
 import json
@@ -20,7 +19,7 @@ from sqlalchemy import func, select
 from app_odp.etichette import gen_etichette
 from app_odp.models import (
     InputOdp,
-    StatoOdp,
+    InputOdpRuntime,
     db,
     ChangeEvent,
     Causaliattivita,
@@ -111,7 +110,6 @@ def _tab_scoped_odp(policy: RbacPolicy, reparto_code: str):
 def _base_odp_query():
     return InputOdp.query.options(
         selectinload(InputOdp.runtime_row),
-        selectinload(InputOdp.stato_row),
     )
 
 
@@ -278,7 +276,7 @@ def _set_runtime_sospeso(stato, username: str, fase_corrente: str):
     stato.Stato_odp = "In Sospeso"
     stato.Utente_operazione = username
     if fase_corrente:
-        stato.Fase = fase_corrente
+        stato.FaseAttiva = fase_corrente
     stato.data_ultima_attivazione = None
 
 
@@ -336,7 +334,7 @@ def _advance_or_finalize_phase(
 def _fase_corrente_for_export(ordine, stato=None, fase_override="") -> str:
     raw = (
         _norm_text(fase_override)
-        or _norm_text(getattr(stato, "Fase", ""))
+        or _norm_text(getattr(stato, "FaseAttiva", ""))
         or _norm_text(getattr(ordine, "FaseAttiva", ""))
     )
     fase_int = _fase_to_int(raw)
@@ -371,24 +369,6 @@ def _parse_jsonish_list(value) -> list[str]:
         s = _norm_text(item)
         if s:
             out.append(s)
-    return out
-
-
-def _parse_phase_list(value) -> list[str]:
-    raw_items = _parse_jsonish_list(value)
-    out = []
-
-    for item in raw_items:
-        fase_int = _fase_to_int(item)
-        if fase_int is not None and fase_int > 0:
-            out.append(str(fase_int))
-
-    # fallback legacy: NumFase = "2" inteso come totale fasi
-    if not out:
-        totale = _fase_to_int(value)
-        if totale is not None and totale > 0:
-            out = [str(i) for i in range(1, totale + 1)]
-
     return out
 
 
@@ -1242,7 +1222,7 @@ def _ensure_stato_attivo(
     now_iso = when_dt.isoformat(timespec="seconds")
 
     if stato is None:
-        stato = StatoOdp(
+        stato = InputOdpRuntime(
             IdDocumento=ordine.IdDocumento,
             IdRiga=ordine.IdRiga,
             RifRegistraz=ordine.RifRegistraz,
@@ -1250,8 +1230,12 @@ def _ensure_stato_attivo(
             Data_in_carico=now_iso,
             Tempo_funzionamento="0",
             Utente_operazione=username,
-            Fase=fase_corrente,
+            FaseAttiva=fase_corrente,
             data_ultima_attivazione=now_iso,
+            Note=_norm_text(getattr(ordine, "Note", "")),
+            QtyDaLavorare=_qty_da_lavorare_text(ordine),
+            RisorsaAttiva=_norm_text(getattr(ordine, "RisorsaAttiva", "")),
+            LavorazioneAttiva=_norm_text(getattr(ordine, "LavorazioneAttiva", "")),
         )
         db.session.add(stato)
         return stato
@@ -1259,7 +1243,7 @@ def _ensure_stato_attivo(
     stato.Stato_odp = "Attivo"
     stato.Utente_operazione = username
     if fase_corrente:
-        stato.Fase = fase_corrente
+        stato.FaseAttiva = fase_corrente
     if not _norm_text(stato.Data_in_carico):
         stato.Data_in_carico = now_iso
     if not _norm_text(stato.Tempo_funzionamento):
@@ -1468,8 +1452,9 @@ def api_prendi_ordine():
         now_dt = _now_rome_dt()
 
         ordine.StatoOrdine = "Attivo"
+        _sync_active_fields_for_phase(ordine, fase_corrente)
 
-        stato = StatoOdp.query.filter_by(
+        stato = InputOdpRuntime.query.filter_by(
             IdDocumento=ordine.IdDocumento,
             IdRiga=ordine.IdRiga,
         ).first()
@@ -1561,7 +1546,7 @@ def api_sospendi_ordine():
         now_dt = _now_rome_dt()
         ordine.StatoOrdine = "In Sospeso"
 
-        stato = StatoOdp.query.filter_by(
+        stato = InputOdpRuntime.query.filter_by(
             IdDocumento=ordine.IdDocumento,
             IdRiga=ordine.IdRiga,
         ).first()
@@ -1575,7 +1560,7 @@ def api_sospendi_ordine():
                     {
                         "ok": False,
                         "error": (
-                            "Record odp_in_carico non trovato per questo ordine. "
+                            "Record runtime non trovato per questo ordine. "
                             "La sospensione non può aggiornare Tempo_funzionamento."
                         ),
                         "id_documento": ordine.IdDocumento,
@@ -1699,7 +1684,7 @@ def api_sospendi_ordine_montaggio_macchina():
         now_dt = _now_rome_dt()
         ordine.StatoOrdine = "In Sospeso"
 
-        stato = StatoOdp.query.filter_by(
+        stato = InputOdpRuntime.query.filter_by(
             IdDocumento=ordine.IdDocumento,
             IdRiga=ordine.IdRiga,
         ).first()
@@ -1711,7 +1696,7 @@ def api_sospendi_ordine_montaggio_macchina():
                     {
                         "ok": False,
                         "error": (
-                            "Record odp_in_carico non trovato per questo ordine macchina. "
+                            "Record runtime non trovato per questo ordine macchina. "
                             "La sospensione non può aggiornare Tempo_funzionamento."
                         ),
                         "id_documento": ordine.IdDocumento,
@@ -1848,8 +1833,9 @@ def api_riattiva_ordine():
         now_dt = _now_rome_dt()
 
         ordine.StatoOrdine = "Attivo"
+        _sync_active_fields_for_phase(ordine, fase_corrente)
 
-        stato = StatoOdp.query.filter_by(
+        stato = InputOdpRuntime.query.filter_by(
             IdDocumento=ordine.IdDocumento,
             IdRiga=ordine.IdRiga,
         ).first()
@@ -2002,8 +1988,9 @@ def api_riattiva_ordine_montaggio_macchina():
         now_dt = _now_rome_dt()
 
         ordine.StatoOrdine = "Attivo"
+        _sync_active_fields_for_phase(ordine, fase_corrente)
 
-        stato = StatoOdp.query.filter_by(
+        stato = InputOdpRuntime.query.filter_by(
             IdDocumento=ordine.IdDocumento,
             IdRiga=ordine.IdRiga,
         ).first()
@@ -2280,7 +2267,7 @@ def api_chiudi_ordine():
             "ParentLotti": parent_lotti_ok,
         }
 
-    stato = StatoOdp.query.filter_by(
+    stato = InputOdpRuntime.query.filter_by(
         IdDocumento=ordine.IdDocumento, IdRiga=ordine.IdRiga
     ).first()
 
@@ -2295,7 +2282,7 @@ def api_chiudi_ordine():
 
     if chiusura_parziale:
         if stato is None:
-            stato = StatoOdp(
+            stato = InputOdpRuntime(
                 IdDocumento=ordine.IdDocumento,
                 IdRiga=ordine.IdRiga,
                 RifRegistraz=ordine.RifRegistraz,
@@ -2303,7 +2290,7 @@ def api_chiudi_ordine():
                 Data_in_carico=now_iso,
                 Tempo_funzionamento=tempo_finale or "0",
                 Utente_operazione=_current_username(),
-                Fase=fase_corrente,
+                FaseAttiva=fase_corrente,
                 data_ultima_attivazione=None,
             )
             db.session.add(stato)
@@ -2311,7 +2298,7 @@ def api_chiudi_ordine():
             stato.Stato_odp = "In Sospeso"
             stato.Utente_operazione = _current_username()
 
-            stato.Fase = fase_corrente
+            stato.FaseAttiva = fase_corrente
             stato.data_ultima_attivazione = None
 
         ordine.StatoOrdine = "In Sospeso"
@@ -2449,7 +2436,7 @@ def api_chiudi_ordine():
                 Data_in_carico=stato.Data_in_carico,
                 Tempo_funzionamento=tempo_finale,
                 Utente_operazione=stato.Utente_operazione,
-                Fase=stato.Fase,
+                Fase=getattr(stato, "FaseAttiva", None),
                 data_ultima_attivazione=stato.data_ultima_attivazione,
                 ClosedBy=_current_username(),
                 ClosedAt=now_iso,
@@ -2543,9 +2530,6 @@ def api_chiudi_ordine():
     )
 
     tab = _tab_from_ordine(ordine)
-
-    if stato is not None and transition["tipo"] != "parziale_stessa_fase":
-        db.session.delete(stato)
 
     fragments = {}
     if tab:
@@ -2747,7 +2731,7 @@ def api_chiudi_ordine_montaggio_macchina():
     now_dt = _now_rome_dt()
     now_iso = now_dt.isoformat(timespec="seconds")
 
-    stato = StatoOdp.query.filter_by(
+    stato = InputOdpRuntime.query.filter_by(
         IdDocumento=ordine.IdDocumento, IdRiga=ordine.IdRiga
     ).first()
 
@@ -2840,7 +2824,7 @@ def api_chiudi_ordine_montaggio_macchina():
                 Data_in_carico=stato.Data_in_carico,
                 Tempo_funzionamento=tempo_finale,
                 Utente_operazione=stato.Utente_operazione,
-                Fase=stato.Fase,
+                Fase=getattr(stato, "FaseAttiva", None),
                 data_ultima_attivazione=stato.data_ultima_attivazione,
                 ClosedBy=_current_username(),
                 ClosedAt=now_iso,
@@ -2907,9 +2891,6 @@ def api_chiudi_ordine_montaggio_macchina():
     )
 
     tab = _tab_from_ordine(ordine)
-
-    if stato is not None:
-        db.session.delete(stato)
 
     fragments = {}
     if tab:
