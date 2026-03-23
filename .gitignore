@@ -183,5 +183,5 @@ cython_debug/
 temp/
 db
 /output/
-*.db-shm
-*.db-wal
+*.*-shm
+*.*-wal
