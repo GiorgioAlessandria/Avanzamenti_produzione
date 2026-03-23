@@ -2311,6 +2311,7 @@ def api_chiudi_ordine():
                 FaseAttiva=fase_corrente,
                 data_ultima_attivazione=None,
             )
+            ordine.runtime_row = stato
             db.session.add(stato)
         else:
             stato.Stato_odp = "In Sospeso"

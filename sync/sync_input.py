@@ -602,6 +602,7 @@ INPUT_ODP_ERP_COLS = [
 INPUT_ODP_RUNTIME_COLS = [
     "IdDocumento",
     "IdRiga",
+    "RifRegistraz",
     "FaseAttiva",
     "Note",
     "QtyDaLavorare",
@@ -703,7 +704,14 @@ def _build_runtime_seed(df_input_odp: pd.DataFrame) -> pd.DataFrame:
     Va usato solo per le PK mancanti nella tabella runtime.
     """
     df_runtime = df_input_odp[
-        ["IdDocumento", "IdRiga", "Quantita", "CodLavorazione", "CodRisorsaProd"]
+        [
+            "IdDocumento",
+            "IdRiga",
+            "RifRegistraz",
+            "Quantita",
+            "CodLavorazione",
+            "CodRisorsaProd",
+        ]
     ].copy()
 
     df_runtime["FaseAttiva"] = "1"
