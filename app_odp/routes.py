@@ -48,17 +48,17 @@ HOME_TABS = {
     "10": {
         "tab": "montaggio",
         "label_fallback": "Montaggio",
-        "template": "partials/_home_montaggio.html",
+        "template": "partials/_home_montaggio.j2",
     },
     "20": {
         "tab": "officina",
         "label_fallback": "Officina",
-        "template": "partials/_home_standard.html",
+        "template": "partials/_home_standard.j2",
     },
     "30": {
         "tab": "carpenteria",
         "label_fallback": "Carpenteria",
-        "template": "partials/_home_standard.html",
+        "template": "partials/_home_standard.j2",
     },
     "40": {
         "tab": "Magazzino",
@@ -78,19 +78,19 @@ HOME_TABS = {
     "70": {
         "tab": "collaudo",
         "label_fallback": "Collaudo",
-        "template": "partials/_home_montaggio.html",
+        "template": "partials/_home_montaggio.j2",
     },
 }
 
 TAB_TO_TEMPLATE = {
-    "montaggio": ("partials/_home_montaggio.html", {"reparto": "10", "perm": "home"}),
-    "officina": ("partials/_home_standard.html", {"reparto": "20", "perm": "home"}),
+    "montaggio": ("partials/_home_montaggio.j2", {"reparto": "10", "perm": "home"}),
+    "officina": ("partials/_home_standard.j2", {"reparto": "20", "perm": "home"}),
     "carpenteria": (
-        "partials/_home_standard.html",
+        "partials/_home_standard.j2",
         {"reparto": "30", "perm": "home"},
     ),
     "collaudo": (
-        "partials/_home_montaggio.html",
+        "partials/_home_montaggio.j2",
         {"reparto": "70", "perm": "home"},
     ),
 }
@@ -1075,10 +1075,10 @@ def _query_for_tab(policy, reparto_code):
 def _render_bridge_standard(odp):
     return {
         "tbody_ordini_da_eseguire": render_template(
-            "partials/_home_standard_rows_da_eseguire.html", odp=odp
+            "partials/_home_standard_rows_da_eseguire.j2", odp=odp
         ),
         "tbody_ordini_in_corso": render_template(
-            "partials/_home_standard_rows_in_corso.html", odp=odp
+            "partials/_home_standard_rows_in_corso.j2", odp=odp
         ),
     }
 
@@ -1086,10 +1086,10 @@ def _render_bridge_standard(odp):
 def _render_bridge_carpenteria(odp):
     return {
         "tbody_ordini_da_eseguire": render_template(
-            "partials/_home_standard_rows_da_eseguire.html", odp=odp
+            "partials/_home_standard_rows_da_eseguire.j2", odp=odp
         ),
         "tbody_ordini_in_corso": render_template(
-            "partials/_home_standard_rows_in_corso.html", odp=odp
+            "partials/_home_standard_rows_in_corso.j2", odp=odp
         ),
     }
 
@@ -1097,16 +1097,16 @@ def _render_bridge_carpenteria(odp):
 def _render_bridge_montaggio(odp):
     return {
         "tbody_ordini_da_eseguire_sl": render_template(
-            "partials/_home_montaggio_sl_rows_da_eseguire.html", odp=odp
+            "partials/_home_montaggio_sl_rows_da_eseguire.j2", odp=odp
         ),
         "tbody_ordini_in_corso_sl": render_template(
-            "partials/_home_montaggio_sl_rows_in_corso.html", odp=odp
+            "partials/_home_montaggio_sl_rows_in_corso.j2", odp=odp
         ),
         "tbody_ordini_da_eseguire_m": render_template(
-            "partials/_home_montaggio_m_rows_da_eseguire.html", odp=odp
+            "partials/_home_montaggio_m_rows_da_eseguire.j2", odp=odp
         ),
         "tbody_ordini_in_corso_m": render_template(
-            "partials/_home_montaggio_m_rows_in_corso.html", odp=odp
+            "partials/_home_montaggio_m_rows_in_corso.j2", odp=odp
         ),
     }
 
@@ -1114,16 +1114,16 @@ def _render_bridge_montaggio(odp):
 def _render_bridge_collaudo(odp):
     return {
         "tbody_tbl_da_eseguire_sl": render_template(
-            "partials/_home_montaggio_sl_rows_da_eseguire.html", odp=odp
+            "partials/_home_montaggio_sl_rows_da_eseguire.j2", odp=odp
         ),
         "tbody_ordini_in_corso_sl": render_template(
-            "partials/_home_montaggio_sl_rows_in_corso.html", odp=odp
+            "partials/_home_montaggio_sl_rows_in_corso.j2", odp=odp
         ),
         "tbody_tbl_da_eseguire_m": render_template(
-            "partials/_home_montaggio_m_rows_da_eseguire.html", odp=odp
+            "partials/_home_montaggio_m_rows_da_eseguire.j2", odp=odp
         ),
         "tbody_ordini_in_corso_m": render_template(
-            "partials/_home_montaggio_m_rows_in_corso.html", odp=odp
+            "partials/_home_montaggio_m_rows_in_corso.j2", odp=odp
         ),
     }
 

@@ -2160,7 +2160,7 @@ def test_home_defaults_to_first_allowed_tab_and_renders_context(
     assert resp.status_code == 200
     assert resp.get_data(as_text=True) == "OK-HOME"
     assert captured["template_name"] == "home.j2"
-    assert captured["ctx"]["active_partial"] == "partials/_home_montaggio.html"
+    assert captured["ctx"]["active_partial"] == "partials/_home_montaggio.j2"
     assert captured["ctx"]["active_tab"] == "montaggio"
     assert captured["ctx"]["causali_attivita"] == ["PAUSA", "SETUP"]
     assert captured["ctx"]["bridge_url"].endswith("/api/home/montaggio/bridge")
