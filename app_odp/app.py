@@ -79,7 +79,7 @@ def create_app():
         template_folder="templates",
     )
     # setup_request_logging(app)
-    app.debug = True
+    app.debug = False
 
     # chiave segreta per sessioni e Flask-Login
     app.config["SECRET_KEY"] = "Berserk"
