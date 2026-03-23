@@ -1053,7 +1053,6 @@ def home():
         .scalars()
         .all()
     )
-    ic(odp)
     return render_template(
         "home.j2",
         active_partial=template,
@@ -2311,7 +2310,6 @@ def api_chiudi_ordine():
                 FaseAttiva=fase_corrente,
                 data_ultima_attivazione=None,
             )
-            ordine.runtime_row = stato
             db.session.add(stato)
         else:
             stato.Stato_odp = "In Sospeso"
