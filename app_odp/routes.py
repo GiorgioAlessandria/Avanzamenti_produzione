@@ -1381,6 +1381,24 @@ def _push_change_event(
     return evt
 
 
+def _delete_closed_order_from_runtime_db(ordine, stato=None) -> None:
+    """
+    Elimina l'ordine dal DB runtime principale dopo aver già salvato tutto nel db_log.
+    Cancella sia InputOdpRuntime sia InputOdp.
+    """
+    if stato is None:
+        stato = InputOdpRuntime.query.filter_by(
+            IdDocumento=ordine.IdDocumento,
+            IdRiga=ordine.IdRiga,
+        ).first()
+
+    if stato is not None:
+        db.session.delete(stato)
+
+    db.session.delete(ordine)
+    db.session.flush()
+
+
 @main_bp.post("/api/ordini/presa")
 @login_required
 @require_perm("home")
@@ -2390,6 +2408,22 @@ def api_chiudi_ordine():
             f"[PARZIALE] residuo={qty_residua_text}; {note}".strip().rstrip(";")
         )
 
+    transition = _advance_or_finalize_phase(
+        ordine=ordine,
+        stato=stato,
+        fase_corrente=fase_corrente,
+        q_ok=q_ok,
+        q_nok=q_nok,
+        qty_residua=qty_residua,
+        qty_residua_text=qty_residua_text,
+        qty_lavorata_text=qty_lavorata_text,
+        chiusura_parziale=chiusura_parziale,
+        username=_current_username(),
+    )
+
+    tab = _tab_from_ordine(ordine)
+    stato_ordine_response = ordine.StatoOrdine
+    qty_da_lavorare_response = _norm_text(ordine.QtyDaLavorare)
     db.session.add(
         InputOdpLog(
             IdDocumento=ordine.IdDocumento,
@@ -2418,6 +2452,9 @@ def api_chiudi_ordine():
             CodTipoDoc=ordine.CodTipoDoc,
             FaseAttiva=ordine.FaseAttiva,
             Note=ordine.Note,
+            QtyDaLavorare=_norm_text(ordine.QtyDaLavorare),
+            RisorsaAttiva=_norm_text(ordine.RisorsaAttiva),
+            LavorazioneAttiva=_norm_text(ordine.LavorazioneAttiva),
             QuantitaConforme=str(q_ok),
             QuantitaNonConforme=str(q_nok),
             NoteChiusura=note_chiusura_log,
@@ -2516,21 +2553,11 @@ def api_chiudi_ordine():
                 IdRiga=ordine.IdRiga,
             )
         )
-    transition = _advance_or_finalize_phase(
-        ordine=ordine,
-        stato=stato,
-        fase_corrente=fase_corrente,
-        q_ok=q_ok,
-        q_nok=q_nok,
-        qty_residua=qty_residua,
-        qty_residua_text=qty_residua_text,
-        qty_lavorata_text=qty_lavorata_text,
-        chiusura_parziale=chiusura_parziale,
-        username=_current_username(),
-    )
 
-    tab = _tab_from_ordine(ordine)
-
+    if transition["tipo"] == "finale":
+        _delete_closed_order_from_runtime_db(ordine=ordine, stato=stato)
+        stato_ordine_response = "Chiusa"
+        qty_da_lavorare_response = "0"
     fragments = {}
     if tab:
         reparto_code = BRIDGE_CONFIG[tab]["reparto"]
@@ -2540,16 +2567,22 @@ def api_chiudi_ordine():
     db.session.commit()
 
     if transition["tipo"] == "finale":
-        message = "Ordine chiuso definitivamente"
+        message = (
+            "Ordine chiuso definitivamente, archiviato nel db_log "
+            "e rimosso dal database operativo."
+        )
     elif transition["tipo"] == "avanzata":
         message = (
             f"Fase {transition['fase_corrente']} consuntivata. "
-            f"Ordine riportato in pianificata sulla fase {transition['fase_successiva']}."
+            f"File TXT generato in coda export. "
+            f"Ordine mantenuto a DB e riportato in pianificata sulla fase "
+            f"{transition['fase_successiva']}."
         )
     else:
         message = (
             f"Fase {transition['fase_corrente']} chiusa parzialmente. "
-            f"Ordine messo in sospeso sulla stessa fase."
+            f"File TXT generato in coda export. "
+            f"Ordine mantenuto a DB e messo in sospeso sulla stessa fase."
         )
 
     return (
@@ -2563,9 +2596,8 @@ def api_chiudi_ordine():
                 "row_key": _row_key(id_documento, id_riga),
                 "fase": transition["fase_corrente"],
                 "fase_successiva": transition["fase_successiva"],
-                "stato_ordine": ordine.StatoOrdine,
-                "chiusura_parziale": chiusura_parziale,
-                "qty_da_lavorare": _norm_text(ordine.QtyDaLavorare),
+                "stato_ordine": stato_ordine_response,
+                "qty_da_lavorare": qty_da_lavorare_response,
                 "outbox_id": outbox.outbox_id if outbox else None,
                 "outbox_status": outbox.status if outbox else None,
                 "active_tab": tab,
@@ -2778,6 +2810,23 @@ def api_chiudi_ordine_montaggio_macchina():
     )
     db.session.flush()
 
+    transition = _advance_or_finalize_phase(
+        ordine=ordine,
+        stato=stato,
+        fase_corrente=fase_corrente,
+        q_ok=q_ok,
+        q_nok=q_nok,
+        qty_residua=qty_residua,
+        qty_residua_text=qty_residua_text,
+        qty_lavorata_text=qty_lavorata_text,
+        chiusura_parziale=chiusura_parziale,
+        username=_current_username(),
+    )
+
+    tab = _tab_from_ordine(ordine)
+    stato_ordine_response = ordine.StatoOrdine
+    qty_da_lavorare_response = _norm_text(ordine.QtyDaLavorare)
+
     db.session.add(
         InputOdpLog(
             IdDocumento=ordine.IdDocumento,
@@ -2811,6 +2860,9 @@ def api_chiudi_ordine_montaggio_macchina():
             NoteChiusura=note,
             ClosedBy=_current_username(),
             ClosedAt=now_iso,
+            QtyDaLavorare=_norm_text(ordine.QtyDaLavorare),
+            RisorsaAttiva=_norm_text(ordine.RisorsaAttiva),
+            LavorazioneAttiva=_norm_text(ordine.LavorazioneAttiva),
         )
     )
 
@@ -2877,21 +2929,6 @@ def api_chiudi_ordine_montaggio_macchina():
                 IdRiga=ordine.IdRiga,
             )
         )
-    transition = _advance_or_finalize_phase(
-        ordine=ordine,
-        stato=stato,
-        fase_corrente=fase_corrente,
-        q_ok=q_ok,
-        q_nok=q_nok,
-        qty_residua=qty_residua,
-        qty_residua_text=qty_residua_text,
-        qty_lavorata_text=qty_lavorata_text,
-        chiusura_parziale=chiusura_parziale,
-        username=_current_username(),
-    )
-
-    tab = _tab_from_ordine(ordine)
-
     fragments = {}
     if tab:
         reparto_code = BRIDGE_CONFIG[tab]["reparto"]
@@ -2901,11 +2938,15 @@ def api_chiudi_ordine_montaggio_macchina():
     db.session.commit()
 
     if transition["tipo"] == "finale":
-        message = "Ordine macchina chiuso definitivamente"
+        _delete_closed_order_from_runtime_db(ordine=ordine, stato=stato)
+        stato_ordine_response = "Chiusa"
+        qty_da_lavorare_response = "0"
     else:
         message = (
             f"Fase macchina {transition['fase_corrente']} consuntivata. "
-            f"Ordine riportato in pianificata sulla fase {transition['fase_successiva']}."
+            f"File TXT generato in coda export. "
+            f"Ordine mantenuto a DB e riportato in pianificata sulla fase "
+            f"{transition['fase_successiva']}."
         )
 
     return (
@@ -2919,8 +2960,8 @@ def api_chiudi_ordine_montaggio_macchina():
                 "row_key": _row_key(id_documento, id_riga),
                 "fase": transition["fase_corrente"],
                 "fase_successiva": transition["fase_successiva"],
-                "stato_ordine": ordine.StatoOrdine,
-                "qty_da_lavorare": _norm_text(ordine.QtyDaLavorare),
+                "stato_ordine": stato_ordine_response,
+                "qty_da_lavorare": qty_da_lavorare_response,
                 "outbox_id": outbox.outbox_id,
                 "outbox_status": outbox.status,
                 "active_tab": tab,

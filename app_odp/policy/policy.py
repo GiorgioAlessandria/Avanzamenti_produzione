@@ -183,7 +183,7 @@ class RbacPolicy:
         return set(db.session.execute(stmt).scalars().all())
 
     @cached_property
-    def allowed_reparti_descr(self) -> list(str):
+    def allowed_reparti_descr(self) -> list[str]:
         stmt = (
             select(Reparti.Descrizione)
             .distinct()
