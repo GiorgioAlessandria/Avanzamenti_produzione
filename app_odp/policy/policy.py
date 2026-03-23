@@ -244,15 +244,3 @@ class RbacPolicy:
         """
         q = self.filter_input_odp(q)
         return q.filter(_match(InputOdp.CodReparto, {str(reparto_code)}))
-
-
-#
-#    conds = [
-#        _match(InputOdp.CodReparto, self.allowed_reparti),
-#        _match(InputOdp.CodRisorsaProd, self.allowed_risorse),
-#        _match(InputOdp.CodLavorazione, self.allowed_lavorazioni),
-#        _match(InputOdp.CodFamiglia, self.allowed_famiglia),
-#        _match(InputOdp.CodMacrofamiglia, self.allowed_macrofamiglia),
-#        _match(InputOdp.CodMagPrincipale, self.allowed_magazzini),
-#    ]
-#    return q.filter(*conds)  # and_(*conds))

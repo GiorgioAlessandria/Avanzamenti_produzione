@@ -1073,6 +1073,7 @@ def home():
         .scalars()
         .all()
     )
+    ic(odp)
     return render_template(
         "home.j2",
         active_partial=template,
@@ -1565,7 +1566,7 @@ def api_sospendi_ordine():
             IdRiga=ordine.IdRiga,
         ).first()
 
-        # Non andare avanti in silenzio: se manca il record di runtime,
+        # Se manca il record di runtime,
         # la sospensione non può calcolare correttamente il tempo.
         if stato is None:
             db.session.rollback()

@@ -6,6 +6,7 @@
             data-idriga="{{ singolo_odp.IdRiga }}"
             data-ordine="{{ singolo_odp.RifRegistraz }}"
             data-codice="{{ singolo_odp.CodArt }}"
+            data-indicemodifica="{{ singolo_odp.IndiceModifica }}"
             data-descrizione="{{ singolo_odp.DesArt }}"
             data-quantita="{{ singolo_odp.QtyDaLavorare or singolo_odp.Quantita }}"
             data-quantita-totale="{{ singolo_odp.Quantita }}"
@@ -14,6 +15,7 @@
             data-risorsaprod="{{ singolo_odp.RisorsaAttiva }}">
             <td>{{ singolo_odp.RifRegistraz }}</td>
             <td>{{ singolo_odp.CodArt }}</td>
+            <td>{{ singolo_odp.IndiceModifica }}</td>
             <td>{{ singolo_odp.DesArt }}</td>
             <td>{{ singolo_odp.QtyDaLavorare or singolo_odp.Quantita }}</td>
             <td>{{ singolo_odp.DataFineSched | db_date("%Y-%m-%d %H:%M:%S","%d/%m/%Y") }}</td>

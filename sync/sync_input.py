@@ -259,7 +259,7 @@ def unione_fasi_componenti(
     )
     df_fasi_componenti = df_fasi_componenti.reset_index(drop=False)
     df_fasi_componenti = df_fasi_componenti.merge(
-        df_articoli[["CodArt", "DesArt", "MagUM", "GestioneLotto"]],
+        df_articoli[["CodArt", "DesArt", "TecniciUm", "GestioneLotto"]],
         on="CodArt",
         how="left",
     )
@@ -507,6 +507,7 @@ def gestione_lotto_matricola_famiglia(
                 "CodFamiglia",
                 "CodClassifTecnica",
                 "DesArt",
+                "IndiceModifica",
             ]
         ],
         on="CodArt",
@@ -595,6 +596,7 @@ INPUT_ODP_ERP_COLS = [
     "StatoOrdine",
     "CodClassifTecnica",
     "CodTipoDoc",
+    "IndiceModifica",
 ]
 
 INPUT_ODP_RUNTIME_COLS = [
@@ -814,10 +816,11 @@ def elaborazione_dati(session: Session) -> None:
             "DesArt",
             "Quantita",
             "NumFase",
-            "MagUM",
+            "TecniciUm",
             "GestioneLotto",
         ],
     )
+
     df_input_odp = (
         inserimento_distinta_in_odp(
             df_odp=df_odp, componenti_per_odp=distinta_componenti, chiavi=chiavi
@@ -847,7 +850,6 @@ def elaborazione_dati(session: Session) -> None:
     # PK del batch corrente
     df_pk = df_input_odp[list(PK_COLS)].astype(str).drop_duplicates()
     pk_tuples = list(map(tuple, df_pk.to_numpy()))
-
     # PK già presenti nelle due tabelle
     existing_erp = _fetch_existing_pks(
         sqlite_engine_app,

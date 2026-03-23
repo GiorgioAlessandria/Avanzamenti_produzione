@@ -620,6 +620,7 @@ class InputOdp(db.Model):
     CodMagPrincipale = db.Column(db.Text)
     CodReparto = db.Column(db.Text)
     TempoPrevistoLavoraz = db.Column(db.Text)
+    IndiceModifica = db.Column(db.Text)
 
     # colonna ERP raw; il nome Python cambia per lasciare libero il property compatibile
     StatoOrdineErp = db.Column("StatoOrdine", db.Text)
