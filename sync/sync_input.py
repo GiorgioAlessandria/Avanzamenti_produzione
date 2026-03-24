@@ -464,6 +464,13 @@ def inserimento_dati_fasi_in_odp(
         list_columns=["TempoPrevistoLavoraz"],
     ).set_index(["IdDocumento", "IdRiga"])
 
+    tempo_attrezzaggio_odp = generazione_lista(
+        df=df_odpfasi,
+        chiavi=chiavi,
+        rename_col="TempoAttrezzaggio",
+        list_columns=["TempoAttrezzaggio"],
+    ).set_index(["IdDocumento", "IdRiga"])
+
     df_dizionari = [
         num_fase_per_odp,
         cod_lavorazione_per_odp,
@@ -472,6 +479,7 @@ def inserimento_dati_fasi_in_odp(
         data_inizio_sched_per_odp,
         data_fine_sched_per_odp,
         tempo_previsto_lavoraz_per_odp,
+        tempo_attrezzaggio_odp,
     ]
     df_fasi_raggruppate = ft.reduce(
         lambda left, right: pd.merge(left, right, on=chiavi), df_dizionari
@@ -597,6 +605,7 @@ INPUT_ODP_ERP_COLS = [
     "CodClassifTecnica",
     "CodTipoDoc",
     "IndiceModifica",
+    "TempoAttrezzaggio",
 ]
 
 INPUT_ODP_RUNTIME_COLS = [

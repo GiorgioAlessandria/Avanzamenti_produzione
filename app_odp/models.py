@@ -609,6 +609,7 @@ class InputOdp(db.Model):
     StatoOrdineErp = db.Column("StatoOrdine", db.Text)
     CodClassifTecnica = db.Column(db.Text)
     CodTipoDoc = db.Column(db.Text)
+    TempoAttrezzaggio = db.Column(db.Text)
 
     __table_args__ = (db.PrimaryKeyConstraint("IdDocumento", "IdRiga"),)
 
@@ -699,6 +700,18 @@ class InputOdp(db.Model):
     def RisorsaAttiva(self, value):
         rt = self._ensure_runtime_row()
         rt.RisorsaAttiva = self._text(value)
+
+    @property
+    def AttrezzaggioAttivo(self) -> str:
+        return self._text(getattr(self.runtime_row, "AttrezzaggioAttivo", ""))
+
+    @AttrezzaggioAttivo.setter
+    def AttrezzaggioAttivo(self, value):
+        rt = self._ensure_runtime_row()
+        rt.AttrezzaggioAttivo = self._text(value)
+
+    def __repr__(self):
+        return f"<{self.__dict__}>"
 
     @property
     def LavorazioneAttiva(self) -> str:
@@ -866,6 +879,7 @@ class InputOdpRuntime(db.Model):
     QtyDaLavorare = db.Column(db.Text)
     RisorsaAttiva = db.Column(db.Text)
     LavorazioneAttiva = db.Column(db.Text)
+    AttrezzaggioAttivo = db.Column(db.Text)
 
     __table_args__ = (
         db.ForeignKeyConstraint(

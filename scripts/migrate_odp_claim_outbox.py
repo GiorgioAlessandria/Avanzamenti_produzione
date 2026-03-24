@@ -56,7 +56,6 @@ def main() -> None:
         con.execute("BEGIN;")
         con.execute(DDL_ODP_CLAIM)
 
-        # Estendi change_event come outbox (idempotente)
         for col, typ in OUTBOX_COLUMNS.items():
             if not column_exists(con, "change_event", col):
                 con.execute(f"ALTER TABLE change_event ADD COLUMN {col} {typ};")

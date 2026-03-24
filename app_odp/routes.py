@@ -411,6 +411,11 @@ def _sync_active_fields_for_phase(ordine, fase_corrente: str | None = None) -> N
         getattr(ordine, "NumFase", ""),
         fase_ref,
     )
+    ordine.AttrezzaggioAttivo = _active_value_for_phase(
+        getattr(ordine, "TempoAttrezzaggio", ""),
+        getattr(ordine, "NumFase", ""),
+        fase_ref,
+    )
 
 
 def _componenti_lotto_per_ordine(
@@ -1235,6 +1240,7 @@ def _ensure_stato_attivo(
             QtyDaLavorare=_qty_da_lavorare_text(ordine),
             RisorsaAttiva=_norm_text(getattr(ordine, "RisorsaAttiva", "")),
             LavorazioneAttiva=_norm_text(getattr(ordine, "LavorazioneAttiva", "")),
+            AttrezzaggioAttivo=_norm_text(getattr(ordine, "AttrezzaggioAttivo", "")),
         )
         db.session.add(stato)
         return stato
@@ -2459,6 +2465,7 @@ def api_chiudi_ordine():
             NoteChiusura=note_chiusura_log,
             ClosedBy=_current_username(),
             ClosedAt=now_iso,
+            AttrezzaggioAttivo=_norm_text(ordine, "AttrezzaggioAttivo"),
         )
     )
 
@@ -2862,6 +2869,7 @@ def api_chiudi_ordine_montaggio_macchina():
             QtyDaLavorare=_norm_text(ordine.QtyDaLavorare),
             RisorsaAttiva=_norm_text(ordine.RisorsaAttiva),
             LavorazioneAttiva=_norm_text(ordine.LavorazioneAttiva),
+            AttrezzaggioAttivo=_norm_text(ordine, "AttrezzaggioAttivo"),
         )
     )
 
