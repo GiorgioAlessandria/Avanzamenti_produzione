@@ -1245,11 +1245,11 @@ def _apply_stop_minutes_to_runtime(
     stato,
     minuti_non_funzionamento: int,
     *,
-    max_removable_seconds: int = 0,
+    max_removable_seconds: int | None = None,
 ) -> tuple[int, str]:
     """
-    Sottrae dal Tempo_funzionamento solo i secondi relativi all'ultimo tratto
-    appena accumulato, evitando di intaccare runtime storici precedenti.
+    Sottrae i minuti di non funzionamento dal totale Tempo_funzionamento.
+    Se max_removable_seconds è valorizzato, limita la sottrazione.
     """
     if stato is None or minuti_non_funzionamento <= 0:
         return 0, _norm_text(getattr(stato, "Tempo_funzionamento", "")) or "0"
@@ -1257,11 +1257,10 @@ def _apply_stop_minutes_to_runtime(
     total_seconds = _tempo_to_seconds(stato.Tempo_funzionamento)
     requested_seconds = minuti_non_funzionamento * 60
 
-    removable_seconds = min(
-        requested_seconds,
-        max(0, int(max_removable_seconds or 0)),
-        total_seconds,
-    )
+    removable_seconds = min(requested_seconds, total_seconds)
+
+    if max_removable_seconds is not None:
+        removable_seconds = min(removable_seconds, max(0, int(max_removable_seconds)))
 
     new_total_seconds = max(0, total_seconds - removable_seconds)
     stato.Tempo_funzionamento = _seconds_to_tempo_text(new_total_seconds)
@@ -1637,6 +1636,7 @@ def api_sospendi_ordine():
     id_documento = _norm_text(data.get("id_documento"))
     id_riga = _norm_text(data.get("id_riga"))
     causale = _norm_text(data.get("causale"))
+
     tempo_non_funzionamento_raw = data.get("tempo_non_funzionamento_minuti")
     if tempo_non_funzionamento_raw is None:
         tempo_non_funzionamento_raw = data.get("tempo_fermo_macchina")
@@ -1676,8 +1676,6 @@ def api_sospendi_ordine():
             IdRiga=ordine.IdRiga,
         ).first()
 
-        # Se manca il record di runtime,
-        # la sospensione non può calcolare correttamente il tempo.
         if stato is None:
             db.session.rollback()
             return (
@@ -1699,12 +1697,10 @@ def api_sospendi_ordine():
         stato.Utente_operazione = _current_username()
 
         elapsed_seconds = _accumulate_runtime_until(stato, now_dt)
-        stato.Stato_odp = "In Sospeso"
 
         removed_seconds, tempo_funzionamento = _apply_stop_minutes_to_runtime(
             stato,
             minuti_non_funzionamento,
-            max_removable_seconds=elapsed_seconds,
         )
 
         _push_change_event(
@@ -2194,6 +2190,7 @@ def api_chiudi_ordine():
     note = _norm_text(data.get("note"))
     lotti_input = data.get("lotti") or []
     chiusura_parziale = _parse_bool_flag(data.get("chiusura_parziale"))
+
     tempo_non_funzionamento_raw = data.get("tempo_non_funzionamento_minuti")
     if tempo_non_funzionamento_raw is None:
         tempo_non_funzionamento_raw = data.get("tempo_fermo_macchina")
@@ -2423,14 +2420,10 @@ def api_chiudi_ordine():
     if stato is not None:
         if _norm_text(stato.Stato_odp).lower().startswith("attiv"):
             elapsed_seconds = _accumulate_runtime_until(stato, now_dt)
-            max_removable_seconds = elapsed_seconds
-        else:
-            max_removable_seconds = _tempo_to_seconds(stato.Tempo_funzionamento)
 
         removed_seconds, tempo_finale = _apply_stop_minutes_to_runtime(
             stato,
             minuti_non_funzionamento,
-            max_removable_seconds=max_removable_seconds,
         )
 
     fase_corrente = _fase_corrente_for_export(ordine, stato=stato)
@@ -2537,6 +2530,8 @@ def api_chiudi_ordine():
                 "export_status": outbox.status,
                 "chiusura_parziale": False,
                 "lotto_prodotto": lotto_prodotto,
+                "tempo_non_funzionamento_minuti": minuti_non_funzionamento,
+                "tempo_non_funzionamento_secondi": removed_seconds,
             },
         )
 
