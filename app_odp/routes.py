@@ -1223,6 +1223,52 @@ def _seconds_to_tempo_text(seconds: int) -> str:
     return text.rstrip("0").rstrip(".") if "." in text else text
 
 
+def _parse_minuti_non_funzionamento(
+    value,
+    field_name: str = "Tempo di non funzionamento macchina",
+) -> int:
+    raw = _norm_text(value)
+    if raw == "":
+        return 0
+
+    if not raw.isdigit():
+        raise ValueError(f"{field_name} deve essere un numero intero >= 0")
+
+    minuti = int(raw)
+    if minuti < 0:
+        raise ValueError(f"{field_name} deve essere >= 0")
+
+    return minuti
+
+
+def _apply_stop_minutes_to_runtime(
+    stato,
+    minuti_non_funzionamento: int,
+    *,
+    max_removable_seconds: int = 0,
+) -> tuple[int, str]:
+    """
+    Sottrae dal Tempo_funzionamento solo i secondi relativi all'ultimo tratto
+    appena accumulato, evitando di intaccare runtime storici precedenti.
+    """
+    if stato is None or minuti_non_funzionamento <= 0:
+        return 0, _norm_text(getattr(stato, "Tempo_funzionamento", "")) or "0"
+
+    total_seconds = _tempo_to_seconds(stato.Tempo_funzionamento)
+    requested_seconds = minuti_non_funzionamento * 60
+
+    removable_seconds = min(
+        requested_seconds,
+        max(0, int(max_removable_seconds or 0)),
+        total_seconds,
+    )
+
+    new_total_seconds = max(0, total_seconds - removable_seconds)
+    stato.Tempo_funzionamento = _seconds_to_tempo_text(new_total_seconds)
+
+    return removable_seconds, _norm_text(stato.Tempo_funzionamento) or "0"
+
+
 def _ensure_stato_attivo(
     ordine,
     stato,
@@ -1591,6 +1637,18 @@ def api_sospendi_ordine():
     id_documento = _norm_text(data.get("id_documento"))
     id_riga = _norm_text(data.get("id_riga"))
     causale = _norm_text(data.get("causale"))
+    tempo_non_funzionamento_raw = data.get("tempo_non_funzionamento_minuti")
+    if tempo_non_funzionamento_raw is None:
+        tempo_non_funzionamento_raw = data.get("tempo_fermo_macchina")
+    if tempo_non_funzionamento_raw is None:
+        tempo_non_funzionamento_raw = data.get("tempo_macchina_ferma")
+
+    try:
+        minuti_non_funzionamento = _parse_minuti_non_funzionamento(
+            tempo_non_funzionamento_raw
+        )
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
 
     if not id_documento or not id_riga:
         return (
@@ -1642,7 +1700,12 @@ def api_sospendi_ordine():
 
         elapsed_seconds = _accumulate_runtime_until(stato, now_dt)
         stato.Stato_odp = "In Sospeso"
-        tempo_funzionamento = _norm_text(stato.Tempo_funzionamento) or "0"
+
+        removed_seconds, tempo_funzionamento = _apply_stop_minutes_to_runtime(
+            stato,
+            minuti_non_funzionamento,
+            max_removable_seconds=elapsed_seconds,
+        )
 
         _push_change_event(
             topic="ordine_sospeso",
@@ -1655,6 +1718,8 @@ def api_sospendi_ordine():
                 "tempo_funzionamento": tempo_funzionamento,
                 "data_ultima_attivazione": stato.data_ultima_attivazione,
                 "rif_ordine_princ": stato.RifOrdinePrinc,
+                "tempo_non_funzionamento_minuti": minuti_non_funzionamento,
+                "tempo_non_funzionamento_secondi": removed_seconds,
             },
         )
 
@@ -2129,6 +2194,18 @@ def api_chiudi_ordine():
     note = _norm_text(data.get("note"))
     lotti_input = data.get("lotti") or []
     chiusura_parziale = _parse_bool_flag(data.get("chiusura_parziale"))
+    tempo_non_funzionamento_raw = data.get("tempo_non_funzionamento_minuti")
+    if tempo_non_funzionamento_raw is None:
+        tempo_non_funzionamento_raw = data.get("tempo_fermo_macchina")
+    if tempo_non_funzionamento_raw is None:
+        tempo_non_funzionamento_raw = data.get("tempo_macchina_ferma")
+
+    try:
+        minuti_non_funzionamento = _parse_minuti_non_funzionamento(
+            tempo_non_funzionamento_raw
+        )
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
 
     if not id_documento or not id_riga:
         return (
@@ -2340,10 +2417,21 @@ def api_chiudi_ordine():
     ).first()
 
     tempo_finale = "0"
+    elapsed_seconds = 0
+    removed_seconds = 0
+
     if stato is not None:
         if _norm_text(stato.Stato_odp).lower().startswith("attiv"):
-            _accumulate_runtime_until(stato, now_dt)
-        tempo_finale = _norm_text(stato.Tempo_funzionamento) or "0"
+            elapsed_seconds = _accumulate_runtime_until(stato, now_dt)
+            max_removable_seconds = elapsed_seconds
+        else:
+            max_removable_seconds = _tempo_to_seconds(stato.Tempo_funzionamento)
+
+        removed_seconds, tempo_finale = _apply_stop_minutes_to_runtime(
+            stato,
+            minuti_non_funzionamento,
+            max_removable_seconds=max_removable_seconds,
+        )
 
     fase_corrente = _fase_corrente_for_export(ordine, stato=stato)
     outbox = None
@@ -2411,6 +2499,8 @@ def api_chiudi_ordine():
                 "outbox_id": outbox.outbox_id,
                 "export_status": outbox.status,
                 "lotto_prodotto": lotto_prodotto,
+                "tempo_non_funzionamento_minuti": minuti_non_funzionamento,
+                "tempo_non_funzionamento_secondi": removed_seconds,
             },
         )
     else:

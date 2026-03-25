@@ -185,3 +185,4 @@ db
 /output/
 *.*-shm
 *.*-wal
+*.sqbpro

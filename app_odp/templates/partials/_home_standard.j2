@@ -113,6 +113,16 @@
                     <option value="{{ causale }}">{{ causale }}</option>
                 {% endfor %}
             </select>
+            <div class="row"
+                 style="font-size: 20px; border-radius: 4px;">
+                <label class="form-check-label"
+                       for="toast-sosp-sl-tempo-fermo-macchina">Tempo macchina ferma (min)</label>
+                <input class="form-check mt-1 mb-1"
+                       type="number"
+                       min="0"
+                       max="30"
+                       id="toast-sosp-sl-tempo-fermo-macchina">
+            </div>
 
             <input class="btn btn-lg btn-primary"
                    type="submit"
@@ -308,11 +318,12 @@
             <div class="row"
                  style="font-size: 20px; border-radius: 4px;">
                 <label class="form-check-label"
-                       for="toast-tempo-fermo-macchina">Tempo macchina ferma (min)</label>
+                       for="toast-chiudi-sl-tempo-fermo-macchina">Tempo macchina ferma (min)</label>
                 <input class="form-check mt-1 mb-1"
                        type="number"
                        min="0"
-                       id="toast-tempo-fermo-macchina">
+                       max="30"
+                       id="toast-chiudi-sl-tempo-fermo-macchina">
             </div>
             <div class="row">
                 <div class="form-check mt-1 mb-1 col"
@@ -692,6 +703,8 @@
         const idDocumento = document.getElementById("toast2-iddocumento")?.value?.trim() || "";
         const idRiga = document.getElementById("toast2-idriga")?.value?.trim() || "";
         const causale = document.getElementById("causale_attivita_sl")?.value?.trim() || "";
+        const tempoNonFunzionamentoMinuti =
+            document.getElementById("toast-sosp-sl-tempo-fermo-macchina")?.value?.trim() || "0";
 
         if (!idDocumento || !idRiga) return;
 
@@ -706,7 +719,9 @@
                 id_documento: idDocumento,
                 id_riga: idRiga,
                 causale: causale,
-                modalita: "sl"
+                modalita: "sl",
+                tempo_non_funzionamento_minuti: tempoNonFunzionamentoMinuti
+
             })
         });
 
@@ -1351,6 +1366,8 @@
             const note = document.getElementById("toast-chiudi-sl-note")?.value?.trim() || "";
             const chiusuraParziale = document.getElementById("toast-chiudi-sl-parziale")?.checked === true;
             const chiusuraTotale = document.getElementById("toast-chiudi-sl-totale")?.checked === true;
+            const tempoNonFunzionamentoMinuti =
+                document.getElementById("toast-chiudi-sl-tempo-fermo-macchina")?.value?.trim() || "0";
 
             if (chiusuraParziale === chiusuraTotale) {
                 alert("Selezionare una sola modalità di chiusura: parziale oppure totale.");
@@ -1444,7 +1461,8 @@
                         quantita_non_conforme: String(nNonConf),
                         note: note,
                         lotti: lottiPayload,
-                        chiusura_parziale: chiusuraParziale
+                        chiusura_parziale: chiusuraParziale,
+                        tempo_non_funzionamento_minuti: tempoNonFunzionamentoMinuti
                     })
                 });
 
