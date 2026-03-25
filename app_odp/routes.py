@@ -1174,6 +1174,13 @@ def _row_key(id_documento: str, id_riga: str) -> str:
     return f"{id_documento}|{id_riga}"
 
 
+def _build_rif_ordine_princ(id_documento: str, id_riga: str) -> str:
+    return json.dumps(
+        [_norm_text(id_documento), _norm_text(id_riga)],
+        ensure_ascii=False,
+    )
+
+
 def _norm_text(value) -> str:
     return str(value or "").strip()
 
@@ -1222,6 +1229,7 @@ def _ensure_stato_attivo(
     username: str,
     when_dt: datetime,
     fase_corrente: str,
+    rif_ordine_princ: str | None = None,
 ):
     now_iso = when_dt.isoformat(timespec="seconds")
 
@@ -1241,6 +1249,7 @@ def _ensure_stato_attivo(
             RisorsaAttiva=_norm_text(getattr(ordine, "RisorsaAttiva", "")),
             LavorazioneAttiva=_norm_text(getattr(ordine, "LavorazioneAttiva", "")),
             AttrezzaggioAttivo=_norm_text(getattr(ordine, "AttrezzaggioAttivo", "")),
+            RifOrdinePrinc=rif_ordine_princ,
         )
         db.session.add(stato)
         return stato
@@ -1253,6 +1262,8 @@ def _ensure_stato_attivo(
         stato.Data_in_carico = now_iso
     if not _norm_text(stato.Tempo_funzionamento):
         stato.Tempo_funzionamento = "0"
+    if rif_ordine_princ is not None:
+        stato.RifOrdinePrinc = rif_ordine_princ
 
     stato.data_ultima_attivazione = now_iso
     return stato
@@ -1412,6 +1423,38 @@ def api_prendi_ordine():
 
     id_documento = _norm_text(data.get("id_documento"))
     id_riga = _norm_text(data.get("id_riga"))
+    id_documento_principale = _norm_text(data.get("id_documento_principale"))
+    id_riga_principale = _norm_text(data.get("id_riga_principale"))
+
+    rif_ordine_princ = None
+
+    if id_documento_principale or id_riga_principale:
+        if not id_documento_principale or not id_riga_principale:
+            return (
+                jsonify(
+                    {
+                        "ok": False,
+                        "error": "Per l'ordine mascherato servono sia id_documento_principale sia id_riga_principale",
+                    }
+                ),
+                400,
+            )
+
+        if id_documento_principale == id_documento and id_riga_principale == id_riga:
+            return (
+                jsonify(
+                    {
+                        "ok": False,
+                        "error": "L'ordine principale non può coincidere con l'ordine preso in carico",
+                    }
+                ),
+                400,
+            )
+
+        rif_ordine_princ = _build_rif_ordine_princ(
+            id_documento_principale,
+            id_riga_principale,
+        )
 
     if not id_documento or not id_riga:
         return (
@@ -1488,6 +1531,7 @@ def api_prendi_ordine():
             username=_current_username(),
             when_dt=now_dt,
             fase_corrente=fase_corrente,
+            rif_ordine_princ=rif_ordine_princ,
         )
 
         _push_change_event(
@@ -1610,6 +1654,7 @@ def api_sospendi_ordine():
                 "elapsed_seconds": elapsed_seconds,
                 "tempo_funzionamento": tempo_funzionamento,
                 "data_ultima_attivazione": stato.data_ultima_attivazione,
+                "rif_ordine_princ": stato.RifOrdinePrinc,
             },
         )
 
@@ -2465,7 +2510,8 @@ def api_chiudi_ordine():
             NoteChiusura=note_chiusura_log,
             ClosedBy=_current_username(),
             ClosedAt=now_iso,
-            AttrezzaggioAttivo=_norm_text(ordine, "AttrezzaggioAttivo"),
+            AttrezzaggioAttivo=_norm_text(ordine.AttrezzaggioAttivo),
+            RifOrdinePrinc=_norm_text(getattr(ordine, "RifOrdinePrinc", "")),
         )
     )
 
@@ -2483,6 +2529,7 @@ def api_chiudi_ordine():
                 data_ultima_attivazione=stato.data_ultima_attivazione,
                 ClosedBy=_current_username(),
                 ClosedAt=now_iso,
+                RifOrdinePrinc=_norm_text(getattr(stato, "RifOrdinePrinc", "")),
             )
         )
 
@@ -2869,7 +2916,8 @@ def api_chiudi_ordine_montaggio_macchina():
             QtyDaLavorare=_norm_text(ordine.QtyDaLavorare),
             RisorsaAttiva=_norm_text(ordine.RisorsaAttiva),
             LavorazioneAttiva=_norm_text(ordine.LavorazioneAttiva),
-            AttrezzaggioAttivo=_norm_text(ordine, "AttrezzaggioAttivo"),
+            AttrezzaggioAttivo=_norm_text(ordine.AttrezzaggioAttivo),
+            RifOrdinePrinc=_norm_text(getattr(ordine, "RifOrdinePrinc", "")),
         )
     )
 
@@ -2887,6 +2935,7 @@ def api_chiudi_ordine_montaggio_macchina():
                 data_ultima_attivazione=stato.data_ultima_attivazione,
                 ClosedBy=_current_username(),
                 ClosedAt=now_iso,
+                RifOrdinePrinc=_norm_text(getattr(stato, "RifOrdinePrinc", "")),
             )
         )
 

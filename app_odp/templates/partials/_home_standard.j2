@@ -35,6 +35,32 @@
         <input type="hidden"
                data-bind="fase"
                id="toast1-fase">
+        <div class="row"
+             style="font-size: 20px;  border-radius: 4px;">
+            <label class="form-check-label"
+                   for="toast-ordine-mascherato">Ordine mascherato</label>
+            <input class="form-check mt-1 mb-1"
+                   type="checkbox"
+                   id="toast-ordine-mascherato">
+        </div>
+        <div class="row mt-2 w-100"
+             id="toast-ordine-mascherato-wrapper"
+             style="display: none; font-size: 20px; background: #f8f9fa; border-radius: 4px; padding: 8px;">
+            <label class="form-label mb-1"
+                   for="toast-ordine-mascherato-select">
+                Seleziona ordine principale attivo
+            </label>
+
+            <select id="toast-ordine-mascherato-select"
+                    class="form-select">
+                <option value="">-- Seleziona ordine attivo --</option>
+            </select>
+
+            <input type="hidden"
+                   id="toast-ordine-mascherato-iddocumento-principale">
+            <input type="hidden"
+                   id="toast-ordine-mascherato-idriga-principale">
+        </div>
 
         <button class="btn btn-primary"
                 id="btn-prendi-ordine"
@@ -279,26 +305,35 @@
 
         <div class="container-sm"
              style="padding:15px">
+            <div class="row"
+                 style="font-size: 20px; border-radius: 4px;">
+                <label class="form-check-label"
+                       for="toast-tempo-fermo-macchina">Tempo macchina ferma (min)</label>
+                <input class="form-check mt-1 mb-1"
+                       type="number"
+                       min="0"
+                       id="toast-tempo-fermo-macchina">
+            </div>
             <div class="row">
                 <div class="form-check mt-1 mb-1 col"
-                     style="font-size: 20px; background: #f8f9fa; border-radius: 4px;">
-                    <input class="form-check-input"
-                           type="checkbox"
-                           id="toast-chiudi-sl-parziale">
+                     style="font-size: 20px; border-radius: 4px;">
                     <label class="form-check-label"
                            for="toast-chiudi-sl-parziale">
                         Chiusura parziale ordine
                     </label>
-                </div>
-                <div class="form-check mt-1 mb-1 col"
-                     style="font-size: 20px; background: #f8f9fa; border-radius: 4px;">
                     <input class="form-check-input"
                            type="checkbox"
-                           id="toast-chiudi-sl-totale">
+                           id="toast-chiudi-sl-parziale">
+                </div>
+                <div class="form-check mt-1 mb-1 col"
+                     style="font-size: 20px; border-radius: 4px;">
                     <label class="form-check-label"
                            for="toast-chiudi-sl-totale">
                         Chiusura totale ordine
                     </label>
+                    <input class="form-check-input"
+                           type="checkbox"
+                           id="toast-chiudi-sl-totale">
                 </div>
             </div>
         </div>
@@ -363,7 +398,7 @@
                             <th data-sort="date"
                                 data-date-format="dd/mm/yyyy">Consegna
                             </th>
-                            <th data-sort="num">T. Attrez.</th>
+                            <th data-sort="num">Min Attrez.</th>
                             <th data-sort="text">Risorsa</th>
                         </tr>
                         </thead>
@@ -423,7 +458,7 @@
                             <th data-sort="text">Descrizione</th>
                             <th data-sort="text">Quantità</th>
                             <th data-sort="text">Data</th>
-                            <th data-sort="num">T. Attrez.</th>
+                            <th data-sort="num">Min Attrez.</th>
                             <th data-sort="text">Risorsa</th>
                             <th data-sort="text">Stato</th>
                         </tr>
@@ -578,6 +613,15 @@
         const btn = this;
         const idDocumento = document.getElementById("toast1-iddocumento")?.value?.trim() || "";
         const idRiga = document.getElementById("toast1-idriga")?.value?.trim() || "";
+        const chkMascherato = document.getElementById("toast-ordine-mascherato");
+        const selectMascherato = document.getElementById("toast-ordine-mascherato-select");
+        const idDocumentoPrincipale = document.getElementById("toast-ordine-mascherato-iddocumento-principale")?.value?.trim() || "";
+        const idRigaPrincipale = document.getElementById("toast-ordine-mascherato-idriga-principale")?.value?.trim() || "";
+
+        if (chkMascherato?.checked && (!idDocumentoPrincipale || !idRigaPrincipale || !selectMascherato?.value)) {
+            alert("Seleziona l'ordine principale attivo da associare all'ordine mascherato.");
+            return;
+        }
 
         if (!idDocumento || !idRiga) {
             console.error("IdDocumento o IdRiga mancanti");
@@ -596,7 +640,9 @@
                 credentials: "same-origin",
                 body: JSON.stringify({
                     id_documento: idDocumento,
-                    id_riga: idRiga
+                    id_riga: idRiga,
+                    id_documento_principale: idDocumentoPrincipale,
+                    id_riga_principale: idRigaPrincipale
                 })
             });
 
@@ -1482,4 +1528,134 @@
             };
         }
     }
+</script>
+<script>
+    (() => {
+        const chkMascherato = document.getElementById("toast-ordine-mascherato");
+        const wrapperMascherato = document.getElementById("toast-ordine-mascherato-wrapper");
+        const selectMascherato = document.getElementById("toast-ordine-mascherato-select");
+        const hidIdDocPrincipale = document.getElementById("toast-ordine-mascherato-iddocumento-principale");
+        const hidIdRigaPrincipale = document.getElementById("toast-ordine-mascherato-idriga-principale");
+        const toastEl = document.getElementById("toast-1");
+
+        if (!chkMascherato || !wrapperMascherato || !selectMascherato || !toastEl) return;
+
+        function resetOrdineMascheratoUi() {
+            chkMascherato.checked = false;
+            wrapperMascherato.style.display = "none";
+            selectMascherato.innerHTML = '<option value="">-- Seleziona ordine attivo --</option>';
+            selectMascherato.disabled = false;
+            hidIdDocPrincipale.value = "";
+            hidIdRigaPrincipale.value = "";
+        }
+
+        function getRowValue(row, key, fallbackCol = "") {
+            const dsValue = row?.dataset?.[key];
+            if (typeof dsValue === "string" && dsValue.trim()) {
+                return dsValue.trim();
+            }
+
+            if (fallbackCol) {
+                const cell = row.querySelector(`td[data-col="${fallbackCol}"]`);
+                if (cell?.textContent?.trim()) {
+                    return cell.textContent.trim();
+                }
+            }
+
+            return "";
+        }
+
+        function collectOrdiniAttivi() {
+            const rows = document.querySelectorAll("#ordini_in_corso tbody tr[data-row-key]");
+            const result = [];
+
+            rows.forEach((row) => {
+                const stato = getStatoOrdine(row);
+                if (stato !== "Attivo") return;
+
+                const rowKey = row.dataset.rowKey || "";
+                const [idDocumentoFromKey = "", idRigaFromKey = ""] = rowKey.split("|");
+
+                const idDocumento = getRowValue(row, "iddocumento") || idDocumentoFromKey;
+                const idRiga = getRowValue(row, "idriga") || idRigaFromKey;
+                const ordine = getRowValue(row, "ordine", "ordine");
+                const codice = getRowValue(row, "codice", "codice");
+                const descrizione = getRowValue(row, "descrizione", "descrizione");
+
+                if (!idDocumento || !idRiga || !ordine) return;
+
+                result.push({
+                    idDocumento,
+                    idRiga,
+                    ordine,
+                    codice,
+                    descrizione
+                });
+            });
+
+            return result;
+        }
+
+        function popolaSelectOrdiniAttivi() {
+            const ordiniAttivi = collectOrdiniAttivi();
+
+            selectMascherato.innerHTML = "";
+
+            const placeholder = document.createElement("option");
+            placeholder.value = "";
+            placeholder.textContent = ordiniAttivi.length
+                ? "-- Seleziona ordine attivo --"
+                : "Nessun ordine attivo disponibile";
+            selectMascherato.appendChild(placeholder);
+
+            ordiniAttivi.forEach((ordine) => {
+                const opt = document.createElement("option");
+                opt.value = `${ordine.idDocumento}|${ordine.idRiga}`;
+                opt.dataset.iddocumento = ordine.idDocumento;
+                opt.dataset.idriga = ordine.idRiga;
+
+                const parts = [ordine.ordine];
+                if (ordine.codice) parts.push(ordine.codice);
+                if (ordine.descrizione) parts.push(ordine.descrizione);
+
+                opt.textContent = parts.join(" - ");
+                selectMascherato.appendChild(opt);
+            });
+
+            selectMascherato.disabled = ordiniAttivi.length === 0;
+            hidIdDocPrincipale.value = "";
+            hidIdRigaPrincipale.value = "";
+        }
+
+        chkMascherato.addEventListener("change", function () {
+            if (this.checked) {
+                wrapperMascherato.style.display = "";
+                popolaSelectOrdiniAttivi();
+                return;
+            }
+
+            wrapperMascherato.style.display = "none";
+            selectMascherato.value = "";
+            hidIdDocPrincipale.value = "";
+            hidIdRigaPrincipale.value = "";
+        });
+
+        selectMascherato.addEventListener("change", function () {
+            const selected = this.options[this.selectedIndex];
+
+            hidIdDocPrincipale.value = selected?.dataset?.iddocumento || "";
+            hidIdRigaPrincipale.value = selected?.dataset?.idriga || "";
+        });
+
+        document.addEventListener("click", function (event) {
+            const btn = event.target.closest('[data-bs-target="#toast-1"]');
+            if (!btn) return;
+
+            requestAnimationFrame(() => {
+                resetOrdineMascheratoUi();
+            });
+        });
+
+        toastEl.addEventListener("hidden.bs.toast", resetOrdineMascheratoUi);
+    })();
 </script>

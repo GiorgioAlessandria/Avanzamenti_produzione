@@ -265,6 +265,8 @@ class InputOdpLog(db.Model):
     QtyDaLavorare = db.Column(db.Text)
     RisorsaAttiva = db.Column(db.Text)
     LavorazioneAttiva = db.Column(db.Text)
+    AttrezzaggioAttivo = db.Column(db.Text)
+    RifOrdinePrinc = db.Column(db.Text)
 
     # dati chiusura
     QuantitaConforme = db.Column(db.Text)
@@ -641,6 +643,30 @@ class InputOdp(db.Model):
             db.session.add(row)
         return row
 
+    @staticmethod
+    def _active_value_from_phase_list(raw_value, fase_attiva) -> str:
+        raw = InputOdp._text(raw_value)
+        if not raw:
+            return ""
+
+        try:
+            parsed = json.loads(raw)
+        except Exception:
+            return raw
+
+        if not isinstance(parsed, list):
+            return InputOdp._text(parsed)
+
+        try:
+            idx = int(float(InputOdp._text(fase_attiva))) - 1
+        except (TypeError, ValueError):
+            idx = 0
+
+        if 0 <= idx < len(parsed):
+            return InputOdp._text(parsed[idx])
+
+        return InputOdp._text(parsed[0]) if parsed else ""
+
     @property
     def StatoOrdine(self) -> str:
         stato_runtime = self._text(getattr(self.runtime_row, "Stato_odp", ""))
@@ -703,7 +729,14 @@ class InputOdp(db.Model):
 
     @property
     def AttrezzaggioAttivo(self) -> str:
-        return self._text(getattr(self.runtime_row, "AttrezzaggioAttivo", ""))
+        valore_runtime = self._text(getattr(self.runtime_row, "AttrezzaggioAttivo", ""))
+        if valore_runtime:
+            return valore_runtime
+
+        return self._active_value_from_phase_list(
+            self.TempoAttrezzaggio,
+            self.FaseAttiva,
+        )
 
     @AttrezzaggioAttivo.setter
     def AttrezzaggioAttivo(self, value):
@@ -724,6 +757,15 @@ class InputOdp(db.Model):
 
     def __repr__(self):
         return f"<{self.__dict__}>"
+
+    @property
+    def RifOrdinePrinc(self) -> str:
+        return self._text(getattr(self.runtime_row, "RifOrdinePrinc", ""))
+
+    @RifOrdinePrinc.setter
+    def RifOrdinePrinc(self, value):
+        rt = self._ensure_runtime_row()
+        rt.RifOrdinePrinc = self._text(value)
 
 
 class StatoOdpLog(db.Model):  # DA MODIFICARE
@@ -749,7 +791,7 @@ class StatoOdpLog(db.Model):  # DA MODIFICARE
     Utente_operazione = db.Column(db.Text)
     Fase = db.Column(db.Text)
     data_ultima_attivazione = db.Column(db.Text)
-
+    RifOrdinePrinc = db.Column(db.Text)
     ClosedBy = db.Column(db.Text)
     ClosedAt = db.Column(db.Text)
 
@@ -879,6 +921,7 @@ class InputOdpRuntime(db.Model):
     QtyDaLavorare = db.Column(db.Text)
     RisorsaAttiva = db.Column(db.Text)
     LavorazioneAttiva = db.Column(db.Text)
+    RifOrdinePrinc = db.Column(db.Text)
     AttrezzaggioAttivo = db.Column(db.Text)
 
     __table_args__ = (

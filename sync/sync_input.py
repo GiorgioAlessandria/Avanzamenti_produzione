@@ -617,6 +617,7 @@ INPUT_ODP_RUNTIME_COLS = [
     "QtyDaLavorare",
     "RisorsaAttiva",
     "LavorazioneAttiva",
+    "AttrezzaggioAttivo",
 ]
 
 INPUT_ODP_ERP_UPDATE_COLS = [c for c in INPUT_ODP_ERP_COLS if c not in PK_COLS]
@@ -720,6 +721,7 @@ def _build_runtime_seed(df_input_odp: pd.DataFrame) -> pd.DataFrame:
             "Quantita",
             "CodLavorazione",
             "CodRisorsaProd",
+            "TempoAttrezzaggio",
         ]
     ].copy()
 
@@ -730,6 +732,9 @@ def _build_runtime_seed(df_input_odp: pd.DataFrame) -> pd.DataFrame:
         estrai_lavorazione_attiva
     )
     df_runtime["LavorazioneAttiva"] = df_runtime["CodLavorazione"].apply(
+        estrai_lavorazione_attiva
+    )
+    df_runtime["AttrezzaggioAttivo"] = df_runtime["TempoAttrezzaggio"].apply(
         estrai_lavorazione_attiva
     )
 

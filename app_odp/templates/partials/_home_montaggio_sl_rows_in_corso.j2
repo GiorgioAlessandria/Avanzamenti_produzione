@@ -25,7 +25,8 @@
                     {{ singolo_odp.CodArt }}
                 </button>
             </td>
-            <td>{{ singolo_odp.IndiceModifica }}</td>
+            {% set rev = singolo_odp.IndiceModifica %}
+            <td>{{ "-" if rev is none or (rev|string|trim|upper) == "X" else rev }}</td>
             <td>{{ singolo_odp.DesArt }}</td>
             <td>{{ singolo_odp.QtyDaLavorare or singolo_odp.Quantita }}</td>
             <td>{{ singolo_odp.DataFineSched | db_date("%Y-%m-%d %H:%M:%S","%d/%m/%Y") }}</td>
