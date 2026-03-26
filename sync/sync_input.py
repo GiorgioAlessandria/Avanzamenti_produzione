@@ -612,6 +612,8 @@ INPUT_ODP_RUNTIME_COLS = [
     "IdDocumento",
     "IdRiga",
     "RifRegistraz",
+    "Stato_odp",
+    "Utente_operazione",
     "FaseAttiva",
     "Note",
     "QtyDaLavorare",
@@ -725,6 +727,8 @@ def _build_runtime_seed(df_input_odp: pd.DataFrame) -> pd.DataFrame:
         ]
     ].copy()
 
+    df_runtime["Stato_odp"] = "Pianificata"
+    df_runtime["Utente_operazione"] = "sync_input"
     df_runtime["FaseAttiva"] = "1"
     df_runtime["Note"] = None
     df_runtime["QtyDaLavorare"] = df_runtime["Quantita"]
@@ -981,23 +985,43 @@ def elaborazione_dati(session: Session) -> None:
         righe_inserite_lotti,
     )
 
-    # evento nuovo ordine solo per righe ERP realmente nuove
+    # evento nuova riga ERP
     if righe_inserite_odp > 0:
-        df_ev = df_new_erp.sort_values(["IdDocumento", "IdRiga"], ascending=False).head(
-            righe_inserite_odp
-        )
-        payload = (
-            df_ev["IdDocumento"].astype(str) + "," + df_ev["IdRiga"].astype(str)
+        df_ev_new = df_new_erp.sort_values(
+            ["IdDocumento", "IdRiga"], ascending=False
+        ).head(righe_inserite_odp)
+
+        payload_new = (
+            df_ev_new["IdDocumento"].astype(str) + "," + df_ev_new["IdRiga"].astype(str)
         ).tolist()
-        scope = df_ev["CodReparto"].tolist()
+
+        scope_new = df_ev_new["CodReparto"].astype(str).tolist()
 
         emit_event(
             session=session,
             topic="nuovo_ordine",
-            scope=json.dumps(scope),
-            payload_json=json.dumps(payload),
+            scope=json.dumps(scope_new, ensure_ascii=False),
+            payload_json=json.dumps(payload_new, ensure_ascii=False),
         )
-        emit_event(session=session, topic="nuovo_ordine")
+
+    # evento aggiornamento ordine esistente
+    if righe_aggiornate_odp > 0:
+        df_ev_upd = df_existing_erp.sort_values(
+            ["IdDocumento", "IdRiga"], ascending=False
+        ).head(righe_aggiornate_odp)
+
+        payload_upd = (
+            df_ev_upd["IdDocumento"].astype(str) + "," + df_ev_upd["IdRiga"].astype(str)
+        ).tolist()
+
+        scope_upd = df_ev_upd["CodReparto"].astype(str).tolist()
+
+        emit_event(
+            session=session,
+            topic="aggiornamento_ordine",
+            scope=json.dumps(scope_upd, ensure_ascii=False),
+            payload_json=json.dumps(payload_upd, ensure_ascii=False),
+        )
 
 
 # endregion
