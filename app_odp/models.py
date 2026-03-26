@@ -177,21 +177,6 @@ class Causaliattivita(db.Model):
         return f"<Causaliattivita {self.__dict__}>"
 
 
-class ChangeEvent(db.Model):
-    __tablename__ = "change_event"
-
-    id = db.Column(db.Integer, primary_key=True)
-    topic = db.Column(db.Text, nullable=False)
-    scope = db.Column(db.Text)
-    payload_json = db.Column(db.Text)
-    created_at = db.Column(
-        db.Text, nullable=False, default=lambda: datetime.now(ZoneInfo("Europe/Rome"))
-    )
-
-    def __repr__(self):
-        return f"<ChangeEvent {self.__dict__}>"
-
-
 class Famiglia(db.Model):
     __tablename__ = "famiglia"
 
@@ -310,6 +295,12 @@ class OdpRuntimeLog(db.Model):
     OperationGroupId = db.Column(db.Text, index=True)
     EventSequence = db.Column(db.Integer)
 
+    Topic = db.Column(db.Text, index=True)  # ex ChangeEvent.topic
+    Scope = db.Column(db.Text, index=True)  # ex ChangeEvent.scope
+    CodArt = db.Column(db.Text, index=True)
+    CodReparto = db.Column(db.Text, index=True)
+    PayloadJson = db.Column(db.Text)  # extra leggibile/debug
+
     IdDocumento = db.Column(db.Text, nullable=False, index=True)
     IdRiga = db.Column(db.Text, nullable=False, index=True)
     RifRegistraz = db.Column(db.Text)
@@ -351,13 +342,11 @@ class OdpRuntimeLog(db.Model):
     Note = db.Column(db.Text)
     RifOrdinePrinc = db.Column(db.Text)
 
-    __table_args__ = (db.Index("ix_odp_runtime_log_doc_riga", "IdDocumento", "IdRiga"),)
-
-    def __repr__(self):
-        return (
-            f"<OdpRuntimeLog {self.log_id} {self.Azione} "
-            f"{self.IdDocumento}/{self.IdRiga}>"
-        )
+    __table_args__ = (
+        db.Index("ix_odp_runtime_log_doc_riga", "IdDocumento", "IdRiga"),
+        db.Index("ix_odp_runtime_log_topic", "Topic"),
+        db.Index("ix_odp_runtime_log_scope", "Scope"),
+    )
 
 
 class Lavorazioni(db.Model):

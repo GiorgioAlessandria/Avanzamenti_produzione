@@ -21,7 +21,6 @@ from app_odp.models import (
     InputOdp,
     InputOdpRuntime,
     db,
-    ChangeEvent,
     Causaliattivita,
     GiacenzaLotti,
     LottiUsatiLog,
@@ -113,7 +112,7 @@ def _base_odp_query():
 
 
 def _last_change_event_id() -> int:
-    return db.session.query(func.max(ChangeEvent.id)).scalar() or 0
+    return db.session.query(func.max(OdpRuntimeLog.log_id)).scalar() or 0
 
 
 def _parse_qty_decimal(value) -> Decimal:
@@ -296,7 +295,6 @@ def _advance_or_finalize_phase(
 
     if chiusura_parziale:
         ordine.FaseAttiva = fase_corrente
-        ordine.StatoOrdine = "In Sospeso"
         ordine.QtyDaLavorare = qty_residua_text
         _sync_active_fields_for_phase(ordine, fase_corrente)
         _set_runtime_sospeso(stato, username, fase_corrente)
@@ -308,7 +306,6 @@ def _advance_or_finalize_phase(
 
     if is_last_phase:
         ordine.FaseAttiva = fase_corrente
-        ordine.StatoOrdine = "Chiusa"
         ordine.QtyDaLavorare = "0"
         _sync_active_fields_for_phase(ordine, fase_corrente)
         return {
@@ -318,7 +315,6 @@ def _advance_or_finalize_phase(
         }
 
     ordine.FaseAttiva = next_phase
-    ordine.StatoOrdine = "Pianificata"
     ordine.QtyDaLavorare = _decimal_to_text(q_ok)
     _sync_active_fields_for_phase(ordine, next_phase)
     _set_runtime_pianificata(stato, username)
@@ -1648,31 +1644,7 @@ def _fragments_for_ordine_tab(
     return tab, fragments
 
 
-def _push_change_event(
-    topic: str, ordine: InputOdp, extra_payload: dict | None = None
-) -> ChangeEvent:
-    reparto_codes = _extract_codes_from_cell(ordine.CodReparto)
-    payload = {
-        "id_documento": ordine.IdDocumento,
-        "id_riga": ordine.IdRiga,
-        "row_key": _row_key(ordine.IdDocumento, ordine.IdRiga),
-        "rif_registraz": ordine.RifRegistraz,
-        "cod_reparto": ordine.CodReparto,
-        "stato_ordine": ordine.StatoOrdine,
-    }
-    if extra_payload:
-        payload.update(extra_payload)
-
-    evt = ChangeEvent(
-        topic=topic,
-        scope=reparto_codes[0] if reparto_codes else str(ordine.CodReparto or ""),
-        payload_json=json.dumps(payload),
-    )
-    db.session.add(evt)
-    return evt
-
-
-def _push_change_event_and_runtime_log(
+def _append_operazione_log(
     *,
     topic: str,
     ordine,
@@ -1696,26 +1668,23 @@ def _push_change_event_and_runtime_log(
     fase: str = "",
     extra_payload: dict | None = None,
 ):
-    operation_group_id = _build_operation_group_id(
-        ordine=ordine,
-        action=action,
-        when_iso=event_at,
-    )
+    runtime_pre = runtime_pre or {}
+    runtime_post = runtime_post or {}
+
+    reparto_codes = _extract_codes_from_cell(ordine.CodReparto)
+    scope = reparto_codes[0] if reparto_codes else _norm_text(ordine.CodReparto)
 
     payload = {
         "azione": action,
         "utente": username,
         "fase": _first_not_blank(
             fase,
-            _norm_text((runtime_post or {}).get("fase")),
-            _norm_text((runtime_pre or {}).get("fase")),
+            _norm_text(runtime_post.get("fase")),
+            _norm_text(runtime_pre.get("fase")),
             default="",
         ),
-        "tempo_funzionamento": _norm_text(
-            (runtime_post or {}).get("tempo_funzionamento")
-        ),
+        "tempo_funzionamento": _norm_text(runtime_post.get("tempo_funzionamento")),
     }
-
     if q_ok not in (None, ""):
         payload["quantita_conforme"] = _norm_text(q_ok)
     if q_nok not in (None, ""):
@@ -1733,36 +1702,59 @@ def _push_change_event_and_runtime_log(
     if extra_payload:
         payload.update(extra_payload)
 
-    evt = _push_change_event(
-        topic=topic,
-        ordine=ordine,
-        extra_payload=payload,
-    )
-
-    _add_runtime_log(
-        operation_group_id=operation_group_id,
-        event_sequence=1,
+    operation_group_id = _build_operation_group_id(
         ordine=ordine,
         action=action,
-        event_at=event_at,
-        username=username,
-        runtime_pre=runtime_pre,
-        runtime_post=runtime_post,
-        stato_ordine_pre=stato_ordine_pre,
-        stato_ordine_post=stato_ordine_post,
-        qty_pre=qty_pre,
-        qty_post=qty_post,
-        q_ok=q_ok,
-        q_nok=q_nok,
-        elapsed_seconds=elapsed_seconds,
-        tempo_non_funzionamento_minuti=tempo_non_funzionamento_minuti,
-        tempo_non_funzionamento_secondi=tempo_non_funzionamento_secondi,
-        causale=causale,
-        note=note,
-        motivo=motivo,
+        when_iso=event_at,
     )
 
-    return evt, operation_group_id
+    row = OdpRuntimeLog(
+        OperationGroupId=operation_group_id,
+        EventSequence=1,
+        Topic=topic,
+        Scope=scope,
+        CodArt=_norm_text(ordine.CodArt),
+        CodReparto=_norm_text(ordine.CodReparto),
+        PayloadJson=json.dumps(payload, ensure_ascii=False),
+        IdDocumento=ordine.IdDocumento,
+        IdRiga=ordine.IdRiga,
+        RifRegistraz=ordine.RifRegistraz,
+        Azione=action,
+        Motivo=_norm_text(motivo),
+        UtenteOperazione=username,
+        EventAt=event_at,
+        StatoOdpPre=_norm_text(runtime_pre.get("stato_odp")),
+        StatoOdpPost=_norm_text(runtime_post.get("stato_odp")),
+        StatoOrdinePre=_norm_text(stato_ordine_pre),
+        StatoOrdinePost=_norm_text(stato_ordine_post),
+        FasePre=_norm_text(runtime_pre.get("fase")),
+        FasePost=_norm_text(runtime_post.get("fase")),
+        DataInCaricoPre=_norm_text(runtime_pre.get("data_in_carico")),
+        DataInCaricoPost=_norm_text(runtime_post.get("data_in_carico")),
+        DataUltimaAttivazionePre=_norm_text(runtime_pre.get("data_ultima_attivazione")),
+        DataUltimaAttivazionePost=_norm_text(
+            runtime_post.get("data_ultima_attivazione")
+        ),
+        TempoFunzionamentoPre=_norm_text(runtime_pre.get("tempo_funzionamento")),
+        TempoFunzionamentoPost=_norm_text(runtime_post.get("tempo_funzionamento")),
+        ElapsedSeconds=_norm_text(elapsed_seconds),
+        TempoNonFunzionamentoMinuti=_norm_text(tempo_non_funzionamento_minuti),
+        TempoNonFunzionamentoSecondi=_norm_text(tempo_non_funzionamento_secondi),
+        QtyDaLavorarePre=_norm_text(qty_pre),
+        QtyDaLavorarePost=_norm_text(qty_post),
+        QuantitaConforme=_norm_text(q_ok),
+        QuantitaNonConforme=_norm_text(q_nok),
+        Causale=_norm_text(causale),
+        Note=_norm_text(note),
+        RifOrdinePrinc=_first_not_blank(
+            runtime_post.get("rif_ordine_princ"),
+            runtime_pre.get("rif_ordine_princ"),
+            default="",
+        ),
+    )
+    db.session.add(row)
+    db.session.flush()
+    return row
 
 
 def _delete_closed_order_from_runtime_db(ordine, stato=None) -> None:
@@ -1775,9 +1767,6 @@ def _delete_closed_order_from_runtime_db(ordine, stato=None) -> None:
             IdDocumento=ordine.IdDocumento,
             IdRiga=ordine.IdRiga,
         ).first()
-
-    if stato is not None:
-        db.session.delete(stato)
 
     db.session.delete(ordine)
     db.session.flush()
@@ -1885,7 +1874,6 @@ def api_prendi_ordine():
     if stato_norm == "pianificata":
         now_dt = _now_rome_dt()
 
-        ordine.StatoOrdine = "Attivo"
         _sync_active_fields_for_phase(ordine, fase_corrente)
 
         stato = InputOdpRuntime.query.filter_by(
@@ -1893,7 +1881,7 @@ def api_prendi_ordine():
             IdRiga=ordine.IdRiga,
         ).first()
         runtime_pre = _runtime_snapshot(stato)
-        stato_ordine_pre = _norm_text(stato_attuale)
+        stato_ordine_pre = _norm_text(ordine.StatoOrdine)
         qty_pre = _qty_da_lavorare_text(ordine)
         now_iso = now_dt.isoformat(timespec="seconds")
 
@@ -1907,7 +1895,7 @@ def api_prendi_ordine():
         )
         runtime_post = _runtime_snapshot(stato)
 
-        _push_change_event_and_runtime_log(
+        _append_operazione_log(
             topic="ordine_preso",
             ordine=ordine,
             action="presa_in_carico",
@@ -2000,14 +1988,13 @@ def api_sospendi_ordine():
 
     if stato_norm == "attivo":
         now_dt = _now_rome_dt()
-        ordine.StatoOrdine = "In Sospeso"
 
         stato = InputOdpRuntime.query.filter_by(
             IdDocumento=ordine.IdDocumento,
             IdRiga=ordine.IdRiga,
         ).first()
         runtime_pre = _runtime_snapshot(stato)
-        stato_ordine_pre = _norm_text(stato_attuale)
+        stato_ordine_pre = _norm_text(ordine.StatoOrdine)
         qty_pre = _qty_da_lavorare_text(ordine)
         now_iso = now_dt.isoformat(timespec="seconds")
 
@@ -2040,7 +2027,7 @@ def api_sospendi_ordine():
 
         runtime_post = _runtime_snapshot(stato)
 
-        _push_change_event_and_runtime_log(
+        _append_operazione_log(
             topic="ordine_sospeso",
             ordine=ordine,
             action="sospensione",
@@ -2155,12 +2142,15 @@ def api_sospendi_ordine_montaggio_macchina():
 
     if stato_norm == "attivo":
         now_dt = _now_rome_dt()
-        ordine.StatoOrdine = "In Sospeso"
 
         stato = InputOdpRuntime.query.filter_by(
             IdDocumento=ordine.IdDocumento,
             IdRiga=ordine.IdRiga,
         ).first()
+        runtime_pre = _runtime_snapshot(stato)
+        stato_ordine_pre = _norm_text(ordine.StatoOrdine)
+        qty_pre = _qty_da_lavorare_text(ordine)
+        now_iso = now_dt.isoformat(timespec="seconds")
 
         if stato is None:
             db.session.rollback()
@@ -2181,20 +2171,12 @@ def api_sospendi_ordine_montaggio_macchina():
 
         stato.Stato_odp = "In Sospeso"
         stato.Utente_operazione = _current_username()
-        db.session.commit()
-        changed = True
-        message = "Ordine macchina sospeso"
-        tab, fragments = _fragments_for_ordine_tab(policy, ordine)
-        runtime_pre = _runtime_snapshot(stato)
-        stato_ordine_pre = _norm_text(stato_attuale)
-        qty_pre = _qty_da_lavorare_text(ordine)
-        now_iso = now_dt.isoformat(timespec="seconds")
 
         elapsed_seconds = _accumulate_runtime_until(stato, now_dt)
         tempo_funzionamento = _norm_text(stato.Tempo_funzionamento) or "0"
         runtime_post = _runtime_snapshot(stato)
 
-        _push_change_event_and_runtime_log(
+        _append_operazione_log(
             topic="ordine_sospeso_montaggio_macchina",
             ordine=ordine,
             action="sospensione_macchina",
@@ -2215,12 +2197,16 @@ def api_sospendi_ordine_montaggio_macchina():
             },
         )
 
+        db.session.commit()
+        changed = True
+        message = "Ordine macchina sospeso"
+
     elif stato_norm == "in sospeso":
         message = "Ordine macchina già in sospeso"
 
     else:
         message = f"Ordine macchina non sospendibile: stato attuale '{stato_attuale}'"
-
+    tab, fragments = _fragments_for_ordine_tab(policy, ordine)
     return (
         jsonify(
             {
@@ -2313,13 +2299,30 @@ def api_riattiva_ordine():
     if stato_norm == "in sospeso":
         now_dt = _now_rome_dt()
 
-        ordine.StatoOrdine = "Attivo"
         _sync_active_fields_for_phase(ordine, fase_corrente)
 
         stato = InputOdpRuntime.query.filter_by(
             IdDocumento=ordine.IdDocumento,
             IdRiga=ordine.IdRiga,
         ).first()
+
+        if stato is None:
+            db.session.rollback()
+            return (
+                jsonify(
+                    {
+                        "ok": False,
+                        "error": (
+                            "Record runtime non trovato per questo ordine. "
+                            "La riattivazione non può ripristinare correttamente il runtime."
+                        ),
+                        "id_documento": ordine.IdDocumento,
+                        "id_riga": ordine.IdRiga,
+                    }
+                ),
+                409,
+            )
+
         runtime_pre = _runtime_snapshot(stato)
         stato_ordine_pre = _norm_text(stato_attuale)
         qty_pre = _qty_da_lavorare_text(ordine)
@@ -2335,7 +2338,7 @@ def api_riattiva_ordine():
 
         runtime_post = _runtime_snapshot(stato)
 
-        _push_change_event_and_runtime_log(
+        _append_operazione_log(
             topic="ordine_riattivato",
             ordine=ordine,
             action="riattivazione",
@@ -2477,7 +2480,6 @@ def api_riattiva_ordine_montaggio_macchina():
     if stato_norm == "in sospeso":
         now_dt = _now_rome_dt()
 
-        ordine.StatoOrdine = "Attivo"
         _sync_active_fields_for_phase(ordine, fase_corrente)
 
         stato = InputOdpRuntime.query.filter_by(
@@ -2485,15 +2487,23 @@ def api_riattiva_ordine_montaggio_macchina():
             IdRiga=ordine.IdRiga,
         ).first()
 
-        stato = _ensure_stato_attivo(
-            ordine=ordine,
-            stato=stato,
-            username=_current_username(),
-            when_dt=now_dt,
-            fase_corrente=fase_corrente,
-        )
+        if stato is None:
+            db.session.rollback()
+            return (
+                jsonify(
+                    {
+                        "ok": False,
+                        "error": (
+                            "Record runtime non trovato per questo ordine macchina. "
+                            "La riattivazione non può ripristinare correttamente il runtime."
+                        ),
+                        "id_documento": ordine.IdDocumento,
+                        "id_riga": ordine.IdRiga,
+                    }
+                ),
+                409,
+            )
 
-        tab, fragments = _fragments_for_ordine_tab(policy, ordine)
         runtime_pre = _runtime_snapshot(stato)
         stato_ordine_pre = _norm_text(stato_attuale)
         qty_pre = _qty_da_lavorare_text(ordine)
@@ -2509,7 +2519,7 @@ def api_riattiva_ordine_montaggio_macchina():
 
         runtime_post = _runtime_snapshot(stato)
 
-        _push_change_event_and_runtime_log(
+        _append_operazione_log(
             topic="ordine_riattivato_montaggio_macchina",
             ordine=ordine,
             action="riattivazione_macchina",
@@ -2529,11 +2539,14 @@ def api_riattiva_ordine_montaggio_macchina():
         db.session.commit()
         changed = True
         message = "Ordine macchina riattivato"
+
     elif stato_norm == "attivo":
         message = "Ordine macchina già attivo"
 
     else:
         message = f"Ordine macchina non riattivabile: stato attuale '{stato_attuale}'"
+
+    tab, fragments = _fragments_for_ordine_tab(policy, ordine)
 
     return (
         jsonify(
@@ -2801,9 +2814,9 @@ def api_chiudi_ordine():
     tempo_finale = "0"
     elapsed_seconds = 0
     removed_seconds = 0
-    stato_ordine_pre = _norm_text(ordine.StatoOrdine)
-    qty_pre_text = _qty_da_lavorare_text(ordine)
     runtime_pre = _runtime_snapshot(stato)
+    stato_ordine_pre = _norm_text(ordine.StatoOrdine)
+    qty_pre = _qty_da_lavorare_text(ordine)
 
     if stato is not None:
         if _norm_text(stato.Stato_odp).lower().startswith("attiv"):
@@ -2819,26 +2832,21 @@ def api_chiudi_ordine():
 
     if chiusura_parziale:
         if stato is None:
-            stato = InputOdpRuntime(
-                IdDocumento=ordine.IdDocumento,
-                IdRiga=ordine.IdRiga,
-                RifRegistraz=ordine.RifRegistraz,
-                Stato_odp="In Sospeso",
-                Data_in_carico=now_iso,
-                Tempo_funzionamento=tempo_finale or "0",
-                Utente_operazione=_current_username(),
-                FaseAttiva=fase_corrente,
-                data_ultima_attivazione=None,
+            db.session.rollback()
+            return (
+                jsonify(
+                    {
+                        "ok": False,
+                        "error": (
+                            "Record runtime non trovato per questo ordine. "
+                            "La chiusura non può proseguire in modo coerente."
+                        ),
+                        "id_documento": ordine.IdDocumento,
+                        "id_riga": ordine.IdRiga,
+                    }
+                ),
+                409,
             )
-            db.session.add(stato)
-        else:
-            stato.Stato_odp = "In Sospeso"
-            stato.Utente_operazione = _current_username()
-
-            stato.FaseAttiva = fase_corrente
-            stato.data_ultima_attivazione = None
-
-        ordine.StatoOrdine = "In Sospeso"
         ordine.QtyDaLavorare = qty_residua_text
 
         payload = _build_phase_payload(
@@ -2929,7 +2937,7 @@ def api_chiudi_ordine():
         closed_at=now_iso,
     )
 
-    _push_change_event_and_runtime_log(
+    _append_operazione_log(
         topic="fase_consuntivata_parziale"
         if chiusura_parziale
         else "fase_consuntivata",
@@ -2971,17 +2979,6 @@ def api_chiudi_ordine():
         closed_at=now_iso,
     )
 
-    if lotto_prodotto is not None:
-        gen_etichette(
-            str(lotto_prodotto["CodArt"]),
-            ordine.DesArt,
-            str(lotto_prodotto["RifLottoAlfa"]),
-            ordine.Quantita,
-            current_app.config["DIMENSIONI"],
-            current_app.config["DPI"],
-            current_app.config["FONT_PATH"],
-        )
-
     _add_lotto_generato_log(
         operation_group_id=operation_group_id,
         ordine=ordine,
@@ -3005,6 +3002,16 @@ def api_chiudi_ordine():
         fragments = RENDERERS[tab](odp)
 
     db.session.commit()
+    if lotto_prodotto is not None:
+        gen_etichette(
+            str(lotto_prodotto["CodArt"]),
+            ordine.DesArt,
+            str(lotto_prodotto["RifLottoAlfa"]),
+            ordine.Quantita,
+            current_app.config["DIMENSIONI"],
+            current_app.config["DPI"],
+            current_app.config["FONT_PATH"],
+        )
 
     if transition["tipo"] == "finale":
         message = (
@@ -3211,9 +3218,9 @@ def api_chiudi_ordine_montaggio_macchina():
     stato = InputOdpRuntime.query.filter_by(
         IdDocumento=ordine.IdDocumento, IdRiga=ordine.IdRiga
     ).first()
-    stato_ordine_pre = _norm_text(ordine.StatoOrdine)
-    qty_pre_text = _qty_da_lavorare_text(ordine)
     runtime_pre = _runtime_snapshot(stato)
+    stato_ordine_pre = _norm_text(ordine.StatoOrdine)
+    qty_pre = _qty_da_lavorare_text(ordine)
     operation_group_id = _build_operation_group_id(
         ordine=ordine,
         action="chiusura_macchina",
@@ -3271,7 +3278,7 @@ def api_chiudi_ordine_montaggio_macchina():
         note_chiusura_log = (
             f"[PARZIALE] residuo={qty_residua_text}; {note}".strip().rstrip(";")
         )
-    _push_change_event_and_runtime_log(
+    _append_operazione_log(
         topic="fase_consuntivata_montaggio_macchina",
         ordine=ordine,
         action=action_name,
@@ -3281,7 +3288,7 @@ def api_chiudi_ordine_montaggio_macchina():
         runtime_post=runtime_post,
         stato_ordine_pre=stato_ordine_pre,
         stato_ordine_post=_norm_text(ordine.StatoOrdine),
-        qty_pre=qty_pre_text,
+        qty_pre=qty_pre,
         qty_post=_norm_text(ordine.QtyDaLavorare),
         q_ok=str(q_ok),
         q_nok=str(q_nok),
@@ -3311,7 +3318,7 @@ def api_chiudi_ordine_montaggio_macchina():
         note_chiusura=note_chiusura_log,
         stato_ordine_pre=stato_ordine_pre,
         stato_ordine_post=_norm_text(ordine.StatoOrdine),
-        qty_pre=qty_pre_text,
+        qty_pre=qty_pre,
         qty_post=_norm_text(ordine.QtyDaLavorare),
         closed_by=_current_username(),
         closed_at=now_iso,
@@ -3337,12 +3344,6 @@ def api_chiudi_ordine_montaggio_macchina():
     tab = _tab_from_ordine(ordine)
     stato_ordine_response = ordine.StatoOrdine
     qty_da_lavorare_response = _norm_text(ordine.QtyDaLavorare)
-    fragments = {}
-    if tab:
-        reparto_code = BRIDGE_CONFIG[tab]["reparto"]
-        odp = list(_query_for_tab(policy, reparto_code).all())
-        fragments = RENDERERS[tab](odp)
-
     if transition["tipo"] == "finale":
         _delete_closed_order_from_runtime_db(ordine=ordine, stato=stato)
         stato_ordine_response = "Chiusa"
@@ -3358,6 +3359,11 @@ def api_chiudi_ordine_montaggio_macchina():
             f"Ordine mantenuto a DB e riportato in pianificata sulla fase "
             f"{transition['fase_successiva']}."
         )
+    fragments = {}
+    if tab:
+        reparto_code = BRIDGE_CONFIG[tab]["reparto"]
+        odp = list(_query_for_tab(policy, reparto_code).all())
+        fragments = RENDERERS[tab](odp)
 
     db.session.commit()
 
