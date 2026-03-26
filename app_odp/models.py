@@ -231,12 +231,14 @@ class InputOdpLog(db.Model):
         ),
     )
 
-    # chiavi ordine
-    IdDocumento = db.Column(db.Text, nullable=False)
-    IdRiga = db.Column(db.Text, nullable=False)
+    OperationGroupId = db.Column(db.Text, nullable=False, index=True)
 
-    # snapshot ERP
+    # chiavi ordine
+    IdDocumento = db.Column(db.Text, nullable=False, index=True)
+    IdRiga = db.Column(db.Text, nullable=False, index=True)
     RifRegistraz = db.Column(db.Text)
+
+    # snapshot ERP/input
     CodArt = db.Column(db.Text)
     DesArt = db.Column(db.Text)
     Quantita = db.Column(db.Text)
@@ -255,28 +257,107 @@ class InputOdpLog(db.Model):
     CodMagPrincipale = db.Column(db.Text)
     CodReparto = db.Column(db.Text)
     TempoPrevistoLavoraz = db.Column(db.Text)
-    StatoOrdine = db.Column(db.Text)
     CodClassifTecnica = db.Column(db.Text)
     CodTipoDoc = db.Column(db.Text)
 
-    # snapshot runtime
+    # stato ordine/runtime al momento della chiusura
     FaseAttiva = db.Column(db.Text)
-    Note = db.Column(db.Text)
     QtyDaLavorare = db.Column(db.Text)
     RisorsaAttiva = db.Column(db.Text)
     LavorazioneAttiva = db.Column(db.Text)
     AttrezzaggioAttivo = db.Column(db.Text)
     RifOrdinePrinc = db.Column(db.Text)
+    Note = db.Column(db.Text)
 
-    # dati chiusura
+    # dati specifici della consuntivazione
+    FaseConsuntivata = db.Column(db.Text)
     QuantitaConforme = db.Column(db.Text)
     QuantitaNonConforme = db.Column(db.Text)
+    TempoFunzionamentoFinale = db.Column(db.Text)
+    TempoNonFunzionamentoMinuti = db.Column(db.Text)
+    TempoNonFunzionamentoSecondi = db.Column(db.Text)
+    ChiusuraParziale = db.Column(db.Text)
     NoteChiusura = db.Column(db.Text)
+
+    # delta pre/post operazione
+    StatoOrdinePre = db.Column(db.Text)
+    StatoOrdinePost = db.Column(db.Text)
+    QtyDaLavorarePre = db.Column(db.Text)
+    QtyDaLavorarePost = db.Column(db.Text)
+
     ClosedBy = db.Column(db.Text)
-    ClosedAt = db.Column(db.Text)
+    ClosedAt = db.Column(db.Text, nullable=False, index=True)
+
+    __table_args__ = (db.Index("ix_input_odp_log_doc_riga", "IdDocumento", "IdRiga"),)
 
     def __repr__(self):
-        return f"<InputOdpLog {self.__dict__}>"
+        return f"<InputOdpLog {self.log_id} {self.IdDocumento}/{self.IdRiga}>"
+
+
+class OdpRuntimeLog(db.Model):
+    __bind_key__ = "log"
+    __tablename__ = "odp_runtime_log"
+
+    log_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    logged_at = db.Column(
+        db.Text,
+        nullable=False,
+        default=lambda: datetime.now(ZoneInfo("Europe/Rome")).isoformat(
+            timespec="seconds"
+        ),
+    )
+
+    OperationGroupId = db.Column(db.Text, index=True)
+    EventSequence = db.Column(db.Integer)
+
+    IdDocumento = db.Column(db.Text, nullable=False, index=True)
+    IdRiga = db.Column(db.Text, nullable=False, index=True)
+    RifRegistraz = db.Column(db.Text)
+
+    Azione = db.Column(db.Text, nullable=False, index=True)
+    Motivo = db.Column(db.Text)
+    UtenteOperazione = db.Column(db.Text)
+    EventAt = db.Column(db.Text, nullable=False, index=True)
+
+    StatoOdpPre = db.Column(db.Text)
+    StatoOdpPost = db.Column(db.Text)
+
+    StatoOrdinePre = db.Column(db.Text)
+    StatoOrdinePost = db.Column(db.Text)
+
+    FasePre = db.Column(db.Text)
+    FasePost = db.Column(db.Text)
+
+    DataInCaricoPre = db.Column(db.Text)
+    DataInCaricoPost = db.Column(db.Text)
+
+    DataUltimaAttivazionePre = db.Column(db.Text)
+    DataUltimaAttivazionePost = db.Column(db.Text)
+
+    TempoFunzionamentoPre = db.Column(db.Text)
+    TempoFunzionamentoPost = db.Column(db.Text)
+
+    ElapsedSeconds = db.Column(db.Text)
+    TempoNonFunzionamentoMinuti = db.Column(db.Text)
+    TempoNonFunzionamentoSecondi = db.Column(db.Text)
+
+    QtyDaLavorarePre = db.Column(db.Text)
+    QtyDaLavorarePost = db.Column(db.Text)
+
+    QuantitaConforme = db.Column(db.Text)
+    QuantitaNonConforme = db.Column(db.Text)
+
+    Causale = db.Column(db.Text)
+    Note = db.Column(db.Text)
+    RifOrdinePrinc = db.Column(db.Text)
+
+    __table_args__ = (db.Index("ix_odp_runtime_log_doc_riga", "IdDocumento", "IdRiga"),)
+
+    def __repr__(self):
+        return (
+            f"<OdpRuntimeLog {self.log_id} {self.Azione} "
+            f"{self.IdDocumento}/{self.IdRiga}>"
+        )
 
 
 class Lavorazioni(db.Model):
@@ -768,59 +849,6 @@ class InputOdp(db.Model):
         rt.RifOrdinePrinc = self._text(value)
 
 
-class StatoOdpLog(db.Model):  # DA MODIFICARE
-    __bind_key__ = "log"
-    __tablename__ = "odp_in_carico_log"
-
-    log_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    logged_at = db.Column(
-        db.Text,
-        nullable=False,
-        default=lambda: datetime.now(ZoneInfo("Europe/Rome")).isoformat(
-            timespec="seconds"
-        ),
-    )
-
-    IdDocumento = db.Column(db.Text, nullable=False)
-    IdRiga = db.Column(db.Text, nullable=False)
-    RifRegistraz = db.Column(db.Text)
-
-    Stato_odp = db.Column(db.Text)
-    Data_in_carico = db.Column(db.Text)
-    Tempo_funzionamento = db.Column(db.Text)
-    Utente_operazione = db.Column(db.Text)
-    Fase = db.Column(db.Text)
-    data_ultima_attivazione = db.Column(db.Text)
-    RifOrdinePrinc = db.Column(db.Text)
-    ClosedBy = db.Column(db.Text)
-    ClosedAt = db.Column(db.Text)
-
-
-class ChangeEventLog(db.Model):
-    __bind_key__ = "log"
-    __tablename__ = "change_event_log"
-
-    log_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    logged_at = db.Column(
-        db.Text,
-        nullable=False,
-        default=lambda: datetime.now(ZoneInfo("Europe/Rome")).isoformat(
-            timespec="seconds"
-        ),
-    )
-
-    # riferimento evento originale
-    src_id = db.Column(db.Integer)
-    topic = db.Column(db.Text, nullable=False)
-    scope = db.Column(db.Text)
-    payload_json = db.Column(db.Text)
-    created_at = db.Column(db.Text)
-
-    # chiavi ordine “estratte” per query più facili
-    IdDocumento = db.Column(db.Text)
-    IdRiga = db.Column(db.Text)
-
-
 class LottiUsatiLog(db.Model):
     __bind_key__ = "log"
     __tablename__ = "lotti_usati_log"
@@ -834,20 +862,36 @@ class LottiUsatiLog(db.Model):
         ),
     )
 
-    # Riferimento ordine
-    IdDocumento = db.Column(db.Text, nullable=False)
-    IdRiga = db.Column(db.Text, nullable=False)
+    OperationGroupId = db.Column(db.Text, index=True)
+
+    IdDocumento = db.Column(db.Text, nullable=False, index=True)
+    IdRiga = db.Column(db.Text, nullable=False, index=True)
     RifRegistraz = db.Column(db.Text)
 
-    # Dati lotto
-    CodArt = db.Column(db.Text, nullable=False)  # codice componente
-    RifLottoAlfa = db.Column(db.Text, nullable=False)  # numero lotto
-    Quantita = db.Column(db.Text, nullable=False)  # quantità utilizzata
-    Esito = db.Column(db.Text)  # "ok" o "ko"
+    CodArt = db.Column(db.Text, nullable=False, index=True)
+    RifLottoAlfa = db.Column(db.Text, nullable=False, index=True)
+    Quantita = db.Column(db.Text, nullable=False)
+    Esito = db.Column(db.Text)
 
     ClosedBy = db.Column(db.Text)
     ClosedAt = db.Column(db.Text)
     Fase = db.Column(db.Text)
+
+    __table_args__ = (
+        db.Index("ix_lotti_usati_log_doc_riga", "IdDocumento", "IdRiga"),
+        db.Index(
+            "ix_lotti_usati_log_doc_riga_codart",
+            "IdDocumento",
+            "IdRiga",
+            "CodArt",
+        ),
+    )
+
+    def __repr__(self):
+        return (
+            f"<LottiUsatiLog {self.log_id} "
+            f"{self.IdDocumento}/{self.IdRiga} {self.CodArt} {self.RifLottoAlfa}>"
+        )
 
 
 class ErpOutbox(db.Model):
@@ -882,11 +926,9 @@ class ErpOutbox(db.Model):
 
 class LottiGeneratiLog(db.Model):
     __bind_key__ = "log"
-
     __tablename__ = "lotti_generati_log"
 
     log_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    # models.py
     logged_at = db.Column(
         db.Text,
         nullable=False,
@@ -894,16 +936,31 @@ class LottiGeneratiLog(db.Model):
             timespec="seconds"
         ),
     )
-    IdDocumento = db.Column(db.Text, nullable=False)
-    IdRiga = db.Column(db.Text, nullable=False)
+
+    OperationGroupId = db.Column(db.Text, index=True)
+
+    IdDocumento = db.Column(db.Text, nullable=False, index=True)
+    IdRiga = db.Column(db.Text, nullable=False, index=True)
     RifRegistraz = db.Column(db.Text)
-    CodArt = db.Column(db.Text, nullable=False)
-    RifLottoAlfa = db.Column(db.Text, nullable=False)
+
+    CodArt = db.Column(db.Text, nullable=False, index=True)
+    RifLottoAlfa = db.Column(db.Text, nullable=False, index=True)
     Quantita = db.Column(db.Text, nullable=False)
     Fase = db.Column(db.Text)
     ParentLottiJson = db.Column(db.Text)
+
     ClosedBy = db.Column(db.Text)
     ClosedAt = db.Column(db.Text)
+
+    __table_args__ = (
+        db.Index("ix_lotti_generati_log_doc_riga", "IdDocumento", "IdRiga"),
+    )
+
+    def __repr__(self):
+        return (
+            f"<LottiGeneratiLog {self.log_id} "
+            f"{self.IdDocumento}/{self.IdRiga} {self.CodArt} {self.RifLottoAlfa}>"
+        )
 
 
 class InputOdpRuntime(db.Model):
