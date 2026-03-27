@@ -104,12 +104,12 @@ Avanzamenti_produzione/
 
 ## Stato sviluppo
 
-| Reparto | Presa in carico | Sospensione | Chiusura con lotti |
-|---|:---:|:---:|:---:|
-| Montaggio | ✅ | ✅ | ✅ |
-| Carpenteria | ✅ | ✅ | 🔄 In corso |
-| Officina | ✅ | ✅ | 🔄 In corso |
-| Collaudo | ✅ | ✅ | ⏳ Pianificato |
+| Reparto | Presa in carico | Sospensione | Chiusura con lotti | Logging aggiornato|
+|---|:---:|:---:|:---:|In corso|
+| Montaggio | ✅ | ✅ | ✅ |In corso|
+| Carpenteria | ✅ | ✅ | ✅ |In corso|
+| Officina | ✅ | ✅ | ✅ |In corso|
+| Collaudo | ✅ | ✅ | ✅ |In corso|
 
 ---
 
