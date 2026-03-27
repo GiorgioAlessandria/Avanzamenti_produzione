@@ -7,6 +7,7 @@ import logging
 import statistics
 from typing import Optional, Literal
 import json
+import re
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 import sqlite3 as sq
 import tomllib
@@ -23,7 +24,6 @@ import urllib.parse
 import pathlib
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import Connection as SAConnection
-from app_odp.models import ChangeEvent
 
 try:
     from icecream import ic
@@ -35,7 +35,7 @@ CONFIG = None
 config = None
 sqlite_engine_app = None
 sqlserver_engine_app = None
-
+sqlite_engine_log = None
 ALLOWED_WEEKDAYS = None
 START_H = None
 END_H = None
@@ -54,12 +54,7 @@ nuovo_ciclo = 0
 
 
 def init(config_path: str | pathlib.Path = None, *, force: bool = False):
-    """
-    Inizializza configurazione + connessioni DB + parametri globali.
-    - config_path: percorso del config.toml
-    - force: se True reinizializza anche se era già stato fatto
-    """
-    global CONFIG, config, sqlite_engine_app, sqlserver_engine_app
+    global CONFIG, config, sqlite_engine_app, sqlserver_engine_app, sqlite_engine_log
     global ALLOWED_WEEKDAYS, START_H, END_H, TIMEZONE, POLL_SECONDS_DEFAULT
     global ELEMENTI_ESCLUSI, ELEMENTI_SELEZIONATI
     global _INITIALIZED
@@ -68,12 +63,10 @@ def init(config_path: str | pathlib.Path = None, *, force: bool = False):
         return
 
     if config_path is None:
-        # default vicino al modulo (o dove vuoi)
         config_path = Path("app_odp//static//config.toml")
 
     CONFIG = load_config(config_path)
 
-    # estrazione campi
     percorsi = CONFIG["Percorsi"]
     sync_cfg = CONFIG["sync_config"]
     ELEMENTI_ESCLUSI = CONFIG["Elementi_esclusi"]
@@ -83,12 +76,28 @@ def init(config_path: str | pathlib.Path = None, *, force: bool = False):
     END_H = int(sync_cfg["ora_fine"])
     TIMEZONE = sync_cfg.get("time_zone", "Europe/Rome")
     POLL_SECONDS_DEFAULT = float(sync_cfg.get("tempo_polling", 5))
-    params = urllib.parse.quote_plus(sync_cfg.get("sql_params"))
 
-    # Engine
-    sqlite_engine_app = create_engine(f"sqlite:///{percorsi['percorso_db']}")
-    if sqlserver_engine_app is None:
-        sqlserver_engine_app = create_engine("mssql+pyodbc:///?odbc_connect=" + params)
+    percorso_db = percorsi.get("percorso_db")
+    if not percorso_db:
+        raise KeyError("Percorsi.percorso_db mancante in config.toml")
+
+    percorso_db_log = percorsi.get("percorso_db_log")
+    if not percorso_db_log:
+        raise KeyError("Percorsi.percorso_db_log mancante in config.toml")
+
+    sql_params = sync_cfg.get("sql_params")
+    if not sql_params:
+        raise KeyError("sync_config.sql_params mancante in config.toml")
+
+    params = urllib.parse.quote_plus(sql_params)
+
+    sqlite_engine_app = create_engine(f"sqlite:///{percorso_db}")
+    sqlserver_engine_app = create_engine(f"mssql+pyodbc:///?odbc_connect={params}")
+    sqlite_engine_log = create_engine(f"sqlite:///{percorso_db_log}")
+
+    logging.info("sqlite_engine_app=%s", sqlite_engine_app.url)
+    logging.info("sqlserver_engine_app=%s", sqlserver_engine_app.url)
+    logging.info("sqlite_engine_log=%s", sqlite_engine_log.url)
 
     _INITIALIZED = True
 
@@ -745,6 +754,406 @@ def _build_runtime_seed(df_input_odp: pd.DataFrame) -> pd.DataFrame:
     return df_runtime[INPUT_ODP_RUNTIME_COLS].copy()
 
 
+def _norm_text(value) -> str:
+    return str(value or "").strip()
+
+
+def _now_sync_iso() -> str:
+    tz_name = TIMEZONE or "Europe/Rome"
+    return datetime.now(ZoneInfo(tz_name)).isoformat(timespec="seconds")
+
+
+def _safe_token(value, default="x") -> str:
+    raw = _norm_text(value)
+    if not raw:
+        return default
+    raw = re.sub(r"[^A-Za-z0-9_.-]+", "-", raw)
+    return raw.strip("-") or default
+
+
+def _build_sync_operation_group_id(
+    *,
+    id_documento: str,
+    id_riga: str,
+    action: str,
+    when_iso: str,
+) -> str:
+    stamp = re.sub(r"\D+", "", _norm_text(when_iso))[:14]
+    if not stamp:
+        stamp = datetime.now(ZoneInfo(TIMEZONE or "Europe/Rome")).strftime(
+            "%Y%m%d%H%M%S"
+        )
+
+    return (
+        f"{stamp}_"
+        f"{_safe_token(id_documento, 'doc')}_"
+        f"{_safe_token(id_riga, 'riga')}_"
+        f"{_safe_token(action, 'sync')}"
+    )
+
+
+def _pk_key(id_documento, id_riga) -> tuple[str, str]:
+    return (_norm_text(id_documento), _norm_text(id_riga))
+
+
+def _build_sync_operation_group_map(
+    df_new_erp: pd.DataFrame,
+    when_iso: str,
+) -> dict[tuple[str, str], str]:
+    if df_new_erp.empty:
+        return {}
+
+    keys = (
+        df_new_erp[["IdDocumento", "IdRiga"]]
+        .astype(str)
+        .drop_duplicates()
+        .itertuples(index=False, name=None)
+    )
+
+    return {
+        _pk_key(id_documento, id_riga): _build_sync_operation_group_id(
+            id_documento=id_documento,
+            id_riga=id_riga,
+            action="sync_nuovo_ordine",
+            when_iso=when_iso,
+        )
+        for id_documento, id_riga in keys
+    }
+
+
+def _get_sync_operation_group_id(
+    operation_groups: dict[tuple[str, str], str],
+    *,
+    id_documento,
+    id_riga,
+    when_iso: str,
+) -> str:
+    key = _pk_key(id_documento, id_riga)
+    return operation_groups.get(key) or _build_sync_operation_group_id(
+        id_documento=key[0],
+        id_riga=key[1],
+        action="sync_nuovo_ordine",
+        when_iso=when_iso,
+    )
+
+
+def _build_input_odp_log_rows(
+    df_new_erp: pd.DataFrame,
+    df_new_runtime: pd.DataFrame,
+    when_iso: str,
+    operation_groups: dict[tuple[str, str], str],
+) -> pd.DataFrame:
+    if df_new_erp.empty:
+        return pd.DataFrame()
+
+    runtime_subset = (
+        df_new_runtime[
+            [
+                "IdDocumento",
+                "IdRiga",
+                "FaseAttiva",
+                "QtyDaLavorare",
+                "RisorsaAttiva",
+                "LavorazioneAttiva",
+                "AttrezzaggioAttivo",
+                "Note",
+            ]
+        ].copy()
+        if not df_new_runtime.empty
+        else pd.DataFrame(
+            columns=[
+                "IdDocumento",
+                "IdRiga",
+                "FaseAttiva",
+                "QtyDaLavorare",
+                "RisorsaAttiva",
+                "LavorazioneAttiva",
+                "AttrezzaggioAttivo",
+                "Note",
+            ]
+        )
+    )
+
+    df_log = df_new_erp.merge(
+        runtime_subset,
+        on=["IdDocumento", "IdRiga"],
+        how="left",
+    ).copy()
+
+    df_log["logged_at"] = when_iso
+    df_log["OperationGroupId"] = df_log.apply(
+        lambda r: _get_sync_operation_group_id(
+            operation_groups,
+            id_documento=r["IdDocumento"],
+            id_riga=r["IdRiga"],
+            when_iso=when_iso,
+        ),
+        axis=1,
+    )
+
+    df_log["QtyDaLavorare"] = df_log["QtyDaLavorare"].where(
+        df_log["QtyDaLavorare"].notna(), df_log["Quantita"]
+    )
+    df_log["FaseAttiva"] = df_log["FaseAttiva"].where(df_log["FaseAttiva"].notna(), "1")
+
+    df_log["FaseConsuntivata"] = None
+    df_log["QuantitaConforme"] = None
+    df_log["QuantitaNonConforme"] = None
+    df_log["TempoFunzionamentoFinale"] = None
+    df_log["TempoNonFunzionamentoMinuti"] = None
+    df_log["TempoNonFunzionamentoSecondi"] = None
+    df_log["ChiusuraParziale"] = None
+    df_log["NoteChiusura"] = "Inserimento nuova riga da sync_input"
+    df_log["StatoOrdinePre"] = ""
+    df_log["StatoOrdinePost"] = "Pianificata"
+    df_log["QtyDaLavorarePre"] = ""
+    df_log["QtyDaLavorarePost"] = df_log["QtyDaLavorare"]
+    df_log["ClosedBy"] = "sync_input"
+    df_log["ClosedAt"] = when_iso
+    df_log["RifOrdinePrinc"] = None
+
+    cols = [
+        "logged_at",
+        "OperationGroupId",
+        "IdDocumento",
+        "IdRiga",
+        "RifRegistraz",
+        "CodArt",
+        "DesArt",
+        "Quantita",
+        "NumFase",
+        "CodLavorazione",
+        "CodRisorsaProd",
+        "DataInizioSched",
+        "DataFineSched",
+        "GestioneLotto",
+        "GestioneMatricola",
+        "DistintaMateriale",
+        "CodMatricola",
+        "StatoRiga",
+        "CodFamiglia",
+        "CodMacrofamiglia",
+        "CodMagPrincipale",
+        "CodReparto",
+        "TempoPrevistoLavoraz",
+        "CodClassifTecnica",
+        "CodTipoDoc",
+        "FaseAttiva",
+        "QtyDaLavorare",
+        "RisorsaAttiva",
+        "LavorazioneAttiva",
+        "AttrezzaggioAttivo",
+        "RifOrdinePrinc",
+        "Note",
+        "FaseConsuntivata",
+        "QuantitaConforme",
+        "QuantitaNonConforme",
+        "TempoFunzionamentoFinale",
+        "TempoNonFunzionamentoMinuti",
+        "TempoNonFunzionamentoSecondi",
+        "ChiusuraParziale",
+        "NoteChiusura",
+        "StatoOrdinePre",
+        "StatoOrdinePost",
+        "QtyDaLavorarePre",
+        "QtyDaLavorarePost",
+        "ClosedBy",
+        "ClosedAt",
+    ]
+
+    return df_log[cols].where(pd.notna(df_log), None)
+
+
+def _build_runtime_log_rows(
+    df_new_erp: pd.DataFrame,
+    df_new_runtime: pd.DataFrame,
+    when_iso: str,
+    operation_groups: dict[tuple[str, str], str],
+) -> pd.DataFrame:
+    if df_new_erp.empty or df_new_runtime.empty:
+        return pd.DataFrame()
+
+    df_runtime_for_new = df_new_runtime.merge(
+        df_new_erp[["IdDocumento", "IdRiga", "RifRegistraz", "CodArt", "CodReparto"]],
+        on=["IdDocumento", "IdRiga", "RifRegistraz"],
+        how="inner",
+    ).copy()
+
+    if df_runtime_for_new.empty:
+        return pd.DataFrame()
+
+    df_runtime_for_new["logged_at"] = when_iso
+    df_runtime_for_new["OperationGroupId"] = df_runtime_for_new.apply(
+        lambda r: _get_sync_operation_group_id(
+            operation_groups,
+            id_documento=r["IdDocumento"],
+            id_riga=r["IdRiga"],
+            when_iso=when_iso,
+        ),
+        axis=1,
+    )
+    df_runtime_for_new["EventSequence"] = 1
+    df_runtime_for_new["Topic"] = "nuovo_ordine_sync"
+    df_runtime_for_new["Scope"] = df_runtime_for_new["CodReparto"]
+    df_runtime_for_new["PayloadJson"] = df_runtime_for_new.apply(
+        lambda r: json.dumps(
+            {
+                "azione": "sync_seed_runtime",
+                "utente": "sync_input",
+                "fase": _norm_text(r["FaseAttiva"]),
+                "qty_da_lavorare": _norm_text(r["QtyDaLavorare"]),
+                "risorsa_attiva": _norm_text(r["RisorsaAttiva"]),
+                "lavorazione_attiva": _norm_text(r["LavorazioneAttiva"]),
+                "attrezzaggio_attivo": _norm_text(r["AttrezzaggioAttivo"]),
+            },
+            ensure_ascii=False,
+        ),
+        axis=1,
+    )
+    df_runtime_for_new["Azione"] = "sync_seed_runtime"
+    df_runtime_for_new["Motivo"] = "Creazione riga input_odp_runtime da sync_input"
+    df_runtime_for_new["UtenteOperazione"] = "sync_input"
+    df_runtime_for_new["EventAt"] = when_iso
+    df_runtime_for_new["StatoOdpPre"] = ""
+    df_runtime_for_new["StatoOdpPost"] = df_runtime_for_new["Stato_odp"]
+    df_runtime_for_new["StatoOrdinePre"] = ""
+    df_runtime_for_new["StatoOrdinePost"] = "Pianificata"
+    df_runtime_for_new["FasePre"] = ""
+    df_runtime_for_new["FasePost"] = df_runtime_for_new["FaseAttiva"]
+    df_runtime_for_new["DataInCaricoPre"] = ""
+    df_runtime_for_new["DataInCaricoPost"] = ""
+    df_runtime_for_new["DataUltimaAttivazionePre"] = ""
+    df_runtime_for_new["DataUltimaAttivazionePost"] = ""
+    df_runtime_for_new["TempoFunzionamentoPre"] = ""
+    df_runtime_for_new["TempoFunzionamentoPost"] = ""
+    df_runtime_for_new["ElapsedSeconds"] = None
+    df_runtime_for_new["TempoNonFunzionamentoMinuti"] = None
+    df_runtime_for_new["TempoNonFunzionamentoSecondi"] = None
+    df_runtime_for_new["QtyDaLavorarePre"] = ""
+    df_runtime_for_new["QtyDaLavorarePost"] = df_runtime_for_new["QtyDaLavorare"]
+    df_runtime_for_new["QuantitaConforme"] = None
+    df_runtime_for_new["QuantitaNonConforme"] = None
+    df_runtime_for_new["Causale"] = None
+    df_runtime_for_new["Note"] = "Inserimento riga runtime da sync_input"
+    df_runtime_for_new["RifOrdinePrinc"] = None
+
+    cols = [
+        "logged_at",
+        "OperationGroupId",
+        "EventSequence",
+        "Topic",
+        "Scope",
+        "CodArt",
+        "CodReparto",
+        "PayloadJson",
+        "IdDocumento",
+        "IdRiga",
+        "RifRegistraz",
+        "Azione",
+        "Motivo",
+        "UtenteOperazione",
+        "EventAt",
+        "StatoOdpPre",
+        "StatoOdpPost",
+        "StatoOrdinePre",
+        "StatoOrdinePost",
+        "FasePre",
+        "FasePost",
+        "DataInCaricoPre",
+        "DataInCaricoPost",
+        "DataUltimaAttivazionePre",
+        "DataUltimaAttivazionePost",
+        "TempoFunzionamentoPre",
+        "TempoFunzionamentoPost",
+        "ElapsedSeconds",
+        "TempoNonFunzionamentoMinuti",
+        "TempoNonFunzionamentoSecondi",
+        "QtyDaLavorarePre",
+        "QtyDaLavorarePost",
+        "QuantitaConforme",
+        "QuantitaNonConforme",
+        "Causale",
+        "Note",
+        "RifOrdinePrinc",
+    ]
+
+    return df_runtime_for_new[cols].where(pd.notna(df_runtime_for_new), None)
+
+
+def _write_sync_logs(
+    *,
+    df_new_erp: pd.DataFrame,
+    df_new_runtime: pd.DataFrame,
+) -> None:
+    if sqlite_engine_log is None:
+        raise RuntimeError("sqlite_engine_log non inizializzato")
+
+    if df_new_erp.empty:
+        return
+
+    erp_keys = {
+        _pk_key(r["IdDocumento"], r["IdRiga"])
+        for _, r in df_new_erp[["IdDocumento", "IdRiga"]].iterrows()
+    }
+    runtime_keys = {
+        _pk_key(r["IdDocumento"], r["IdRiga"])
+        for _, r in df_new_runtime[["IdDocumento", "IdRiga"]].iterrows()
+    }
+
+    missing_runtime = sorted(erp_keys - runtime_keys)
+    if missing_runtime:
+        raise RuntimeError(
+            f"Nuovi ordini senza seed runtime coerente: {missing_runtime}"
+        )
+
+    when_iso = _now_sync_iso()
+    operation_groups = _build_sync_operation_group_map(df_new_erp, when_iso)
+
+    righe_input_log = 0
+    df_input_log = _build_input_odp_log_rows(
+        df_new_erp=df_new_erp,
+        df_new_runtime=df_new_runtime,
+        when_iso=when_iso,
+        operation_groups=operation_groups,
+    )
+    if not df_input_log.empty:
+        righe_input_log = int(
+            df_input_log.to_sql(
+                name="input_odp_log",
+                con=sqlite_engine_log,
+                if_exists="append",
+                index=False,
+                method=inserisci_o_ignora,
+            )
+            or 0
+        )
+
+    righe_runtime_log = 0
+    df_runtime_log = _build_runtime_log_rows(
+        df_new_erp=df_new_erp,
+        df_new_runtime=df_new_runtime,
+        when_iso=when_iso,
+        operation_groups=operation_groups,
+    )
+    if not df_runtime_log.empty:
+        righe_runtime_log = int(
+            df_runtime_log.to_sql(
+                name="odp_runtime_log",
+                con=sqlite_engine_log,
+                if_exists="append",
+                index=False,
+                method=inserisci_o_ignora,
+            )
+            or 0
+        )
+
+    logging.info(
+        "Log sync nuovi ordini | input_odp_log=%s | odp_runtime_log=%s",
+        righe_input_log,
+        righe_runtime_log,
+    )
+
+
 def _chunked(seq, size: int):
     for i in range(0, len(seq), size):
         yield seq[i : i + size]
@@ -914,10 +1323,6 @@ def elaborazione_dati(session: Session) -> None:
         filtri_giacenza_lotti
     )
 
-    if nuovo_ciclo == 0:
-        emit_event(session=session, topic="nuovo_ciclo")
-        nuovo_ciclo = 1
-
     righe_inserite_odp = 0
     righe_aggiornate_odp = 0
     righe_inserite_runtime = 0
@@ -969,13 +1374,21 @@ def elaborazione_dati(session: Session) -> None:
                 or 0
             )
 
-    except sq.IntegrityError:
+        # log punto 1: solo nuovi ordini
+        if not df_new_erp.empty:
+            _write_sync_logs(
+                df_new_erp=df_new_erp,
+                df_new_runtime=df_new_runtime,
+            )
+
+    except (sa.exc.SQLAlchemyError, sq.Error, RuntimeError, ValueError):
         logging.exception(
-            "Errore di integrità durante sync input_odp/input_odp_runtime"
+            "Errore durante sync input_odp/input_odp_runtime e scrittura log"
         )
         righe_inserite_odp = 0
         righe_aggiornate_odp = 0
         righe_inserite_runtime = 0
+        righe_inserite_lotti = 0
 
     logging.info(
         "Sync input_odp completato | nuovi ERP=%s | aggiornati ERP=%s | nuovi runtime=%s | nuovi lotti=%s",
@@ -984,44 +1397,6 @@ def elaborazione_dati(session: Session) -> None:
         righe_inserite_runtime,
         righe_inserite_lotti,
     )
-
-    # evento nuova riga ERP
-    if righe_inserite_odp > 0:
-        df_ev_new = df_new_erp.sort_values(
-            ["IdDocumento", "IdRiga"], ascending=False
-        ).head(righe_inserite_odp)
-
-        payload_new = (
-            df_ev_new["IdDocumento"].astype(str) + "," + df_ev_new["IdRiga"].astype(str)
-        ).tolist()
-
-        scope_new = df_ev_new["CodReparto"].astype(str).tolist()
-
-        emit_event(
-            session=session,
-            topic="nuovo_ordine",
-            scope=json.dumps(scope_new, ensure_ascii=False),
-            payload_json=json.dumps(payload_new, ensure_ascii=False),
-        )
-
-    # evento aggiornamento ordine esistente
-    if righe_aggiornate_odp > 0:
-        df_ev_upd = df_existing_erp.sort_values(
-            ["IdDocumento", "IdRiga"], ascending=False
-        ).head(righe_aggiornate_odp)
-
-        payload_upd = (
-            df_ev_upd["IdDocumento"].astype(str) + "," + df_ev_upd["IdRiga"].astype(str)
-        ).tolist()
-
-        scope_upd = df_ev_upd["CodReparto"].astype(str).tolist()
-
-        emit_event(
-            session=session,
-            topic="aggiornamento_ordine",
-            scope=json.dumps(scope_upd, ensure_ascii=False),
-            payload_json=json.dumps(payload_upd, ensure_ascii=False),
-        )
 
 
 # endregion
@@ -1147,16 +1522,6 @@ def wait_if_not_allowed(start_h: int, end_h: int, allowed_weekdays: set[int]) ->
             "Fuori schedule. Sleep ~%d min (fino a prossima finestra).", s // 60
         )
         time_mod.sleep(s)
-
-
-def emit_event(session, topic, scope=None, payload_json=None) -> None:
-    try:
-        session.add(ChangeEvent(topic=topic, scope=scope, payload_json=payload_json))
-        session.commit()
-    except Exception:
-        session.rollback()
-        logging.exception("Errore emit_event topic=%s", topic)
-        raise
 
 
 def read_cycle() -> None:
