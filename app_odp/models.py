@@ -904,10 +904,7 @@ class ErpOutbox(db.Model):
     RifRegistraz = db.Column(db.Text)
     CodArt = db.Column(db.Text)
     Fase = db.Column(db.Text, nullable=False)
-    CodReparto = db.Column(db.Text)
-
     payload_json = db.Column(db.Text, nullable=False)
-
     attempts = db.Column(db.Integer, nullable=False, default=0)
     last_error = db.Column(db.Text)
     exported_at = db.Column(db.Text)
@@ -936,7 +933,6 @@ class LottiGeneratiLog(db.Model):
     RifLottoAlfa = db.Column(db.Text, nullable=False, index=True)
     Quantita = db.Column(db.Text, nullable=False)
     Fase = db.Column(db.Text)
-    ParentLottiJson = db.Column(db.Text)
 
     ClosedBy = db.Column(db.Text)
     ClosedAt = db.Column(db.Text)
