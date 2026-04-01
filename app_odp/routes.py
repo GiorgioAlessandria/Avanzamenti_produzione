@@ -545,12 +545,7 @@ def _normalize_lotto_prodotto_for_payload(lotto: dict | None) -> dict | None:
     if not lotto:
         return None
 
-    return {
-        "cod_art": _norm_text(lotto.get("CodArt")),
-        "rif_lotto_alfa": _norm_text(lotto.get("RifLottoAlfa")),
-        "quantita": _norm_text(lotto.get("Quantita")),
-        "fase": _norm_text(lotto.get("Fase")),
-    }
+    return _norm_text(lotto.get("RifLottoAlfa"))
 
 
 def _current_username(default: str = "utente_sconosciuto") -> str:
@@ -883,7 +878,6 @@ def _build_phase_payload(
         "cod_art": ordine.CodArt,
         "descrizione": ordine.DesArt,
         "fase": fase_corrente,
-        "quantita_ordine": _norm_text(ordine.Quantita),
         "quantita_ok": str(q_ok),
         "quantita_ko": str(q_nok),
         "tempo_funzionamento": tempo_finale,
@@ -955,15 +949,15 @@ def _build_export_txt_path(prefix: str = "AVPB", suffix: str = "") -> Path:
 
 
 def _write_txt_content(
-    content: str,
+    lines: list[str],
     *,
     prefix: str = "AVPB",
     suffix: str = "",
     encoding: str = "utf-8-sig",
 ) -> Path:
     path_txt = _build_export_txt_path(prefix=prefix, suffix=suffix)
-    newline_character = "\n"
-    path_txt.write_text(content, encoding=encoding, newline=newline_character)
+    content = "\n".join(lines) + "\n"
+    path_txt.write_text(content, encoding=encoding, newline="\n")
     return path_txt
 
 
@@ -3071,6 +3065,7 @@ def api_chiudi_ordine_montaggio_macchina():
     fase_corrente = _fase_corrente_for_export(ordine, stato=stato, fase_override=fase)
     payload = _build_phase_payload(
         ordine=ordine,
+        codice=ordine.CodArt,
         distinta_base=ordine.DistintaMateriale,
         fase_corrente=fase_corrente,
         q_ok=q_ok,
@@ -3323,12 +3318,12 @@ def api_export_avp_txt():
 
     outbox_rows = [row["outbox"] for row in export_rows]
     try:
-        content = txt_generator(
+        list_line = txt_generator(
             export_rows,
             cfg=_erp_avp_cfg(),
         )
         path_txt = _write_txt_content(
-            content,
+            list_line,
             prefix="AVPB",
             suffix=suffix,
             encoding="utf-8-sig",
@@ -3354,22 +3349,21 @@ def api_export_avp_txt():
         )
     except Exception as exc:
         err = str(exc)
+    try:
+        for row in outbox_rows:
+            row.status = "error"
+            row.last_error = err
+            row.attempts = int(row.attempts or 0) + 1
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
 
-        try:
-            for row in outbox_rows:
-                row.status = "error"
-                row.last_error = err
-                row.attempts = int(row.attempts or 0) + 1
-            db.session.commit()
-        except Exception:
-            db.session.rollback()
-
-        return (
-            jsonify(
-                {
-                    "ok": False,
-                    "error": f"Errore generazione file AVP: {err}",
-                }
-            ),
-            500,
-        )
+    return (
+        jsonify(
+            {
+                "ok": False,
+                "error": f"Errore generazione file AVP: {err}",
+            }
+        ),
+        500,
+    )

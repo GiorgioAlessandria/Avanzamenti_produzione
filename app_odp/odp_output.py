@@ -1,10 +1,10 @@
 from __future__ import annotations
-
+from typing import Optional, Literal
 from datetime import datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import json
 import re
-
+from icecream import ic
 
 DEFAULT_AVP_CFG = {
     # TES
@@ -335,17 +335,57 @@ def _build_rig_row(payload: dict, source_row, cfg: dict) -> list | None:
     ]
 
 
+def row_writer(
+    tipo_record: Literal["TES", "RIG"],
+    tipo_documento: int = None,
+    registrazione_data: str = "",
+    registrazione_numero: int = None,
+    registrazione_appendice="",
+    operazione_avanzamento="",
+    riferimento_ordine="",
+    codice_articolo: str = "",
+    quantita_principale: int = None,
+    quantita_scarti_prima: int = None,
+    quantita_scarti_seconda: int = None,
+    riga_saldata: Literal[1, 0] = None,
+    riferimento_lotto: int = None,
+    magazzino_principale: int = None,
+    codice_risorsa: str = "",
+    causale_prestazione: str = "",
+    ore_lavorate: float = None,
+):
+    tipo_documento = registrazione_numero if registrazione_numero is not None else ""
+    registrazione_numero = (
+        registrazione_numero if registrazione_numero is not None else ""
+    )
+    quantita_principale = quantita_principale if quantita_principale is not None else ""
+    quantita_scarti_prima = (
+        quantita_scarti_prima if quantita_scarti_prima is not None else ""
+    )
+    quantita_scarti_seconda = (
+        quantita_scarti_seconda if quantita_scarti_seconda is not None else ""
+    )
+    riga_saldata = riga_saldata if riga_saldata is not None else ""
+    riferimento_lotto = riferimento_lotto if riferimento_lotto is not None else ""
+    magazzino_principale = (
+        magazzino_principale if magazzino_principale is not None else ""
+    )
+    ore_lavorate = ore_lavorate if ore_lavorate is not None else ""
+    riga = f"{tipo_record};{tipo_documento};{registrazione_data};{registrazione_numero};{registrazione_appendice};{operazione_avanzamento};{riferimento_ordine};{codice_articolo};{quantita_principale};{quantita_scarti_prima};{quantita_scarti_seconda};{riga_saldata};{riferimento_lotto};{magazzino_principale};{codice_risorsa};{causale_prestazione};{ore_lavorate}"
+    return riga
+
+
 def txt_generator(export_rows: list[dict], cfg: dict | None = None) -> str:
     """
-    Struttura txt
+    Struttura txt 17 colonne
     Testata
-    1:tipo record; TES
+    1:tipo record; "TES"
     10: tipo documento; "70[0-9]"
     20: registrazione data; dd/mm/YYYY HH:MM
-    30: registrazione numero;
-    40: registrazione appendice digitata;
+    30: registrazione numero; ?
+    40: registrazione appendice digitata; ?
     80: tipo operazione avanzamento; ""
-    90: riferimento ordine produzione; "2008.1.15.1,00 "
+    90: riferimento ordine produzione; ""
     100: Codice articolo; ""
     140: Quantità principale; ""
     150: Quantità scarti prima scelta; ""
@@ -371,7 +411,7 @@ def txt_generator(export_rows: list[dict], cfg: dict | None = None) -> str:
     290: Riga saldata "1/0" es. 0;
     340: Riferimento lotto pf:codice alfanumerico "6[0-9]" es. 612345;
     210: magazzino principale "[0-9]?[0-9]" es. 0;
-    300: Codice risorsa "3[A-Z]" es. ASS;
+    300: Codice risorsa "10[A-Z]" es. ASSEMBLAGGIO;
     310: Causale prestazione "";
     322: ore lavorate risorsa 1 "2[0-9],2[0-9]" es.23,58;
     """
@@ -383,37 +423,114 @@ def txt_generator(export_rows: list[dict], cfg: dict | None = None) -> str:
         final_cfg.update(cfg)
 
     lines = []
+    data_registrazione = datetime.fromisoformat(
+        export_rows[0]["payload"]["created_at"]
+    ).strftime("%d/%m/%Y %H:%M")
 
-    if final_cfg.get("include_header"):
-        lines.append(_serialize_avp_row(AVP_COLUMNS))
+    head_line = row_writer(
+        tipo_record="TES",
+        tipo_documento=export_rows[0]["payload"]["tipo_documento"],
+        registrazione_data=data_registrazione,
+        # registrazione_numero=export_rows[0]["payload"][""],  # da inserire
+        # registrazione_appendice=export_rows[0]["payload"][""],  # da inserire
+    )
+    lines.append(head_line)
+    distinta_base_json = json.loads(export_rows[0]["payload"]["distinta_base"])
+    distinta_base = [riga for riga in distinta_base_json]
+    codice_articolo = export_rows[0]["payload"]["cod_art"]
+    lotto_articolo = export_rows[0]["payload"]["lotto_prodotto"]
+    riferimento_ordine = f"{export_rows[0]['payload']['rif_registraz']}.{export_rows[0]['payload']['fase']},00"
 
-    if final_cfg.get("include_tes"):
-        first_payload = export_rows[0].get("payload") or {}
-        first_source_row = export_rows[0].get("source_row")
-        tes_row = _build_tes_row(first_payload, first_source_row, final_cfg)
-        lines.append(
-            _serialize_avp_row(
-                tes_row,
-                numeric_indexes={1, 3, 5, 8, 11, 12},
-            )
+    product_line = row_writer(
+        tipo_record="RIG",
+        tipo_documento=export_rows[0]["payload"]["tipo_documento"],
+        registrazione_data=data_registrazione,
+        # registrazione_numero=export_rows[0]["payload"][""],  # da inserire
+        # registrazione_appendice=export_rows[0]["payload"][""],  # da inserire
+        operazione_avanzamento=export_rows[0]["payload"]["tipo_documento"],
+        riferimento_ordine=riferimento_ordine,
+        codice_articolo=codice_articolo,
+        quantita_principale=export_rows[0]["payload"]["quantita_ok"],
+        quantita_scarti_prima=export_rows[0]["payload"]["quantita_ko"],
+        quantita_scarti_seconda=0,
+        riga_saldata=export_rows[0]["payload"]["salda_riga"],
+        riferimento_lotto=lotto_articolo,
+        magazzino_principale=export_rows[0]["payload"]["magazzino"],
+        codice_risorsa=export_rows[0]["payload"]["risorsa"],
+        causale_prestazione="",
+        ore_lavorate=export_rows[0]["payload"]["tempo_funzionamento"],
+    )
+    lines.append(product_line)
+    component_list = []
+    lotti_components = export_rows[0]["payload"]["lotti"]
+    for component in distinta_base:
+        riga_lotto_component = next(
+            (
+                riga
+                for riga in lotti_components
+                if riga["CodArt"] == component["CodArt"]
+            ),
+            None,
+        )
+        lotto_component = (
+            riga_lotto_component["RifLottoAlfa"] if riga_lotto_component else None
         )
 
-    for row in export_rows:
-        payload = row.get("payload") or {}
-        source_row = row.get("source_row")
+        component_line = row_writer(
+            tipo_record="RIG",
+            tipo_documento=export_rows[0]["payload"]["tipo_documento"],
+            registrazione_data=data_registrazione,
+            # registrazione_numero=export_rows[0]["payload"][""],  # da inserire
+            # registrazione_appendice=export_rows[0]["payload"][""],  # da inserire
+            operazione_avanzamento=export_rows[0]["payload"]["tipo_documento"],
+            riferimento_ordine=riferimento_ordine,
+            codice_articolo=component["CodArt"],
+            quantita_principale=component["Quantita"],
+            riga_saldata=export_rows[0]["payload"]["salda_riga"],
+            riferimento_lotto=lotto_component,
+            magazzino_principale=export_rows[0]["payload"]["magazzino"],
+            codice_risorsa=export_rows[0]["payload"]["risorsa"],
+            causale_prestazione="",
+            ore_lavorate=export_rows[0]["payload"]["tempo_funzionamento"],
+        )
+        lines.append(component_line)
+    return lines
 
-        rig_row = _build_rig_row(payload, source_row, final_cfg)
-        if rig_row is not None:
-            lines.append(
-                _serialize_avp_row(
-                    rig_row,
-                    numeric_indexes={1, 3, 5, 8, 11, 12},
-                )
-            )
+    # if final_cfg.get("include_header"):
+    #    lines.append(_serialize_avp_row(AVP_COLUMNS))
 
-    if not lines:
-        raise ValueError("Nessuna riga AVP esportabile")
+    # if final_cfg.get("include_tes"):
+    #    first_payload = export_rows[0].get("payload") or {}
+    #    first_source_row = export_rows[0].get("source_row")
+    #    tes_row = _build_tes_row(first_payload, first_source_row, final_cfg)
+    #    lines.append(
+    #        _serialize_avp_row(
+    #            tes_row,
+    #            numeric_indexes={1, 3, 5, 8, 11, 12},
+    #        )
+    #    )
 
-    payload = {}
+    # for row in export_rows:
+    #    payload = row.get("payload") or {}
+    #    source_row = row.get("source_row")
+
+    #    rig_row = _build_rig_row(payload, source_row, final_cfg)
+    #    if rig_row is not None:
+    #        lines.append(
+    #            _serialize_avp_row(
+    #                rig_row,
+    #                numeric_indexes={1, 3, 5, 8, 11, 12},
+    #            )
+    #        )
+
+    # if not lines:
+    #    raise ValueError("Nessuna riga AVP esportabile")
+
+    # payload = {}
+
+    # with open("log.txt", "a", encoding="utf-8") as f:
+    #    for i, record in enumerate(righe):
+    #        riga = formatter_per_posizione[i](record)
+    #        f.write(riga + "\n")
 
     return "\n".join(lines) + "\n"
