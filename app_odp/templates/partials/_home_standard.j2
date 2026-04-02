@@ -1,3 +1,5 @@
+{% set require_disegno_scan = policy and policy.can('controllo_codice_disegno') %}
+
 <!--toast nuovo ordine in carico -->
 <div class="toast lh-lg hide"
 
@@ -30,11 +32,15 @@
                data-bind="codice"
                id="toast1-codice">
         <input type="hidden"
+               data-bind="indicemodifica"
+               id="toast1-indicemodifica">
+        <input type="hidden"
                data-bind="quantita"
                id="toast1-quantita">
         <input type="hidden"
                data-bind="fase"
                id="toast1-fase">
+
         <div class="row"
              style="font-size: 20px;  border-radius: 4px;">
             <label class="form-check-label"
@@ -43,6 +49,7 @@
                    type="checkbox"
                    id="toast-ordine-mascherato">
         </div>
+
         <div class="row mt-2 w-100"
              id="toast-ordine-mascherato-wrapper"
              style="display: none; font-size: 20px; background: #f8f9fa; border-radius: 4px; padding: 8px;">
@@ -62,14 +69,39 @@
                    id="toast-ordine-mascherato-idriga-principale">
         </div>
 
-        <button class="btn btn-primary"
+        {% if require_disegno_scan %}
+            <div class="mt-3 w-100"
+                 id="toast1-scan-wrapper">
+                <label for="toast1-scan-disegno"
+                       class="form-label fw-semibold mb-1"
+                       style="font-size: 20px;">
+                    Scansione codice disegno
+                </label>
+
+                <textarea id="toast1-scan-disegno"
+                          class="form-control"
+                          rows="2"
+                          required
+                          spellcheck="false"
+                          autocomplete="off"
+                          autocapitalize="characters"
+                          placeholder="Scansiona qui il codice a barre del disegno"></textarea>
+
+                <div id="toast1-scan-feedback"
+                     class="invalid-feedback"
+                     style="font-size: 16px;">
+                    Il disegno scansionato non corrisponde all'ordine selezionato.
+                </div>
+            </div>
+        {% endif %}
+
+        <button class="btn btn-primary mt-3"
                 id="btn-prendi-ordine"
                 type="button">
             Preso in carico
         </button>
     </div>
 </div>
-
 <!--toast sospensione ordine -->
 <div class="toast lh-lg hide"
      role="alert"
@@ -620,6 +652,100 @@
 
 </script>
 <script>
+    window.validateDrawingScanToast1 = function () {
+        return true;
+    };
+
+    (() => {
+        const toastEl = document.getElementById("toast-1");
+        const scanField = document.getElementById("toast1-scan-disegno");
+        const feedbackEl = document.getElementById("toast1-scan-feedback");
+
+        if (!toastEl || !scanField || !feedbackEl) {
+            return;
+        }
+
+        function normalizeValue(value) {
+            return String(value ?? "")
+                .trim()
+                .toUpperCase()
+                .replace(/\s+/g, "");
+        }
+
+        function normalizeRevision(rev) {
+            const value = normalizeValue(rev);
+
+            if (!value || value === "X" || value === "-") {
+                return "";
+            }
+
+            return value;
+        }
+
+        function getExpectedDrawingCode() {
+            const codice = document.getElementById("toast1-codice")?.value || "";
+            const indiceModifica = document.getElementById("toast1-indicemodifica")?.value || "";
+
+            return normalizeValue(codice) + normalizeRevision(indiceModifica);
+        }
+
+        function setInvalid(message) {
+            scanField.classList.add("is-invalid");
+            feedbackEl.textContent = message || "Il disegno scansionato non corrisponde all'ordine selezionato.";
+        }
+
+        function clearInvalid() {
+            scanField.classList.remove("is-invalid");
+            feedbackEl.textContent = "Il disegno scansionato non corrisponde all'ordine selezionato.";
+        }
+
+        function resetScanField() {
+            scanField.value = "";
+            clearInvalid();
+        }
+
+        window.validateDrawingScanToast1 = function () {
+            const scanned = normalizeValue(scanField.value);
+            const expected = getExpectedDrawingCode();
+
+            if (!scanned) {
+                setInvalid("La scansione del disegno è obbligatoria.");
+                scanField.focus();
+                return false;
+            }
+
+            if (!expected) {
+                setInvalid("Impossibile validare il disegno: codice o revisione mancanti sull'ordine.");
+                scanField.focus();
+                return false;
+            }
+
+            if (scanned !== expected) {
+                setInvalid("Disegno errato: il codice scansionato non corrisponde all'ordine selezionato.");
+                scanField.focus();
+                scanField.select();
+                return false;
+            }
+
+            clearInvalid();
+            return true;
+        };
+
+        scanField.addEventListener("input", clearInvalid);
+
+        document.addEventListener("click", function (event) {
+            const btn = event.target.closest('[data-bs-target="#toast-1"]');
+            if (!btn) return;
+
+            requestAnimationFrame(() => {
+                resetScanField();
+            });
+        });
+
+        toastEl.addEventListener("hidden.bs.toast", resetScanField);
+    })();
+</script>
+<script>
     document.getElementById("btn-prendi-ordine")?.addEventListener("click", async function () {
         const btn = this;
         const idDocumento = document.getElementById("toast1-iddocumento")?.value?.trim() || "";
@@ -628,6 +754,10 @@
         const selectMascherato = document.getElementById("toast-ordine-mascherato-select");
         const idDocumentoPrincipale = document.getElementById("toast-ordine-mascherato-iddocumento-principale")?.value?.trim() || "";
         const idRigaPrincipale = document.getElementById("toast-ordine-mascherato-idriga-principale")?.value?.trim() || "";
+
+        if (!window.validateDrawingScanToast1()) {
+            return;
+        }
 
         if (chkMascherato?.checked && (!idDocumentoPrincipale || !idRigaPrincipale || !selectMascherato?.value)) {
             alert("Seleziona l'ordine principale attivo da associare all'ordine mascherato.");
