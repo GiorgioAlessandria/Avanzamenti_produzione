@@ -161,6 +161,39 @@ users_lavorazioni = db.Table(
     ),
 )
 
+users_risorse = db.Table(
+    "users_risorse",
+    db.Column(
+        "user_id",
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    db.Column(
+        "risorse_id",
+        db.Integer,
+        db.ForeignKey("risorse.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+)
+
+
+roles_manageable_roles = db.Table(
+    "roles_manageable_roles",
+    db.Column(
+        "manager_role_id",
+        db.Integer,
+        db.ForeignKey("roles.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    db.Column(
+        "managed_role_id",
+        db.Integer,
+        db.ForeignKey("roles.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+)
+
 # --- Modelli ---
 
 
@@ -465,6 +498,25 @@ class Roles(db.Model):
         lazy="selectin",
         backref=db.backref("included_by", lazy="selectin"),
     )
+    manageable_roles = db.relationship(
+        "Roles",
+        secondary=roles_manageable_roles,
+        primaryjoin=(id == roles_manageable_roles.c.manager_role_id),
+        secondaryjoin=(id == roles_manageable_roles.c.managed_role_id),
+        lazy="selectin",
+        backref=db.backref("managed_by_roles", lazy="selectin"),
+    )
+
+    def iter_manageable_roles(self):
+        seen = set()
+        stack = list(self.manageable_roles or [])
+        while stack:
+            role = stack.pop()
+            if role is None or role.id in seen:
+                continue
+            seen.add(role.id)
+            yield role
+            stack.extend(getattr(role, "manageable_roles", []) or [])
 
     def iter_self_and_included(self):
         """Ritorna questo ruolo + tutti i ruoli inclusi (ricorsivo), evitando cicli."""
@@ -567,7 +619,31 @@ class User(UserMixin, db.Model):
         secondary=users_lavorazioni,
         lazy="joined",
     )
+    risorse = db.relationship(
+        "Risorse",
+        secondary=users_risorse,
+        lazy="joined",
+    )
+
     # --- helper per preferences (JSON) ---
+    @property
+    def manageable_roles(self):
+        out = {}
+        for role in self._iter_roles(include_inherited=True):
+            for managed in getattr(role, "iter_manageable_roles", lambda: [])():
+                out[managed.id] = managed
+        return list(out.values())
+
+    @property
+    def manageable_role_ids(self) -> set[int]:
+        return {r.id for r in self.manageable_roles}
+
+    def has_management_scope(self) -> bool:
+        return bool(self.manageable_role_ids)
+
+    def can_manage_role(self, role) -> bool:
+        role_id = role.id if hasattr(role, "id") else int(role)
+        return role_id in self.manageable_role_ids
 
     @property
     def preferences(self) -> dict:

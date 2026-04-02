@@ -90,6 +90,27 @@ def _match(col, allowed):
     return or_(col.in_(allowed), _json_leaf_any_in(col, allowed))
 
 
+def _effective_user_subset(role_allowed, user_allowed) -> tuple[set[str], bool]:
+    """
+    Restituisce:
+    - effective_set: insieme finale applicabile
+    - enforce: True se questa dimensione va forzata a query
+    """
+
+    role_codes = _codes(role_allowed)
+    if not role_codes:
+        # il ruolo non limita questa dimensione => nessun filtro su questa dimensione
+        return set(), False
+
+    user_codes = _codes(user_allowed)
+    if not user_codes:
+        # nessun override utente => vale il ruolo
+        return role_codes, True
+
+    # override utente solo restrittivo
+    return role_codes & user_codes, True
+
+
 @dataclass(frozen=True)
 class RbacPolicy:
     user: object  # current_user
@@ -193,7 +214,6 @@ class RbacPolicy:
         )
         return db.session.scalars(stmt).all()
 
-    # --- filtro unico InputOdp ---
     def filter_input_odp(self, q):
         if self.can("odp.read_all"):
             return q
@@ -206,7 +226,10 @@ class RbacPolicy:
             ),
         )
 
-        filters = [
+        conds = []
+
+        # --- RBAC puro ---
+        base_filters = [
             (InputOdp.CodReparto, self.allowed_reparti),
             (InputOdpRuntime.RisorsaAttiva, self.allowed_risorse),
             (InputOdpRuntime.LavorazioneAttiva, self.allowed_lavorazioni),
@@ -215,10 +238,31 @@ class RbacPolicy:
             (InputOdp.CodMagPrincipale, self.allowed_magazzini),
         ]
 
-        conds = []
-        for col, allowed in filters:
+        for col, allowed in base_filters:
             if allowed:
                 conds.append(_match(col, allowed))
+
+        # --- RBAC + ABAC utente: RISORSE ---
+        effective_risorse, enforce_risorse = _effective_user_subset(
+            self.allowed_risorse,
+            self.user_allowed_risorse,
+        )
+        if enforce_risorse:
+            if not effective_risorse:
+                return q.filter(false())
+            conds.append(_match(InputOdpRuntime.RisorsaAttiva, effective_risorse))
+
+        # --- RBAC + ABAC utente: LAVORAZIONI ---
+        effective_lavorazioni, enforce_lavorazioni = _effective_user_subset(
+            self.allowed_lavorazioni,
+            self.user_allowed_lavorazioni,
+        )
+        if enforce_lavorazioni:
+            if not effective_lavorazioni:
+                return q.filter(false())
+            conds.append(
+                _match(InputOdpRuntime.LavorazioneAttiva, effective_lavorazioni)
+            )
 
         if not conds:
             return q
@@ -244,3 +288,35 @@ class RbacPolicy:
         """
         q = self.filter_input_odp(q)
         return q.filter(_match(InputOdp.CodReparto, {str(reparto_code)}))
+
+    @cached_property
+    def user_allowed_lavorazioni(self) -> set[str]:
+        return {
+            str(x.Codice)
+            for x in (getattr(self.user, "lavorazioni", None) or [])
+            if getattr(x, "Codice", None) is not None
+        }
+
+    @cached_property
+    def user_allowed_risorse(self) -> set[str]:
+        return {
+            str(x.Codice)
+            for x in (getattr(self.user, "risorse", None) or [])
+            if getattr(x, "Codice", None) is not None
+        }
+
+    @cached_property
+    def effective_allowed_lavorazioni(self) -> set[str]:
+        effective, _ = _effective_user_subset(
+            self.allowed_lavorazioni,
+            self.user_allowed_lavorazioni,
+        )
+        return effective
+
+    @cached_property
+    def effective_allowed_risorse(self) -> set[str]:
+        effective, _ = _effective_user_subset(
+            self.allowed_risorse,
+            self.user_allowed_risorse,
+        )
+        return effective

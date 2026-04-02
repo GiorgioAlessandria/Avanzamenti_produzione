@@ -28,6 +28,8 @@ from app_odp.models import (
     InputOdpLog,
     OdpRuntimeLog,
     LottiGeneratiLog,
+    Roles,
+    User,
 )
 from app_odp.policy.decorator import require_perm
 from app_odp.policy.policy import RbacPolicy
@@ -3366,4 +3368,46 @@ def api_export_avp_txt():
             }
         ),
         500,
+    )
+
+
+@main_bp.route("/impostazioni")
+@login_required
+def impostazioni():
+    if not (
+        current_user.has_permission("impostazioni_utente")
+        or current_user.has_permission("impostazioni_reparto")
+    ):
+        abort(403)
+
+    ruoli = Roles.query.order_by(Roles.name.asc()).all()
+
+    ruolo_options = []
+    utenti_per_ruolo = {}
+
+    for ruolo in ruoli:
+        utenti_ruolo = (
+            ruolo.users.filter(User.active.is_(True))
+            .order_by(User.username.asc())
+            .all()
+        )
+
+        if not utenti_ruolo:
+            continue
+
+        ruolo_options.append(ruolo)
+        utenti_per_ruolo[ruolo.id] = utenti_ruolo
+    show_user_management_section = (
+        current_user.has_permission("impostazioni_utente")
+        and current_user.has_management_scope()
+    )
+
+    ruolo_options = (
+        current_user.manageable_roles if show_user_management_section else []
+    )
+
+    return render_template(
+        "impostazioni.j2",
+        ruolo_options=ruolo_options,
+        utenti_per_ruolo=utenti_per_ruolo,
     )
