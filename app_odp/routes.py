@@ -15,7 +15,7 @@ from flask import (
     current_app,
 )
 from flask_login import login_required, current_user
-from sqlalchemy import func, select
+from sqlalchemy import func, select, delete
 from app_odp.etichette import gen_etichette
 from app_odp.models import (
     InputOdp,
@@ -30,6 +30,8 @@ from app_odp.models import (
     LottiGeneratiLog,
     Roles,
     User,
+    users_lavorazioni,
+    users_risorse,
 )
 from app_odp.policy.decorator import require_perm
 from app_odp.policy.policy import RbacPolicy
@@ -3374,40 +3376,232 @@ def api_export_avp_txt():
 @main_bp.route("/impostazioni")
 @login_required
 def impostazioni():
-    if not (
-        current_user.has_permission("impostazioni_utente")
-        or current_user.has_permission("impostazioni_reparto")
-    ):
+    if not current_user.has_permission("impostazioni_utente"):
         abort(403)
 
-    ruoli = Roles.query.order_by(Roles.name.asc()).all()
+    show_user_management_section = current_user.has_management_scope()
 
     ruolo_options = []
     utenti_per_ruolo = {}
+    ruolo_details = {}
+    user_abac_details = {}
 
-    for ruolo in ruoli:
-        utenti_ruolo = (
-            ruolo.users.filter(User.active.is_(True))
-            .order_by(User.username.asc())
-            .all()
+    if show_user_management_section:
+        ruoli_gestibili = sorted(
+            current_user.manageable_roles,
+            key=lambda r: (r.name or "").lower(),
         )
 
-        if not utenti_ruolo:
-            continue
+        for ruolo in ruoli_gestibili:
+            utenti_ruolo = (
+                ruolo.users.filter(User.active.is_(True))
+                .order_by(User.username.asc())
+                .all()
+            )
 
-        ruolo_options.append(ruolo)
-        utenti_per_ruolo[ruolo.id] = utenti_ruolo
-    show_user_management_section = (
-        current_user.has_permission("impostazioni_utente")
-        and current_user.has_management_scope()
-    )
+            if not utenti_ruolo:
+                continue
 
-    ruolo_options = (
-        current_user.manageable_roles if show_user_management_section else []
-    )
+            ruolo_options.append(ruolo)
+            utenti_per_ruolo[ruolo.id] = utenti_ruolo
+
+            lavorazioni = sorted(
+                ruolo.effective_lavorazioni,
+                key=lambda x: ((x.Codice or "").lower(), (x.Descrizione or "").lower()),
+            )
+            risorse = sorted(
+                ruolo.effective_risorse,
+                key=lambda x: ((x.Codice or "").lower(), (x.Descrizione or "").lower()),
+            )
+
+            ruolo_lavorazioni_ids = {x.id for x in lavorazioni}
+            ruolo_risorse_ids = {x.id for x in risorse}
+
+            ruolo_details[str(ruolo.id)] = {
+                "id": ruolo.id,
+                "name": ruolo.name or "",
+                "description": ruolo.description or "",
+                "lavorazioni": [
+                    {
+                        "id": x.id,
+                        "codice": x.Codice or "",
+                        "descrizione": x.Descrizione or "",
+                    }
+                    for x in lavorazioni
+                ],
+                "risorse": [
+                    {
+                        "id": x.id,
+                        "codice": x.Codice or "",
+                        "descrizione": x.Descrizione or "",
+                    }
+                    for x in risorse
+                ],
+            }
+
+            user_abac_details[str(ruolo.id)] = {}
+
+            for utente in utenti_ruolo:
+                user_abac_details[str(ruolo.id)][str(utente.id)] = {
+                    "id": utente.id,
+                    "username": utente.username or "",
+                    "lavorazioni_ids": sorted(
+                        x.id
+                        for x in (utente.lavorazioni or [])
+                        if x.id in ruolo_lavorazioni_ids
+                    ),
+                    "risorse_ids": sorted(
+                        x.id
+                        for x in (utente.risorse or [])
+                        if x.id in ruolo_risorse_ids
+                    ),
+                }
 
     return render_template(
         "impostazioni.j2",
         ruolo_options=ruolo_options,
         utenti_per_ruolo=utenti_per_ruolo,
+        ruolo_details=ruolo_details,
+        user_abac_details=user_abac_details,
+        show_user_management_section=show_user_management_section,
     )
+
+
+@main_bp.post("/api/impostazioni/utente-abac")
+@login_required
+def api_save_user_abac():
+    if not current_user.has_permission("impostazioni_utente"):
+        return jsonify({"ok": False, "error": "Permesso insufficiente."}), 403
+
+    data = request.get_json(silent=True) or {}
+
+    role_id_raw = data.get("role_id")
+    user_id_raw = data.get("user_id")
+    lavorazioni_ids_raw = data.get("lavorazioni_ids") or []
+    risorse_ids_raw = data.get("risorse_ids") or []
+
+    try:
+        role_id = int(role_id_raw)
+        user_id = int(user_id_raw)
+        lavorazioni_ids = {int(x) for x in lavorazioni_ids_raw}
+        risorse_ids = {int(x) for x in risorse_ids_raw}
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "Parametri non validi."}), 400
+
+    if not current_user.can_manage_role(role_id):
+        return jsonify(
+            {"ok": False, "error": "Ruolo non gestibile dall'utente corrente."}
+        ), 403
+
+    ruolo = Roles.query.get(role_id)
+    if ruolo is None:
+        return jsonify({"ok": False, "error": "Ruolo non trovato."}), 404
+
+    utente = User.query.get(user_id)
+    if utente is None:
+        return jsonify({"ok": False, "error": "Utente non trovato."}), 404
+
+    if not any(r.id == ruolo.id for r in (utente.roles or [])):
+        return jsonify(
+            {"ok": False, "error": "L'utente non appartiene al ruolo selezionato."}
+        ), 400
+
+    allowed_lavorazioni_ids = {x.id for x in ruolo.effective_lavorazioni}
+    allowed_risorse_ids = {x.id for x in ruolo.effective_risorse}
+
+    # Protezione: niente estensioni oltre RBAC
+    invalid_lavorazioni = lavorazioni_ids - allowed_lavorazioni_ids
+    invalid_risorse = risorse_ids - allowed_risorse_ids
+
+    if invalid_lavorazioni or invalid_risorse:
+        return jsonify(
+            {
+                "ok": False,
+                "error": "Il payload contiene assegnazioni fuori dal perimetro RBAC del ruolo.",
+                "invalid_lavorazioni": sorted(invalid_lavorazioni),
+                "invalid_risorse": sorted(invalid_risorse),
+            }
+        ), 400
+
+    # Stato attuale utente globale
+    current_lavorazioni_ids = {x.id for x in (utente.lavorazioni or [])}
+    current_risorse_ids = {x.id for x in (utente.risorse or [])}
+
+    # Lavora SOLO nel perimetro del ruolo selezionato
+    current_lavorazioni_in_scope = current_lavorazioni_ids & allowed_lavorazioni_ids
+    current_risorse_in_scope = current_risorse_ids & allowed_risorse_ids
+
+    lavorazioni_to_add = lavorazioni_ids - current_lavorazioni_in_scope
+    lavorazioni_to_remove = current_lavorazioni_in_scope - lavorazioni_ids
+
+    risorse_to_add = risorse_ids - current_risorse_in_scope
+    risorse_to_remove = current_risorse_in_scope - risorse_ids
+
+    try:
+        if lavorazioni_to_add:
+            db.session.execute(
+                users_lavorazioni.insert(),
+                [
+                    {"user_id": utente.id, "lavorazioni_id": item_id}
+                    for item_id in sorted(lavorazioni_to_add)
+                ],
+            )
+
+        if lavorazioni_to_remove:
+            db.session.execute(
+                delete(users_lavorazioni).where(
+                    users_lavorazioni.c.user_id == utente.id,
+                    users_lavorazioni.c.lavorazioni_id.in_(
+                        sorted(lavorazioni_to_remove)
+                    ),
+                )
+            )
+
+        if risorse_to_add:
+            db.session.execute(
+                users_risorse.insert(),
+                [
+                    {"user_id": utente.id, "risorse_id": item_id}
+                    for item_id in sorted(risorse_to_add)
+                ],
+            )
+
+        if risorse_to_remove:
+            db.session.execute(
+                delete(users_risorse).where(
+                    users_risorse.c.user_id == utente.id,
+                    users_risorse.c.risorse_id.in_(sorted(risorse_to_remove)),
+                )
+            )
+
+        db.session.commit()
+
+    except Exception as exc:
+        db.session.rollback()
+        return jsonify(
+            {
+                "ok": False,
+                "error": f"Errore salvataggio impostazioni ABAC: {exc}",
+            }
+        ), 500
+
+    return jsonify(
+        {
+            "ok": True,
+            "message": "Impostazioni ABAC salvate correttamente.",
+            "role_id": ruolo.id,
+            "user_id": utente.id,
+            "lavorazioni_ids": sorted(lavorazioni_ids),
+            "risorse_ids": sorted(risorse_ids),
+            "delta": {
+                "lavorazioni": {
+                    "added": sorted(lavorazioni_to_add),
+                    "removed": sorted(lavorazioni_to_remove),
+                },
+                "risorse": {
+                    "added": sorted(risorse_to_add),
+                    "removed": sorted(risorse_to_remove),
+                },
+            },
+        }
+    ), 200
