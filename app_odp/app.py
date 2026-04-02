@@ -96,6 +96,9 @@ def create_app():
     app.config["DIMENSIONI"] = configurazione["parametri_etichette"]["dimensioni"]
     app.config["DPI"] = configurazione["parametri_etichette"]["dpi"]
     app.config["FONT_PATH"] = configurazione["parametri_etichette"]["font_path"]
+    app.config["LAVORAZIONI_RICHIESTA_DISEGNI"] = configurazione[
+        "lavorazioni_richiesta_disegni"
+    ]["lavorazioni"]
     # inizializza estensioni
     db.init_app(app)
     register_filters(app)

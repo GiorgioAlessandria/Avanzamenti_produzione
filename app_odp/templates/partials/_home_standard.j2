@@ -1,5 +1,5 @@
-{% set require_disegno_scan = policy and policy.can('controllo_codice_disegno') %}
-
+{% set has_disegno_permission = policy and policy.can('controllo_codice_disegno') %}
+{% set lavorazioni_richiesta_disegni = config.get('LAVORAZIONI_RICHIESTA_DISEGNI', []) %}
 <!--toast nuovo ordine in carico -->
 <div class="toast lh-lg hide"
 
@@ -40,6 +40,9 @@
         <input type="hidden"
                data-bind="fase"
                id="toast1-fase">
+        <input type="hidden"
+               data-bind="lavorazione"
+               id="toast1-lavorazione">
 
         <div class="row"
              style="font-size: 20px;  border-radius: 4px;">
@@ -69,19 +72,19 @@
                    id="toast-ordine-mascherato-idriga-principale">
         </div>
 
-        {% if require_disegno_scan %}
+        {% if has_disegno_permission %}
             <div class="mt-3 w-100"
-                 id="toast1-scan-wrapper">
+                 id="toast1-scan-wrapper"
+                 style="display: none;">
                 <label for="toast1-scan-disegno"
                        class="form-label fw-semibold mb-1"
                        style="font-size: 20px;">
-                    Scansione codice disegno
+                    Scansione disegno (codice + revisione)
                 </label>
 
                 <textarea id="toast1-scan-disegno"
                           class="form-control"
                           rows="2"
-                          required
                           spellcheck="false"
                           autocomplete="off"
                           autocapitalize="characters"
@@ -658,12 +661,17 @@
 
     (() => {
         const toastEl = document.getElementById("toast-1");
+        const scanWrapper = document.getElementById("toast1-scan-wrapper");
         const scanField = document.getElementById("toast1-scan-disegno");
         const feedbackEl = document.getElementById("toast1-scan-feedback");
+        const lavorazioneField = document.getElementById("toast1-lavorazione");
 
-        if (!toastEl || !scanField || !feedbackEl) {
-            return;
-        }
+        const hasDisegnoPermission = {{ (has_disegno_permission)|tojson }};
+        const requiredLavorazioni = new Set(
+            {{ lavorazioni_richiesta_disegni|tojson }}.map(v =>
+                String(v ?? "").trim().toUpperCase()
+            )
+        );
 
         function normalizeValue(value) {
             return String(value ?? "")
@@ -672,8 +680,15 @@
                 .replace(/\s+/g, "");
         }
 
+        function normalizeCode(value) {
+            return String(value ?? "")
+                .trim()
+                .toUpperCase()
+                .replace(/\s+/g, "");
+        }
+
         function normalizeRevision(rev) {
-            const value = normalizeValue(rev);
+            const value = normalizeCode(rev);
 
             if (!value || value === "X" || value === "-") {
                 return "";
@@ -682,48 +697,101 @@
             return value;
         }
 
+        function normalizeLavorazione(value) {
+            return String(value ?? "")
+                .trim()
+                .toUpperCase();
+        }
+
+        function getCurrentLavorazione() {
+            return normalizeLavorazione(lavorazioneField?.value || "");
+        }
+
+        function currentOrderRequiresDrawingScan() {
+            if (!hasDisegnoPermission) return false;
+
+            const lavorazione = getCurrentLavorazione();
+            if (!lavorazione) return false;
+
+            return requiredLavorazioni.has(lavorazione);
+        }
+
         function getExpectedDrawingCode() {
             const codice = document.getElementById("toast1-codice")?.value || "";
             const indiceModifica = document.getElementById("toast1-indicemodifica")?.value || "";
 
-            return normalizeValue(codice) + normalizeRevision(indiceModifica);
+            return normalizeCode(codice) + normalizeRevision(indiceModifica);
         }
 
         function setInvalid(message) {
+            if (!scanField || !feedbackEl) return;
             scanField.classList.add("is-invalid");
             feedbackEl.textContent = message || "Il disegno scansionato non corrisponde all'ordine selezionato.";
         }
 
         function clearInvalid() {
+            if (!scanField || !feedbackEl) return;
             scanField.classList.remove("is-invalid");
             feedbackEl.textContent = "Il disegno scansionato non corrisponde all'ordine selezionato.";
         }
 
         function resetScanField() {
-            scanField.value = "";
+            if (scanField) {
+                scanField.value = "";
+            }
             clearInvalid();
         }
 
+        function syncScanUi() {
+            const requiredForOrder = currentOrderRequiresDrawingScan();
+
+            if (scanWrapper) {
+                scanWrapper.style.display = requiredForOrder ? "" : "none";
+            }
+
+            if (scanField) {
+                scanField.required = requiredForOrder;
+
+                if (!requiredForOrder) {
+                    scanField.value = "";
+                    scanField.classList.remove("is-invalid");
+                }
+            }
+
+            clearInvalid();
+        }
+
+        if (!toastEl || !lavorazioneField) {
+            return;
+        }
+
         window.validateDrawingScanToast1 = function () {
-            const scanned = normalizeValue(scanField.value);
+            const requiredForOrder = currentOrderRequiresDrawingScan();
+
+            if (!requiredForOrder) {
+                clearInvalid();
+                return true;
+            }
+
+            const scanned = normalizeValue(scanField?.value || "");
             const expected = getExpectedDrawingCode();
 
             if (!scanned) {
                 setInvalid("La scansione del disegno è obbligatoria.");
-                scanField.focus();
+                scanField?.focus();
                 return false;
             }
 
             if (!expected) {
                 setInvalid("Impossibile validare il disegno: codice o revisione mancanti sull'ordine.");
-                scanField.focus();
+                scanField?.focus();
                 return false;
             }
 
             if (scanned !== expected) {
                 setInvalid("Disegno errato: il codice scansionato non corrisponde all'ordine selezionato.");
-                scanField.focus();
-                scanField.select();
+                scanField?.focus();
+                scanField?.select();
                 return false;
             }
 
@@ -731,7 +799,7 @@
             return true;
         };
 
-        scanField.addEventListener("input", clearInvalid);
+        scanField?.addEventListener("input", clearInvalid);
 
         document.addEventListener("click", function (event) {
             const btn = event.target.closest('[data-bs-target="#toast-1"]');
@@ -739,10 +807,14 @@
 
             requestAnimationFrame(() => {
                 resetScanField();
+                syncScanUi();
             });
         });
 
-        toastEl.addEventListener("hidden.bs.toast", resetScanField);
+        toastEl.addEventListener("hidden.bs.toast", () => {
+            resetScanField();
+            syncScanUi();
+        });
     })();
 </script>
 <script>
