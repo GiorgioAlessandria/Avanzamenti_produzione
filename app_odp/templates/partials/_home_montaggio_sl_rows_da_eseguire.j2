@@ -13,7 +13,7 @@
             data-fase="{{ singolo_odp.FaseAttiva }}"
             data-datacons="{{ singolo_odp.DataFineSched }}"
             data-risorsaprod="{{ singolo_odp.RisorsaAttiva }}">
-            <td>{{ singolo_odp.RifRegistraz }}</td>
+            <td>{{ singolo_odp.RifRegistraz }}.{{ singolo_odp.IdRiga }}</td>
             <td>{{ singolo_odp.CodArt }}</td>
             {% set rev = singolo_odp.IndiceModifica %}
             <td>{{ "-" if rev is none or (rev|string|trim|upper) == "X" else rev }}</td>
