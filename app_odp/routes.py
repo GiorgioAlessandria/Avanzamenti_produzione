@@ -319,37 +319,6 @@ def _order_hours_snapshot(ordine: InputOdp) -> tuple[float, float]:
     return _safe_float(ore_lavorazione), _safe_float(ore_attrezzaggio)
 
 
-def _new_dash_kpi_bucket() -> dict:
-    return {
-        "totali": 0,
-        "pianificati": 0,
-        "sospesi": 0,
-        "attivi": 0,
-        "ore_lavorazione": 0.0,
-        "ore_attrezzaggio": 0.0,
-        "percentuale_attivi": 0.0,
-        "percentuale_sospesi": 0.0,
-    }
-
-
-def _finalize_dash_kpi(bucket: dict) -> dict:
-    totali = int(bucket.get("totali", 0) or 0)
-    attivi = int(bucket.get("attivi", 0) or 0)
-    sospesi = int(bucket.get("sospesi", 0) or 0)
-    bucket["ore_lavorazione"] = round(float(bucket.get("ore_lavorazione", 0.0) or 0.0), 2)
-    bucket["ore_attrezzaggio"] = round(
-        float(bucket.get("ore_attrezzaggio", 0.0) or 0.0),
-        2,
-    )
-    if totali > 0:
-        bucket["percentuale_attivi"] = round((attivi / totali) * 100, 2)
-        bucket["percentuale_sospesi"] = round((sospesi / totali) * 100, 2)
-    else:
-        bucket["percentuale_attivi"] = 0.0
-        bucket["percentuale_sospesi"] = 0.0
-    return bucket
-
-
 def _advance_or_finalize_phase(
     *,
     ordine,
@@ -3635,67 +3604,6 @@ def dash_reparto():
     return render_template(
         "dash_reparto.j2",
         utenti_dashboard=lista_utenti,
-    )
-
-
-@main_bp.get("/api/dash-complessiva")
-@main_bp.get("/dash-complessiva")
-@login_required
-@require_perm("dash_complessiva")
-def dash_complessiva():
-    policy = RbacPolicy(current_user)
-    ordini_visibili = policy.filter_input_odp(_base_odp_query()).all()
-
-    reparto_labels = {
-        _norm_text(rep.Codice): _first_not_blank(rep.Descrizione, rep.Codice, default="-")
-        for rep in Reparti.query.all()
-        if _norm_text(rep.Codice)
-    }
-
-    kpi_globali = _new_dash_kpi_bucket()
-    kpi_per_reparto = {}
-
-    for ordine in ordini_visibili:
-        stato = _norm_text(getattr(ordine, "StatoOrdine", "")).lower()
-        if stato == "chiusa":
-            continue
-
-        reparto_code = _norm_text(getattr(ordine, "CodReparto", "")) or "-"
-        reparto_payload = kpi_per_reparto.setdefault(
-            reparto_code,
-            {
-                "codice": reparto_code,
-                "descrizione": reparto_labels.get(reparto_code, reparto_code),
-                "kpi": _new_dash_kpi_bucket(),
-            },
-        )
-
-        ore_lavorazione, ore_attrezzaggio = _order_hours_snapshot(ordine)
-
-        for bucket in (kpi_globali, reparto_payload["kpi"]):
-            bucket["totali"] += 1
-            bucket["ore_lavorazione"] += ore_lavorazione
-            bucket["ore_attrezzaggio"] += ore_attrezzaggio
-
-            if "pianificat" in stato:
-                bucket["pianificati"] += 1
-            elif "sospes" in stato:
-                bucket["sospesi"] += 1
-            elif "attiv" in stato:
-                bucket["attivi"] += 1
-
-    kpi_globali = _finalize_dash_kpi(kpi_globali)
-
-    reparto_cards = []
-    for reparto_code in sorted(kpi_per_reparto, key=str.lower):
-        payload = kpi_per_reparto[reparto_code]
-        payload["kpi"] = _finalize_dash_kpi(payload["kpi"])
-        reparto_cards.append(payload)
-
-    return render_template(
-        "dash_complessiva.j2",
-        kpi_globali=kpi_globali,
-        kpi_reparti=reparto_cards,
     )
 
 

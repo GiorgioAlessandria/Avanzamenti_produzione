@@ -186,3 +186,4 @@ db
 *.*-shm
 *.*-wal
 *.sqbpro
+db_log.sqlite
