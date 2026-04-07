@@ -88,6 +88,23 @@
                     .replace(/'/g, "&#039;");
             }
 
+            function totalKpiCard(title, value) {
+                return `
+                    <div class="card h-100 border-start border-4 border-secondary shadow-sm bg-light mb-3">
+                        <div class="card-body py-3 px-3">
+                            <div class="text-muted"
+                                 style="font-size: 0.95rem; line-height: 1.15;">
+                                ${escapeHtml(title)}
+                            </div>
+                            <div class="fw-semibold mt-2"
+                                 style="font-size: 1.35rem; line-height: 1.1;">
+                                ${escapeHtml(value)}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
             function compactKpiCard(title, value, tone = "secondary") {
                 const borderClass = {
                     primary: "border-primary",
@@ -126,6 +143,7 @@
 
             function renderKpiGrid(kpi) {
                 return `
+                        ${totalKpiCard("Ordini totali", kpi.totali || 0)}
                     <div class="row g-3 mb-3">
                         ${compactKpiCard("Ordini pianificati", kpi.pianificati || 0, "primary")}
                         ${compactKpiCard("Ordini attivi", kpi.attivi || 0, "success")}
