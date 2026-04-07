@@ -3494,34 +3494,22 @@ def impostazioni():
 @require_perm("dash_reparto")
 def dash_reparto():
     manageable_role_ids = current_user.manageable_role_ids
-    utenti_subordinati = []
-    if manageable_role_ids:
-        utenti_subordinati = (
-            User.query.join(user_roles, user_roles.c.user_id == User.id)
-            .filter(
-                User.active.is_(True),
-                User.id != current_user.id,
-                user_roles.c.role_id.in_(manageable_role_ids),
-            )
-            .distinct()
-            .order_by(User.username.asc())
-            .all()
+    if not manageable_role_ids:
+        abort(403)
+
+    utenti_subordinati = (
+        User.query.join(user_roles, user_roles.c.user_id == User.id)
+        .filter(
+            User.active.is_(True),
+            User.id != current_user.id,
+            user_roles.c.role_id.in_(manageable_role_ids),
         )
+        .distinct()
+        .order_by(User.username.asc())
+        .all()
+    )
 
     utenti_data = {}
-    utenti_data[current_user.username] = {
-        "id": current_user.id,
-        "username": current_user.username,
-        "kpi": {
-            "attivi": 0,
-            "sospesi": 0,
-            "ore_lavorazione": 0.0,
-            "ore_attrezzaggio": 0.0,
-        },
-        "ordini_attivi": [],
-        "ordini_sospesi": [],
-    }
-
     for utente in utenti_subordinati:
         utenti_data[utente.username] = {
             "id": utente.id,
