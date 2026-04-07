@@ -20,14 +20,9 @@
                                             data-username="{{ utente.username }}">
                                         <div class="d-flex justify-content-between align-items-center gap-2">
                                             <span class="fw-semibold">{{ utente.username }}</span>
-                                            <div class="d-flex align-items-center gap-2">
-                                                {% if utente.is_current %}
-                                                    <span class="badge text-bg-primary">Tu</span>
-                                                {% endif %}
-                                                <span class="badge text-bg-light">
-                                                    {{ utente.kpi.attivi }} A / {{ utente.kpi.sospesi }} S
-                                                </span>
-                                            </div>
+                                            <span class="badge text-bg-light">
+                                                {{ utente.kpi.attivi }} A / {{ utente.kpi.sospesi }} S
+                                            </span>
                                         </div>
                                     </button>
                                 {% endfor %}
@@ -75,7 +70,7 @@
 
             function formatHours(value) {
                 const num = Number(value || 0);
-                return `${num.toFixed(2)} h`;
+                return `${num.toFixed(2)} m`;
             }
 
             function escapeHtml(value) {
@@ -146,7 +141,7 @@
                         <div class="col-6 col-xl-3">
                             <div class="card border-0 bg-light h-100">
                                 <div class="card-body">
-                                    <div class="text-muted small">Ore lavorazione previste</div>
+                                    <div class="text-muted small">Minuti lavorazione previsti</div>
                                     <div class="fs-4 fw-semibold">${escapeHtml(formatHours(selected.kpi.ore_lavorazione))}</div>
                                 </div>
                             </div>
@@ -154,7 +149,7 @@
                         <div class="col-6 col-xl-3">
                             <div class="card border-0 bg-light h-100">
                                 <div class="card-body">
-                                    <div class="text-muted small">Ore attrezzaggio previste</div>
+                                    <div class="text-muted small">Minuti attrezzaggio previsti</div>
                                     <div class="fs-4 fw-semibold">${escapeHtml(formatHours(selected.kpi.ore_attrezzaggio))}</div>
                                 </div>
                             </div>
@@ -171,8 +166,8 @@
                                         <th data-sort="text">Descrizione</th>
                                         <th data-sort="num" class="text-end">Quantità</th>
                                         <th data-sort="text">Risorsa</th>
-                                        <th data-sort="num" class="text-end">Tempo lavorazione (h)</th>
-                                        <th data-sort="num" class="text-end">Tempo attrezzaggio (h)</th>
+                                        <th data-sort="num" class="text-end">Tempo lavorazione (m)</th>
+                                        <th data-sort="num" class="text-end">Tempo attrezzaggio (m)</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -192,8 +187,8 @@
                                         <th data-sort="text">Descrizione</th>
                                         <th data-sort="num" class="text-end">Quantità</th>
                                         <th data-sort="text">Risorsa</th>
-                                        <th data-sort="num" class="text-end">Tempo lavorazione (h)</th>
-                                        <th data-sort="num" class="text-end">Tempo attrezzaggio (h)</th>
+                                        <th data-sort="num" class="text-end">Tempo lavorazione (m)</th>
+                                        <th data-sort="num" class="text-end">Tempo attrezzaggio (m)</th>
                                     </tr>
                                 </thead>
                                 <tbody>
