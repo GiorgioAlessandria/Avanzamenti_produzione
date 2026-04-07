@@ -31,6 +31,7 @@ from app_odp.models import (
     Roles,
     Reparti,
     User,
+    user_roles,
     users_lavorazioni,
     users_risorse,
 )
@@ -3165,7 +3166,6 @@ def api_chiudi_ordine_montaggio_macchina():
     fase_corrente = _fase_corrente_for_export(ordine, stato=stato, fase_override=fase)
     payload = _build_phase_payload(
         ordine=ordine,
-        codice=ordine.CodArt,
         distinta_base=ordine.DistintaMateriale,
         fase_corrente=fase_corrente,
         q_ok=q_ok,
@@ -3786,4 +3786,132 @@ def dash_complessiva():
         "dash_complessiva.j2",
         kpi_globali=kpi_globali,
         kpi_reparti=kpi_reparti,
+    )
+
+
+@main_bp.get("/api/dash-reparto")
+@main_bp.get("/dash-reparto")
+@login_required
+@require_perm("dash_reparto")
+def dash_reparto():
+    manageable_role_ids = current_user.manageable_role_ids
+    utenti_subordinati = []
+
+    if manageable_role_ids:
+        utenti_subordinati = (
+            User.query.join(user_roles, user_roles.c.user_id == User.id)
+            .filter(
+                User.active.is_(True),
+                User.id != current_user.id,
+                user_roles.c.role_id.in_(manageable_role_ids),
+            )
+            .distinct()
+            .order_by(User.username.asc())
+            .all()
+        )
+
+    utenti_data = {}
+    utenti_data[current_user.username] = {
+        "id": current_user.id,
+        "username": current_user.username,
+        "is_current": True,
+        "kpi": {
+            "attivi": 0,
+            "sospesi": 0,
+            "ore_lavorazione": 0.0,
+            "ore_attrezzaggio": 0.0,
+        },
+        "ordini_attivi": [],
+        "ordini_sospesi": [],
+    }
+
+    for utente in utenti_subordinati:
+        utenti_data[utente.username] = {
+            "id": utente.id,
+            "username": utente.username,
+            "is_current": False,
+            "kpi": {
+                "attivi": 0,
+                "sospesi": 0,
+                "ore_lavorazione": 0.0,
+                "ore_attrezzaggio": 0.0,
+            },
+            "ordini_attivi": [],
+            "ordini_sospesi": [],
+        }
+
+    if utenti_data:
+        ordini = (
+            InputOdp.query.join(InputOdp.runtime_row)
+            .filter(
+                InputOdpRuntime.Stato_odp.in_(("Attivo", "In Sospeso")),
+                InputOdpRuntime.Utente_operazione.in_(list(utenti_data.keys())),
+            )
+            .all()
+        )
+
+        for ordine in ordini:
+            runtime = ordine.runtime_row
+            if runtime is None:
+                continue
+
+            username_operatore = _norm_text(runtime.Utente_operazione)
+            if username_operatore not in utenti_data:
+                continue
+
+            minuti_lavorazione, minuti_attrezzaggio = _order_hours_snapshot(ordine)
+
+            record = {
+                "ordine": f"{_norm_text(ordine.IdDocumento)}/{_norm_text(ordine.IdRiga)}",
+                "descrizione": _norm_text(ordine.DesArt),
+                "quantita": _norm_text(ordine.Quantita),
+                "risorsa": _first_not_blank(
+                    runtime.RisorsaAttiva,
+                    InputOdp._active_value_from_phase_list(
+                        ordine.CodRisorsaProd,
+                        ordine.FaseAttiva,
+                    ),
+                    default="-",
+                ),
+                "tempo_lavorazione": round(minuti_lavorazione, 2),
+                "tempo_attrezzaggio": round(minuti_attrezzaggio, 2),
+            }
+
+            bucket_key = (
+                "ordini_attivi"
+                if _norm_text(runtime.Stato_odp).lower() == "attivo"
+                else "ordini_sospesi"
+            )
+
+            utenti_data[username_operatore][bucket_key].append(record)
+            utenti_data[username_operatore]["kpi"]["ore_lavorazione"] += (
+                minuti_lavorazione
+            )
+            utenti_data[username_operatore]["kpi"]["ore_attrezzaggio"] += (
+                minuti_attrezzaggio
+            )
+
+    for payload in utenti_data.values():
+        payload["kpi"]["attivi"] = len(payload["ordini_attivi"])
+        payload["kpi"]["sospesi"] = len(payload["ordini_sospesi"])
+        payload["kpi"]["ore_lavorazione"] = round(
+            payload["kpi"]["ore_lavorazione"],
+            2,
+        )
+        payload["kpi"]["ore_attrezzaggio"] = round(
+            payload["kpi"]["ore_attrezzaggio"],
+            2,
+        )
+
+    lista_utenti = sorted(
+        utenti_data.values(),
+        key=lambda x: (
+            0 if x.get("is_current") else 1,
+            (x.get("username") or "").lower(),
+        ),
+    )
+
+    return render_template(
+        "dash_reparto.j2",
+        utenti_dashboard=lista_utenti,
     )

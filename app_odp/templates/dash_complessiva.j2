@@ -5,16 +5,6 @@
 {% block content %}
     <main class="container-fluid mt-4 mb-4">
         <div class="row g-4">
-            <!-- KPI a sinistra -->
-            <div class="col-12 col-lg-8">
-                <div class="card shadow-sm h-100">
-                    <div class="card-header">
-                        <h3 class="mb-0">Dashboard complessiva</h3>
-                    </div>
-                    <div class="card-body"
-                         id="dash-complessiva-dettaglio"></div>
-                </div>
-            </div>
 
             <!-- Reparti a destra -->
             <div class="col-12 col-lg-4">
@@ -43,6 +33,16 @@
                             </div>
                         {% endif %}
                     </div>
+                </div>
+            </div>
+            <!-- KPI a sinistra -->
+            <div class="col-12 col-lg-8">
+                <div class="card shadow-sm h-100">
+                    <div class="card-header">
+                        <h3 class="mb-0">Dashboard complessiva</h3>
+                    </div>
+                    <div class="card-body"
+                         id="dash-complessiva-dettaglio"></div>
                 </div>
             </div>
         </div>
@@ -93,6 +93,11 @@
                 return Number.isInteger(num) ? `${num} min` : `${num.toFixed(2)} min`;
             }
 
+            function formatHours(value) {
+                const num = Number(value || 0);
+                return Number.isInteger(num) ? `${num} h` : `${num.toFixed(2)} h`;
+            }
+
             function cardKpi(title, value) {
                 return `
                     <div class="col-6 col-xl-4">
@@ -113,7 +118,7 @@
                         ${cardKpi("Ordini pianificati", kpi.pianificati || 0)}
                         ${cardKpi("Ordini sospesi", kpi.sospesi || 0)}
                         ${cardKpi("Ordini attivi", kpi.attivi || 0)}
-                        ${cardKpi("Minuti lavorazione", formatMinutes(kpi.minuti_lavorazione))}
+                        ${cardKpi("Ore lavorazione", formatHours(kpi.minuti_lavorazione))}
                         ${cardKpi("Minuti attrezzaggio", formatMinutes(kpi.minuti_attrezzaggio))}
                     </div>
                 `;
