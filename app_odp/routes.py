@@ -28,6 +28,7 @@ from app_odp.models import (
     InputOdpLog,
     OdpRuntimeLog,
     LottiGeneratiLog,
+    Reparti,
     Roles,
     User,
     user_roles,
