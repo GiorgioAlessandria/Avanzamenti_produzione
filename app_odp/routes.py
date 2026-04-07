@@ -28,10 +28,9 @@ from app_odp.models import (
     InputOdpLog,
     OdpRuntimeLog,
     LottiGeneratiLog,
-    Reparti,
     Roles,
+    Reparti,
     User,
-    user_roles,
     users_lavorazioni,
     users_risorse,
 )
@@ -67,7 +66,9 @@ def _finalize_dash_kpi(bucket: dict) -> dict:
     totali = int(bucket.get("totali", 0) or 0)
     attivi = int(bucket.get("attivi", 0) or 0)
     sospesi = int(bucket.get("sospesi", 0) or 0)
-    bucket["ore_lavorazione"] = round(float(bucket.get("ore_lavorazione", 0.0) or 0.0), 2)
+    bucket["ore_lavorazione"] = round(
+        float(bucket.get("ore_lavorazione", 0.0) or 0.0), 2
+    )
     bucket["ore_attrezzaggio"] = round(
         float(bucket.get("ore_attrezzaggio", 0.0) or 0.0),
         2,
@@ -349,6 +350,47 @@ def _order_hours_snapshot(ordine: InputOdp) -> tuple[float, float]:
     )
     ore_attrezzaggio = getattr(ordine, "AttrezzaggioAttivo", "")
     return _safe_float(ore_lavorazione), _safe_float(ore_attrezzaggio)
+
+
+def _dash_complessiva_new_bucket() -> dict:
+    return {
+        "totali": 0,
+        "pianificati": 0,
+        "sospesi": 0,
+        "attivi": 0,
+        "minuti_lavorazione": 0.0,
+        "minuti_attrezzaggio": 0.0,
+    }
+
+
+def _dash_complessiva_finalize_bucket(bucket: dict) -> dict:
+    bucket["minuti_lavorazione"] = round(
+        float(bucket.get("minuti_lavorazione", 0.0) or 0.0),
+        2,
+    )
+    bucket["minuti_attrezzaggio"] = round(
+        float(bucket.get("minuti_attrezzaggio", 0.0) or 0.0),
+        2,
+    )
+    return bucket
+
+
+def _dash_complessiva_apply_order(
+    bucket: dict,
+    stato: str,
+    minuti_lavorazione: float,
+    minuti_attrezzaggio: float,
+) -> None:
+    bucket["totali"] += 1
+    bucket["minuti_lavorazione"] += minuti_lavorazione
+    bucket["minuti_attrezzaggio"] += minuti_attrezzaggio
+
+    if "pianificat" in stato:
+        bucket["pianificati"] += 1
+    elif "sospes" in stato:
+        bucket["sospesi"] += 1
+    elif "attiv" in stato:
+        bucket["attivi"] += 1
 
 
 def _advance_or_finalize_phase(
@@ -3521,185 +3563,6 @@ def impostazioni():
     )
 
 
-@main_bp.get("/api/dash-reparto")
-@main_bp.get("/dash-reparto")
-@login_required
-@require_perm("dash_reparto")
-def dash_reparto():
-    manageable_role_ids = current_user.manageable_role_ids
-    utenti_subordinati = []
-    if manageable_role_ids:
-        utenti_subordinati = (
-            User.query.join(user_roles, user_roles.c.user_id == User.id)
-            .filter(
-                User.active.is_(True),
-                User.id != current_user.id,
-                user_roles.c.role_id.in_(manageable_role_ids),
-            )
-            .distinct()
-            .order_by(User.username.asc())
-            .all()
-        )
-
-    utenti_data = {}
-    utenti_data[current_user.username] = {
-        "id": current_user.id,
-        "username": current_user.username,
-        "is_current": True,
-        "kpi": {
-            "attivi": 0,
-            "sospesi": 0,
-            "ore_lavorazione": 0.0,
-            "ore_attrezzaggio": 0.0,
-        },
-        "ordini_attivi": [],
-        "ordini_sospesi": [],
-    }
-
-    for utente in utenti_subordinati:
-        utenti_data[utente.username] = {
-            "id": utente.id,
-            "username": utente.username,
-            "is_current": False,
-            "kpi": {
-                "attivi": 0,
-                "sospesi": 0,
-                "ore_lavorazione": 0.0,
-                "ore_attrezzaggio": 0.0,
-            },
-            "ordini_attivi": [],
-            "ordini_sospesi": [],
-        }
-
-    if utenti_data:
-        ordini = (
-            InputOdp.query.join(InputOdp.runtime_row)
-            .filter(
-                InputOdpRuntime.Stato_odp.in_(("Attivo", "In Sospeso")),
-                InputOdpRuntime.Utente_operazione.in_(list(utenti_data.keys())),
-            )
-            .all()
-        )
-
-        for ordine in ordini:
-            runtime = ordine.runtime_row
-            if runtime is None:
-                continue
-
-            username_operatore = _norm_text(runtime.Utente_operazione)
-            if username_operatore not in utenti_data:
-                continue
-
-            ore_lavorazione, ore_attrezzaggio = _order_hours_snapshot(ordine)
-            record = {
-                "ordine": f"{_norm_text(ordine.IdDocumento)}/{_norm_text(ordine.IdRiga)}",
-                "descrizione": _norm_text(ordine.DesArt),
-                "quantita": _norm_text(ordine.Quantita),
-                "risorsa": _first_not_blank(
-                    runtime.RisorsaAttiva,
-                    InputOdp._active_value_from_phase_list(
-                        ordine.CodRisorsaProd,
-                        ordine.FaseAttiva,
-                    ),
-                    default="-",
-                ),
-                "tempo_lavorazione": round(ore_lavorazione, 2),
-                "tempo_attrezzaggio": round(ore_attrezzaggio, 2),
-            }
-
-            bucket_key = (
-                "ordini_attivi"
-                if _norm_text(runtime.Stato_odp).lower() == "attivo"
-                else "ordini_sospesi"
-            )
-            utenti_data[username_operatore][bucket_key].append(record)
-            utenti_data[username_operatore]["kpi"]["ore_lavorazione"] += ore_lavorazione
-            utenti_data[username_operatore]["kpi"]["ore_attrezzaggio"] += ore_attrezzaggio
-
-    for payload in utenti_data.values():
-        payload["kpi"]["attivi"] = len(payload["ordini_attivi"])
-        payload["kpi"]["sospesi"] = len(payload["ordini_sospesi"])
-        payload["kpi"]["ore_lavorazione"] = round(
-            payload["kpi"]["ore_lavorazione"],
-            2,
-        )
-        payload["kpi"]["ore_attrezzaggio"] = round(
-            payload["kpi"]["ore_attrezzaggio"],
-            2,
-        )
-
-    lista_utenti = sorted(
-        utenti_data.values(),
-        key=lambda x: (0 if x.get("is_current") else 1, (x.get("username") or "").lower()),
-    )
-
-    return render_template(
-        "dash_reparto.j2",
-        utenti_dashboard=lista_utenti,
-    )
-
-
-@main_bp.get("/api/dash-complessiva")
-@main_bp.get("/dash-complessiva")
-@login_required
-@require_perm("dash_complessiva")
-def dash_complessiva():
-    policy = RbacPolicy(current_user)
-    ordini_visibili = policy.filter_input_odp(_base_odp_query()).all()
-
-    reparto_labels = {
-        _norm_text(rep.Codice): _first_not_blank(rep.Descrizione, rep.Codice, default="-")
-        for rep in Reparti.query.all()
-        if _norm_text(rep.Codice)
-    }
-
-    kpi_globali = _new_dash_kpi_bucket()
-    kpi_per_reparto = {}
-
-    for ordine in ordini_visibili:
-        stato = _norm_text(getattr(ordine, "StatoOrdine", "")).lower()
-        if stato == "chiusa":
-            continue
-
-        reparto_code = _norm_text(getattr(ordine, "CodReparto", "")) or "-"
-        reparto_payload = kpi_per_reparto.setdefault(
-            reparto_code,
-            {
-                "codice": reparto_code,
-                "descrizione": reparto_labels.get(reparto_code, reparto_code),
-                "kpi": _new_dash_kpi_bucket(),
-            },
-        )
-
-        ore_lavorazione, ore_attrezzaggio = _order_hours_snapshot(ordine)
-
-        for bucket in (kpi_globali, reparto_payload["kpi"]):
-            bucket["totali"] += 1
-            bucket["ore_lavorazione"] += ore_lavorazione
-            bucket["ore_attrezzaggio"] += ore_attrezzaggio
-
-            if "pianificat" in stato:
-                bucket["pianificati"] += 1
-            elif "sospes" in stato:
-                bucket["sospesi"] += 1
-            elif "attiv" in stato:
-                bucket["attivi"] += 1
-
-    kpi_globali = _finalize_dash_kpi(kpi_globali)
-
-    reparto_cards = []
-    for reparto_code in sorted(kpi_per_reparto, key=str.lower):
-        payload = kpi_per_reparto[reparto_code]
-        payload["kpi"] = _finalize_dash_kpi(payload["kpi"])
-        reparto_cards.append(payload)
-
-    return render_template(
-        "dash_complessiva.j2",
-        kpi_globali=kpi_globali,
-        kpi_reparti=reparto_cards,
-    )
-
-
 @main_bp.post("/api/impostazioni/utente-abac")
 @login_required
 def api_save_user_abac():
@@ -3838,3 +3701,89 @@ def api_save_user_abac():
             },
         }
     ), 200
+
+
+@main_bp.get("/api/dash-complessiva")
+@main_bp.get("/dash-complessiva")
+@login_required
+@require_perm("dash_complessiva")
+def dash_complessiva():
+    policy = RbacPolicy(current_user)
+    ordini_visibili = policy.filter_input_odp(_base_odp_query()).all()
+
+    allowed_reparti = {
+        _norm_text(code)
+        for code in getattr(policy, "allowed_reparti", [])
+        if _norm_text(code)
+    }
+
+    reparti_rows = []
+    if allowed_reparti:
+        reparti_rows = (
+            Reparti.query.filter(Reparti.Codice.in_(sorted(allowed_reparti)))
+            .order_by(Reparti.Descrizione.asc(), Reparti.Codice.asc())
+            .all()
+        )
+
+    kpi_globali = _dash_complessiva_new_bucket()
+
+    kpi_per_reparto = {}
+    for rep in reparti_rows:
+        codice = _norm_text(rep.Codice)
+        if not codice:
+            continue
+
+        kpi_per_reparto[codice] = {
+            "codice": codice,
+            "descrizione": _first_not_blank(rep.Descrizione, rep.Codice, default="-"),
+            "kpi": _dash_complessiva_new_bucket(),
+        }
+
+    for ordine in ordini_visibili:
+        stato = _norm_text(getattr(ordine, "StatoOrdine", "")).lower()
+        if stato == "chiusa":
+            continue
+
+        # Nel tuo caso questi valori vanno interpretati come minuti correnti
+        minuti_lavorazione, minuti_attrezzaggio = _order_hours_snapshot(ordine)
+
+        _dash_complessiva_apply_order(
+            kpi_globali,
+            stato,
+            minuti_lavorazione,
+            minuti_attrezzaggio,
+        )
+
+        reparto_codes = {
+            code
+            for code in _extract_codes_from_cell(getattr(ordine, "CodReparto", ""))
+            if code in kpi_per_reparto
+        }
+
+        for reparto_code in reparto_codes:
+            _dash_complessiva_apply_order(
+                kpi_per_reparto[reparto_code]["kpi"],
+                stato,
+                minuti_lavorazione,
+                minuti_attrezzaggio,
+            )
+
+    kpi_globali = _dash_complessiva_finalize_bucket(kpi_globali)
+
+    kpi_reparti = []
+    for reparto_code in sorted(
+        kpi_per_reparto,
+        key=lambda code: (
+            (kpi_per_reparto[code]["descrizione"] or "").lower(),
+            code.lower(),
+        ),
+    ):
+        payload = kpi_per_reparto[reparto_code]
+        payload["kpi"] = _dash_complessiva_finalize_bucket(payload["kpi"])
+        kpi_reparti.append(payload)
+
+    return render_template(
+        "dash_complessiva.j2",
+        kpi_globali=kpi_globali,
+        kpi_reparti=kpi_reparti,
+    )

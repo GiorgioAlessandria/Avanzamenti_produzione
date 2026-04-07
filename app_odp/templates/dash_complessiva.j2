@@ -5,6 +5,18 @@
 {% block content %}
     <main class="container-fluid mt-4 mb-4">
         <div class="row g-4">
+            <!-- KPI a sinistra -->
+            <div class="col-12 col-lg-8">
+                <div class="card shadow-sm h-100">
+                    <div class="card-header">
+                        <h3 class="mb-0">Dashboard complessiva</h3>
+                    </div>
+                    <div class="card-body"
+                         id="dash-complessiva-dettaglio"></div>
+                </div>
+            </div>
+
+            <!-- Reparti a destra -->
             <div class="col-12 col-lg-4">
                 <div class="card shadow-sm h-100">
                     <div class="card-header">
@@ -12,10 +24,11 @@
                     </div>
                     <div class="card-body">
                         {% if kpi_reparti %}
-                            <div class="list-group" id="dash-complessiva-reparti-list">
+                            <div class="list-group"
+                                 id="dash-complessiva-reparti-list">
                                 {% for reparto in kpi_reparti %}
                                     <button type="button"
-                                            class="list-group-item list-group-item-action js-select-reparto {% if loop.first %}active{% endif %}"
+                                            class="list-group-item list-group-item-action js-select-reparto"
                                             data-reparto="{{ reparto.codice }}">
                                         <div class="d-flex justify-content-between align-items-center gap-2">
                                             <span class="fw-semibold">{{ reparto.descrizione }}</span>
@@ -32,15 +45,6 @@
                     </div>
                 </div>
             </div>
-
-            <div class="col-12 col-lg-8">
-                <div class="card shadow-sm h-100">
-                    <div class="card-header">
-                        <h3 class="mb-0">Cruscotto KPI ordini</h3>
-                    </div>
-                    <div class="card-body" id="dash-complessiva-dettaglio"></div>
-                </div>
-            </div>
         </div>
     </main>
 {% endblock %}
@@ -48,8 +52,10 @@
 {% block extra_js %}
     {{ super() }}
 
-    <script id="dash-complessiva-global-kpi" type="application/json">{{ kpi_globali|tojson }}</script>
-    <script id="dash-complessiva-reparti-kpi" type="application/json">{{ kpi_reparti|tojson }}</script>
+    <script id="dash-complessiva-global-kpi"
+            type="application/json">{{ kpi_globali|tojson }}</script>
+    <script id="dash-complessiva-reparti-kpi"
+            type="application/json">{{ kpi_reparti|tojson }}</script>
 
     <script>
         (() => {
@@ -78,16 +84,13 @@
                     .replace(/&/g, "&amp;")
                     .replace(/</g, "&lt;")
                     .replace(/>/g, "&gt;")
-                    .replace(/\"/g, "&quot;")
+                    .replace(/"/g, "&quot;")
                     .replace(/'/g, "&#039;");
             }
 
-            function formatHours(value) {
-                return `${Number(value || 0).toFixed(2)} h`;
-            }
-
-            function formatPercent(value) {
-                return `${Number(value || 0).toFixed(2)}%`;
+            function formatMinutes(value) {
+                const num = Number(value || 0);
+                return Number.isInteger(num) ? `${num} min` : `${num.toFixed(2)} min`;
             }
 
             function cardKpi(title, value) {
@@ -110,34 +113,36 @@
                         ${cardKpi("Ordini pianificati", kpi.pianificati || 0)}
                         ${cardKpi("Ordini sospesi", kpi.sospesi || 0)}
                         ${cardKpi("Ordini attivi", kpi.attivi || 0)}
-                        ${cardKpi("Ore lavorazione", formatHours(kpi.ore_lavorazione))}
-                        ${cardKpi("Ore attrezzaggio", formatHours(kpi.ore_attrezzaggio))}
-                        ${cardKpi("% ordini sospesi", formatPercent(kpi.percentuale_sospesi))}
-                        ${cardKpi("% ordini attivi", formatPercent(kpi.percentuale_attivi))}
+                        ${cardKpi("Minuti lavorazione", formatMinutes(kpi.minuti_lavorazione))}
+                        ${cardKpi("Minuti attrezzaggio", formatMinutes(kpi.minuti_attrezzaggio))}
                     </div>
                 `;
             }
 
-            function renderPage(repartoCode) {
+            function renderPage(repartoCode = "") {
                 const reparto = repartiKpi.find((item) => item.codice === repartoCode);
                 const repartoLabel = reparto
-                    ? `${reparto.descrizione} (${reparto.codice})`
+                    ? reparto.descrizione
                     : "Nessun reparto selezionato";
 
                 detail.innerHTML = `
                     <div class="mb-4">
-                        <h4 class="mb-3">KPI globali (sempre visibili)</h4>
+                        <h4 class="mb-3">KPI globali</h4>
                         ${renderKpiGrid(globalKpi)}
                     </div>
 
                     <div>
                         <h4 class="mb-3">KPI reparto selezionato: ${escapeHtml(repartoLabel)}</h4>
-                        ${reparto ? renderKpiGrid(reparto.kpi || {}) : '<div class="alert alert-info mb-0">Seleziona un reparto per visualizzare i relativi KPI.</div>'}
+                        ${
+                    reparto
+                        ? renderKpiGrid(reparto.kpi || {})
+                        : '<div class="alert alert-info mb-0">Seleziona un reparto a destra per visualizzare i KPI di reparto.</div>'
+                }
                     </div>
                 `;
             }
 
-            function setActiveButton(repartoCode) {
+            function setActiveButton(repartoCode = "") {
                 repartiButtons.forEach((btn) => {
                     btn.classList.toggle("active", btn.dataset.reparto === repartoCode);
                 });
@@ -145,17 +150,15 @@
 
             repartiButtons.forEach((btn) => {
                 btn.addEventListener("click", () => {
-                    const repartoCode = btn.dataset.reparto;
+                    const repartoCode = btn.dataset.reparto || "";
                     setActiveButton(repartoCode);
                     renderPage(repartoCode);
                 });
             });
 
-            if (repartiKpi.length > 0) {
-                renderPage(repartiKpi[0].codice);
-            } else {
-                renderPage("");
-            }
+            // Stato iniziale: solo KPI globali, nessun reparto selezionato
+            setActiveButton("");
+            renderPage("");
         })();
     </script>
 {% endblock %}
