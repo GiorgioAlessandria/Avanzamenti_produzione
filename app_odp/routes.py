@@ -30,6 +30,7 @@ from app_odp.models import (
     LottiGeneratiLog,
     Roles,
     User,
+    user_roles,
     users_lavorazioni,
     users_risorse,
 )
@@ -295,6 +296,26 @@ def _set_runtime_sospeso(
     if qty_residua_text != "":
         stato.QtyDaLavorare = qty_residua_text
     stato.data_ultima_attivazione = None
+
+
+def _safe_float(value) -> float:
+    raw = _norm_text(value).replace(",", ".")
+    if not raw:
+        return 0.0
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _order_hours_snapshot(ordine: InputOdp) -> tuple[float, float]:
+    fase_attiva = _norm_text(getattr(ordine, "FaseAttiva", "")) or "1"
+    ore_lavorazione = InputOdp._active_value_from_phase_list(
+        getattr(ordine, "TempoPrevistoLavoraz", ""),
+        fase_attiva,
+    )
+    ore_attrezzaggio = getattr(ordine, "AttrezzaggioAttivo", "")
+    return _safe_float(ore_lavorazione), _safe_float(ore_attrezzaggio)
 
 
 def _advance_or_finalize_phase(
@@ -3464,6 +3485,124 @@ def impostazioni():
         ruolo_details=ruolo_details,
         user_abac_details=user_abac_details,
         show_user_management_section=show_user_management_section,
+    )
+
+
+@main_bp.get("/api/dash-reparto")
+@main_bp.get("/dash-reparto")
+@login_required
+@require_perm("dash_reparto")
+def dash_reparto():
+    manageable_role_ids = current_user.manageable_role_ids
+    utenti_subordinati = []
+    if manageable_role_ids:
+        utenti_subordinati = (
+            User.query.join(user_roles, user_roles.c.user_id == User.id)
+            .filter(
+                User.active.is_(True),
+                User.id != current_user.id,
+                user_roles.c.role_id.in_(manageable_role_ids),
+            )
+            .distinct()
+            .order_by(User.username.asc())
+            .all()
+        )
+
+    utenti_data = {}
+    utenti_data[current_user.username] = {
+        "id": current_user.id,
+        "username": current_user.username,
+        "is_current": True,
+        "kpi": {
+            "attivi": 0,
+            "sospesi": 0,
+            "ore_lavorazione": 0.0,
+            "ore_attrezzaggio": 0.0,
+        },
+        "ordini_attivi": [],
+        "ordini_sospesi": [],
+    }
+
+    for utente in utenti_subordinati:
+        utenti_data[utente.username] = {
+            "id": utente.id,
+            "username": utente.username,
+            "is_current": False,
+            "kpi": {
+                "attivi": 0,
+                "sospesi": 0,
+                "ore_lavorazione": 0.0,
+                "ore_attrezzaggio": 0.0,
+            },
+            "ordini_attivi": [],
+            "ordini_sospesi": [],
+        }
+
+    if utenti_data:
+        ordini = (
+            InputOdp.query.join(InputOdp.runtime_row)
+            .filter(
+                InputOdpRuntime.Stato_odp.in_(("Attivo", "In Sospeso")),
+                InputOdpRuntime.Utente_operazione.in_(list(utenti_data.keys())),
+            )
+            .all()
+        )
+
+        for ordine in ordini:
+            runtime = ordine.runtime_row
+            if runtime is None:
+                continue
+
+            username_operatore = _norm_text(runtime.Utente_operazione)
+            if username_operatore not in utenti_data:
+                continue
+
+            ore_lavorazione, ore_attrezzaggio = _order_hours_snapshot(ordine)
+            record = {
+                "ordine": f"{_norm_text(ordine.IdDocumento)}/{_norm_text(ordine.IdRiga)}",
+                "descrizione": _norm_text(ordine.DesArt),
+                "quantita": _norm_text(ordine.Quantita),
+                "risorsa": _first_not_blank(
+                    runtime.RisorsaAttiva,
+                    InputOdp._active_value_from_phase_list(
+                        ordine.CodRisorsaProd,
+                        ordine.FaseAttiva,
+                    ),
+                    default="-",
+                ),
+                "tempo_lavorazione": round(ore_lavorazione, 2),
+                "tempo_attrezzaggio": round(ore_attrezzaggio, 2),
+            }
+
+            bucket_key = (
+                "ordini_attivi"
+                if _norm_text(runtime.Stato_odp).lower() == "attivo"
+                else "ordini_sospesi"
+            )
+            utenti_data[username_operatore][bucket_key].append(record)
+            utenti_data[username_operatore]["kpi"]["ore_lavorazione"] += ore_lavorazione
+            utenti_data[username_operatore]["kpi"]["ore_attrezzaggio"] += ore_attrezzaggio
+
+    for payload in utenti_data.values():
+        payload["kpi"]["attivi"] = len(payload["ordini_attivi"])
+        payload["kpi"]["sospesi"] = len(payload["ordini_sospesi"])
+        payload["kpi"]["ore_lavorazione"] = round(
+            payload["kpi"]["ore_lavorazione"],
+            2,
+        )
+        payload["kpi"]["ore_attrezzaggio"] = round(
+            payload["kpi"]["ore_attrezzaggio"],
+            2,
+        )
+
+    lista_utenti = sorted(
+        utenti_data.values(),
+        key=lambda x: (0 if x.get("is_current") else 1, (x.get("username") or "").lower()),
+    )
+
+    return render_template(
+        "dash_reparto.j2",
+        utenti_dashboard=lista_utenti,
     )
 
 
