@@ -20,9 +20,14 @@
                                             data-username="{{ utente.username }}">
                                         <div class="d-flex justify-content-between align-items-center gap-2">
                                             <span class="fw-semibold">{{ utente.username }}</span>
-                                            <span class="badge text-bg-light">
-                                                {{ utente.kpi.attivi }} A / {{ utente.kpi.sospesi }} S
-                                            </span>
+                                            <div class="d-flex align-items-center gap-2">
+                                                {% if utente.is_current %}
+                                                    <span class="badge text-bg-primary">Tu</span>
+                                                {% endif %}
+                                                <span class="badge text-bg-light">
+                                                    {{ utente.kpi.attivi }} A / {{ utente.kpi.sospesi }} S
+                                                </span>
+                                            </div>
                                         </div>
                                     </button>
                                 {% endfor %}

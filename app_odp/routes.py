@@ -3494,26 +3494,40 @@ def impostazioni():
 @require_perm("dash_reparto")
 def dash_reparto():
     manageable_role_ids = current_user.manageable_role_ids
-    if not manageable_role_ids:
-        abort(403)
-
-    utenti_subordinati = (
-        User.query.join(user_roles, user_roles.c.user_id == User.id)
-        .filter(
-            User.active.is_(True),
-            User.id != current_user.id,
-            user_roles.c.role_id.in_(manageable_role_ids),
+    utenti_subordinati = []
+    if manageable_role_ids:
+        utenti_subordinati = (
+            User.query.join(user_roles, user_roles.c.user_id == User.id)
+            .filter(
+                User.active.is_(True),
+                User.id != current_user.id,
+                user_roles.c.role_id.in_(manageable_role_ids),
+            )
+            .distinct()
+            .order_by(User.username.asc())
+            .all()
         )
-        .distinct()
-        .order_by(User.username.asc())
-        .all()
-    )
 
     utenti_data = {}
+    utenti_data[current_user.username] = {
+        "id": current_user.id,
+        "username": current_user.username,
+        "is_current": True,
+        "kpi": {
+            "attivi": 0,
+            "sospesi": 0,
+            "ore_lavorazione": 0.0,
+            "ore_attrezzaggio": 0.0,
+        },
+        "ordini_attivi": [],
+        "ordini_sospesi": [],
+    }
+
     for utente in utenti_subordinati:
         utenti_data[utente.username] = {
             "id": utente.id,
             "username": utente.username,
+            "is_current": False,
             "kpi": {
                 "attivi": 0,
                 "sospesi": 0,
@@ -3581,7 +3595,10 @@ def dash_reparto():
             2,
         )
 
-    lista_utenti = [utenti_data[key] for key in sorted(utenti_data, key=str.lower)]
+    lista_utenti = sorted(
+        utenti_data.values(),
+        key=lambda x: (0 if x.get("is_current") else 1, (x.get("username") or "").lower()),
+    )
 
     return render_template(
         "dash_reparto.j2",
