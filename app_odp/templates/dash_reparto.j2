@@ -8,7 +8,7 @@
             <div class="col-12 col-lg-4">
                 <div class="card shadow-sm h-100">
                     <div class="card-header">
-                        <h3 class="mb-0">Selezione utenti subordinati</h3>
+                        <h3 class="mb-0">Seleziona utenti</h3>
                     </div>
                     <div class="card-body">
                         {% if utenti_dashboard %}
@@ -92,6 +92,32 @@
                     .replace(/'/g, "&#039;");
             }
 
+            function compactKpiCard(title, value, tone = "secondary") {
+                const borderClass = {
+                    primary: "border-primary",
+                    warning: "border-warning",
+                    success: "border-success",
+                    secondary: "border-secondary",
+                }[tone] || "border-secondary";
+
+                return `
+        <div class="col-12 col-lg-2">
+            <div class="card h-100 border-start border-4 ${borderClass} shadow-sm bg-light">
+                <div class="card-body py-2 px-2">
+                    <div class="text-muted"
+                         style="font-size: 0.78rem; line-height: 1.1;">
+                        ${escapeHtml(title)}
+                    </div>
+                    <div class="fw-semibold mt-1"
+                         style="font-size: 1rem; line-height: 1.1;">
+                        ${escapeHtml(value)}
+                    </div>
+                </div>
+            </div>
+        </div>
+        `;
+            }
+
             function renderRows(rows) {
                 if (!rows?.length) {
                     return `
@@ -131,39 +157,15 @@
                 detail.innerHTML = `
                     <h4 class="mb-3">Utente selezionato: ${escapeHtml(selected.username)}</h4>
 
-                    <div class="row g-3 mb-4">
-                        <div class="col-6 col-xl-3">
-                            <div class="card border-0 bg-light h-100">
-                                <div class="card-body">
-                                    <div class="text-muted small">Ordini attivi</div>
-                                    <div class="fs-4 fw-semibold">${escapeHtml(selected.kpi.attivi)}</div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-6 col-xl-3">
-                            <div class="card border-0 bg-light h-100">
-                                <div class="card-body">
-                                    <div class="text-muted small">Ordini sospesi</div>
-                                    <div class="fs-4 fw-semibold">${escapeHtml(selected.kpi.sospesi)}</div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-6 col-xl-3">
-                            <div class="card border-0 bg-light h-100">
-                                <div class="card-body">
-                                    <div class="text-muted small">Ore lavorazione previste</div>
-                                    <div class="fs-4 fw-semibold">${escapeHtml(formatHours(selected.kpi.ore_lavorazione))}</div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-6 col-xl-3">
-                            <div class="card border-0 bg-light h-100">
-                                <div class="card-body">
-                                    <div class="text-muted small">Minuti attrezzaggio previsti</div>
-                                    <div class="fs-4 fw-semibold">${escapeHtml(formatMinutes(selected.kpi.ore_attrezzaggio))}</div>
-                                </div>
-                            </div>
-                        </div>
+                    <div class="row g-2 mb-4">
+                        ${compactKpiCard("Ordini attivi", selected.kpi.attivi, "primary")}
+                        ${compactKpiCard("Ordini sospesi", selected.kpi.sospesi, "primary")}
+
+                        ${compactKpiCard("Ore ordini attivi", formatHours(selected.kpi.ore_lavorazione_attivi), "warning")}
+                        ${compactKpiCard("Ore ordini sospesi", formatHours(selected.kpi.ore_lavorazione_sospesi), "warning")}
+
+                        ${compactKpiCard("Min attrezz. attivi", formatMinutes(selected.kpi.minuti_attrezzaggio_attivi), "success")}
+                        ${compactKpiCard("Min attrezz. sospesi", formatMinutes(selected.kpi.minuti_attrezzaggio_sospesi), "success")}
                     </div>
 
                     <div class="mb-4">
@@ -231,5 +233,6 @@
                 renderUser("");
             }
         })();
+
     </script>
 {% endblock %}

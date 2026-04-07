@@ -359,18 +359,38 @@ def _dash_complessiva_new_bucket() -> dict:
         "pianificati": 0,
         "sospesi": 0,
         "attivi": 0,
-        "minuti_lavorazione": 0.0,
-        "minuti_attrezzaggio": 0.0,
+        "ore_ordini_pianificati": 0.0,
+        "ore_ordini_attivi": 0.0,
+        "ore_ordini_sospesi": 0.0,
+        "ore_attrezzaggio_ordini_pianificati": 0.0,
+        "ore_attrezzaggio_ordini_attivi": 0.0,
+        "ore_attrezzaggio_ordini_sospesi": 0.0,
     }
 
 
 def _dash_complessiva_finalize_bucket(bucket: dict) -> dict:
-    bucket["minuti_lavorazione"] = round(
-        float(bucket.get("minuti_lavorazione", 0.0) or 0.0),
+    bucket["ore_ordini_pianificati"] = round(
+        float(bucket.get("ore_ordini_pianificati", 0.0) or 0.0),
         2,
     )
-    bucket["minuti_attrezzaggio"] = round(
-        float(bucket.get("minuti_attrezzaggio", 0.0) or 0.0),
+    bucket["ore_ordini_attivi"] = round(
+        float(bucket.get("ore_ordini_attivi", 0.0) or 0.0),
+        2,
+    )
+    bucket["ore_ordini_sospesi"] = round(
+        float(bucket.get("ore_ordini_sospesi", 0.0) or 0.0),
+        2,
+    )
+    bucket["ore_attrezzaggio_ordini_pianificati"] = round(
+        float(bucket.get("ore_attrezzaggio_ordini_pianificati", 0.0) or 0.0),
+        2,
+    )
+    bucket["ore_attrezzaggio_ordini_attivi"] = round(
+        float(bucket.get("ore_attrezzaggio_ordini_attivi", 0.0) or 0.0),
+        2,
+    )
+    bucket["ore_attrezzaggio_ordini_sospesi"] = round(
+        float(bucket.get("ore_attrezzaggio_ordini_sospesi", 0.0) or 0.0),
         2,
     )
     return bucket
@@ -379,19 +399,23 @@ def _dash_complessiva_finalize_bucket(bucket: dict) -> dict:
 def _dash_complessiva_apply_order(
     bucket: dict,
     stato: str,
-    minuti_lavorazione: float,
-    minuti_attrezzaggio: float,
+    ore_lavorazione: float,
+    ore_attrezzaggio: float,
 ) -> None:
     bucket["totali"] += 1
-    bucket["minuti_lavorazione"] += minuti_lavorazione
-    bucket["minuti_attrezzaggio"] += minuti_attrezzaggio
 
     if "pianificat" in stato:
         bucket["pianificati"] += 1
+        bucket["ore_ordini_pianificati"] += ore_lavorazione
+        bucket["ore_attrezzaggio_ordini_pianificati"] += ore_attrezzaggio
     elif "sospes" in stato:
         bucket["sospesi"] += 1
+        bucket["ore_ordini_sospesi"] += ore_lavorazione
+        bucket["ore_attrezzaggio_ordini_sospesi"] += ore_attrezzaggio
     elif "attiv" in stato:
         bucket["attivi"] += 1
+        bucket["ore_ordini_attivi"] += ore_lavorazione
+        bucket["ore_attrezzaggio_ordini_attivi"] += ore_attrezzaggio
 
 
 def _advance_or_finalize_phase(
@@ -1212,6 +1236,16 @@ def _query_for_tab(policy, reparto_code):
     return q
 
 
+def _json_safe(value):
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, set):
+        return sorted(_json_safe(v) for v in value)
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    return value
+
+
 def _render_bridge_standard(odp):
     return {
         "tbody_ordini_da_eseguire": render_template(
@@ -1274,6 +1308,14 @@ RENDERERS = {
     "montaggio": _render_bridge_montaggio,
     "collaudo": _render_bridge_collaudo,
 }
+
+
+def _first_code_from_cell(value) -> str:
+    for code in _extract_codes_from_cell(value):
+        code = _norm_text(code)
+        if code:
+            return code
+    return ""
 
 
 @main_bp.get("/api/home/<tab>/bridge")
@@ -3710,6 +3752,7 @@ def api_save_user_abac():
 def dash_complessiva():
     policy = RbacPolicy(current_user)
     ordini_visibili = policy.filter_input_odp(_base_odp_query()).all()
+    ordini_globali_unici = set()
 
     allowed_reparti = {
         _norm_text(code)
@@ -3737,35 +3780,41 @@ def dash_complessiva():
             "codice": codice,
             "descrizione": _first_not_blank(rep.Descrizione, rep.Codice, default="-"),
             "kpi": _dash_complessiva_new_bucket(),
+            "_seen_order_keys": set(),
         }
 
     for ordine in ordini_visibili:
+        chiave_ordine = (ordine.IdDocumento, ordine.IdRiga)
+        ordini_globali_unici.add(chiave_ordine)
         stato = _norm_text(getattr(ordine, "StatoOrdine", "")).lower()
         if stato == "chiusa":
             continue
 
         # Nel tuo caso questi valori vanno interpretati come minuti correnti
-        minuti_lavorazione, minuti_attrezzaggio = _order_hours_snapshot(ordine)
+        ore_lavorazione, ore_attrezzaggio = _order_hours_snapshot(ordine)
 
         _dash_complessiva_apply_order(
             kpi_globali,
             stato,
-            minuti_lavorazione,
-            minuti_attrezzaggio,
+            ore_lavorazione,
+            ore_attrezzaggio,
         )
 
-        reparto_codes = {
-            code
-            for code in _extract_codes_from_cell(getattr(ordine, "CodReparto", ""))
-            if code in kpi_per_reparto
-        }
+        fase_attiva = _norm_text(getattr(ordine, "FaseAttiva", ""))
 
-        for reparto_code in reparto_codes:
+        reparto_attivo_raw = _active_value_for_phase(
+            getattr(ordine, "CodReparto", ""),
+            getattr(ordine, "NumFase", ""),
+            fase_attiva,
+        )
+        reparto_attivo = _first_code_from_cell(reparto_attivo_raw)
+
+        if reparto_attivo in kpi_per_reparto:
             _dash_complessiva_apply_order(
-                kpi_per_reparto[reparto_code]["kpi"],
+                kpi_per_reparto[reparto_attivo]["kpi"],
                 stato,
-                minuti_lavorazione,
-                minuti_attrezzaggio,
+                ore_lavorazione,
+                ore_attrezzaggio,
             )
 
     kpi_globali = _dash_complessiva_finalize_bucket(kpi_globali)
@@ -3784,8 +3833,8 @@ def dash_complessiva():
 
     return render_template(
         "dash_complessiva.j2",
-        kpi_globali=kpi_globali,
-        kpi_reparti=kpi_reparti,
+        kpi_globali=_json_safe(kpi_globali),
+        kpi_reparti=_json_safe(kpi_reparti),
     )
 
 
@@ -3818,8 +3867,10 @@ def dash_reparto():
         "kpi": {
             "attivi": 0,
             "sospesi": 0,
-            "ore_lavorazione": 0.0,
-            "ore_attrezzaggio": 0.0,
+            "ore_lavorazione_attivi": 0.0,
+            "ore_lavorazione_sospesi": 0.0,
+            "minuti_attrezzaggio_attivi": 0.0,
+            "minuti_attrezzaggio_sospesi": 0.0,
         },
         "ordini_attivi": [],
         "ordini_sospesi": [],
@@ -3833,8 +3884,10 @@ def dash_reparto():
             "kpi": {
                 "attivi": 0,
                 "sospesi": 0,
-                "ore_lavorazione": 0.0,
-                "ore_attrezzaggio": 0.0,
+                "ore_lavorazione_attivi": 0.0,
+                "ore_lavorazione_sospesi": 0.0,
+                "minuti_attrezzaggio_attivi": 0.0,
+                "minuti_attrezzaggio_sospesi": 0.0,
             },
             "ordini_attivi": [],
             "ordini_sospesi": [],
@@ -3859,7 +3912,7 @@ def dash_reparto():
             if username_operatore not in utenti_data:
                 continue
 
-            minuti_lavorazione, minuti_attrezzaggio = _order_hours_snapshot(ordine)
+            ore_lavorazione, minuti_attrezzaggio = _order_hours_snapshot(ordine)
 
             record = {
                 "ordine": f"{_norm_text(ordine.IdDocumento)}/{_norm_text(ordine.IdRiga)}",
@@ -3873,33 +3926,48 @@ def dash_reparto():
                     ),
                     default="-",
                 ),
-                "tempo_lavorazione": round(minuti_lavorazione, 2),
+                "tempo_lavorazione": round(ore_lavorazione, 2),
                 "tempo_attrezzaggio": round(minuti_attrezzaggio, 2),
             }
 
-            bucket_key = (
-                "ordini_attivi"
-                if _norm_text(runtime.Stato_odp).lower() == "attivo"
-                else "ordini_sospesi"
-            )
+            stato_runtime = _norm_text(runtime.Stato_odp).lower()
+
+            if stato_runtime == "attivo":
+                bucket_key = "ordini_attivi"
+                utenti_data[username_operatore]["kpi"]["ore_lavorazione_attivi"] += (
+                    ore_lavorazione
+                )
+                utenti_data[username_operatore]["kpi"][
+                    "minuti_attrezzaggio_attivi"
+                ] += minuti_attrezzaggio
+            else:
+                bucket_key = "ordini_sospesi"
+                utenti_data[username_operatore]["kpi"]["ore_lavorazione_sospesi"] += (
+                    ore_lavorazione
+                )
+                utenti_data[username_operatore]["kpi"][
+                    "minuti_attrezzaggio_sospesi"
+                ] += minuti_attrezzaggio
 
             utenti_data[username_operatore][bucket_key].append(record)
-            utenti_data[username_operatore]["kpi"]["ore_lavorazione"] += (
-                minuti_lavorazione
-            )
-            utenti_data[username_operatore]["kpi"]["ore_attrezzaggio"] += (
-                minuti_attrezzaggio
-            )
 
     for payload in utenti_data.values():
         payload["kpi"]["attivi"] = len(payload["ordini_attivi"])
         payload["kpi"]["sospesi"] = len(payload["ordini_sospesi"])
-        payload["kpi"]["ore_lavorazione"] = round(
-            payload["kpi"]["ore_lavorazione"],
+        payload["kpi"]["ore_lavorazione_attivi"] = round(
+            payload["kpi"]["ore_lavorazione_attivi"],
             2,
         )
-        payload["kpi"]["ore_attrezzaggio"] = round(
-            payload["kpi"]["ore_attrezzaggio"],
+        payload["kpi"]["ore_lavorazione_sospesi"] = round(
+            payload["kpi"]["ore_lavorazione_sospesi"],
+            2,
+        )
+        payload["kpi"]["minuti_attrezzaggio_attivi"] = round(
+            payload["kpi"]["minuti_attrezzaggio_attivi"],
+            2,
+        )
+        payload["kpi"]["minuti_attrezzaggio_sospesi"] = round(
+            payload["kpi"]["minuti_attrezzaggio_sospesi"],
             2,
         )
 
