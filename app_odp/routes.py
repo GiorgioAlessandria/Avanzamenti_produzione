@@ -47,6 +47,8 @@ from app_odp.models import (
     roles_magazzini,
     roles_famiglia,
     roles_macrofamiglia,
+    roles_ineritance,
+    roles_manageable_roles,
 )
 from app_odp.policy.decorator import require_perm
 from app_odp.policy.policy import RbacPolicy
@@ -63,7 +65,6 @@ ROME_TZ = ZoneInfo("Europe/Rome")
 
 
 # region FUNZIONI
-
 ROLE_LINK_CONFIG = {
     "permissions": {
         "label": "Permessi",
@@ -134,6 +135,26 @@ ROLE_LINK_CONFIG = {
         "model_id": "id",
         "code_attr": "Codice",
         "desc_attr": "Descrizione",
+    },
+    "ruoli_ereditati": {
+        "label": "Ruoli ereditati",
+        "assoc_table": roles_ineritance,
+        "left_fk": "role_id",
+        "right_fk": "included_role",
+        "model": Roles,
+        "model_id": "id",
+        "code_attr": "name",
+        "desc_attr": "description",
+    },
+    "ruoli_gestibili": {
+        "label": "Ruoli gestibili",
+        "assoc_table": roles_manageable_roles,
+        "left_fk": "manager_role_id",
+        "right_fk": "managed_role_id",
+        "model": Roles,
+        "model_id": "id",
+        "code_attr": "name",
+        "desc_attr": "description",
     },
 }
 
@@ -3656,6 +3677,8 @@ def impostazioni():
     permission_role_options = []
     permission_details = {}
 
+    ruoli_link_gestibili = policy.role_link_manageable_roles()
+
     if show_role_assignment_section:
         assignable_users = (
             policy.role_assignment_users_query().order_by(User.username.asc()).all()
@@ -3745,14 +3768,22 @@ def impostazioni():
                 code_attr = cfg["code_attr"]
                 desc_attr = cfg["desc_attr"]
 
-                all_items = model.query.order_by(
-                    func.lower(
-                        func.coalesce(
-                            getattr(model, desc_attr), getattr(model, code_attr)
-                        )
-                    ),
-                    func.lower(getattr(model, code_attr)),
-                ).all()
+                if model is Roles:
+                    all_items = [
+                        item
+                        for item in policy.role_link_manageable_roles()
+                        if int(item.id) != int(ruolo.id)
+                    ]
+                else:
+                    all_items = model.query.order_by(
+                        func.lower(
+                            func.coalesce(
+                                getattr(model, desc_attr),
+                                getattr(model, code_attr),
+                            )
+                        ),
+                        func.lower(getattr(model, code_attr)),
+                    ).all()
 
                 selected_ids = set()
                 assoc_table = cfg["assoc_table"]
@@ -3939,6 +3970,7 @@ def api_assegna_ruolo():
 @main_bp.post("/api/impostazioni/utente-abac")
 @login_required
 def api_save_user_abac():
+    policy = RbacPolicy(current_user)
     if not current_user.has_permission("impostazioni_utente"):
         return jsonify({"ok": False, "error": "Permesso insufficiente."}), 403
 
@@ -3957,7 +3989,7 @@ def api_save_user_abac():
     except (TypeError, ValueError):
         return jsonify({"ok": False, "error": "Parametri non validi."}), 400
 
-    if not current_user.can_manage_role(role_id):
+    if not policy.can_manage_target_role(role_id):
         return jsonify(
             {"ok": False, "error": "Ruolo non gestibile dall'utente corrente."}
         ), 403
@@ -4100,11 +4132,45 @@ def api_save_role_links():
         return jsonify({"ok": False, "error": "Tabella non valida."}), 400
 
     ruolo = Roles.query.get(role_id)
+
+    if cfg["model"] is Roles:
+        allowed_role_ids = {int(r.id) for r in policy.role_link_manageable_roles()}
+
+        allowed_role_ids.discard(int(ruolo.id))
+
+        invalid_role_ids = selected_ids - allowed_role_ids
+        if invalid_role_ids:
+            return jsonify(
+                {
+                    "ok": False,
+                    "error": "Il payload contiene ruoli non consentiti o di livello uguale/superiore.",
+                    "invalid_ids": sorted(invalid_role_ids),
+                }
+            ), 400
+
     if ruolo is None:
         return jsonify({"ok": False, "error": "Ruolo non trovato."}), 404
 
-    if not current_user.can_manage_role(role_id):
+    if not policy.can_manage_target_role(ruolo):
         return jsonify({"ok": False, "error": "Ruolo non gestibile."}), 403
+
+    if table_key in {"ruoli_ereditati", "ruoli_gestibili"}:
+        manageable_role_ids = {r.id for r in policy.role_link_manageable_roles()}
+
+        if role_id in selected_ids:
+            return jsonify(
+                {"ok": False, "error": "Un ruolo non può essere collegato a sé stesso."}
+            ), 400
+
+        invalid_target_ids = selected_ids - manageable_role_ids
+        if invalid_target_ids:
+            return jsonify(
+                {
+                    "ok": False,
+                    "error": "Il payload contiene ruoli non gestibili.",
+                    "invalid_ids": sorted(invalid_target_ids),
+                }
+            ), 400
 
     cfg = ROLE_LINK_CONFIG[table_key]
     assoc_table = cfg["assoc_table"]
@@ -4466,7 +4532,7 @@ def api_save_role_permissions():
     if ruolo is None:
         return jsonify({"ok": False, "error": "Ruolo non trovato."}), 404
 
-    if not current_user.can_manage_role(role_id):
+    if not policy.can_manage_target_role(ruolo):
         return jsonify(
             {"ok": False, "error": "Ruolo non gestibile dall'utente corrente."}
         ), 403

@@ -249,6 +249,44 @@ class RbacPolicy:
         )
         return db.session.scalars(stmt).all()
 
+    @cached_property
+    def current_effective_roles(self) -> list[Roles]:
+        return list(self.user._iter_roles(include_inherited=True))
+
+    @cached_property
+    def current_effective_role_ids(self) -> set[int]:
+        return {int(role.id) for role in self.current_effective_roles}
+
+    @cached_property
+    def descendant_manageable_roles(self) -> list[Roles]:
+        out = {}
+
+        for role in self.current_effective_roles:
+            for managed in getattr(role, "iter_manageable_roles", lambda: [])():
+                if managed is None:
+                    continue
+
+                managed_id = int(managed.id)
+
+                # escludi solo i ruoli correnti dell'utente
+                if managed_id in self.current_effective_role_ids:
+                    continue
+
+                out[managed_id] = managed
+
+        return sorted(
+            out.values(),
+            key=lambda r: (
+                (r.description or r.name or "").lower(),
+                (r.name or "").lower(),
+                r.id,
+            ),
+        )
+
+    @cached_property
+    def descendant_manageable_role_ids(self) -> set[int]:
+        return {int(role.id) for role in self.descendant_manageable_roles}
+
     def filter_input_odp(self, q):
         if self.can("odp.read_all"):
             return q
@@ -379,10 +417,7 @@ class RbacPolicy:
         if not self.can_view_role_assignment_section:
             return set()
 
-        return {
-            int(role_id)
-            for role_id in (getattr(self.user, "manageable_role_ids", set()) or set())
-        }
+        return set(self.descendant_manageable_role_ids)
 
     @cached_property
     def can_view_role_links_section(self) -> bool:
@@ -392,14 +427,70 @@ class RbacPolicy:
     def can_view_role_permission_section(self) -> bool:
         return self.can("modifica_permessi_ruolo")
 
+    @cached_property
+    def current_effective_roles(self) -> list[Roles]:
+        return list(self.user._iter_roles(include_inherited=True))
+
+    @cached_property
+    def current_effective_role_ids(self) -> set[int]:
+        return {int(role.id) for role in self.current_effective_roles}
+
+    @cached_property
+    def current_effective_role_names(self) -> set[str]:
+        return {
+            _norm_role_name(role.name)
+            for role in self.current_effective_roles
+            if _norm_role_name(role.name)
+        }
+
+    @cached_property
+    def strict_manageable_roles(self) -> list[Roles]:
+        out = {}
+
+        for role in self.current_effective_roles:
+            for managed in getattr(role, "iter_manageable_roles", lambda: [])():
+                if managed is None:
+                    continue
+
+                managed_id = int(managed.id)
+                managed_name = _norm_role_name(managed.name)
+
+                # Mai sé stesso / ruoli uguali
+                if managed_id in self.current_effective_role_ids:
+                    continue
+
+                if managed_name and managed_name in self.current_effective_role_names:
+                    continue
+
+                # Mai ruoli che possono risalire verso i miei ruoli
+                managed_desc_ids = {
+                    int(x.id)
+                    for x in getattr(managed, "iter_manageable_roles", lambda: [])()
+                    if x is not None
+                }
+                if self.current_effective_role_ids & managed_desc_ids:
+                    continue
+
+                out[managed_id] = managed
+
+        return sorted(
+            out.values(),
+            key=lambda r: (
+                (r.description or r.name or "").lower(),
+                (r.name or "").lower(),
+                r.id,
+            ),
+        )
+
+    @cached_property
+    def strict_manageable_role_ids(self) -> set[int]:
+        return {int(role.id) for role in self.strict_manageable_roles}
+
     def abac_manageable_roles(self) -> list[Roles]:
         if not self.can_view_user_abac_section:
             return []
 
-        return sorted(
-            self.user.manageable_roles,
-            key=lambda r: ((r.name or "").lower(), r.id),
-        )
+        return list(self.descendant_manageable_roles)
 
     def role_assignment_roles_query(self):
         manageable_ids = self.role_assignment_manageable_role_ids
@@ -457,18 +548,11 @@ class RbacPolicy:
         if int(target_user.id) == int(self.user.id):
             return False
 
-        manageable_ids = self.role_assignment_manageable_role_ids
-        if not manageable_ids:
+        target_roles = list(getattr(target_user, "roles", None) or [])
+        if not target_roles:
             return False
 
-        target_role_ids = {
-            int(role.id) for role in (getattr(target_user, "roles", None) or [])
-        }
-
-        if not target_role_ids:
-            return False
-
-        return target_role_ids.issubset(manageable_ids)
+        return all(self.can_manage_target_role(role) for role in target_roles)
 
     def can_assign_target_role(self, target_role: Roles | None) -> bool:
         if not self.can_view_role_assignment_section:
@@ -477,19 +561,22 @@ class RbacPolicy:
         if target_role is None:
             return False
 
-        if str(target_role.name or "").strip().lower() == "responsabile_produzione":
+        if _norm_role_name(target_role.name) == "responsabile_produzione":
             return False
 
-        return int(target_role.id) in self.role_assignment_manageable_role_ids
+        return self.can_manage_target_role(target_role)
 
     def permission_manageable_roles(self):
         if not self.can_view_role_permission_section:
             return []
 
-        return sorted(
-            self.user.manageable_roles,
-            key=lambda r: ((r.name or "").lower(), r.id),
-        )
+        return list(self.descendant_manageable_roles)
+
+    def role_link_manageable_roles(self):
+        if not self.can_view_role_links_section:
+            return []
+
+        return list(self.descendant_manageable_roles)
 
     def permission_manageable_permissions(self):
         if not self.can_view_role_permission_section:
@@ -506,3 +593,9 @@ class RbacPolicy:
         return [
             p for p in perms if (p.Codice or "").strip().lower() not in forbidden_codes
         ]
+
+    def can_manage_target_role(self, target_role: Roles | None) -> bool:
+        if target_role is None:
+            return False
+
+        return int(target_role.id) in self.descendant_manageable_role_ids
