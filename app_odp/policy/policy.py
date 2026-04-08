@@ -388,6 +388,10 @@ class RbacPolicy:
     def can_view_role_links_section(self) -> bool:
         return self.can("modifica_permessi_ruolo")
 
+    @cached_property
+    def can_view_role_permission_section(self) -> bool:
+        return self.can("modifica_permessi_ruolo")
+
     def abac_manageable_roles(self) -> list[Roles]:
         if not self.can_view_user_abac_section:
             return []
@@ -491,15 +495,12 @@ class RbacPolicy:
         if not self.can_view_role_permission_section:
             return []
 
-        forbidden_codes = {
-            "admin",
-        }
+        forbidden_codes = {"admin"}
 
         stmt = select(Permissions).order_by(
             func.lower(func.coalesce(Permissions.Descrizione, Permissions.Codice)),
             func.lower(Permissions.Codice),
         )
-
         perms = db.session.execute(stmt).scalars().all()
 
         return [

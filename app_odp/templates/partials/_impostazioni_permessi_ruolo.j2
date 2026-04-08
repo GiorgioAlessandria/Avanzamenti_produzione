@@ -2,41 +2,24 @@
     <div class="col-12 col-lg-4">
         <div class="card shadow-sm h-100">
             <div class="card-header">
-                <h3 class="mb-0">Connessioni ruolo</h3>
+                <h3 class="mb-0">Modifica permessi ruolo</h3>
             </div>
 
             <div class="card-body">
-                <div class="mb-4">
-                    <label for="select-ruolo-link"
-                           class="form-label fw-semibold">
-                        Ruolo
-                    </label>
-                    <select id="select-ruolo-link"
-                            class="form-select">
-                        <option value="">-- Seleziona un ruolo --</option>
-                        {% for ruolo in role_link_role_options %}
-                            <option value="{{ ruolo.id }}">
-                                {{ ruolo.description or ruolo.name }}
-                            </option>
-                        {% endfor %}
-                    </select>
-                </div>
+                <label for="select-ruolo-permessi"
+                       class="form-label fw-semibold">
+                    Ruolo
+                </label>
 
-                <div class="mb-4">
-                    <label for="select-role-link-table"
-                           class="form-label fw-semibold">
-                        Tabella da modificare
-                    </label>
-                    <select id="select-role-link-table"
-                            class="form-select">
-                        <option value="">-- Seleziona una tabella --</option>
-                        {% for item in role_link_tables %}
-                            <option value="{{ item.key }}">
-                                {{ item.label }}
-                            </option>
-                        {% endfor %}
-                    </select>
-                </div>
+                <select id="select-ruolo-permessi"
+                        class="form-select">
+                    <option value="">-- Seleziona un ruolo --</option>
+                    {% for ruolo in permission_role_options %}
+                        <option value="{{ ruolo.id }}">
+                            {{ ruolo.description or ruolo.name }}
+                        </option>
+                    {% endfor %}
+                </select>
             </div>
         </div>
     </div>
@@ -44,13 +27,13 @@
     <div class="col-12 col-lg-8">
         <div class="card shadow-sm h-100">
             <div class="card-header">
-                <h3 class="mb-0">Dettaglio connessione</h3>
+                <h3 class="mb-0">Dettaglio permessi</h3>
             </div>
 
             <div class="card-body"
-                 id="role-link-detail">
+                 id="permessi-ruolo-dettaglio">
                 <div class="alert alert-info mb-0">
-                    Seleziona un ruolo e una tabella da modificare.
+                    Seleziona un ruolo per visualizzare i permessi.
                 </div>
             </div>
         </div>

@@ -3651,6 +3651,10 @@ def impostazioni():
     role_link_tables = []
     role_link_details = {}
     role_link_role_options = []
+    show_role_permission_section = policy.can_view_role_permission_section
+
+    permission_role_options = []
+    permission_details = {}
 
     if show_role_assignment_section:
         assignable_users = (
@@ -3692,6 +3696,34 @@ def impostazioni():
             }
             for ruolo in assignable_roles
         ]
+
+    if show_role_permission_section:
+        ruoli_permessi_gestibili = policy.permission_manageable_roles()
+        permessi_gestibili = policy.permission_manageable_permissions()
+
+        permission_role_options = ruoli_permessi_gestibili
+
+        for ruolo in ruoli_permessi_gestibili:
+            current_permission_ids = (
+                {p.id for p in ruolo.permissions.all()}
+                if hasattr(ruolo.permissions, "all")
+                else {p.id for p in ruolo.permissions}
+            )
+
+            permission_details[str(ruolo.id)] = {
+                "id": ruolo.id,
+                "name": ruolo.name or "",
+                "description": ruolo.description or "",
+                "permissions": [
+                    {
+                        "id": perm.id,
+                        "codice": perm.Codice or "",
+                        "descrizione": perm.Descrizione or "",
+                        "checked": perm.id in current_permission_ids,
+                    }
+                    for perm in permessi_gestibili
+                ],
+            }
     if show_role_links_section:
         ruoli_link_gestibili = policy.abac_manageable_roles()
         role_link_role_options = ruoli_link_gestibili
@@ -3821,11 +3853,13 @@ def impostazioni():
         manageable_roles=manageable_roles,
         show_role_assignment_section=show_role_assignment_section,
         show_user_abac_section=show_user_abac_section,
+        show_role_permission_section=show_role_permission_section,
         permission_role_options=permission_role_options,
         permission_details=permission_details,
         role_link_tables=role_link_tables,
         role_link_details=role_link_details,
         show_role_links_section=show_role_links_section,
+        role_link_role_options=role_link_role_options,
     )
 
 
