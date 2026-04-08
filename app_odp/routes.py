@@ -3675,6 +3675,9 @@ def impostazioni():
     permission_details = {}
 
     ruoli_link_gestibili = policy.role_link_manageable_roles()
+    show_role_creation_section = False
+    role_creation_tables = []
+    role_creation_options = {}
 
     if show_role_assignment_section:
         assignable_users = (
@@ -3859,6 +3862,8 @@ def impostazioni():
         role_link_details=role_link_details,
         show_role_links_section=show_role_links_section,
         role_link_role_options=role_link_role_options,
+        role_creation_tables=role_creation_tables,
+        role_creation_options=role_creation_options,
     )
 
 

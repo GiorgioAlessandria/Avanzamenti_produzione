@@ -250,26 +250,18 @@ class RbacPolicy:
         return db.session.scalars(stmt).all()
 
     @cached_property
-    def current_effective_roles(self) -> list[Roles]:
-        return list(self.user._iter_roles(include_inherited=True))
-
-    @cached_property
-    def current_effective_role_ids(self) -> set[int]:
-        return {int(role.id) for role in self.current_effective_roles}
-
-    @cached_property
     def descendant_manageable_roles(self) -> list[Roles]:
         out = {}
 
-        for role in self.current_effective_roles:
+        for role in self.direct_assigned_roles:
             for managed in getattr(role, "iter_manageable_roles", lambda: [])():
                 if managed is None:
                     continue
 
                 managed_id = int(managed.id)
 
-                # escludi solo i ruoli correnti dell'utente
-                if managed_id in self.current_effective_role_ids:
+                # escludi solo i ruoli assegnati direttamente all'utente
+                if managed_id in self.direct_assigned_role_ids:
                     continue
 
                 out[managed_id] = managed
@@ -426,6 +418,14 @@ class RbacPolicy:
     @cached_property
     def can_view_role_permission_section(self) -> bool:
         return self.can("modifica_permessi_ruolo")
+
+    @cached_property
+    def direct_assigned_roles(self) -> list[Roles]:
+        return list(getattr(self.user, "roles", None) or [])
+
+    @cached_property
+    def direct_assigned_role_ids(self) -> set[int]:
+        return {int(role.id) for role in self.direct_assigned_roles}
 
     def abac_manageable_roles(self) -> list[Roles]:
         if not self.can_view_user_abac_section:
