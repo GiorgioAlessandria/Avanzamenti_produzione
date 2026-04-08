@@ -1,9 +1,15 @@
 {% extends "base.j2" %}
 
-{% block title %}Impostazioni{% endblock %}
+{% block title %}
+    Impostazioni
+{% endblock %}
 
 {% block content %}
     <main class="container-fluid mt-4 mb-4">
+        {% if show_role_links_section %}
+            {% include "partials/_impostazioni_permessi_ruolo.j2" %}
+        {% endif %}
+
         {% if show_role_assignment_section %}
             {% include "partials/_impostazioni_assegna_ruolo.j2" %}
         {% endif %}
@@ -12,7 +18,9 @@
             {% include "partials/_impostazioni_abac.j2" %}
         {% endif %}
 
-        {% if not show_role_assignment_section and not show_user_abac_section %}
+        {% if not show_role_assignment_section
+              and not show_user_abac_section
+              and not show_role_links_section %}
             <div class="alert alert-warning mb-0">
                 Non hai permessi per visualizzare le sezioni di configurazione.
             </div>
@@ -22,12 +30,7 @@
 {% block extra_js %}
     <script id="ruolo-details-data"
             type="application/json">
-            {{ ruolo_details|tojson }}
-
-
-
-
-
+    {{ ruolo_details|tojson }}
 
 
 
@@ -40,12 +43,7 @@
 
     <script id="user-abac-data"
             type="application/json">
-            {{ user_abac_details|tojson }}
-
-
-
-
-
+    {{ user_abac_details|tojson }}
 
 
 
@@ -58,11 +56,7 @@
 
     <script id="manageable-users-data"
             type="application/json">
-            {{ manageable_users|tojson }}
-
-
-
-
+    {{ manageable_users|tojson }}
 
 
 
@@ -75,11 +69,7 @@
 
     <script id="manageable-roles-data"
             type="application/json">
-            {{ manageable_roles|tojson }}
-
-
-
-
+    {{ manageable_roles|tojson }}
 
 
 
@@ -89,6 +79,18 @@
 
 
     </script>
+    <script id="role-link-details-data"
+            type="application/json">
+    {{ role_link_details|tojson }}
+
+
+
+
+
+
+
+    </script>
+
     <script>
         (() => {
             const selectRuolo = document.getElementById("select-ruolo-impostazioni");
@@ -730,6 +732,408 @@
             renderDetail();
         })();
 
+        (() => {
+            const selectRuoloPermessi = document.getElementById("select-ruolo-permessi");
+            const dettaglioPermessi = document.getElementById("permessi-ruolo-dettaglio");
+            const permissionDataEl = document.getElementById("permission-details-data");
 
+            let permissionDetails = {};
+            let editModePermessi = false;
+            let selectedRoleIdPermessi = "";
+
+            try {
+                permissionDetails = JSON.parse(permissionDataEl?.textContent || "{}");
+            } catch (_) {
+                permissionDetails = {};
+            }
+
+            function escapeHtml(value) {
+                return String(value ?? "")
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;")
+                    .replace(/"/g, "&quot;")
+                    .replace(/'/g, "&#039;");
+            }
+
+            function collectCheckedPermissionIds() {
+                return Array.from(
+                    dettaglioPermessi.querySelectorAll('.js-role-permission-checkbox:checked')
+                ).map(el => Number(el.value));
+            }
+
+            function renderPermissionCheckboxList(items) {
+                if (!Array.isArray(items) || items.length === 0) {
+                    return `
+                <div class="alert alert-secondary mb-0">
+                    Nessun permesso configurabile per questo ruolo.
+                </div>
+            `;
+                }
+
+                return `
+            <div class="list-group">
+                ${items.map((item) => {
+                    const inputId = `perm-${item.id}`;
+                    return `
+                        <label for="${escapeHtml(inputId)}"
+                               class="list-group-item d-flex justify-content-between align-items-start gap-3">
+                            <div class="form-check m-0">
+                                <input class="form-check-input js-role-permission-checkbox"
+                                       type="checkbox"
+                                       id="${escapeHtml(inputId)}"
+                                       value="${escapeHtml(item.id)}"
+                                       ${item.checked ? "checked" : ""}
+                                       ${editModePermessi ? "" : "disabled"}>
+                            </div>
+                            <div class="flex-grow-1">
+                                <div class="fw-semibold">${escapeHtml(item.codice || "-")}</div>
+                                <div class="text-muted small">${escapeHtml(item.descrizione || "")}</div>
+                            </div>
+                        </label>
+                    `;
+                }).join("")}
+            </div>
+        `;
+            }
+
+            function renderPermissionDetail(roleId) {
+                if (!dettaglioPermessi) return;
+
+                const detail = permissionDetails[String(roleId)];
+
+                if (!roleId || !detail) {
+                    dettaglioPermessi.innerHTML = `
+                <div class="alert alert-info mb-0">
+                    Seleziona un ruolo per visualizzare i permessi.
+                </div>
+            `;
+                    return;
+                }
+
+                dettaglioPermessi.innerHTML = `
+            <div class="mb-4">
+                <h4 class="mb-1">${escapeHtml(detail.name || "")}</h4>
+                <div class="text-muted">${escapeHtml(detail.description || "")}</div>
+            </div>
+
+            <div class="d-flex gap-2 mb-3">
+                <button type="button"
+                        class="btn btn-primary"
+                        id="btn-role-perm-edit"
+                        ${editModePermessi ? "disabled" : ""}>
+                    Modifica
+                </button>
+
+                <button type="button"
+                        class="btn btn-secondary"
+                        id="btn-role-perm-cancel"
+                        ${editModePermessi ? "" : "disabled"}>
+                    Annulla
+                </button>
+
+                <button type="button"
+                        class="btn btn-success"
+                        id="btn-role-perm-save"
+                        ${editModePermessi ? "" : "disabled"}>
+                    Salva modifiche
+                </button>
+            </div>
+
+            <div class="border rounded p-3 h-100">
+                <h5 class="mb-3">Permessi associati al ruolo</h5>
+                ${renderPermissionCheckboxList(detail.permissions)}
+            </div>
+        `;
+            }
+
+            async function saveRolePermissions() {
+                if (!selectedRoleIdPermessi) return;
+
+                const payload = {
+                    role_id: Number(selectedRoleIdPermessi),
+                    permission_ids: collectCheckedPermissionIds(),
+                };
+
+                const btnSave = document.getElementById("btn-role-perm-save");
+                if (btnSave) btnSave.disabled = true;
+
+                try {
+                    const resp = await fetch("/api/impostazioni/ruolo-permessi", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "X-Requested-With": "XMLHttpRequest"
+                        },
+                        credentials: "same-origin",
+                        body: JSON.stringify(payload)
+                    });
+
+                    let data = {};
+                    try {
+                        data = await resp.json();
+                    } catch (_) {
+                        data = {};
+                    }
+
+                    if (!resp.ok || data.ok === false) {
+                        alert(data.error || "Errore durante il salvataggio dei permessi ruolo.");
+                        return;
+                    }
+
+                    if (permissionDetails[String(selectedRoleIdPermessi)]) {
+                        const checkedSet = new Set((data.permission_ids || []).map(v => Number(v)));
+                        permissionDetails[String(selectedRoleIdPermessi)].permissions =
+                            permissionDetails[String(selectedRoleIdPermessi)].permissions.map((perm) => ({
+                                ...perm,
+                                checked: checkedSet.has(Number(perm.id)),
+                            }));
+                    }
+
+                    editModePermessi = false;
+                    renderPermissionDetail(selectedRoleIdPermessi);
+
+                    alert("Permessi ruolo salvati correttamente.");
+                } catch (err) {
+                    console.error("Errore salvataggio permessi ruolo:", err);
+                    alert("Errore di comunicazione con il server.");
+                } finally {
+                    const newBtnSave = document.getElementById("btn-role-perm-save");
+                    if (newBtnSave && editModePermessi) {
+                        newBtnSave.disabled = false;
+                    }
+                }
+            }
+
+            selectRuoloPermessi?.addEventListener("change", function () {
+                selectedRoleIdPermessi = this.value || "";
+                editModePermessi = false;
+                renderPermissionDetail(selectedRoleIdPermessi);
+            });
+
+            document.addEventListener("click", function (event) {
+                const editBtn = event.target.closest("#btn-role-perm-edit");
+                if (editBtn) {
+                    editModePermessi = true;
+                    renderPermissionDetail(selectedRoleIdPermessi);
+                    return;
+                }
+
+                const cancelBtn = event.target.closest("#btn-role-perm-cancel");
+                if (cancelBtn) {
+                    editModePermessi = false;
+                    renderPermissionDetail(selectedRoleIdPermessi);
+                    return;
+                }
+
+                const saveBtn = event.target.closest("#btn-role-perm-save");
+                if (saveBtn) {
+                    saveRolePermissions();
+                }
+            });
+        })();
+        (() => {
+            const selectRole = document.getElementById("select-ruolo-link");
+            const selectTable = document.getElementById("select-role-link-table");
+            const detailEl = document.getElementById("role-link-detail");
+            const dataEl = document.getElementById("role-link-details-data");
+
+            let roleLinkDetails = {};
+            let selectedRoleId = "";
+            let selectedTableKey = "";
+            let editMode = false;
+
+            try {
+                roleLinkDetails = JSON.parse(dataEl?.textContent || "{}");
+            } catch (_) {
+                roleLinkDetails = {};
+            }
+
+            function escapeHtml(value) {
+                return String(value ?? "")
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;")
+                    .replace(/"/g, "&quot;")
+                    .replace(/'/g, "&#039;");
+            }
+
+            function getCurrentTableDetail() {
+                const roleDetail = roleLinkDetails[String(selectedRoleId)];
+                if (!roleDetail) return null;
+                return roleDetail.tables?.[String(selectedTableKey)] || null;
+            }
+
+            function collectCheckedIds() {
+                return Array.from(
+                    detailEl.querySelectorAll(".js-role-link-checkbox:checked")
+                ).map(el => Number(el.value));
+            }
+
+            function renderItems(items) {
+                if (!Array.isArray(items) || items.length === 0) {
+                    return `
+                <div class="alert alert-secondary mb-0">
+                    Nessun elemento disponibile per questa connessione.
+                </div>
+            `;
+                }
+
+                return `
+            <div class="list-group">
+                ${items.map((item) => {
+                    const inputId = `role-link-${item.id}`;
+                    return `
+                        <label for="${escapeHtml(inputId)}"
+                               class="list-group-item d-flex justify-content-between align-items-start gap-3">
+                            <div class="form-check m-0">
+                                <input class="form-check-input js-role-link-checkbox"
+                                       type="checkbox"
+                                       id="${escapeHtml(inputId)}"
+                                       value="${escapeHtml(item.id)}"
+                                       ${item.checked ? "checked" : ""}
+                                       ${editMode ? "" : "disabled"}>
+                            </div>
+                            <div class="flex-grow-1">
+                                <div class="fw-semibold">${escapeHtml(item.codice || "-")}</div>
+                                <div class="text-muted small">${escapeHtml(item.descrizione || "")}</div>
+                            </div>
+                        </label>
+                    `;
+                }).join("")}
+            </div>
+        `;
+            }
+
+            function renderDetail() {
+                if (!detailEl) return;
+
+                const roleDetail = roleLinkDetails[String(selectedRoleId)];
+                const tableDetail = getCurrentTableDetail();
+
+                if (!selectedRoleId || !selectedTableKey || !roleDetail || !tableDetail) {
+                    detailEl.innerHTML = `
+                <div class="alert alert-info mb-0">
+                    Seleziona un ruolo e una tabella da modificare.
+                </div>
+            `;
+                    return;
+                }
+
+                detailEl.innerHTML = `
+            <div class="mb-4">
+                <h4 class="mb-1">${escapeHtml(roleDetail.name || "")}</h4>
+                <div class="text-muted">${escapeHtml(roleDetail.description || "")}</div>
+            </div>
+
+            <div class="mb-3">
+                <strong>Connessione selezionata:</strong>
+                ${escapeHtml(tableDetail.label || "")}
+            </div>
+
+            <div class="d-flex gap-2 mb-3">
+                <button type="button"
+                        class="btn btn-primary"
+                        id="btn-role-link-edit"
+                        ${editMode ? "disabled" : ""}>
+                    Modifica
+                </button>
+
+                <button type="button"
+                        class="btn btn-secondary"
+                        id="btn-role-link-cancel"
+                        ${editMode ? "" : "disabled"}>
+                    Annulla
+                </button>
+
+                <button type="button"
+                        class="btn btn-success"
+                        id="btn-role-link-save"
+                        ${editMode ? "" : "disabled"}>
+                    Salva modifiche
+                </button>
+            </div>
+
+            <div class="border rounded p-3">
+                ${renderItems(tableDetail.items)}
+            </div>
+        `;
+            }
+
+            async function saveRoleLinks() {
+                if (!selectedRoleId || !selectedTableKey) return;
+
+                const payload = {
+                    role_id: Number(selectedRoleId),
+                    table_key: selectedTableKey,
+                    selected_ids: collectCheckedIds(),
+                };
+
+                const resp = await fetch("/api/impostazioni/ruolo-link", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-Requested-With": "XMLHttpRequest",
+                    },
+                    credentials: "same-origin",
+                    body: JSON.stringify(payload),
+                });
+
+                let data = {};
+                try {
+                    data = await resp.json();
+                } catch (_) {
+                    data = {};
+                }
+
+                if (!resp.ok || data.ok === false) {
+                    alert(data.error || "Errore salvataggio connessioni ruolo.");
+                    return;
+                }
+
+                const tableDetail = getCurrentTableDetail();
+                if (tableDetail) {
+                    const checkedSet = new Set((data.selected_ids || []).map(v => Number(v)));
+                    tableDetail.items = tableDetail.items.map(item => ({
+                        ...item,
+                        checked: checkedSet.has(Number(item.id)),
+                    }));
+                }
+
+                editMode = false;
+                renderDetail();
+                alert("Connessioni ruolo salvate correttamente.");
+            }
+
+            selectRole?.addEventListener("change", function () {
+                selectedRoleId = this.value || "";
+                editMode = false;
+                renderDetail();
+            });
+
+            selectTable?.addEventListener("change", function () {
+                selectedTableKey = this.value || "";
+                editMode = false;
+                renderDetail();
+            });
+
+            document.addEventListener("click", function (event) {
+                if (event.target.closest("#btn-role-link-edit")) {
+                    editMode = true;
+                    renderDetail();
+                    return;
+                }
+
+                if (event.target.closest("#btn-role-link-cancel")) {
+                    editMode = false;
+                    renderDetail();
+                    return;
+                }
+
+                if (event.target.closest("#btn-role-link-save")) {
+                    saveRoleLinks();
+                }
+            });
+        })();
     </script>
 {% endblock %}

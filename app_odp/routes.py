@@ -34,6 +34,19 @@ from app_odp.models import (
     user_roles,
     users_lavorazioni,
     users_risorse,
+    Permissions,
+    Risorse,
+    Lavorazioni,
+    Magazzini,
+    Famiglia,
+    Macrofamiglia,
+    roles_permission,
+    roles_reparti,
+    roles_risorse,
+    roles_lavorazioni,
+    roles_magazzini,
+    roles_famiglia,
+    roles_macrofamiglia,
 )
 from app_odp.policy.decorator import require_perm
 from app_odp.policy.policy import RbacPolicy
@@ -50,6 +63,79 @@ ROME_TZ = ZoneInfo("Europe/Rome")
 
 
 # region FUNZIONI
+
+ROLE_LINK_CONFIG = {
+    "permissions": {
+        "label": "Permessi",
+        "assoc_table": roles_permission,
+        "left_fk": "role_id",
+        "right_fk": "permission_id",
+        "model": Permissions,
+        "model_id": "id",
+        "code_attr": "Codice",
+        "desc_attr": "Descrizione",
+    },
+    "reparti": {
+        "label": "Reparti",
+        "assoc_table": roles_reparti,
+        "left_fk": "roles_id",
+        "right_fk": "reparto_id",
+        "model": Reparti,
+        "model_id": "id",
+        "code_attr": "Codice",
+        "desc_attr": "Descrizione",
+    },
+    "risorse": {
+        "label": "Risorse",
+        "assoc_table": roles_risorse,
+        "left_fk": "roles_id",
+        "right_fk": "risorse_id",
+        "model": Risorse,
+        "model_id": "id",
+        "code_attr": "Codice",
+        "desc_attr": "Descrizione",
+    },
+    "lavorazioni": {
+        "label": "Lavorazioni",
+        "assoc_table": roles_lavorazioni,
+        "left_fk": "roles_id",
+        "right_fk": "lavorazioni_id",
+        "model": Lavorazioni,
+        "model_id": "id",
+        "code_attr": "Codice",
+        "desc_attr": "Descrizione",
+    },
+    "magazzini": {
+        "label": "Magazzini",
+        "assoc_table": roles_magazzini,
+        "left_fk": "roles_id",
+        "right_fk": "magazzini_id",
+        "model": Magazzini,
+        "model_id": "id",
+        "code_attr": "Codice",
+        "desc_attr": "Descrizione",
+    },
+    "famiglia": {
+        "label": "Famiglia",
+        "assoc_table": roles_famiglia,
+        "left_fk": "roles_id",
+        "right_fk": "famiglia_id",
+        "model": Famiglia,
+        "model_id": "id",
+        "code_attr": "Codice",
+        "desc_attr": "Descrizione",
+    },
+    "macrofamiglia": {
+        "label": "Macrofamiglia",
+        "assoc_table": roles_macrofamiglia,
+        "left_fk": "roles_id",
+        "right_fk": "macrofamiglia_id",
+        "model": Macrofamiglia,
+        "model_id": "id",
+        "code_attr": "Codice",
+        "desc_attr": "Descrizione",
+    },
+}
 
 
 def _new_dash_kpi_bucket() -> dict:
@@ -3558,6 +3644,14 @@ def impostazioni():
     manageable_users = []
     manageable_roles = []
 
+    show_role_links_section = policy.can_view_role_links_section
+
+    permission_role_options = []
+    permission_details = {}
+    role_link_tables = []
+    role_link_details = {}
+    role_link_role_options = []
+
     if show_role_assignment_section:
         assignable_users = (
             policy.role_assignment_users_query().order_by(User.username.asc()).all()
@@ -3598,6 +3692,56 @@ def impostazioni():
             }
             for ruolo in assignable_roles
         ]
+    if show_role_links_section:
+        ruoli_link_gestibili = policy.abac_manageable_roles()
+        role_link_role_options = ruoli_link_gestibili
+
+        role_link_tables = [
+            {"key": key, "label": cfg["label"]} for key, cfg in ROLE_LINK_CONFIG.items()
+        ]
+
+        for ruolo in ruoli_link_gestibili:
+            role_link_details[str(ruolo.id)] = {
+                "id": ruolo.id,
+                "name": ruolo.name or "",
+                "description": ruolo.description or "",
+                "tables": {},
+            }
+
+            for key, cfg in ROLE_LINK_CONFIG.items():
+                model = cfg["model"]
+                code_attr = cfg["code_attr"]
+                desc_attr = cfg["desc_attr"]
+
+                all_items = model.query.order_by(
+                    func.lower(
+                        func.coalesce(
+                            getattr(model, desc_attr), getattr(model, code_attr)
+                        )
+                    ),
+                    func.lower(getattr(model, code_attr)),
+                ).all()
+
+                selected_ids = set()
+                assoc_table = cfg["assoc_table"]
+                left_col = getattr(assoc_table.c, cfg["left_fk"])
+                right_col = getattr(assoc_table.c, cfg["right_fk"])
+
+                stmt = select(right_col).where(left_col == ruolo.id)
+                selected_ids = set(db.session.execute(stmt).scalars().all())
+
+                role_link_details[str(ruolo.id)]["tables"][key] = {
+                    "label": cfg["label"],
+                    "items": [
+                        {
+                            "id": getattr(item, cfg["model_id"]),
+                            "codice": getattr(item, code_attr, "") or "",
+                            "descrizione": getattr(item, desc_attr, "") or "",
+                            "checked": getattr(item, cfg["model_id"]) in selected_ids,
+                        }
+                        for item in all_items
+                    ],
+                }
 
     if show_user_abac_section:
         ruoli_gestibili = policy.abac_manageable_roles()
@@ -3677,6 +3821,11 @@ def impostazioni():
         manageable_roles=manageable_roles,
         show_role_assignment_section=show_role_assignment_section,
         show_user_abac_section=show_user_abac_section,
+        permission_role_options=permission_role_options,
+        permission_details=permission_details,
+        role_link_tables=role_link_tables,
+        role_link_details=role_link_details,
+        show_role_links_section=show_role_links_section,
     )
 
 
@@ -3888,6 +4037,111 @@ def api_save_user_abac():
                     "added": sorted(risorse_to_add),
                     "removed": sorted(risorse_to_remove),
                 },
+            },
+        }
+    ), 200
+
+
+@main_bp.post("/api/impostazioni/ruolo-link")
+@login_required
+def api_save_role_links():
+    policy = RbacPolicy(current_user)
+
+    if not policy.can_view_role_links_section:
+        return jsonify({"ok": False, "error": "Permesso insufficiente."}), 403
+
+    data = request.get_json(silent=True) or {}
+
+    role_id_raw = data.get("role_id")
+    table_key = (data.get("table_key") or "").strip()
+    selected_ids_raw = data.get("selected_ids") or []
+
+    try:
+        role_id = int(role_id_raw)
+        selected_ids = {int(x) for x in selected_ids_raw}
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "Parametri non validi."}), 400
+
+    if table_key not in ROLE_LINK_CONFIG:
+        return jsonify({"ok": False, "error": "Tabella non valida."}), 400
+
+    ruolo = Roles.query.get(role_id)
+    if ruolo is None:
+        return jsonify({"ok": False, "error": "Ruolo non trovato."}), 404
+
+    if not current_user.can_manage_role(role_id):
+        return jsonify({"ok": False, "error": "Ruolo non gestibile."}), 403
+
+    cfg = ROLE_LINK_CONFIG[table_key]
+    assoc_table = cfg["assoc_table"]
+    model = cfg["model"]
+
+    valid_ids = {getattr(item, cfg["model_id"]) for item in model.query.all()}
+
+    invalid_ids = selected_ids - valid_ids
+    if invalid_ids:
+        return jsonify(
+            {
+                "ok": False,
+                "error": "Il payload contiene id non validi.",
+                "invalid_ids": sorted(invalid_ids),
+            }
+        ), 400
+
+    left_col = getattr(assoc_table.c, cfg["left_fk"])
+    right_col = getattr(assoc_table.c, cfg["right_fk"])
+
+    current_ids = set(
+        db.session.execute(select(right_col).where(left_col == ruolo.id))
+        .scalars()
+        .all()
+    )
+
+    to_add = selected_ids - current_ids
+    to_remove = current_ids - selected_ids
+
+    try:
+        if to_add:
+            db.session.execute(
+                assoc_table.insert(),
+                [
+                    {
+                        cfg["left_fk"]: ruolo.id,
+                        cfg["right_fk"]: item_id,
+                    }
+                    for item_id in sorted(to_add)
+                ],
+            )
+
+        if to_remove:
+            db.session.execute(
+                delete(assoc_table).where(
+                    left_col == ruolo.id,
+                    right_col.in_(sorted(to_remove)),
+                )
+            )
+
+        db.session.commit()
+
+    except Exception as exc:
+        db.session.rollback()
+        return jsonify(
+            {
+                "ok": False,
+                "error": f"Errore salvataggio connessioni ruolo: {exc}",
+            }
+        ), 500
+
+    return jsonify(
+        {
+            "ok": True,
+            "message": "Connessioni ruolo salvate correttamente.",
+            "role_id": ruolo.id,
+            "table_key": table_key,
+            "selected_ids": sorted(selected_ids),
+            "delta": {
+                "added": sorted(to_add),
+                "removed": sorted(to_remove),
             },
         }
     ), 200
@@ -4153,3 +4407,96 @@ def dash_reparto():
         "dash_reparto.j2",
         utenti_dashboard=lista_utenti,
     )
+
+
+@main_bp.post("/api/impostazioni/ruolo-permessi")
+@login_required
+def api_save_role_permissions():
+    policy = RbacPolicy(current_user)
+
+    if not policy.can_view_role_permission_section:
+        return jsonify({"ok": False, "error": "Permesso insufficiente."}), 403
+
+    data = request.get_json(silent=True) or {}
+
+    role_id_raw = data.get("role_id")
+    permission_ids_raw = data.get("permission_ids") or []
+
+    try:
+        role_id = int(role_id_raw)
+        permission_ids = {int(x) for x in permission_ids_raw}
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "Parametri non validi."}), 400
+
+    ruolo = Roles.query.get(role_id)
+    if ruolo is None:
+        return jsonify({"ok": False, "error": "Ruolo non trovato."}), 404
+
+    if not current_user.can_manage_role(role_id):
+        return jsonify(
+            {"ok": False, "error": "Ruolo non gestibile dall'utente corrente."}
+        ), 403
+
+    allowed_permissions = policy.permission_manageable_permissions()
+    allowed_permission_ids = {p.id for p in allowed_permissions}
+
+    invalid_permission_ids = permission_ids - allowed_permission_ids
+    if invalid_permission_ids:
+        return jsonify(
+            {
+                "ok": False,
+                "error": "Il payload contiene permessi non gestibili.",
+                "invalid_permission_ids": sorted(invalid_permission_ids),
+            }
+        ), 400
+
+    current_permission_ids = (
+        {p.id for p in ruolo.permissions.all()}
+        if hasattr(ruolo.permissions, "all")
+        else {p.id for p in ruolo.permissions}
+    )
+
+    permissions_to_add = permission_ids - current_permission_ids
+    permissions_to_remove = current_permission_ids - permission_ids
+
+    try:
+        if permissions_to_add:
+            db.session.execute(
+                roles_permission.insert(),
+                [
+                    {"role_id": ruolo.id, "permission_id": perm_id}
+                    for perm_id in sorted(permissions_to_add)
+                ],
+            )
+
+        if permissions_to_remove:
+            db.session.execute(
+                delete(roles_permission).where(
+                    roles_permission.c.role_id == ruolo.id,
+                    roles_permission.c.permission_id.in_(sorted(permissions_to_remove)),
+                )
+            )
+
+        db.session.commit()
+
+    except Exception as exc:
+        db.session.rollback()
+        return jsonify(
+            {
+                "ok": False,
+                "error": f"Errore salvataggio permessi ruolo: {exc}",
+            }
+        ), 500
+
+    return jsonify(
+        {
+            "ok": True,
+            "message": "Permessi ruolo salvati correttamente.",
+            "role_id": ruolo.id,
+            "permission_ids": sorted(permission_ids),
+            "delta": {
+                "added": sorted(permissions_to_add),
+                "removed": sorted(permissions_to_remove),
+            },
+        }
+    ), 200

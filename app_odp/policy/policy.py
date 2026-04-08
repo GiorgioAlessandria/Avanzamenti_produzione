@@ -384,6 +384,10 @@ class RbacPolicy:
             for role_id in (getattr(self.user, "manageable_role_ids", set()) or set())
         }
 
+    @cached_property
+    def can_view_role_links_section(self) -> bool:
+        return self.can("modifica_permessi_ruolo")
+
     def abac_manageable_roles(self) -> list[Roles]:
         if not self.can_view_user_abac_section:
             return []
@@ -473,3 +477,31 @@ class RbacPolicy:
             return False
 
         return int(target_role.id) in self.role_assignment_manageable_role_ids
+
+    def permission_manageable_roles(self):
+        if not self.can_view_role_permission_section:
+            return []
+
+        return sorted(
+            self.user.manageable_roles,
+            key=lambda r: ((r.name or "").lower(), r.id),
+        )
+
+    def permission_manageable_permissions(self):
+        if not self.can_view_role_permission_section:
+            return []
+
+        forbidden_codes = {
+            "admin",
+        }
+
+        stmt = select(Permissions).order_by(
+            func.lower(func.coalesce(Permissions.Descrizione, Permissions.Codice)),
+            func.lower(Permissions.Codice),
+        )
+
+        perms = db.session.execute(stmt).scalars().all()
+
+        return [
+            p for p in perms if (p.Codice or "").strip().lower() not in forbidden_codes
+        ]
