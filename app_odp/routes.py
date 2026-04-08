@@ -343,14 +343,30 @@ def _safe_float(value) -> float:
         return 0.0
 
 
-def _order_hours_snapshot(ordine: InputOdp) -> tuple[float, float]:
+def _order_hours_snapshot_complessiva(ordine: InputOdp) -> tuple[float, float]:
     fase_attiva = _norm_text(getattr(ordine, "FaseAttiva", "")) or "1"
     ore_lavorazione = InputOdp._active_value_from_phase_list(
         getattr(ordine, "TempoPrevistoLavoraz", ""),
         fase_attiva,
     )
-    ore_attrezzaggio = getattr(ordine, "AttrezzaggioAttivo", "")
-    return _safe_float(ore_lavorazione), _safe_float(ore_attrezzaggio)
+    minuti_attrezzaggio = getattr(ordine, "AttrezzaggioAttivo", "")
+
+    ore_lavorazione_val = _safe_float(ore_lavorazione)
+    minuti_attrezzaggio_val = _safe_float(minuti_attrezzaggio)
+    ore_attrezzaggio_val = minuti_attrezzaggio_val / 60.0
+
+    return ore_lavorazione_val, ore_attrezzaggio_val
+
+
+def _order_hours_snapshot_reparto(ordine: InputOdp) -> tuple[float, float]:
+    fase_attiva = _norm_text(getattr(ordine, "FaseAttiva", "")) or "1"
+    ore_lavorazione = InputOdp._active_value_from_phase_list(
+        getattr(ordine, "TempoPrevistoLavoraz", ""),
+        fase_attiva,
+    )
+    ore_lavorazione_val = _safe_float(ore_lavorazione)
+
+    return ore_lavorazione_val
 
 
 def _dash_complessiva_new_bucket() -> dict:
@@ -3791,7 +3807,7 @@ def dash_complessiva():
             continue
 
         # Nel tuo caso questi valori vanno interpretati come minuti correnti
-        ore_lavorazione, ore_attrezzaggio = _order_hours_snapshot(ordine)
+        ore_lavorazione, ore_attrezzaggio = _order_hours_snapshot_complessiva(ordine)
 
         _dash_complessiva_apply_order(
             kpi_globali,
@@ -3912,10 +3928,11 @@ def dash_reparto():
             if username_operatore not in utenti_data:
                 continue
 
-            ore_lavorazione, minuti_attrezzaggio = _order_hours_snapshot(ordine)
+            ore_lavorazione = _order_hours_snapshot_reparto(ordine)
+            minuti_attrezzaggio = _safe_float(getattr(ordine, "AttrezzaggioAttivo", ""))
 
             record = {
-                "ordine": f"{_norm_text(ordine.IdDocumento)}/{_norm_text(ordine.IdRiga)}",
+                "ordine": f"{_norm_text(ordine.RifRegistraz)}.{_norm_text(ordine.IdRiga)}",
                 "descrizione": _norm_text(ordine.DesArt),
                 "quantita": _norm_text(ordine.Quantita),
                 "risorsa": _first_not_blank(
