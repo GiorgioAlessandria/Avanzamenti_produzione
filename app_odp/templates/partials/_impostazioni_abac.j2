@@ -1,0 +1,78 @@
+<main class="container-fluid mt-4 mb-4">
+    <div class="row g-4">
+        <!-- Sezione sinistra -->
+        <div class="col-12 col-lg-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-header">
+                    <h3 class="mb-0">Selezione ruolo e utenti</h3>
+                </div>
+
+                <div class="card-body">
+                    <div class="mb-4">
+                        <label for="select-ruolo-impostazioni"
+                               class="form-label fw-semibold">
+                            Ruolo
+                        </label>
+                        <select id="select-ruolo-impostazioni"
+                                class="form-select">
+                            <option value="">-- Seleziona un ruolo --</option>
+                            {% for ruolo in ruolo_options %}
+                                <option value="{{ ruolo.id }}">
+                                    {% if ruolo.description %}{{ ruolo.description }}{% endif %}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="form-label fw-semibold">
+                            Utenti associati al ruolo
+                        </label>
+
+                        <div id="box-utenti-ruolo">
+                            <div class="alert alert-secondary mb-0"
+                                 id="placeholder-utenti-ruolo">
+                                Seleziona un ruolo per visualizzare gli utenti associati.
+                            </div>
+
+                            {% for ruolo in ruolo_options %}
+                                <div class="list-group d-none"
+                                     data-role-users="{{ ruolo.id }}">
+                                    {% for utente in utenti_per_ruolo.get(ruolo.id, []) %}
+                                        <button type="button"
+                                                class="list-group-item list-group-item-action js-select-user"
+                                                data-user-id="{{ utente.id }}"
+                                                data-username="{{ utente.username }}"
+                                                data-role-id="{{ ruolo.id }}"
+                                                data-role-name="{{ ruolo.name }}">
+                                            <div class="d-flex justify-content-between align-items-center">
+                                                <span>{{ utente.username }}</span>
+                                                <span class="badge text-bg-light">{{ ruolo.name }}</span>
+                                            </div>
+                                        </button>
+                                    {% endfor %}
+                                </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sezione destra -->
+        <div class="col-12 col-lg-8">
+            <div class="card shadow-sm h-100">
+                <div class="card-header">
+                    <h3 class="mb-0">Dettaglio impostazioni</h3>
+                </div>
+
+                <div class="card-body"
+                     id="impostazioni-dettaglio">
+                    <div class="alert alert-info mb-0">
+                        Seleziona prima un ruolo e poi un utente.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</main>

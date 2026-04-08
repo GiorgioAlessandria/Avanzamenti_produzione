@@ -165,13 +165,11 @@
                     <div class="col">
                         <div class="row g-2 mb-3">
                             ${compactKpiCard("Ordini attivi", selected.kpi.attivi, "success")}
-                            ${compactKpiCard("Giorni ordini attivi", formatDays(selected.kpi.giorni_impegno_attivi), "success")}
                             ${compactKpiCard("Ore ordini attivi", formatHours(selected.kpi.ore_lavorazione_attivi), "success")}
                             ${compactKpiCard("Min attrezz. attivi", formatMinutes(selected.kpi.minuti_attrezzaggio_attivi), "success")}
                         </div>
                         <div class="row g-2 mb-3">
                             ${compactKpiCard("Ordini sospesi", selected.kpi.sospesi, "warning")}
-                            ${compactKpiCard("Giorni ordini sospesi", formatDays(selected.kpi.giorni_impegno_attivi_sospesi), "warning")}
                             ${compactKpiCard("Ore ordini sospesi", formatHours(selected.kpi.ore_lavorazione_sospesi), "warning")}
                             ${compactKpiCard("Min attrezz. sospesi", formatMinutes(selected.kpi.minuti_attrezzaggio_sospesi), "warning")}
                         </div>

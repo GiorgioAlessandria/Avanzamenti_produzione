@@ -24,6 +24,8 @@ from app_odp.models import (
     roles_reparti,
     roles_risorse,
     user_roles,
+    Roles,
+    User,
 )
 
 
@@ -111,6 +113,19 @@ def _effective_user_subset(role_allowed, user_allowed) -> tuple[set[str], bool]:
     return role_codes & user_codes, True
 
 
+def _norm_text(value) -> str:
+    return str(value or "").strip()
+
+
+def _norm_role_name(value) -> str:
+    return _norm_text(value).lower()
+
+
+PROTECTED_ROLE_NAMES = {
+    "responsabile_produzione",
+}
+
+
 @dataclass(frozen=True)
 class RbacPolicy:
     user: object  # current_user
@@ -121,17 +136,37 @@ class RbacPolicy:
         stmt = select(rt.c.role_id)
         return set(db.session.execute(stmt).scalars().all())
 
-    def can(self, perm_code: str) -> bool:
+    def can(self, perm: str | int) -> bool:
+        if perm is None:
+            return False
+
+        raw = str(perm).strip()
+        if not raw:
+            return False
+
         stmt = (
             select(Permissions.id)
             .select_from(roles_permission)
             .join(Permissions, Permissions.id == roles_permission.c.permission_id)
-            .where(
-                roles_permission.c.role_id.in_(self.role_ids),
-                Permissions.Codice == perm_code,
-            )
-            .limit(1)
+            .where(roles_permission.c.role_id.in_(self.role_ids))
         )
+
+        try:
+            perm_id = int(raw)
+        except (TypeError, ValueError):
+            perm_id = None
+
+        if perm_id is not None:
+            stmt = stmt.where(
+                or_(
+                    Permissions.id == perm_id,
+                    Permissions.Codice == raw,
+                )
+            )
+        else:
+            stmt = stmt.where(Permissions.Codice == raw)
+
+        stmt = stmt.limit(1)
         return db.session.execute(stmt).first() is not None
 
     @cached_property
@@ -320,3 +355,121 @@ class RbacPolicy:
             self.user_allowed_risorse,
         )
         return effective
+
+    @cached_property
+    def can_view_user_abac_section(self) -> bool:
+        """
+        Sezione ABAC:
+        - serve il permesso impostazioni_utente
+        - serve anche uno scope gestionale reale
+        """
+        return self.can("impostazioni_utente") and self.user.has_management_scope()
+
+    @cached_property
+    def can_view_role_assignment_section(self) -> bool:
+        """
+        Sezione assegnazione ruoli:
+        - basta il permesso dedicato assegnazione_ruoli
+        - nel tuo DB corrisponde alla permission id 14
+        """
+        return self.can("assegnazione_ruoli")
+
+    @cached_property
+    def role_assignment_manageable_role_ids(self) -> set[int]:
+        if not self.can_view_role_assignment_section:
+            return set()
+
+        return {
+            int(role_id)
+            for role_id in (getattr(self.user, "manageable_role_ids", set()) or set())
+        }
+
+    def abac_manageable_roles(self) -> list[Roles]:
+        if not self.can_view_user_abac_section:
+            return []
+
+        return sorted(
+            self.user.manageable_roles,
+            key=lambda r: ((r.name or "").lower(), r.id),
+        )
+
+    def role_assignment_roles_query(self):
+        manageable_ids = self.role_assignment_manageable_role_ids
+        if not manageable_ids:
+            return Roles.query.filter(false())
+
+        return Roles.query.filter(Roles.id.in_(manageable_ids)).filter(
+            func.lower(Roles.name) != "responsabile_produzione"
+        )
+
+    def role_assignment_users_query(self):
+        manageable_ids = self.role_assignment_manageable_role_ids
+        if not manageable_ids:
+            return User.query.filter(false())
+
+        ur_allowed = user_roles.alias("ur_allowed")
+        ur_forbidden = user_roles.alias("ur_forbidden")
+
+        allowed_exists = exists(
+            select(1)
+            .select_from(ur_allowed)
+            .where(
+                and_(
+                    ur_allowed.c.user_id == User.id,
+                    ur_allowed.c.role_id.in_(manageable_ids),
+                )
+            )
+        )
+
+        forbidden_exists = exists(
+            select(1)
+            .select_from(ur_forbidden)
+            .where(
+                and_(
+                    ur_forbidden.c.user_id == User.id,
+                    ~ur_forbidden.c.role_id.in_(manageable_ids),
+                )
+            )
+        )
+
+        return (
+            User.query.filter(User.active.is_(True))
+            .filter(User.id != self.user.id)
+            .filter(allowed_exists)
+            .filter(~forbidden_exists)
+        )
+
+    def can_manage_target_user(self, target_user: User | None) -> bool:
+        if not self.can_view_role_assignment_section:
+            return False
+
+        if target_user is None:
+            return False
+
+        if int(target_user.id) == int(self.user.id):
+            return False
+
+        manageable_ids = self.role_assignment_manageable_role_ids
+        if not manageable_ids:
+            return False
+
+        target_role_ids = {
+            int(role.id) for role in (getattr(target_user, "roles", None) or [])
+        }
+
+        if not target_role_ids:
+            return False
+
+        return target_role_ids.issubset(manageable_ids)
+
+    def can_assign_target_role(self, target_role: Roles | None) -> bool:
+        if not self.can_view_role_assignment_section:
+            return False
+
+        if target_role is None:
+            return False
+
+        if str(target_role.name or "").strip().lower() == "responsabile_produzione":
+            return False
+
+        return int(target_role.id) in self.role_assignment_manageable_role_ids

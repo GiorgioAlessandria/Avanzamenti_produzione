@@ -1,100 +1,94 @@
 {% extends "base.j2" %}
 
 {% block title %}Impostazioni{% endblock %}
+
 {% block content %}
-    {% if show_user_management_section %}
-        <main class="container-fluid mt-4 mb-4">
-            <div class="row g-4">
-                <!-- Sezione sinistra -->
-                <div class="col-12 col-lg-4">
-                    <div class="card shadow-sm h-100">
-                        <div class="card-header">
-                            <h3 class="mb-0">Selezione ruolo e utenti</h3>
-                        </div>
+    <main class="container-fluid mt-4 mb-4">
+        {% if show_role_assignment_section %}
+            {% include "partials/_impostazioni_assegna_ruolo.j2" %}
+        {% endif %}
 
-                        <div class="card-body">
-                            <div class="mb-4">
-                                <label for="select-ruolo-impostazioni"
-                                       class="form-label fw-semibold">
-                                    Ruolo
-                                </label>
-                                <select id="select-ruolo-impostazioni"
-                                        class="form-select">
-                                    <option value="">-- Seleziona un ruolo --</option>
-                                    {% for ruolo in ruolo_options %}
-                                        <option value="{{ ruolo.id }}">
-                                            {% if ruolo.description %}{{ ruolo.description }}{% endif %}
-                                        </option>
-                                    {% endfor %}
-                                </select>
-                            </div>
+        {% if show_user_abac_section %}
+            {% include "partials/_impostazioni_abac.j2" %}
+        {% endif %}
 
-                            <div>
-                                <label class="form-label fw-semibold">
-                                    Utenti associati al ruolo
-                                </label>
-
-                                <div id="box-utenti-ruolo">
-                                    <div class="alert alert-secondary mb-0"
-                                         id="placeholder-utenti-ruolo">
-                                        Seleziona un ruolo per visualizzare gli utenti associati.
-                                    </div>
-
-                                    {% for ruolo in ruolo_options %}
-                                        <div class="list-group d-none"
-                                             data-role-users="{{ ruolo.id }}">
-                                            {% for utente in utenti_per_ruolo.get(ruolo.id, []) %}
-                                                <button type="button"
-                                                        class="list-group-item list-group-item-action js-select-user"
-                                                        data-user-id="{{ utente.id }}"
-                                                        data-username="{{ utente.username }}"
-                                                        data-role-id="{{ ruolo.id }}"
-                                                        data-role-name="{{ ruolo.name }}">
-                                                    <div class="d-flex justify-content-between align-items-center">
-                                                        <span>{{ utente.username }}</span>
-                                                        <span class="badge text-bg-light">{{ ruolo.name }}</span>
-                                                    </div>
-                                                </button>
-                                            {% endfor %}
-                                        </div>
-                                    {% endfor %}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Sezione destra -->
-                <div class="col-12 col-lg-8">
-                    <div class="card shadow-sm h-100">
-                        <div class="card-header">
-                            <h3 class="mb-0">Dettaglio impostazioni</h3>
-                        </div>
-
-                        <div class="card-body"
-                             id="impostazioni-dettaglio">
-                            <div class="alert alert-info mb-0">
-                                Seleziona prima un ruolo e poi un utente.
-                            </div>
-                        </div>
-                    </div>
-                </div>
+        {% if not show_role_assignment_section and not show_user_abac_section %}
+            <div class="alert alert-warning mb-0">
+                Non hai permessi per visualizzare le sezioni di configurazione.
             </div>
-        </main>
-    {% endif %}
-{% endblock %}{% block extra_js %}
+        {% endif %}
+    </main>
+{% endblock %}
+{% block extra_js %}
     <script id="ruolo-details-data"
             type="application/json">
-    {{ ruolo_details|tojson }}
+            {{ ruolo_details|tojson }}
+
+
+
+
+
+
+
+
+
+
+
+
 
     </script>
 
     <script id="user-abac-data"
             type="application/json">
-    {{ user_abac_details|tojson }}
+            {{ user_abac_details|tojson }}
+
+
+
+
+
+
+
+
+
+
+
+
 
     </script>
 
+    <script id="manageable-users-data"
+            type="application/json">
+            {{ manageable_users|tojson }}
+
+
+
+
+
+
+
+
+
+
+
+
+    </script>
+
+    <script id="manageable-roles-data"
+            type="application/json">
+            {{ manageable_roles|tojson }}
+
+
+
+
+
+
+
+
+
+
+
+
+    </script>
     <script>
         (() => {
             const selectRuolo = document.getElementById("select-ruolo-impostazioni");
@@ -104,6 +98,7 @@
 
             const roleDataEl = document.getElementById("ruolo-details-data");
             const userAbacEl = document.getElementById("user-abac-data");
+
 
             let ruoloDetails = {};
             let userAbacDetails = {};
@@ -445,5 +440,296 @@
                 }
             });
         })();
+    </script>
+
+    <script>
+        (() => {
+            const usersCountEl = document.getElementById("assign-role-users-count");
+            const userSelectEl = document.getElementById("select-user-role-assignment");
+            const feedbackEl = document.getElementById("assign-role-feedback");
+            const detailEl = document.getElementById("assign-role-detail");
+
+            const usersDataEl = document.getElementById("manageable-users-data");
+            const rolesDataEl = document.getElementById("manageable-roles-data");
+
+            let manageableUsers = [];
+            let manageableRoles = [];
+            let selectedUserId = null;
+
+            try {
+                manageableUsers = JSON.parse(usersDataEl?.textContent || "[]");
+            } catch (_) {
+                manageableUsers = [];
+            }
+
+            try {
+                manageableRoles = JSON.parse(rolesDataEl?.textContent || "[]");
+            } catch (_) {
+                manageableRoles = [];
+            }
+
+            function normalize(value) {
+                return String(value ?? "").trim().toLowerCase();
+            }
+
+            function escapeHtml(value) {
+                return String(value ?? "")
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;")
+                    .replace(/"/g, "&quot;")
+                    .replace(/'/g, "&#039;");
+            }
+
+            function roleLabel(role) {
+                return role?.description || role?.name || "";
+            }
+
+            function getSelectedUser() {
+                return manageableUsers.find(
+                    user => String(user.id) === String(selectedUserId)
+                ) || null;
+            }
+
+            function getRoleById(roleId) {
+                return manageableRoles.find(
+                    role => String(role.id) === String(roleId)
+                ) || null;
+            }
+
+            function showFeedback(type, message) {
+                if (!feedbackEl) return;
+
+                if (!message) {
+                    feedbackEl.innerHTML = "";
+                    return;
+                }
+
+                const classMap = {
+                    success: "alert-success",
+                    danger: "alert-danger",
+                    warning: "alert-warning",
+                    info: "alert-info",
+                };
+
+                const alertClass = classMap[type] || "alert-secondary";
+
+                feedbackEl.innerHTML = `
+            <div class="alert ${alertClass} mb-0">
+                ${escapeHtml(message)}
+            </div>
+        `;
+            }
+
+            function renderUsersDropdown() {
+                if (!userSelectEl) return;
+
+                const users = [...manageableUsers].sort((a, b) =>
+                    normalize(a.username).localeCompare(normalize(b.username), "it")
+                );
+
+                if (usersCountEl) {
+                    usersCountEl.textContent = `${users.length} utente/i disponibili`;
+                }
+
+                userSelectEl.innerHTML = `
+                    <option value="">-- Seleziona un utente --</option>
+                    ${users.map(user => {
+                    const ruoloText = user.current_role_description
+                        || user.current_role_name
+                        || "Senza ruolo";
+
+                    return `
+                            <option value="${escapeHtml(user.id)}">
+                                ${escapeHtml(user.username)} - ${escapeHtml(ruoloText)}
+                            </option>
+                        `;
+                }).join("")}
+                        `;
+
+                if (
+                    selectedUserId &&
+                    users.some(user => String(user.id) === String(selectedUserId))
+                ) {
+                    userSelectEl.value = String(selectedUserId);
+                } else {
+                    selectedUserId = null;
+                    userSelectEl.value = "";
+                }
+            }
+
+            function renderDetail() {
+                if (!detailEl) return;
+
+                const user = getSelectedUser();
+
+                if (!user) {
+                    detailEl.innerHTML = `
+                <div class="alert alert-info mb-0">
+                    Seleziona un utente per assegnare o sostituire il ruolo.
+                </div>
+            `;
+                    return;
+                }
+
+                const roleOptions = manageableRoles.map(role => `
+            <option value="${escapeHtml(role.id)}">
+                ${escapeHtml(roleLabel(role))}
+            </option>
+        `).join("");
+
+                detailEl.innerHTML = `
+            <div class="mb-4">
+                <h4 class="mb-1">${escapeHtml(user.username)}</h4>
+                <div class="text-muted">
+                    Ruolo attuale:
+                    <strong>${escapeHtml(user.current_role_description || user.current_role_name || "Nessuno")}</strong>
+                </div>
+            </div>
+
+            <div class="alert alert-warning">
+                Il nuovo ruolo sostituisce quello precedente.
+            </div>
+
+            <div class="row g-3">
+                <div class="col-12 col-lg-8">
+                    <label for="select-new-role-user" class="form-label fw-semibold">
+                        Nuovo ruolo
+                    </label>
+                    <select id="select-new-role-user" class="form-select">
+                        <option value="">-- Seleziona un ruolo --</option>
+                        ${roleOptions}
+                    </select>
+                </div>
+
+                <div class="col-12 col-lg-4 d-flex align-items-end">
+                    <div class="w-100 d-grid gap-2">
+                        <button type="button"
+                                class="btn btn-primary"
+                                id="btn-save-user-role">
+                            Assegna ruolo
+                        </button>
+
+                        <button type="button"
+                                class="btn btn-secondary"
+                                id="btn-reset-user-role">
+                            Annulla
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+            }
+
+            async function saveAssignedRole() {
+                const user = getSelectedUser();
+                if (!user) {
+                    showFeedback("warning", "Seleziona prima un utente.");
+                    return;
+                }
+
+                const selectEl = document.getElementById("select-new-role-user");
+                const roleId = selectEl?.value || "";
+
+                if (!roleId) {
+                    showFeedback("warning", "Seleziona un ruolo da assegnare.");
+                    return;
+                }
+
+                if (String(user.current_role_id || "") === String(roleId)) {
+                    showFeedback("info", "L'utente possiede già questo ruolo.");
+                    return;
+                }
+
+                const selectedRole = getRoleById(roleId);
+                if (!selectedRole) {
+                    showFeedback("danger", "Ruolo selezionato non valido.");
+                    return;
+                }
+
+                const confirmed = window.confirm(
+                    `Confermi la sostituzione del ruolo di "${user.username}" con "${roleLabel(selectedRole)}"?`
+                );
+                if (!confirmed) return;
+
+                const saveBtn = document.getElementById("btn-save-user-role");
+                if (saveBtn) saveBtn.disabled = true;
+
+                showFeedback("info", "Salvataggio in corso...");
+
+                try {
+                    const resp = await fetch("/api/impostazioni/assegna-ruolo", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "X-Requested-With": "XMLHttpRequest"
+                        },
+                        credentials: "same-origin",
+                        body: JSON.stringify({
+                            user_id: Number(user.id),
+                            role_id: Number(roleId)
+                        })
+                    });
+
+                    let data = {};
+                    try {
+                        data = await resp.json();
+                    } catch (_) {
+                        data = {};
+                    }
+
+                    if (!resp.ok || data.ok === false) {
+                        showFeedback("danger", data.error || "Errore durante l'assegnazione del ruolo.");
+                        return;
+                    }
+
+                    user.current_role_id = Number(selectedRole.id);
+                    user.current_role_name = selectedRole.name || "";
+                    user.current_role_description = selectedRole.description || selectedRole.name || "";
+                    for (const roleKey of Object.keys(userAbacDetails || {})) {
+                        if (userAbacDetails[roleKey] && userAbacDetails[roleKey][String(user.id)]) {
+                            delete userAbacDetails[roleKey][String(user.id)];
+                        }
+                    }
+
+                    renderUsersDropdown();
+                    renderDetail();
+                    showFeedback("success", data.message || "Ruolo aggiornato correttamente.");
+                } catch (err) {
+                    console.error("Errore assegnazione ruolo:", err);
+                    showFeedback("danger", "Errore di comunicazione con il server.");
+                } finally {
+                    const newSaveBtn = document.getElementById("btn-save-user-role");
+                    if (newSaveBtn) {
+                        newSaveBtn.disabled = false;
+                    }
+                }
+            }
+
+            document.addEventListener("click", (event) => {
+
+                const resetBtn = event.target.closest("#btn-reset-user-role");
+                if (resetBtn) {
+                    showFeedback("", "");
+                    renderDetail();
+                    return;
+                }
+
+                const saveBtn = event.target.closest("#btn-save-user-role");
+                if (saveBtn) {
+                    saveAssignedRole();
+                }
+            });
+            userSelectEl?.addEventListener("change", function () {
+                selectedUserId = this.value || null;
+                showFeedback("", "");
+                renderDetail();
+            });
+
+            renderUsersDropdown();
+            renderDetail();
+        })();
+
+
     </script>
 {% endblock %}
