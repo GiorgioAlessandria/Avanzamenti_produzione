@@ -88,21 +88,30 @@
                     .replace(/'/g, "&#039;");
             }
 
-            function totalKpiCard(title, value) {
+            function totalKpiCard(title, value, tone = "secondary") {
+                const borderClass = {
+                    primary: "border-primary",
+                    warning: "border-warning",
+                    success: "border-success",
+                    secondary: "border-secondary",
+                }[tone] || "border-secondary";
+
                 return `
-                    <div class="card h-100 border-start border-4 border-secondary shadow-sm bg-light mb-3">
-                        <div class="card-body py-3 px-3">
-                            <div class="text-muted"
-                                 style="font-size: 0.95rem; line-height: 1.15;">
-                                ${escapeHtml(title)}
-                            </div>
-                            <div class="fw-semibold mt-2"
-                                 style="font-size: 1.35rem; line-height: 1.1;">
-                                ${escapeHtml(value)}
+                        <div class="col-12 col-lg-4">
+                            <div class="card h-100 border-start border-4 ${borderClass} shadow-sm bg-light">
+                                <div class="card-body py-3 px-3">
+                                    <div class="text-muted"
+                                         style="font-size: 0.95rem; line-height: 1.15;">
+                                        ${escapeHtml(title)}
+                                    </div>
+                                    <div class="fw-semibold mt-2"
+                                         style="font-size: 1.35rem; line-height: 1.1;">
+                                        ${escapeHtml(value)}
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                `;
+                    `;
             }
 
             function compactKpiCard(title, value, tone = "secondary") {
@@ -141,27 +150,37 @@
                 return Number.isInteger(num) ? `${num} h` : `${num.toFixed(2)} h`;
             }
 
+            function formatDays(value) {
+                const num = Number(value || 0);
+                return Number.isInteger(num) ? `${num} gg` : `${num.toFixed(2)} gg`;
+            }
+
             function renderKpiGrid(kpi) {
                 return `
-                        ${totalKpiCard("Ordini totali", kpi.totali || 0)}
-                    <div class="row g-3 mb-3">
-                        ${compactKpiCard("Ordini pianificati", kpi.pianificati || 0, "primary")}
-                        ${compactKpiCard("Ordini attivi", kpi.attivi || 0, "success")}
-                        ${compactKpiCard("Ordini sospesi", kpi.sospesi || 0, "warning")}
-                    </div>
+                <div class="row g-3 mb-3">
+                    ${totalKpiCard("Ordini totali", kpi.totali || 0, "secondary")}
+                    ${totalKpiCard("Giorni ordini attivi", formatDays(kpi.giorni_impegno_attivi), "success")}
+                    ${totalKpiCard("Giorni ordini sospesi", formatDays(kpi.giorni_impegno_sospesi), "warning")}
+                </div>
 
-                    <div class="row g-3 mb-3">
-                        ${compactKpiCard("Ore ordini pianificati", formatHours(kpi.ore_ordini_pianificati), "primary")}
-                        ${compactKpiCard("Ore ordini attivi", formatHours(kpi.ore_ordini_attivi), "success")}
-                        ${compactKpiCard("Ore ordini sospesi", formatHours(kpi.ore_ordini_sospesi), "warning")}
-                    </div>
+                <div class="row g-3 mb-3">
+                    ${compactKpiCard("Ordini pianificati", kpi.pianificati || 0, "primary")}
+                    ${compactKpiCard("Ordini attivi", kpi.attivi || 0, "success")}
+                    ${compactKpiCard("Ordini sospesi", kpi.sospesi || 0, "warning")}
+                </div>
 
-                    <div class="row g-3">
-                        ${compactKpiCard("Ore attrezzaggio ordini pianificati", formatHours(kpi.ore_attrezzaggio_ordini_pianificati), "primary")}
-                        ${compactKpiCard("Ore attrezzaggio ordini attivi", formatHours(kpi.ore_attrezzaggio_ordini_attivi), "success")}
-                        ${compactKpiCard("Ore attrezzaggio ordini sospesi", formatHours(kpi.ore_attrezzaggio_ordini_sospesi), "warning")}
-                    </div>
-                `;
+                <div class="row g-3 mb-3">
+                    ${compactKpiCard("Ore ordini pianificati", formatHours(kpi.ore_ordini_pianificati), "primary")}
+                    ${compactKpiCard("Ore ordini attivi", formatHours(kpi.ore_ordini_attivi), "success")}
+                    ${compactKpiCard("Ore ordini sospesi", formatHours(kpi.ore_ordini_sospesi), "warning")}
+                </div>
+
+                <div class="row g-3">
+                    ${compactKpiCard("Ore attrezzaggio ordini pianificati", formatHours(kpi.ore_attrezzaggio_ordini_pianificati), "primary")}
+                    ${compactKpiCard("Ore attrezzaggio ordini attivi", formatHours(kpi.ore_attrezzaggio_ordini_attivi), "success")}
+                    ${compactKpiCard("Ore attrezzaggio ordini sospesi", formatHours(kpi.ore_attrezzaggio_ordini_sospesi), "warning")}
+                </div>
+            `;
             }
 
             function renderPage(repartoCode = "") {
@@ -206,4 +225,4 @@
             renderPage("");
         })();
     </script>
-{% endblock %}
+{% endblock %}            const repartoCode = btn.dataset.reparto || "";

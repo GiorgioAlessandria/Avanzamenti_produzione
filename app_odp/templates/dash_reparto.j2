@@ -101,21 +101,21 @@
                 }[tone] || "border-secondary";
 
                 return `
-        <div class="col-12 col-lg-2">
-            <div class="card h-100 border-start border-4 ${borderClass} shadow-sm bg-light">
-                <div class="card-body py-2 px-2">
-                    <div class="text-muted"
-                         style="font-size: 0.78rem; line-height: 1.1;">
-                        ${escapeHtml(title)}
-                    </div>
-                    <div class="fw-semibold mt-1"
-                         style="font-size: 1rem; line-height: 1.1;">
-                        ${escapeHtml(value)}
-                    </div>
-                </div>
-            </div>
-        </div>
-        `;
+                        <div class="col">
+                            <div class="card h-100 border-start border-4 ${borderClass} shadow-sm bg-light">
+                                <div class="card-body py-2 px-2">
+                                    <div class="text-muted"
+                                         style="font-size: 0.78rem; line-height: 1.1;">
+                                        ${escapeHtml(title)}
+                                    </div>
+                                    <div class="fw-semibold mt-1"
+                                         style="font-size: 1rem; line-height: 1.1;">
+                                        ${escapeHtml(value)}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        `;
             }
 
             function renderRows(rows) {
@@ -141,6 +141,11 @@
                 `).join("");
             }
 
+            function formatDays(value) {
+                const num = Number(value || 0);
+                return `${num.toFixed(2)} gg`;
+            }
+
             function renderUser(username) {
                 if (!detail) return;
 
@@ -157,15 +162,20 @@
                 detail.innerHTML = `
                     <h4 class="mb-3">Utente selezionato: ${escapeHtml(selected.username)}</h4>
 
-                    <div class="row g-2 mb-4">
-                        ${compactKpiCard("Ordini attivi", selected.kpi.attivi, "primary")}
-                        ${compactKpiCard("Ordini sospesi", selected.kpi.sospesi, "primary")}
+                    <div class="col">
+                        <div class="row g-2 mb-3">
+                            ${compactKpiCard("Ordini attivi", selected.kpi.attivi, "success")}
+                            ${compactKpiCard("Giorni ordini attivi", formatDays(selected.kpi.giorni_impegno_attivi), "success")}
+                            ${compactKpiCard("Ore ordini attivi", formatHours(selected.kpi.ore_lavorazione_attivi), "success")}
+                            ${compactKpiCard("Min attrezz. attivi", formatMinutes(selected.kpi.minuti_attrezzaggio_attivi), "success")}
+                        </div>
+                        <div class="row g-2 mb-3">
+                            ${compactKpiCard("Ordini sospesi", selected.kpi.sospesi, "warning")}
+                            ${compactKpiCard("Giorni ordini sospesi", formatDays(selected.kpi.giorni_impegno_attivi_sospesi), "warning")}
+                            ${compactKpiCard("Ore ordini sospesi", formatHours(selected.kpi.ore_lavorazione_sospesi), "warning")}
+                            ${compactKpiCard("Min attrezz. sospesi", formatMinutes(selected.kpi.minuti_attrezzaggio_sospesi), "warning")}
+                        </div>
 
-                        ${compactKpiCard("Ore ordini attivi", formatHours(selected.kpi.ore_lavorazione_attivi), "warning")}
-                        ${compactKpiCard("Ore ordini sospesi", formatHours(selected.kpi.ore_lavorazione_sospesi), "warning")}
-
-                        ${compactKpiCard("Min attrezz. attivi", formatMinutes(selected.kpi.minuti_attrezzaggio_attivi), "success")}
-                        ${compactKpiCard("Min attrezz. sospesi", formatMinutes(selected.kpi.minuti_attrezzaggio_sospesi), "success")}
                     </div>
 
                     <div class="mb-4">
