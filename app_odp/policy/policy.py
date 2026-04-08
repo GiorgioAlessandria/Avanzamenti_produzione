@@ -427,65 +427,6 @@ class RbacPolicy:
     def can_view_role_permission_section(self) -> bool:
         return self.can("modifica_permessi_ruolo")
 
-    @cached_property
-    def current_effective_roles(self) -> list[Roles]:
-        return list(self.user._iter_roles(include_inherited=True))
-
-    @cached_property
-    def current_effective_role_ids(self) -> set[int]:
-        return {int(role.id) for role in self.current_effective_roles}
-
-    @cached_property
-    def current_effective_role_names(self) -> set[str]:
-        return {
-            _norm_role_name(role.name)
-            for role in self.current_effective_roles
-            if _norm_role_name(role.name)
-        }
-
-    @cached_property
-    def strict_manageable_roles(self) -> list[Roles]:
-        out = {}
-
-        for role in self.current_effective_roles:
-            for managed in getattr(role, "iter_manageable_roles", lambda: [])():
-                if managed is None:
-                    continue
-
-                managed_id = int(managed.id)
-                managed_name = _norm_role_name(managed.name)
-
-                # Mai sé stesso / ruoli uguali
-                if managed_id in self.current_effective_role_ids:
-                    continue
-
-                if managed_name and managed_name in self.current_effective_role_names:
-                    continue
-
-                # Mai ruoli che possono risalire verso i miei ruoli
-                managed_desc_ids = {
-                    int(x.id)
-                    for x in getattr(managed, "iter_manageable_roles", lambda: [])()
-                    if x is not None
-                }
-                if self.current_effective_role_ids & managed_desc_ids:
-                    continue
-
-                out[managed_id] = managed
-
-        return sorted(
-            out.values(),
-            key=lambda r: (
-                (r.description or r.name or "").lower(),
-                (r.name or "").lower(),
-                r.id,
-            ),
-        )
-
-    @cached_property
-    def strict_manageable_role_ids(self) -> set[int]:
-        return {int(role.id) for role in self.strict_manageable_roles}
-
     def abac_manageable_roles(self) -> list[Roles]:
         if not self.can_view_user_abac_section:
             return []

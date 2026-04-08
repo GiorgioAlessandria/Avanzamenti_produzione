@@ -28,9 +28,7 @@
     </main>
 {% endblock %}
 {% block extra_js %}
-    <script id="permission-details-data"
-            type="application/json">
-    {{ permission_details|tojson }}</script>
+
     <script id="ruolo-details-data"
             type="application/json">
     {{ ruolo_details|tojson }}</script>
@@ -689,8 +687,7 @@
         })();
 
         (() => {
-            const selectRuoloPermessi = document.getElementById("select-ruolo-permessi");
-            const dettaglioPermessi = document.getElementById("permessi-ruolo-dettaglio");
+
             const permissionDataEl = document.getElementById("permission-details-data");
 
             let permissionDetails = {};
@@ -773,29 +770,6 @@
                 <div class="text-muted">${escapeHtml(detail.description || "")}</div>
             </div>
 
-            <div class="d-flex gap-2 mb-3">
-                <button type="button"
-                        class="btn btn-primary"
-                        id="btn-role-perm-edit"
-                        ${editModePermessi ? "disabled" : ""}>
-                    Modifica
-                </button>
-
-                <button type="button"
-                        class="btn btn-secondary"
-                        id="btn-role-perm-cancel"
-                        ${editModePermessi ? "" : "disabled"}>
-                    Annulla
-                </button>
-
-                <button type="button"
-                        class="btn btn-success"
-                        id="btn-role-perm-save"
-                        ${editModePermessi ? "" : "disabled"}>
-                    Salva modifiche
-                </button>
-            </div>
-
             <div class="border rounded p-3 h-100">
                 <h5 class="mb-3">Permessi associati al ruolo</h5>
                 ${renderPermissionCheckboxList(detail.permissions)}
@@ -814,16 +788,7 @@
                 const btnSave = document.getElementById("btn-role-perm-save");
                 if (btnSave) btnSave.disabled = true;
 
-                try {
-                    const resp = await fetch("/api/impostazioni/ruolo-permessi", {
-                        method: "POST",
-                        headers: {
-                            "Content-Type": "application/json",
-                            "X-Requested-With": "XMLHttpRequest"
-                        },
-                        credentials: "same-origin",
-                        body: JSON.stringify(payload)
-                    });
+
 
                     let data = {};
                     try {

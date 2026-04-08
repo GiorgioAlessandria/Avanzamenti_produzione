@@ -3748,7 +3748,6 @@ def impostazioni():
                 ],
             }
     if show_role_links_section:
-        ruoli_link_gestibili = policy.abac_manageable_roles()
         role_link_role_options = ruoli_link_gestibili
 
         role_link_tables = [
@@ -3989,10 +3988,9 @@ def api_save_user_abac():
     except (TypeError, ValueError):
         return jsonify({"ok": False, "error": "Parametri non validi."}), 400
 
-    if not policy.can_manage_target_role(role_id):
-        return jsonify(
-            {"ok": False, "error": "Ruolo non gestibile dall'utente corrente."}
-        ), 403
+    ruolo = Roles.query.get(role_id)
+    if ruolo is None:
+        return jsonify({"ok": False, "error": "Ruolo non trovato."}), 404
 
     ruolo = Roles.query.get(role_id)
     if ruolo is None:
@@ -4132,6 +4130,9 @@ def api_save_role_links():
         return jsonify({"ok": False, "error": "Tabella non valida."}), 400
 
     ruolo = Roles.query.get(role_id)
+    cfg = ROLE_LINK_CONFIG[table_key]
+    assoc_table = cfg["assoc_table"]
+    model = cfg["model"]
 
     if cfg["model"] is Roles:
         allowed_role_ids = {int(r.id) for r in policy.role_link_manageable_roles()}
@@ -4171,10 +4172,6 @@ def api_save_role_links():
                     "invalid_ids": sorted(invalid_target_ids),
                 }
             ), 400
-
-    cfg = ROLE_LINK_CONFIG[table_key]
-    assoc_table = cfg["assoc_table"]
-    model = cfg["model"]
 
     valid_ids = {getattr(item, cfg["model_id"]) for item in model.query.all()}
 
