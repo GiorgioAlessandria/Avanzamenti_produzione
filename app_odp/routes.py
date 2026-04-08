@@ -3667,12 +3667,9 @@ def impostazioni():
 
     show_role_links_section = policy.can_view_role_links_section
 
-    permission_role_options = []
-    permission_details = {}
     role_link_tables = []
     role_link_details = {}
     role_link_role_options = []
-    show_role_permission_section = policy.can_view_role_permission_section
 
     permission_role_options = []
     permission_details = {}
@@ -3720,33 +3717,6 @@ def impostazioni():
             for ruolo in assignable_roles
         ]
 
-    if show_role_permission_section:
-        ruoli_permessi_gestibili = policy.permission_manageable_roles()
-        permessi_gestibili = policy.permission_manageable_permissions()
-
-        permission_role_options = ruoli_permessi_gestibili
-
-        for ruolo in ruoli_permessi_gestibili:
-            current_permission_ids = (
-                {p.id for p in ruolo.permissions.all()}
-                if hasattr(ruolo.permissions, "all")
-                else {p.id for p in ruolo.permissions}
-            )
-
-            permission_details[str(ruolo.id)] = {
-                "id": ruolo.id,
-                "name": ruolo.name or "",
-                "description": ruolo.description or "",
-                "permissions": [
-                    {
-                        "id": perm.id,
-                        "codice": perm.Codice or "",
-                        "descrizione": perm.Descrizione or "",
-                        "checked": perm.id in current_permission_ids,
-                    }
-                    for perm in permessi_gestibili
-                ],
-            }
     if show_role_links_section:
         role_link_role_options = ruoli_link_gestibili
 
@@ -3883,7 +3853,6 @@ def impostazioni():
         manageable_roles=manageable_roles,
         show_role_assignment_section=show_role_assignment_section,
         show_user_abac_section=show_user_abac_section,
-        show_role_permission_section=show_role_permission_section,
         permission_role_options=permission_role_options,
         permission_details=permission_details,
         role_link_tables=role_link_tables,
@@ -3987,10 +3956,6 @@ def api_save_user_abac():
         risorse_ids = {int(x) for x in risorse_ids_raw}
     except (TypeError, ValueError):
         return jsonify({"ok": False, "error": "Parametri non validi."}), 400
-
-    ruolo = Roles.query.get(role_id)
-    if ruolo is None:
-        return jsonify({"ok": False, "error": "Ruolo non trovato."}), 404
 
     ruolo = Roles.query.get(role_id)
     if ruolo is None:
@@ -4130,6 +4095,8 @@ def api_save_role_links():
         return jsonify({"ok": False, "error": "Tabella non valida."}), 400
 
     ruolo = Roles.query.get(role_id)
+    if ruolo is None:
+        return jsonify({"ok": False, "error": "Ruolo non trovato."}), 404
     cfg = ROLE_LINK_CONFIG[table_key]
     assoc_table = cfg["assoc_table"]
     model = cfg["model"]
@@ -4148,9 +4115,6 @@ def api_save_role_links():
                     "invalid_ids": sorted(invalid_role_ids),
                 }
             ), 400
-
-    if ruolo is None:
-        return jsonify({"ok": False, "error": "Ruolo non trovato."}), 404
 
     if not policy.can_manage_target_role(ruolo):
         return jsonify({"ok": False, "error": "Ruolo non gestibile."}), 403
@@ -4504,96 +4468,3 @@ def dash_reparto():
         "dash_reparto.j2",
         utenti_dashboard=lista_utenti,
     )
-
-
-@main_bp.post("/api/impostazioni/ruolo-permessi")
-@login_required
-def api_save_role_permissions():
-    policy = RbacPolicy(current_user)
-
-    if not policy.can_view_role_permission_section:
-        return jsonify({"ok": False, "error": "Permesso insufficiente."}), 403
-
-    data = request.get_json(silent=True) or {}
-
-    role_id_raw = data.get("role_id")
-    permission_ids_raw = data.get("permission_ids") or []
-
-    try:
-        role_id = int(role_id_raw)
-        permission_ids = {int(x) for x in permission_ids_raw}
-    except (TypeError, ValueError):
-        return jsonify({"ok": False, "error": "Parametri non validi."}), 400
-
-    ruolo = Roles.query.get(role_id)
-    if ruolo is None:
-        return jsonify({"ok": False, "error": "Ruolo non trovato."}), 404
-
-    if not policy.can_manage_target_role(ruolo):
-        return jsonify(
-            {"ok": False, "error": "Ruolo non gestibile dall'utente corrente."}
-        ), 403
-
-    allowed_permissions = policy.permission_manageable_permissions()
-    allowed_permission_ids = {p.id for p in allowed_permissions}
-
-    invalid_permission_ids = permission_ids - allowed_permission_ids
-    if invalid_permission_ids:
-        return jsonify(
-            {
-                "ok": False,
-                "error": "Il payload contiene permessi non gestibili.",
-                "invalid_permission_ids": sorted(invalid_permission_ids),
-            }
-        ), 400
-
-    current_permission_ids = (
-        {p.id for p in ruolo.permissions.all()}
-        if hasattr(ruolo.permissions, "all")
-        else {p.id for p in ruolo.permissions}
-    )
-
-    permissions_to_add = permission_ids - current_permission_ids
-    permissions_to_remove = current_permission_ids - permission_ids
-
-    try:
-        if permissions_to_add:
-            db.session.execute(
-                roles_permission.insert(),
-                [
-                    {"role_id": ruolo.id, "permission_id": perm_id}
-                    for perm_id in sorted(permissions_to_add)
-                ],
-            )
-
-        if permissions_to_remove:
-            db.session.execute(
-                delete(roles_permission).where(
-                    roles_permission.c.role_id == ruolo.id,
-                    roles_permission.c.permission_id.in_(sorted(permissions_to_remove)),
-                )
-            )
-
-        db.session.commit()
-
-    except Exception as exc:
-        db.session.rollback()
-        return jsonify(
-            {
-                "ok": False,
-                "error": f"Errore salvataggio permessi ruolo: {exc}",
-            }
-        ), 500
-
-    return jsonify(
-        {
-            "ok": True,
-            "message": "Permessi ruolo salvati correttamente.",
-            "role_id": ruolo.id,
-            "permission_ids": sorted(permission_ids),
-            "delta": {
-                "added": sorted(permissions_to_add),
-                "removed": sorted(permissions_to_remove),
-            },
-        }
-    ), 200
