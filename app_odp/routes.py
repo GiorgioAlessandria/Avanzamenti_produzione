@@ -802,14 +802,6 @@ def _componenti_lotto_per_ordine(
 
         codici_visti.add(chiave_componente)
 
-        lotti_query = GiacenzaLotti.query.filter_by(CodArt=cod_art)
-
-        # Se la tabella giacenze gestisce anche la variante, filtra anche quella.
-        if hasattr(GiacenzaLotti, "VarianteArt"):
-            lotti_query = lotti_query.filter_by(VarianteArt=variante_art)
-
-        lotti_db = lotti_query.all()
-
         lotti_db = GiacenzaLotti.query.filter_by(CodArt=cod_art).all()
         lotti_list = []
         for lotto in lotti_db:
@@ -2895,10 +2887,12 @@ def api_chiudi_ordine():
     qty_residua_text = _decimal_to_text(qty_residua)
     qty_lavorata_text = _decimal_to_text(q_lavorata)
     qty_pre_text = _qty_da_lavorare_text(ordine, stato=stato)
-
-    # Regole nuove:
-    # - SL totale: nessun controllo min/max quantità
-    # - SL parziale: quantità lavorata > 0 e strettamente minore del totale ordine
+    distinta_base_export = _build_export_distinta_base(
+        ordine=ordine,
+        fase_corrente=fase_corrente,
+        q_lavorata=q_lavorata,
+        q_tot=q_tot,
+    )
     if chiusura_parziale:
         if q_lavorata <= 0:
             return (
@@ -3063,16 +3057,8 @@ def api_chiudi_ordine():
                 ),
                 409,
             )
-
-        distinta_base_export = _build_export_distinta_base(
-            ordine=ordine,
-            fase_corrente=fase_corrente,
-            q_lavorata=q_lavorata,
-            q_tot=q_tot,
-        )
-
         payload = _build_phase_payload(
-            distinta_base=ordine.distinta_base_export,
+            distinta_base=distinta_base_export,
             ordine=ordine,
             fase_corrente=fase_corrente,
             q_ok=q_ok,
@@ -3096,7 +3082,7 @@ def api_chiudi_ordine():
     else:
         payload = _build_phase_payload(
             ordine=ordine,
-            distinta_base=ordine.DistintaMateriale,
+            distinta_base=distinta_base_export,
             fase_corrente=fase_corrente,
             q_ok=q_ok,
             q_nok=q_nok,
@@ -3494,7 +3480,7 @@ def api_chiudi_ordine_montaggio_macchina():
     )
     payload = _build_phase_payload(
         ordine=ordine,
-        distinta_base=ordine.distinta_base_export,
+        distinta_base=distinta_base_export,
         fase_corrente=fase_corrente,
         q_ok=q_ok,
         q_nok=q_nok,

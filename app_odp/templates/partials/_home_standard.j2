@@ -1683,7 +1683,10 @@
                     return;
                 }
 
-                const exportResult = await exportAvpTxt({suffix: "officina"});
+                const exportResult = await exportAvpTxt({
+                    suffix: "officina",
+                    outboxId: data.outbox_id
+                });
                 if (!exportResult.ok) {
                     alert(exportResult.error || "Ordine chiuso, ma file ERP non generato.");
                 }

@@ -19,14 +19,45 @@ def _to_decimal(value) -> Decimal:
         return Decimal("0")
 
 
+def _codice_articolo_export(cod_art, variante_art="") -> str:
+    cod_art = _text(cod_art)
+    variante_art = _text(variante_art)
+
+    if not variante_art:
+        return cod_art
+
+    # Se il gestionale vuole un altro formato, basta cambiare questa riga.
+    return f"{cod_art}|{variante_art}"
+
+
+def _load_distinta_base(value) -> list[dict]:
+    if isinstance(value, list):
+        return [row for row in value if isinstance(row, dict)]
+
+    raw = _text(value)
+    if not raw:
+        return []
+
+    try:
+        parsed = json.loads(raw)
+    except Exception:
+        return []
+
+    if isinstance(parsed, list):
+        return [row for row in parsed if isinstance(row, dict)]
+
+    return []
+
+
 def row_writer(
     tipo_record,
     tipo_documento=710,
     registrazione_data="",
-    registrazione_numero=None,
+    codice_documento=None,
     operazione_avanzamento="",
     riferimento_ordine="",
     codice_articolo="",
+    variante="",
     quantita_principale=None,
     quantita_scarti_prima=None,
     quantita_scarti_seconda=None,
@@ -38,9 +69,7 @@ def row_writer(
     ore_lavorate=None,
 ):
     tipo_documento = tipo_documento if tipo_documento is not None else ""
-    registrazione_numero = (
-        registrazione_numero if registrazione_numero is not None else ""
-    )
+    codice_documento = codice_documento if codice_documento is not None else ""
     quantita_principale = quantita_principale if quantita_principale is not None else ""
     quantita_scarti_prima = (
         quantita_scarti_prima if quantita_scarti_prima is not None else ""
@@ -48,7 +77,7 @@ def row_writer(
     quantita_scarti_seconda = (
         quantita_scarti_seconda if quantita_scarti_seconda is not None else ""
     )
-    riga_saldata = riga_saldata if riga_saldata is not None else ""
+    riga_saldata = riga_saldata if riga_saldata is not None else "0"
     riferimento_lotto = riferimento_lotto if riferimento_lotto is not None else ""
     magazzino_principale = (
         magazzino_principale if magazzino_principale is not None else ""
@@ -56,8 +85,8 @@ def row_writer(
     ore_lavorate = ore_lavorate if ore_lavorate is not None else ""
 
     return (
-        f"{tipo_record};{registrazione_numero};{registrazione_data};{tipo_documento};"
-        f"{operazione_avanzamento};{riferimento_ordine};{codice_articolo};"
+        f"{tipo_record};{tipo_documento};{registrazione_data};{codice_documento};"
+        f"{operazione_avanzamento};{riferimento_ordine};{codice_articolo};{variante};"
         f"{quantita_principale};{quantita_scarti_prima};{quantita_scarti_seconda};"
         f"{riga_saldata};{riferimento_lotto};{magazzino_principale};"
         f"{codice_risorsa};{causale_prestazione};{ore_lavorate}"
@@ -70,15 +99,14 @@ def txt_generator(export_rows: list[dict]) -> list[str]:
 
     payload = export_rows[0]["payload"]
 
-    created_at = datetime.fromisoformat(payload["created_at"]).strftime(
-        "%d/%m/%Y %H:%M"
-    )
+    created_at = datetime.fromisoformat(payload["created_at"]).strftime("%d/%m/%Y")
     id_documento = payload["id_documento"]
     id_riga = payload["id_riga"]
     rif_registraz = payload["rif_registraz"]
     fase = payload["fase"]
 
     codice_articolo = payload["cod_art"]
+    variante_articolo = payload.get("variante", "")
     lotto_articolo = payload["lotto_prodotto"]
     magazzino = payload["magazzino"]
     risorsa = payload["risorsa"]
@@ -89,7 +117,7 @@ def txt_generator(export_rows: list[dict]) -> list[str]:
     q_lavorata = q_ok + q_ko
     tempo_funzionamento = _to_decimal(payload["tempo_funzionamento"])
 
-    distinta_base = json.loads(payload["distinta_base"] or "[]")
+    distinta_base = _load_distinta_base(payload.get("distinta_base"))
     lotti_components = payload.get("lotti") or []
 
     riferimento_ordine = f"{rif_registraz}.{id_riga},00"
@@ -101,20 +129,26 @@ def txt_generator(export_rows: list[dict]) -> list[str]:
         tipo_record="TES",
         tipo_documento="710",
         registrazione_data=created_at,
-        registrazione_numero=id_documento,
+        codice_documento=id_documento,
     )
     lines.append(head_line)
 
-    ore_per_pezzo = tempo_funzionamento / q_lavorata
+    ore_per_pezzo = Decimal("0")
+    if q_lavorata > 0:
+        ore_per_pezzo = (tempo_funzionamento / q_lavorata).quantize(
+            Decimal("0.0001"),
+            rounding=ROUND_HALF_UP,
+        )
 
     product_line = row_writer(
         tipo_record="RIG",
         tipo_documento="710",
         registrazione_data=created_at,
-        registrazione_numero=id_documento,
+        codice_documento=id_documento,
         operazione_avanzamento="701",
         riferimento_ordine=riferimento_ordine,
         codice_articolo=codice_articolo,
+        variante=variante_articolo,
         quantita_principale=str(q_ok),
         quantita_scarti_prima=str(q_ko),
         quantita_scarti_seconda=0,
@@ -123,7 +157,7 @@ def txt_generator(export_rows: list[dict]) -> list[str]:
         magazzino_principale=magazzino,
         codice_risorsa=risorsa,
         causale_prestazione="",
-        ore_lavorate=ore_per_pezzo,
+        ore_lavorate=str(tempo_funzionamento),
     )
     lines.append(product_line)
 
@@ -131,10 +165,11 @@ def txt_generator(export_rows: list[dict]) -> list[str]:
         tipo_record="RIG",
         tipo_documento="710",
         registrazione_data=created_at,
-        registrazione_numero=id_documento,
+        codice_documento=id_documento,
         operazione_avanzamento="709",
         riferimento_ordine=riferimento_ordine_time,
         codice_articolo=codice_articolo,
+        variante=variante_articolo,
         quantita_principale=str(q_ok),
         quantita_scarti_prima=str(q_ko),
         quantita_scarti_seconda=0,
@@ -172,10 +207,11 @@ def txt_generator(export_rows: list[dict]) -> list[str]:
             tipo_record="RIG",
             tipo_documento="710",
             registrazione_data=created_at,
-            registrazione_numero=id_documento,
+            codice_documento=id_documento,
             operazione_avanzamento="703",
             riferimento_ordine=riferimento_ordine,
-            codice_articolo=component.get("CodArt", ""),
+            codice_articolo=codice_articolo,
+            variante=variante_articolo,
             quantita_principale=component.get("Quantita", ""),
             riga_saldata=salda_riga,
             riferimento_lotto=lotto_component,
