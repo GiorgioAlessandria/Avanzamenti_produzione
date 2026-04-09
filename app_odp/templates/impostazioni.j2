@@ -6,7 +6,7 @@
 
 {% block content %}
     <main class="container-fluid mt-4 mb-4">
-    
+
         {% if show_user_abac_section %}
             {% include "partials/_impostazioni_abac.j2" %}
         {% endif %}
@@ -18,6 +18,9 @@
         {% endif %}
         {% if show_role_creation_section %}
             {% include "partials/_impostazioni_crea_ruolo.j2" %}
+        {% endif %}
+        {% if show_user_registry_section %}
+            {% include "partials/_impostazioni_anagrafica_utenti.j2" %}
         {% endif %}
         {% if show_role_delete_section %}
             {% include "partials/_impostazioni_elimina_ruolo.j2" %}
@@ -57,6 +60,9 @@
     <script id="deletable-roles-data"
             type="application/json">
         {{ deletable_role_details|tojson }}</script>
+    <script id="registry-users-data"
+            type="application/json">
+        {{ registry_users|tojson }}</script>
     <script>
         (() => {
             const selectRuolo = document.getElementById("select-ruolo-impostazioni");
@@ -118,41 +124,42 @@
             function renderCheckboxList(items, selectedIds, emptyMessage, inputName, itemType) {
                 if (!Array.isArray(items) || items.length === 0) {
                     return `
-                    <div class="alert alert-secondary mb-0">
-                        ${escapeHtml(emptyMessage)}
-                    </div>
-                `;
+    <div class="alert alert-secondary mb-0">
+        ${escapeHtml(emptyMessage)}
+    </div>
+    `;
                 }
 
                 const selectedSet = new Set((selectedIds || []).map(v => String(v)));
 
                 return `
-                <div class="list-group">
-                    ${items.map((item) => {
+    <div class="list-group">
+        ${items.map((item) => {
                     const checked = selectedSet.has(String(item.id)) ? "checked" : "";
                     const inputId = `${inputName}-${item.id}`;
 
                     return `
-                            <label for="${escapeHtml(inputId)}"
-                                   class="list-group-item d-flex justify-content-between align-items-start gap-3">
-                                <div class="form-check m-0">
-                                    <input class="form-check-input js-abac-checkbox"
-                                           type="checkbox"
-                                           id="${escapeHtml(inputId)}"
-                                           value="${escapeHtml(item.id)}"
-                                           data-item-type="${escapeHtml(itemType)}"
-                                           ${checked}
-                                           ${editMode ? "" : "disabled"}>
-                                </div>
-                                <div class="flex-grow-1">
-                                    <div class="fw-semibold">${escapeHtml(item.codice || "-")}</div>
-                                    <div class="text-muted small">${escapeHtml(item.descrizione || "")}</div>
-                                </div>
-                            </label>
-                        `;
+        <label for="${escapeHtml(inputId)}"
+               class="list-group-item d-flex justify-content-between align-items-start gap-3">
+            <div class="form-check m-0">
+                <input class="form-check-input js-abac-checkbox"
+                       type="checkbox"
+                       id="${escapeHtml(inputId)}"
+                       value="${escapeHtml(item.id)}"
+                       data-item-type="${escapeHtml(itemType)}"
+                       ${checked}
+                       ${editMode
+                        ? "" : "disabled"}>
+            </div>
+            <div class="flex-grow-1">
+                <div class="fw-semibold">${escapeHtml(item.codice || "-")}</div>
+                <div class="text-muted small">${escapeHtml(item.descrizione || "")}</div>
+            </div>
+        </label>
+        `;
                 }).join("")}
-                </div>
-            `;
+    </div>
+    `;
             }
 
             function renderRoleDetail(roleId) {
@@ -162,96 +169,102 @@
 
                 if (!roleId || !detail) {
                     dettaglio.innerHTML = `
-                    <div class="alert alert-info mb-0">
-                        Seleziona un ruolo per visualizzare lavorazioni e risorse consentite.
-                    </div>
-                `;
+    <div class="alert alert-info mb-0">
+        Seleziona un ruolo per visualizzare lavorazioni e risorse consentite.
+    </div>
+    `;
                     return;
                 }
 
                 const abac = getCurrentAbacForSelection();
 
                 let userBlock = `
-                <div class="mb-3 text-muted">
-                    Nessun utente selezionato.
-                </div>
-            `;
+    <div class="mb-3 text-muted">
+        Nessun utente selezionato.
+    </div>
+    `;
 
                 let actionButtons = "";
 
                 if (selectedUser && String(selectedUser.roleId) === String(roleId)) {
                     userBlock = `
-                    <div class="mb-3">
-                        <h5 class="mb-1">Utente selezionato: ${escapeHtml(selectedUser.username)}</h5>
-                        <div class="text-muted">
-                            ${editMode ? "Modalità modifica attiva." : "Modalità sola lettura."}
-                        </div>
-                    </div>
-                `;
+    <div class="mb-3">
+        <h5 class="mb-1">Utente selezionato: ${escapeHtml(selectedUser.username)}</h5>
+        <div class="text-muted">
+            ${editMode ? "Modalità modifica attiva." : "Modalità sola lettura."}
+        </div>
+    </div>
+    `;
 
                     actionButtons = `
-                    <div class="d-flex gap-2 mb-3">
-                        <button type="button"
-                                class="btn btn-primary"
-                                id="btn-abac-edit"
-                                ${editMode ? "disabled" : ""}>
-                            Modifica
-                        </button>
+    <div class="d-flex gap-2 mb-3">
+        <button type="button"
+                class="btn btn-primary"
+                id="btn-abac-edit"
+                ${editMode
+                        ?
+                        "disabled" : ""}>
+        Modifica
+        </button>
 
-                        <button type="button"
-                                class="btn btn-secondary"
-                                id="btn-abac-cancel"
-                                ${editMode ? "" : "disabled"}>
-                            Annulla
-                        </button>
+        <button type="button"
+                class="btn btn-secondary"
+                id="btn-abac-cancel"
+                ${editMode
+                        ?
+                        "" : "disabled"}>
+        Annulla
+        </button>
 
-                        <button type="button"
-                                class="btn btn-success"
-                                id="btn-abac-save"
-                                ${editMode ? "" : "disabled"}>
-                            Salva modifiche
-                        </button>
-                    </div>
-                `;
+        <button type="button"
+                class="btn btn-success"
+                id="btn-abac-save"
+                ${editMode
+                        ?
+                        "" : "disabled"}>
+        Salva modifiche
+        </button>
+    </div>
+    `;
                 }
 
                 dettaglio.innerHTML = `
-                <div class="mb-4">
-                    <h4 class="mb-1">${escapeHtml(detail.name || "")}</h4>
-                    <div class="text-muted">${escapeHtml(detail.description || "")}</div>
-                </div>
+    <div class="mb-4">
+        <h4 class="mb-1">${escapeHtml(detail.name || "")}</h4>
+        <div class="text-muted">${escapeHtml(detail.description || "")}</div>
+    </div>
 
-                ${userBlock}
-                ${actionButtons}
+    ${userBlock}
+    ${actionButtons}
 
-                <div class="row g-4">
-                    <div class="col-12 col-xl-6">
-                        <div class="border rounded p-3 h-100">
-                            <h5 class="mb-3">Lavorazioni consentite dal ruolo</h5>
-                            ${renderCheckboxList(
+    <div class="row g-4">
+        <div class="col-12 col-xl-6">
+            <div class="border rounded p-3 h-100">
+                <h5 class="mb-3">Lavorazioni consentite dal ruolo</h5>
+                ${renderCheckboxList(
                     detail.lavorazioni,
                     abac.lavorazioni_ids,
                     "Nessuna lavorazione associata a questo ruolo.",
                     "lav",
                     "lavorazione"
                 )}
-                        </div>
-                    </div>
+            </div>
+        </div>
 
-                    <div class="col-12 col-xl-6">
-                        <div class="border rounded p-3 h-100">
-                            <h5 class="mb-3">Risorse consentite dal ruolo</h5>
-                            ${renderCheckboxList(
+        <div class="col-12 col-xl-6">
+            <div class="border rounded p-3 h-100">
+                <h5 class="mb-3">Risorse consentite dal ruolo</h5>
+                ${renderCheckboxList(
                     detail.risorse,
                     abac.risorse_ids,
                     "Nessuna risorsa associata a questo ruolo.",
                     "ris",
                     "risorsa"
                 )}
-                        </div>
-                    </div>
-                </div>
-            `;
+            </div>
+        </div>
+    </div>
+    `;
             }
 
             function mostraUtentiRuolo(roleId) {
@@ -480,10 +493,10 @@
                 const alertClass = classMap[type] || "alert-secondary";
 
                 feedbackEl.innerHTML = `
-            <div class="alert ${alertClass} mb-0">
-                ${escapeHtml(message)}
-            </div>
-        `;
+    <div class="alert ${alertClass} mb-0">
+        ${escapeHtml(message)}
+    </div>
+    `;
             }
 
             function renderUsersDropdown() {
@@ -498,19 +511,19 @@
                 }
 
                 userSelectEl.innerHTML = `
-                    <option value="">-- Seleziona un utente --</option>
-                    ${users.map(user => {
+    <option value="">-- Seleziona un utente --</option>
+    ${users.map(user => {
                     const ruoloText = user.current_role_description
                         || user.current_role_name
                         || "Senza ruolo";
 
                     return `
-                            <option value="${escapeHtml(user.id)}">
-                                ${escapeHtml(user.username)} - ${escapeHtml(ruoloText)}
-                            </option>
-                        `;
+    <option value="${escapeHtml(user.id)}">
+        ${escapeHtml(user.username)} - ${escapeHtml(ruoloText)}
+    </option>
+    `;
                 }).join("")}
-                        `;
+    `;
 
                 if (
                     selectedUserId &&
@@ -530,60 +543,62 @@
 
                 if (!user) {
                     detailEl.innerHTML = `
-                <div class="alert alert-info mb-0">
-                    Seleziona un utente per assegnare o sostituire il ruolo.
-                </div>
-            `;
+    <div class="alert alert-info mb-0">
+        Seleziona un utente per assegnare o sostituire il ruolo.
+    </div>
+    `;
                     return;
                 }
 
                 const roleOptions = manageableRoles.map(role => `
-            <option value="${escapeHtml(role.id)}">
-                ${escapeHtml(roleLabel(role))}
-            </option>
-        `).join("");
+    <option value="${escapeHtml(role.id)}">
+        ${escapeHtml(roleLabel(role))}
+    </option>
+    `).join("");
 
                 detailEl.innerHTML = `
-            <div class="mb-4">
-                <h4 class="mb-1">${escapeHtml(user.username)}</h4>
-                <div class="text-muted">
-                    Ruolo attuale:
-                    <strong>${escapeHtml(user.current_role_description || user.current_role_name || "Nessuno")}</strong>
-                </div>
+    <div class="mb-4">
+        <h4 class="mb-1">${escapeHtml(user.username)}</h4>
+        <div class="text-muted">
+            Ruolo attuale:
+            <strong>${escapeHtml(user.current_role_description || user.current_role_name || "Nessuno")}</strong>
+        </div>
+    </div>
+
+    <div class="alert alert-warning">
+        Il nuovo ruolo sostituisce quello precedente.
+    </div>
+
+    <div class="row g-3">
+        <div class="col-12 col-lg-8">
+            <label for="select-new-role-user"
+                   class="form-label fw-semibold">
+                Nuovo ruolo
+            </label>
+            <select id="select-new-role-user"
+                    class="form-select">
+                <option value="">-- Seleziona un ruolo --</option>
+                ${roleOptions}
+            </select>
+        </div>
+
+        <div class="col-12 col-lg-4 d-flex align-items-end">
+            <div class="w-100 d-grid gap-2">
+                <button type="button"
+                        class="btn btn-primary"
+                        id="btn-save-user-role">
+                    Assegna ruolo
+                </button>
+
+                <button type="button"
+                        class="btn btn-secondary"
+                        id="btn-reset-user-role">
+                    Annulla
+                </button>
             </div>
-
-            <div class="alert alert-warning">
-                Il nuovo ruolo sostituisce quello precedente.
-            </div>
-
-            <div class="row g-3">
-                <div class="col-12 col-lg-8">
-                    <label for="select-new-role-user" class="form-label fw-semibold">
-                        Nuovo ruolo
-                    </label>
-                    <select id="select-new-role-user" class="form-select">
-                        <option value="">-- Seleziona un ruolo --</option>
-                        ${roleOptions}
-                    </select>
-                </div>
-
-                <div class="col-12 col-lg-4 d-flex align-items-end">
-                    <div class="w-100 d-grid gap-2">
-                        <button type="button"
-                                class="btn btn-primary"
-                                id="btn-save-user-role">
-                            Assegna ruolo
-                        </button>
-
-                        <button type="button"
-                                class="btn btn-secondary"
-                                id="btn-reset-user-role">
-                            Annulla
-                        </button>
-                    </div>
-                </div>
-            </div>
-        `;
+        </div>
+    </div>
+    `;
             }
 
             async function saveAssignedRole() {
@@ -734,36 +749,37 @@
             function renderItems(items) {
                 if (!Array.isArray(items) || items.length === 0) {
                     return `
-                <div class="alert alert-secondary mb-0">
-                    Nessun elemento disponibile per questa connessione.
-                </div>
-            `;
+    <div class="alert alert-secondary mb-0">
+        Nessun elemento disponibile per questa connessione.
+    </div>
+    `;
                 }
 
                 return `
-            <div class="list-group">
-                ${items.map((item) => {
+    <div class="list-group">
+        ${items.map((item) => {
                     const inputId = `role-link-${item.id}`;
                     return `
-                        <label for="${escapeHtml(inputId)}"
-                               class="list-group-item d-flex justify-content-between align-items-start gap-3">
-                            <div class="form-check m-0">
-                                <input class="form-check-input js-role-link-checkbox"
-                                       type="checkbox"
-                                       id="${escapeHtml(inputId)}"
-                                       value="${escapeHtml(item.id)}"
-                                       ${item.checked ? "checked" : ""}
-                                       ${editMode ? "" : "disabled"}>
-                            </div>
-                            <div class="flex-grow-1">
-                                <div class="fw-semibold">${escapeHtml(item.codice || "-")}</div>
-                                <div class="text-muted small">${escapeHtml(item.descrizione || "")}</div>
-                            </div>
-                        </label>
-                    `;
-                }).join("")}
+        <label for="${escapeHtml(inputId)}"
+               class="list-group-item d-flex justify-content-between align-items-start gap-3">
+            <div class="form-check m-0">
+                <input class="form-check-input js-role-link-checkbox"
+                       type="checkbox"
+                       id="${escapeHtml(inputId)}"
+                       value="${escapeHtml(item.id)}"
+                       ${item.checked
+                        ? "checked" : ""}
+                         ${editMode ? "" : "disabled"}>
             </div>
+            <div class="flex-grow-1">
+                <div class="fw-semibold">${escapeHtml(item.codice || "-")}</div>
+                <div class="text-muted small">${escapeHtml(item.descrizione || "")}</div>
+            </div>
+        </label>
         `;
+                }).join("")}
+    </div>
+    `;
             }
 
             function renderDetail() {
@@ -774,51 +790,57 @@
 
                 if (!selectedRoleId || !selectedTableKey || !roleDetail || !tableDetail) {
                     detailEl.innerHTML = `
-                <div class="alert alert-info mb-0">
-                    Seleziona un ruolo e una tabella da modificare.
-                </div>
-            `;
+    <div class="alert alert-info mb-0">
+        Seleziona un ruolo e una tabella da modificare.
+    </div>
+    `;
                     return;
                 }
 
                 detailEl.innerHTML = `
-            <div class="mb-4">
-                <h4 class="mb-1">${escapeHtml(roleDetail.name || "")}</h4>
-                <div class="text-muted">${escapeHtml(roleDetail.description || "")}</div>
-            </div>
+    <div class="mb-4">
+        <h4 class="mb-1">${escapeHtml(roleDetail.name || "")}</h4>
+        <div class="text-muted">${escapeHtml(roleDetail.description || "")}</div>
+    </div>
 
-            <div class="mb-3">
-                <strong>Connessione selezionata:</strong>
-                ${escapeHtml(tableDetail.label || "")}
-            </div>
+    <div class="mb-3">
+        <strong>Connessione selezionata:</strong>
+        ${escapeHtml(tableDetail.label || "")}
+    </div>
 
-            <div class="d-flex gap-2 mb-3">
-                <button type="button"
-                        class="btn btn-primary"
-                        id="btn-role-link-edit"
-                        ${editMode ? "disabled" : ""}>
-                    Modifica
-                </button>
+    <div class="d-flex gap-2 mb-3">
+        <button type="button"
+                class="btn btn-primary"
+                id="btn-role-link-edit"
+                ${editMode
+                    ?
+                    "disabled" : ""}>
+        Modifica
+        </button>
 
-                <button type="button"
-                        class="btn btn-secondary"
-                        id="btn-role-link-cancel"
-                        ${editMode ? "" : "disabled"}>
-                    Annulla
-                </button>
+        <button type="button"
+                class="btn btn-secondary"
+                id="btn-role-link-cancel"
+                ${editMode
+                    ?
+                    "" : "disabled"}>
+        Annulla
+        </button>
 
-                <button type="button"
-                        class="btn btn-success"
-                        id="btn-role-link-save"
-                        ${editMode ? "" : "disabled"}>
-                    Salva modifiche
-                </button>
-            </div>
+        <button type="button"
+                class="btn btn-success"
+                id="btn-role-link-save"
+                ${editMode
+                    ?
+                    "" : "disabled"}>
+        Salva modifiche
+        </button>
+    </div>
 
-            <div class="border rounded p-3">
-                ${renderItems(tableDetail.items)}
-            </div>
-        `;
+    <div class="border rounded p-3">
+        ${renderItems(tableDetail.items)}
+    </div>
+    `;
             }
 
             async function saveRoleLinks() {
@@ -941,10 +963,10 @@
                 const alertClass = classMap[type] || "alert-secondary";
 
                 feedbackEl.innerHTML = `
-                <div class="alert ${alertClass} mb-0">
-                    ${escapeHtml(message)}
-                </div>
-            `;
+    <div class="alert ${alertClass} mb-0">
+        ${escapeHtml(message)}
+    </div>
+    `;
             }
 
             function getSelectedIdsForTable(tableKey) {
@@ -965,10 +987,10 @@
             function renderItems(items, tableKey) {
                 if (!Array.isArray(items) || items.length === 0) {
                     return `
-                    <div class="alert alert-secondary mb-0">
-                        Nessun elemento disponibile per questa tabella.
-                    </div>
-                `;
+    <div class="alert alert-secondary mb-0">
+        Nessun elemento disponibile per questa tabella.
+    </div>
+    `;
                 }
 
                 const selectedSet = new Set(
@@ -976,28 +998,29 @@
                 );
 
                 return `
-                <div class="list-group">
-                    ${items.map((item) => {
+    <div class="list-group">
+        ${items.map((item) => {
                     const inputId = `create-role-${tableKey}-${item.id}`;
                     return `
-                            <label for="${escapeHtml(inputId)}"
-                                   class="list-group-item d-flex justify-content-between align-items-start gap-3">
-                                <div class="form-check m-0">
-                                    <input class="form-check-input js-create-role-checkbox"
-                                           type="checkbox"
-                                           id="${escapeHtml(inputId)}"
-                                           value="${escapeHtml(item.id)}"
-                                           ${selectedSet.has(Number(item.id)) ? "checked" : ""}>
-                                </div>
-                                <div class="flex-grow-1">
-                                    <div class="fw-semibold">${escapeHtml(item.codice || "-")}</div>
-                                    <div class="text-muted small">${escapeHtml(item.descrizione || "")}</div>
-                                </div>
-                            </label>
-                        `;
+        <label for="${escapeHtml(inputId)}"
+               class="list-group-item d-flex justify-content-between align-items-start gap-3">
+            <div class="form-check m-0">
+                <input class="form-check-input js-create-role-checkbox"
+                       type="checkbox"
+                       id="${escapeHtml(inputId)}"
+                       value="${escapeHtml(item.id)}"
+                       ${selectedSet.has(Number(item.id))
+                        ? "checked" : ""}>
+            </div>
+            <div class="flex-grow-1">
+                <div class="fw-semibold">${escapeHtml(item.codice || "-")}</div>
+                <div class="text-muted small">${escapeHtml(item.descrizione || "")}</div>
+            </div>
+        </label>
+        `;
                 }).join("")}
-                </div>
-            `;
+    </div>
+    `;
             }
 
             function renderDetail() {
@@ -1007,25 +1030,25 @@
 
                 if (!selectedTableKey || !tableDetail) {
                     detailEl.innerHTML = `
-                    <div class="alert alert-info mb-0">
-                        Seleziona una tabella per configurare le connessioni iniziali del nuovo ruolo.
-                    </div>
-                `;
+    <div class="alert alert-info mb-0">
+        Seleziona una tabella per configurare le connessioni iniziali del nuovo ruolo.
+    </div>
+    `;
                     return;
                 }
 
                 detailEl.innerHTML = `
-                <div class="mb-4">
-                    <h4 class="mb-1">${escapeHtml(tableDetail.label || "")}</h4>
-                    <div class="text-muted">
-                        Seleziona gli elementi da associare al nuovo ruolo.
-                    </div>
-                </div>
+    <div class="mb-4">
+        <h4 class="mb-1">${escapeHtml(tableDetail.label || "")}</h4>
+        <div class="text-muted">
+            Seleziona gli elementi da associare al nuovo ruolo.
+        </div>
+    </div>
 
-                <div class="border rounded p-3">
-                    ${renderItems(tableDetail.items || [], selectedTableKey)}
-                </div>
-            `;
+    <div class="border rounded p-3">
+        ${renderItems(tableDetail.items || [], selectedTableKey)}
+    </div>
+    `;
             }
 
             async function saveCreateRole() {
@@ -1158,10 +1181,10 @@
                 const alertClass = classMap[type] || "alert-secondary";
 
                 feedbackEl.innerHTML = `
-                <div class="alert ${alertClass} mb-0">
-                    ${escapeHtml(message)}
-                </div>
-            `;
+    <div class="alert ${alertClass} mb-0">
+        ${escapeHtml(message)}
+    </div>
+    `;
             }
 
             function renderDetail() {
@@ -1171,24 +1194,24 @@
 
                 if (!selectedRoleId || !detail) {
                     detailEl.innerHTML = `
-                    <div class="alert alert-info mb-0">
-                        Seleziona un ruolo per visualizzare il riepilogo dell'eliminazione.
-                    </div>
-                `;
+    <div class="alert alert-info mb-0">
+        Seleziona un ruolo per visualizzare il riepilogo dell'eliminazione.
+    </div>
+    `;
                     return;
                 }
 
                 detailEl.innerHTML = `
-                <div class="mb-4">
-                    <h4 class="mb-1">${escapeHtml(detail.name || "")}</h4>
-                    <div class="text-muted">${escapeHtml(detail.description || "")}</div>
-                </div>
+    <div class="mb-4">
+        <h4 class="mb-1">${escapeHtml(detail.name || "")}</h4>
+        <div class="text-muted">${escapeHtml(detail.description || "")}</div>
+    </div>
 
-                <div class="alert alert-warning mb-0">
-                    Verranno eliminate tutte le connessioni del ruolo, le assegnazioni utenti
-                    e le relazioni nelle tabelle collegate. Utenti collegati: <strong>${escapeHtml(detail.users_count)}</strong>
-                </div>
-            `;
+    <div class="alert alert-warning mb-0">
+        Verranno eliminate tutte le connessioni del ruolo, le assegnazioni utenti
+        e le relazioni nelle tabelle collegate. Utenti collegati: <strong>${escapeHtml(detail.users_count)}</strong>
+    </div>
+    `;
             }
 
             async function deleteRole() {
@@ -1255,6 +1278,234 @@
 
                 if (event.target.closest("#btn-delete-role-confirm")) {
                     deleteRole();
+                }
+            });
+
+            renderDetail();
+        })();
+
+        (() => {
+            const usersDataEl = document.getElementById("registry-users-data");
+            const feedbackEl = document.getElementById("user-registry-feedback");
+            const selectUserEl = document.getElementById("select-registry-user");
+            const detailEl = document.getElementById("registry-user-detail");
+
+            const createUsernameEl = document.getElementById("create-user-username");
+            const createRoleEl = document.getElementById("create-user-role");
+            const createGenereEl = document.getElementById("create-user-genere");
+            const createRepartoEl = document.getElementById("create-user-reparto-princ");
+            const createActiveEl = document.getElementById("create-user-active");
+            const createPublicIdEl = document.getElementById("create-user-public-id");
+
+            let registryUsers = [];
+            let selectedUserId = "";
+
+            try {
+                registryUsers = JSON.parse(usersDataEl?.textContent || "[]");
+            } catch (_) {
+                registryUsers = [];
+            }
+
+            function escapeHtml(value) {
+                return String(value ?? "")
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;")
+                    .replace(/"/g, "&quot;")
+                    .replace(/'/g, "&#039;");
+            }
+
+            function showFeedback(type, message) {
+                if (!feedbackEl) return;
+
+                if (!message) {
+                    feedbackEl.innerHTML = "";
+                    return;
+                }
+
+                const classMap = {
+                    success: "alert-success",
+                    danger: "alert-danger",
+                    warning: "alert-warning",
+                    info: "alert-info",
+                };
+
+                feedbackEl.innerHTML = `
+            <div class="alert ${classMap[type] || "alert-secondary"} mb-0">
+                ${escapeHtml(message)}
+            </div>
+        `;
+            }
+
+            function getSelectedUser() {
+                return registryUsers.find(x => String(x.id) === String(selectedUserId)) || null;
+            }
+
+            function renderDetail() {
+                if (!detailEl) return;
+
+                const user = getSelectedUser();
+                if (!user) {
+                    detailEl.innerHTML = `
+                <div class="alert alert-info mb-0">
+                    Seleziona un utente per modificarne lo stato.
+                </div>
+            `;
+                    return;
+                }
+
+                detailEl.innerHTML = `
+            <div class="mb-4">
+                <h4 class="mb-1">${escapeHtml(user.username)}</h4>
+                <div class="text-muted">
+                    Ruolo: <strong>${escapeHtml(user.current_role_description || user.current_role_name || "Nessuno")}</strong>
+                </div>
+                <div class="text-muted">
+                    Stato attuale:
+                    <strong>${user.active ? "Attivo" : "Inattivo"}</strong>
+                </div>
+            </div>
+
+            <div class="d-grid gap-2">
+                <button type="button"
+                        class="btn ${user.active ? "btn-danger" : "btn-success"}"
+                        id="btn-toggle-user-active">
+                    ${user.active ? "Metti inattivo" : "Riattiva utente"}
+                </button>
+            </div>
+        `;
+            }
+
+            const createPublicIdPreviewEl = document.getElementById("create-user-public-id-preview");
+
+            function buildPublicIdPreview(value) {
+                return String(value ?? "")
+                    .normalize("NFD")
+                    .replace(/[\u0300-\u036f]/g, "")
+                    .toLowerCase()
+                    .trim()
+                    .replace(/\s+/g, "_")
+                    .replace(/[^a-z0-9_]/g, "")
+                    .replace(/_+/g, "_")
+                    .replace(/^_+|_+$/g, "");
+            }
+
+            createPublicIdEl?.addEventListener("input", function () {
+                const preview = buildPublicIdPreview(this.value);
+                if (createPublicIdPreviewEl) {
+                    createPublicIdPreviewEl.textContent = preview
+                        ? `Valore generato: ${preview}`
+                        : "";
+                }
+            });
+
+            async function createUser() {
+                const payload = {
+                    username: (createUsernameEl?.value || "").trim(),
+                    public_id: (createPublicIdEl?.value || "").trim(),
+                    role_id: Number(createRoleEl?.value || 0),
+                    genere: (createGenereEl?.value || "").trim(),
+                    reparto_princ: (createRepartoEl?.value || "").trim(),
+                    active: !!createActiveEl?.checked,
+                };
+
+                if (!payload.username) {
+                    showFeedback("warning", "Inserisci lo username.");
+                    return;
+                }
+
+                if (!payload.role_id) {
+                    showFeedback("warning", "Seleziona un ruolo.");
+                    return;
+                }
+
+                try {
+                    const resp = await fetch("/api/impostazioni/crea-utente", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "X-Requested-With": "XMLHttpRequest",
+                        },
+                        credentials: "same-origin",
+                        body: JSON.stringify(payload),
+                    });
+
+                    let data = {};
+                    try {
+                        data = await resp.json();
+                    } catch (_) {
+                        data = {};
+                    }
+
+                    if (!resp.ok || data.ok === false) {
+                        showFeedback("danger", data.error || "Errore creazione utente.");
+                        return;
+                    }
+
+                    showFeedback("success", data.message || "Utente creato correttamente.");
+                    window.location.reload();
+                } catch (err) {
+                    console.error(err);
+                    showFeedback("danger", "Errore di comunicazione con il server.");
+                }
+            }
+
+            async function toggleUserActive() {
+                const user = getSelectedUser();
+                if (!user) return;
+
+                const confirmed = window.confirm(
+                    `${user.active ? "Mettere inattivo" : "Riattivare"} l'utente "${user.username}"?`
+                );
+                if (!confirmed) return;
+
+                try {
+                    const resp = await fetch("/api/impostazioni/utente-attivo", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "X-Requested-With": "XMLHttpRequest",
+                        },
+                        credentials: "same-origin",
+                        body: JSON.stringify({
+                            user_id: Number(user.id),
+                            active: !user.active,
+                        }),
+                    });
+
+                    let data = {};
+                    try {
+                        data = await resp.json();
+                    } catch (_) {
+                        data = {};
+                    }
+
+                    if (!resp.ok || data.ok === false) {
+                        showFeedback("danger", data.error || "Errore aggiornamento stato utente.");
+                        return;
+                    }
+
+                    showFeedback("success", data.message || "Stato utente aggiornato.");
+                    window.location.reload();
+                } catch (err) {
+                    console.error(err);
+                    showFeedback("danger", "Errore di comunicazione con il server.");
+                }
+            }
+
+            selectUserEl?.addEventListener("change", function () {
+                selectedUserId = this.value || "";
+                renderDetail();
+            });
+
+            document.addEventListener("click", function (event) {
+                if (event.target.closest("#btn-create-user-save")) {
+                    createUser();
+                    return;
+                }
+
+                if (event.target.closest("#btn-toggle-user-active")) {
+                    toggleUserActive();
                 }
             });
 

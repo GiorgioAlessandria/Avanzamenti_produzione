@@ -1,0 +1,134 @@
+<div class="row g-4 mb-4">
+    <div class="col-12 col-lg-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-header">
+                <h3 class="mb-0">Creazione utente</h3>
+            </div>
+
+            <div class="card-body">
+                <div class="mb-3">
+                    <label for="create-user-username"
+                           class="form-label fw-semibold">
+                        Username
+                    </label>
+                    <input type="text"
+                           id="create-user-username"
+                           class="form-control"
+                           placeholder="Cognome Nome">
+                    maxlength="100">
+                </div>
+
+                <label for="create-user-public-id"
+                       class="form-label fw-semibold">
+                    Public ID
+                </label>
+                <input type="text"
+                       id="create-user-public-id"
+                       class="form-control"
+                       maxlength="100"
+                       placeholder="Cognome Nome">
+                <div class="form-text"
+                     id="create-user-public-id-preview"></div>
+
+                <div class="mb-3">
+                    <label for="create-user-role"
+                           class="form-label fw-semibold">
+                        Ruolo iniziale
+                    </label>
+                    <select id="create-user-role"
+                            class="form-select">
+                        <option value="">-- Seleziona un ruolo --</option>
+                        {% for ruolo in registry_role_options %}
+                            <option value="{{ ruolo.id }}">
+                                {{ ruolo.description or ruolo.name }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="mb-3">
+                    <label for="create-user-genere"
+                           class="form-label fw-semibold">
+                        Genere
+                    </label>
+                    <input type="text"
+                           id="create-user-genere"
+                           class="form-control"
+                           maxlength="1"
+                           placeholder="m/f">
+                </div>
+
+                <div class="mb-3">
+                    <label for="create-user-reparto-princ"
+                           class="form-label fw-semibold">
+                        Reparto principale
+                    </label>
+                    <select id="create-user-reparto-princ"
+                            class="form-select">
+                        <option value="">-- Seleziona un reparto --</option>
+                        {% for rep in registry_reparti_options %}
+                            <option value="{{ rep.codice }}">
+                                {{ rep.codice }}{% if rep.descrizione %} - {{ rep.descrizione }}{% endif %}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="form-check mb-4">
+                    <input class="form-check-input"
+                           type="checkbox"
+                           id="create-user-active"
+                           checked>
+                    <label class="form-check-label"
+                           for="create-user-active">
+                        Utente attivo
+                    </label>
+                </div>
+
+                <div class="d-grid gap-2">
+                    <button type="button"
+                            class="btn btn-primary"
+                            id="btn-create-user-save">
+                        Crea utente
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-lg-8">
+        <div class="card shadow-sm h-100">
+            <div class="card-header">
+                <h3 class="mb-0">Stato utenti</h3>
+            </div>
+
+            <div class="card-body">
+                <div id="user-registry-feedback"
+                     class="mb-3"></div>
+
+                <div class="mb-3">
+                    <label for="select-registry-user"
+                           class="form-label fw-semibold">
+                        Utente
+                    </label>
+                    <select id="select-registry-user"
+                            class="form-select">
+                        <option value="">-- Seleziona un utente --</option>
+                        {% for user in registry_users %}
+                            <option value="{{ user.id }}">
+                                {{ user.username }} - {{ user.current_role_description or user.current_role_name }}
+                                {% if user.active %}(attivo){% else %}(inattivo){% endif %}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div id="registry-user-detail">
+                    <div class="alert alert-info mb-0">
+                        Seleziona un utente per modificarne lo stato.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

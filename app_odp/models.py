@@ -625,6 +625,10 @@ class User(UserMixin, db.Model):
         lazy="joined",
     )
 
+    @property
+    def is_active(self):
+        return bool(self.active)
+
     # --- helper per preferences (JSON) ---
     @property
     def manageable_roles(self):

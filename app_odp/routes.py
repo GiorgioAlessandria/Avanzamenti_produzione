@@ -2,6 +2,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 import json
 import re
+import unicodedata
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 from sqlalchemy.orm import selectinload
@@ -1930,6 +1931,22 @@ def _delete_closed_order_from_runtime_db(ordine, stato=None) -> None:
     db.session.flush()
 
 
+def _build_public_id_from_full_name(value: str) -> str:
+    raw = _norm_text(value)
+    if not raw:
+        return ""
+
+    normalized = unicodedata.normalize("NFKD", raw)
+    normalized = normalized.encode("ascii", "ignore").decode("ascii")
+    normalized = normalized.lower().strip()
+
+    normalized = re.sub(r"\s+", "_", normalized)
+    normalized = re.sub(r"[^a-z0-9_]", "", normalized)
+    normalized = re.sub(r"_+", "_", normalized).strip("_")
+
+    return normalized
+
+
 @main_bp.post("/api/ordini/presa")
 @login_required
 @require_perm("home")
@@ -3748,6 +3765,13 @@ def impostazioni():
     deletable_role_options = []
     deletable_role_details = {}
 
+    show_user_registry_section = policy.can_view_role_assignment_section
+
+    registry_role_options = []
+    registry_users = []
+
+    registry_reparti_options = []
+
     if show_role_creation_section:
         role_creation_tables = [
             {"key": key, "label": cfg["label"]} for key, cfg in ROLE_LINK_CONFIG.items()
@@ -3944,6 +3968,51 @@ def impostazioni():
                 "description": ruolo.description or "",
                 "users_count": len(set(int(x) for x in utenti_collegati_ids)),
             }
+
+    if show_user_registry_section:
+        registry_role_options = manageable_roles
+
+        manageable_role_ids = set(policy.role_assignment_manageable_role_ids)
+
+        if manageable_role_ids:
+            utenti_anagrafica = (
+                User.query.join(user_roles, user_roles.c.user_id == User.id)
+                .filter(
+                    User.id != current_user.id,
+                    user_roles.c.role_id.in_(sorted(manageable_role_ids)),
+                )
+                .distinct()
+                .order_by(User.username.asc())
+                .all()
+            )
+            registry_reparti_options = [
+                {
+                    "codice": rep.Codice or "",
+                    "descrizione": rep.Descrizione or "",
+                }
+                for rep in Reparti.query.order_by(
+                    func.lower(func.coalesce(Reparti.Descrizione, Reparti.Codice)),
+                    func.lower(Reparti.Codice),
+                ).all()
+            ]
+
+            registry_users = [
+                {
+                    "id": utente.id,
+                    "username": utente.username or "",
+                    "active": bool(utente.active),
+                    "genere": utente.genere or "",
+                    "reparto_princ": utente.RepartoPrinc or "",
+                    "current_role_id": utente.roles[0].id if utente.roles else None,
+                    "current_role_name": utente.roles[0].name if utente.roles else "",
+                    "current_role_description": (
+                        utente.roles[0].description or utente.roles[0].name
+                    )
+                    if utente.roles
+                    else "",
+                }
+                for utente in utenti_anagrafica
+            ]
     return render_template(
         "impostazioni.j2",
         ruolo_options=ruolo_options,
@@ -3964,7 +4033,185 @@ def impostazioni():
         show_role_delete_section=show_role_delete_section,
         deletable_role_options=deletable_role_options,
         deletable_role_details=deletable_role_details,
+        show_user_registry_section=show_user_registry_section,
+        registry_role_options=registry_role_options,
+        registry_users=registry_users,
+        registry_reparti_options=registry_reparti_options,
     )
+
+
+@main_bp.post("/api/impostazioni/crea-utente")
+@login_required
+def api_crea_utente():
+    policy = RbacPolicy(current_user)
+
+    if not policy.can_view_role_assignment_section:
+        return jsonify({"ok": False, "error": "Permesso insufficiente."}), 403
+
+    data = request.get_json(silent=True) or {}
+
+    username = _norm_text(data.get("username"))
+    genere = _norm_text(data.get("genere"))
+    reparto_princ = _norm_text(data.get("reparto_princ"))
+    active = bool(data.get("active", True))
+    role_id_raw = data.get("role_id")
+    public_id_source = _norm_text(data.get("public_id"))
+    public_id = _build_public_id_from_full_name(public_id_source)
+
+    try:
+        role_id = int(role_id_raw)
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "Ruolo non valido."}), 400
+
+    if not username:
+        return jsonify({"ok": False, "error": "Username obbligatorio."}), 400
+
+    if len(username) < 3:
+        return jsonify({"ok": False, "error": "Username troppo corto."}), 400
+
+    ruolo = Roles.query.get(role_id)
+    if ruolo is None:
+        return jsonify({"ok": False, "error": "Ruolo non trovato."}), 404
+
+    if not policy.can_assign_target_role(ruolo):
+        return jsonify({"ok": False, "error": "Ruolo non assegnabile."}), 403
+
+    existing = User.query.filter(func.lower(User.username) == username.lower()).first()
+    if existing is not None:
+        return jsonify(
+            {"ok": False, "error": "Esiste già un utente con questo username."}
+        ), 409
+    if not public_id:
+        return jsonify(
+            {"ok": False, "error": "Il public_id non può essere vuoto."}
+        ), 400
+
+    existing_public_id = User.query.filter(User.public_id == public_id).first()
+    if existing_public_id is not None:
+        return jsonify(
+            {"ok": False, "error": "Esiste già un utente con questo public_id."}
+        ), 409
+
+    if reparto_princ:
+        reparto_exists = Reparti.query.filter(Reparti.Codice == reparto_princ).first()
+        if reparto_exists is None:
+            return jsonify(
+                {"ok": False, "error": "Reparto principale non valido."}
+            ), 400
+
+    try:
+        utente = User(
+            username=username,
+            public_id=public_id or None,
+            active=active,
+            genere=genere or None,
+            RepartoPrinc=reparto_princ or None,
+        )
+        db.session.add(utente)
+        db.session.flush()
+
+        db.session.execute(
+            user_roles.insert().values(
+                user_id=utente.id,
+                role_id=ruolo.id,
+            )
+        )
+
+        db.session.commit()
+
+    except Exception as exc:
+        db.session.rollback()
+        return jsonify(
+            {
+                "ok": False,
+                "error": f"Errore creazione utente: {exc}",
+            }
+        ), 500
+
+    return jsonify(
+        {
+            "ok": True,
+            "message": "Utente creato correttamente.",
+            "user": {
+                "id": utente.id,
+                "public_id": utente.public_id or "",
+                "username": utente.username or "",
+                "active": bool(utente.active),
+                "genere": utente.genere or "",
+                "reparto_princ": utente.RepartoPrinc or "",
+                "current_role_id": ruolo.id,
+                "current_role_name": ruolo.name or "",
+                "current_role_description": ruolo.description or ruolo.name or "",
+            },
+        }
+    ), 201
+
+
+@main_bp.post("/api/impostazioni/utente-attivo")
+@login_required
+def api_set_utente_attivo():
+    policy = RbacPolicy(current_user)
+
+    if not policy.can_view_role_assignment_section:
+        return jsonify({"ok": False, "error": "Permesso insufficiente."}), 403
+
+    data = request.get_json(silent=True) or {}
+
+    user_id_raw = data.get("user_id")
+    active_raw = data.get("active")
+
+    try:
+        user_id = int(user_id_raw)
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "Utente non valido."}), 400
+
+    utente = User.query.get(user_id)
+    if utente is None:
+        return jsonify({"ok": False, "error": "Utente non trovato."}), 404
+
+    if int(utente.id) == int(current_user.id):
+        return jsonify(
+            {"ok": False, "error": "Non puoi modificare il tuo stato attivo."}
+        ), 403
+
+    if not policy.can_manage_target_user(utente):
+        return jsonify({"ok": False, "error": "Utente non gestibile."}), 403
+
+    nuovo_stato = bool(active_raw)
+
+    if not nuovo_stato:
+        ordini_aperti = InputOdpRuntime.query.filter(
+            InputOdpRuntime.Utente_operazione == utente.username,
+            InputOdpRuntime.Stato_odp.in_(["Attivo", "In Sospeso"]),
+        ).count()
+        if ordini_aperti > 0:
+            return jsonify(
+                {
+                    "ok": False,
+                    "error": "Impossibile mettere inattivo l'utente: ha ordini ancora attivi o sospesi.",
+                }
+            ), 409
+
+    try:
+        utente.active = nuovo_stato
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        return jsonify(
+            {
+                "ok": False,
+                "error": f"Errore aggiornamento stato utente: {exc}",
+            }
+        ), 500
+
+    return jsonify(
+        {
+            "ok": True,
+            "message": "Stato utente aggiornato correttamente.",
+            "user_id": utente.id,
+            "active": bool(utente.active),
+        }
+    ), 200
 
 
 @main_bp.post("/api/impostazioni/elimina-ruolo")
