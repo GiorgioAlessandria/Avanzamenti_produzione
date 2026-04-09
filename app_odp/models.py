@@ -305,6 +305,7 @@ class InputOdpLog(db.Model):
 
     ClosedBy = db.Column(db.Text)
     ClosedAt = db.Column(db.Text, nullable=False, index=True)
+    VarianteArt = db.Column(db.Text)
 
     __table_args__ = (db.Index("ix_input_odp_log_doc_riga", "IdDocumento", "IdRiga"),)
 
@@ -374,6 +375,7 @@ class OdpRuntimeLog(db.Model):
     Causale = db.Column(db.Text)
     Note = db.Column(db.Text)
     RifOrdinePrinc = db.Column(db.Text)
+    VarianteArt = db.Column(db.Text)
 
     __table_args__ = (
         db.Index("ix_odp_runtime_log_doc_riga", "IdDocumento", "IdRiga"),
@@ -762,6 +764,7 @@ class InputOdp(db.Model):
     CodClassifTecnica = db.Column(db.Text)
     CodTipoDoc = db.Column(db.Text)
     TempoAttrezzaggio = db.Column(db.Text)
+    VarianteArt = db.Column(db.Text)
 
     __table_args__ = (db.PrimaryKeyConstraint("IdDocumento", "IdRiga"),)
 
@@ -1045,6 +1048,7 @@ class InputOdpRuntime(db.Model):
     LavorazioneAttiva = db.Column(db.Text)
     RifOrdinePrinc = db.Column(db.Text)
     AttrezzaggioAttivo = db.Column(db.Text)
+    VarianteArt = db.Column(db.Text)
 
     __table_args__ = (
         db.ForeignKeyConstraint(

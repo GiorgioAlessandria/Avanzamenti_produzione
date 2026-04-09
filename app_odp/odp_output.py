@@ -337,10 +337,9 @@ def _build_rig_row(payload: dict, source_row, cfg: dict) -> list | None:
 
 def row_writer(
     tipo_record: Literal["TES", "RIG"],
-    tipo_documento: int = None,
+    tipo_documento: int = 710,
     registrazione_data: str = "",
     registrazione_numero: int = None,
-    registrazione_appendice="",
     operazione_avanzamento="",
     riferimento_ordine="",
     codice_articolo: str = "",
@@ -354,7 +353,7 @@ def row_writer(
     causale_prestazione: str = "",
     ore_lavorate: float = None,
 ):
-    tipo_documento = registrazione_numero if registrazione_numero is not None else ""
+    tipo_documento = tipo_documento if tipo_documento is not None else ""
     registrazione_numero = (
         registrazione_numero if registrazione_numero is not None else ""
     )
@@ -371,7 +370,7 @@ def row_writer(
         magazzino_principale if magazzino_principale is not None else ""
     )
     ore_lavorate = ore_lavorate if ore_lavorate is not None else ""
-    riga = f"{tipo_record};{tipo_documento};{registrazione_data};{registrazione_numero};{registrazione_appendice};{operazione_avanzamento};{riferimento_ordine};{codice_articolo};{quantita_principale};{quantita_scarti_prima};{quantita_scarti_seconda};{riga_saldata};{riferimento_lotto};{magazzino_principale};{codice_risorsa};{causale_prestazione};{ore_lavorate}"
+    riga = f"{tipo_record};{registrazione_numero};{registrazione_data};{tipo_documento};{operazione_avanzamento};{riferimento_ordine};{codice_articolo};{quantita_principale};{quantita_scarti_prima};{quantita_scarti_seconda};{riga_saldata};{riferimento_lotto};{magazzino_principale};{codice_risorsa};{causale_prestazione};{ore_lavorate}"
     return riga
 
 
@@ -383,7 +382,6 @@ def txt_generator(export_rows: list[dict], cfg: dict | None = None) -> str:
     10: tipo documento; "70[0-9]"
     20: registrazione data; dd/mm/YYYY HH:MM
     30: registrazione numero; ?
-    40: registrazione appendice digitata; ?
     80: tipo operazione avanzamento; ""
     90: riferimento ordine produzione; ""
     100: Codice articolo; ""
@@ -401,7 +399,6 @@ def txt_generator(export_rows: list[dict], cfg: dict | None = None) -> str:
     10: tipo documento; ""
     20: registrazione data "";
     30: registrazione numero "";
-    40: registrazione appendice digitata "";
     80: tipo operazione avanzamento "3[0-9]" esempio: 701;
     90: riferimento ordine produzione "4[0-9].[0-9].2[0-9].[0-9],2[0-9]." es. 2008.1.15.1,00;
     100: Codice articolo "2[A-Z]2[0-9]-3[0-9]-4[0-9]" es. BE12-345-6789;
@@ -429,26 +426,49 @@ def txt_generator(export_rows: list[dict], cfg: dict | None = None) -> str:
 
     head_line = row_writer(
         tipo_record="TES",
-        tipo_documento=export_rows[0]["payload"]["tipo_documento"],
+        tipo_documento="710",
         registrazione_data=data_registrazione,
-        # registrazione_numero=export_rows[0]["payload"][""],  # da inserire
-        # registrazione_appendice=export_rows[0]["payload"][""],  # da inserire
+        registrazione_numero=export_rows[0]["payload"]["id_documento"],
     )
     lines.append(head_line)
     distinta_base_json = json.loads(export_rows[0]["payload"]["distinta_base"])
     distinta_base = [riga for riga in distinta_base_json]
     codice_articolo = export_rows[0]["payload"]["cod_art"]
     lotto_articolo = export_rows[0]["payload"]["lotto_prodotto"]
-    riferimento_ordine = f"{export_rows[0]['payload']['rif_registraz']}.{export_rows[0]['payload']['fase']},00"
+    riferimento_ordine = f"{export_rows[0]['payload']['rif_registraz']}.{export_rows[0]['payload']['id_riga']},00"
+    riferimento_ordine_time = f"{export_rows[0]['payload']['rif_registraz']}.{export_rows[0]['payload']['id_riga']},00.{export_rows[0]['payload']['fase']},00"
 
     product_line = row_writer(
         tipo_record="RIG",
-        tipo_documento=export_rows[0]["payload"]["tipo_documento"],
+        tipo_documento="710",
         registrazione_data=data_registrazione,
-        # registrazione_numero=export_rows[0]["payload"][""],  # da inserire
-        # registrazione_appendice=export_rows[0]["payload"][""],  # da inserire
-        operazione_avanzamento=export_rows[0]["payload"]["tipo_documento"],
+        registrazione_numero=export_rows[0]["payload"]["id_documento"],
+        operazione_avanzamento="701",
         riferimento_ordine=riferimento_ordine,
+        codice_articolo=codice_articolo,
+        quantita_principale=export_rows[0]["payload"]["quantita_ok"],
+        quantita_scarti_prima=export_rows[0]["payload"]["quantita_ko"],
+        quantita_scarti_seconda=0,
+        riga_saldata=export_rows[0]["payload"]["salda_riga"],
+        riferimento_lotto=lotto_articolo,
+        magazzino_principale=export_rows[0]["payload"]["magazzino"],
+        codice_risorsa=export_rows[0]["payload"]["risorsa"],
+        causale_prestazione="",
+        ore_lavorate=(
+            export_rows[0]["payload"]["tempo_funzionamento"]
+            / (
+                export_rows[0]["payload"]["quantita_ok"]
+                + export_rows[0]["payload"]["quantita_ko"]
+            )
+        ),
+    )
+    product_time_line = row_writer(
+        tipo_record="RIG",
+        tipo_documento="710",
+        registrazione_data=data_registrazione,
+        registrazione_numero=export_rows[0]["payload"]["id_documento"],
+        operazione_avanzamento="709",
+        riferimento_ordine=riferimento_ordine_time,
         codice_articolo=codice_articolo,
         quantita_principale=export_rows[0]["payload"]["quantita_ok"],
         quantita_scarti_prima=export_rows[0]["payload"]["quantita_ko"],
@@ -478,11 +498,10 @@ def txt_generator(export_rows: list[dict], cfg: dict | None = None) -> str:
 
         component_line = row_writer(
             tipo_record="RIG",
-            tipo_documento=export_rows[0]["payload"]["tipo_documento"],
+            tipo_documento="710",
             registrazione_data=data_registrazione,
-            # registrazione_numero=export_rows[0]["payload"][""],  # da inserire
-            # registrazione_appendice=export_rows[0]["payload"][""],  # da inserire
-            operazione_avanzamento=export_rows[0]["payload"]["tipo_documento"],
+            registrazione_numero=export_rows[0]["payload"]["id_documento"],
+            operazione_avanzamento="703",
             riferimento_ordine=riferimento_ordine,
             codice_articolo=component["CodArt"],
             quantita_principale=component["Quantita"],

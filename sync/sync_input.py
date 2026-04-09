@@ -1253,6 +1253,7 @@ def elaborazione_dati(session: Session) -> None:
             "NumFase",
             "TecniciUm",
             "GestioneLotto",
+            "VarianteArt",
         ],
     )
 

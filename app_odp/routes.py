@@ -1196,6 +1196,7 @@ def _build_phase_payload(
     tipo_documento: str = "",
     risorsa: str = "",
     magazzino: str = "",
+    variante: str = "",
 ) -> dict:
     salda_riga = 0 if chiusura_parziale is True else 1
     return {
@@ -1219,6 +1220,7 @@ def _build_phase_payload(
         "risorsa": risorsa,
         "magazzino": magazzino,
         "distinta_base": distinta_base,
+        "variante": variante,
     }
 
 
@@ -3027,6 +3029,7 @@ def api_chiudi_ordine():
             tipo_documento=ordine.CodTipoDoc,
             risorsa=ordine.RisorsaAttiva,
             magazzino=ordine.CodMagPrincipale,
+            variante=ordine.VarianteArt,
         )
         outbox = _queue_phase_export(
             ordine=ordine,
@@ -3049,6 +3052,7 @@ def api_chiudi_ordine():
             tipo_documento=ordine.CodTipoDoc,
             risorsa=ordine.RisorsaAttiva,
             magazzino=ordine.CodMagPrincipale,
+            variante=ordine.VarianteArt,
         )
         outbox = _queue_phase_export(
             ordine=ordine,
@@ -3439,6 +3443,7 @@ def api_chiudi_ordine_montaggio_macchina():
         tipo_documento=ordine.CodTipoDoc,
         risorsa=ordine.RisorsaAttiva,
         magazzino=ordine.CodMagPrincipale,
+        variante=ordine.VarianteArt,
     )
 
     outbox = _queue_phase_export(
