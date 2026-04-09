@@ -1,0 +1,65 @@
+<div class="row g-4 mb-4">
+    <div class="col-12 col-lg-4">
+        <div class="card shadow-sm h-100 border-danger">
+            <div class="card-header">
+                <h3 class="mb-0">Eliminazione ruolo</h3>
+            </div>
+
+            <div class="card-body">
+                <div class="alert alert-danger">
+                    L'eliminazione rimuove il ruolo e tutte le sue connessioni.
+                </div>
+
+                <div class="mb-4">
+                    <label for="select-delete-role"
+                           class="form-label fw-semibold">
+                        Ruolo da eliminare
+                    </label>
+
+                    <select id="select-delete-role"
+                            class="form-select">
+                        <option value="">-- Seleziona un ruolo --</option>
+                        {% for ruolo in deletable_role_options %}
+                            <option value="{{ ruolo.id }}">
+                                {{ ruolo.description or ruolo.name }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="d-grid gap-2">
+                    <button type="button"
+                            class="btn btn-danger"
+                            id="btn-delete-role-confirm">
+                        Elimina ruolo
+                    </button>
+
+                    <button type="button"
+                            class="btn btn-secondary"
+                            id="btn-delete-role-reset">
+                        Annulla
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-lg-8">
+        <div class="card shadow-sm h-100">
+            <div class="card-header">
+                <h3 class="mb-0">Dettaglio eliminazione</h3>
+            </div>
+
+            <div class="card-body">
+                <div id="delete-role-feedback"
+                     class="mb-3"></div>
+
+                <div id="delete-role-detail">
+                    <div class="alert alert-info mb-0">
+                        Seleziona un ruolo per visualizzare il riepilogo dell'eliminazione.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

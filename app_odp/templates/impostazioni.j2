@@ -6,26 +6,28 @@
 
 {% block content %}
     <main class="container-fluid mt-4 mb-4">
-        {% if show_role_creation_section %}
-            {% include "partials/_impostazioni_crea_ruolo.j2" %}
-        {% endif %}
-
+    
         {% if show_user_abac_section %}
             {% include "partials/_impostazioni_abac.j2" %}
         {% endif %}
-
         {% if show_role_assignment_section %}
             {% include "partials/_impostazioni_assegna_ruolo.j2" %}
         {% endif %}
-
         {% if show_role_links_section %}
             {% include "partials/_impostazioni_permessi_ruolo.j2" %}
+        {% endif %}
+        {% if show_role_creation_section %}
+            {% include "partials/_impostazioni_crea_ruolo.j2" %}
+        {% endif %}
+        {% if show_role_delete_section %}
+            {% include "partials/_impostazioni_elimina_ruolo.j2" %}
         {% endif %}
 
         {% if not show_role_assignment_section
               and not show_user_abac_section
               and not show_role_links_section
-              and not show_role_creation_section %}
+              and not show_role_creation_section
+              and not show_role_delete_section %}
             <div class="alert alert-warning mb-0">
                 Non hai permessi per visualizzare le sezioni di configurazione.
             </div>
@@ -52,7 +54,9 @@
     <script id="role-creation-options-data"
             type="application/json">
         {{ role_creation_options|tojson }}</script>
-
+    <script id="deletable-roles-data"
+            type="application/json">
+        {{ deletable_role_details|tojson }}</script>
     <script>
         (() => {
             const selectRuolo = document.getElementById("select-ruolo-impostazioni");
@@ -404,9 +408,6 @@
                 }
             });
         })();
-    </script>
-
-    <script>
         (() => {
             const usersCountEl = document.getElementById("assign-role-users-count");
             const userSelectEl = document.getElementById("select-user-role-assignment");
@@ -650,11 +651,9 @@
                     user.current_role_id = Number(selectedRole.id);
                     user.current_role_name = selectedRole.name || "";
                     user.current_role_description = selectedRole.description || selectedRole.name || "";
-                    for (const roleKey of Object.keys(userAbacDetails || {})) {
-                        if (userAbacDetails[roleKey] && userAbacDetails[roleKey][String(user.id)]) {
-                            delete userAbacDetails[roleKey][String(user.id)];
-                        }
-                    }
+                    showFeedback("success", data.message || "Ruolo aggiornato correttamente.");
+                    window.location.reload();
+                    return;
 
                     renderUsersDropdown();
                     renderDetail();
@@ -897,8 +896,7 @@
                 }
             });
         })();
-        <script>
-            (() => {
+        (() => {
             const nameEl = document.getElementById("create-role-name");
             const descriptionEl = document.getElementById("create-role-description");
             const tableSelectEl = document.getElementById("select-create-role-table");
@@ -911,77 +909,77 @@
             let selectedValuesByTable = {};
 
             try {
-            roleCreationOptions = JSON.parse(optionsDataEl?.textContent || "{}");
-        } catch (_) {
-            roleCreationOptions = {};
-        }
+                roleCreationOptions = JSON.parse(optionsDataEl?.textContent || "{}");
+            } catch (_) {
+                roleCreationOptions = {};
+            }
 
             function escapeHtml(value) {
-            return String(value ?? "")
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-            .replace(/"/g, "&quot;")
-            .replace(/'/g, "&#039;");
-        }
+                return String(value ?? "")
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;")
+                    .replace(/"/g, "&quot;")
+                    .replace(/'/g, "&#039;");
+            }
 
             function showFeedback(type, message) {
-            if (!feedbackEl) return;
+                if (!feedbackEl) return;
 
-            if (!message) {
-            feedbackEl.innerHTML = "";
-            return;
-        }
+                if (!message) {
+                    feedbackEl.innerHTML = "";
+                    return;
+                }
 
-            const classMap = {
-            success: "alert-success",
-            danger: "alert-danger",
-            warning: "alert-warning",
-            info: "alert-info",
-        };
+                const classMap = {
+                    success: "alert-success",
+                    danger: "alert-danger",
+                    warning: "alert-warning",
+                    info: "alert-info",
+                };
 
-            const alertClass = classMap[type] || "alert-secondary";
+                const alertClass = classMap[type] || "alert-secondary";
 
-            feedbackEl.innerHTML = `
+                feedbackEl.innerHTML = `
                 <div class="alert ${alertClass} mb-0">
                     ${escapeHtml(message)}
                 </div>
             `;
-        }
+            }
 
             function getSelectedIdsForTable(tableKey) {
-            return selectedValuesByTable[String(tableKey)] || [];
-        }
+                return selectedValuesByTable[String(tableKey)] || [];
+            }
 
             function setSelectedIdsForTable(tableKey, ids) {
-            selectedValuesByTable[String(tableKey)] = [...ids];
-        }
+                selectedValuesByTable[String(tableKey)] = [...ids];
+            }
 
             function collectCheckedIdsFromDetail() {
-            if (!detailEl) return [];
-            return Array.from(
-            detailEl.querySelectorAll(".js-create-role-checkbox:checked")
-            ).map(el => Number(el.value));
-        }
+                if (!detailEl) return [];
+                return Array.from(
+                    detailEl.querySelectorAll(".js-create-role-checkbox:checked")
+                ).map(el => Number(el.value));
+            }
 
             function renderItems(items, tableKey) {
-            if (!Array.isArray(items) || items.length === 0) {
-            return `
+                if (!Array.isArray(items) || items.length === 0) {
+                    return `
                     <div class="alert alert-secondary mb-0">
                         Nessun elemento disponibile per questa tabella.
                     </div>
                 `;
-        }
+                }
 
-            const selectedSet = new Set(
-            (getSelectedIdsForTable(tableKey) || []).map(v => Number(v))
-            );
+                const selectedSet = new Set(
+                    (getSelectedIdsForTable(tableKey) || []).map(v => Number(v))
+                );
 
-            return `
+                return `
                 <div class="list-group">
                     ${items.map((item) => {
-            const inputId = `create-role-${tableKey}-${item.id}`;
-            return `
+                    const inputId = `create-role-${tableKey}-${item.id}`;
+                    return `
                             <label for="${escapeHtml(inputId)}"
                                    class="list-group-item d-flex justify-content-between align-items-start gap-3">
                                 <div class="form-check m-0">
@@ -997,26 +995,26 @@
                                 </div>
                             </label>
                         `;
-        }).join("")}
+                }).join("")}
                 </div>
             `;
-        }
+            }
 
             function renderDetail() {
-            if (!detailEl) return;
+                if (!detailEl) return;
 
-            const tableDetail = roleCreationOptions[String(selectedTableKey)];
+                const tableDetail = roleCreationOptions[String(selectedTableKey)];
 
-            if (!selectedTableKey || !tableDetail) {
-            detailEl.innerHTML = `
+                if (!selectedTableKey || !tableDetail) {
+                    detailEl.innerHTML = `
                     <div class="alert alert-info mb-0">
                         Seleziona una tabella per configurare le connessioni iniziali del nuovo ruolo.
                     </div>
                 `;
-            return;
-        }
+                    return;
+                }
 
-            detailEl.innerHTML = `
+                detailEl.innerHTML = `
                 <div class="mb-4">
                     <h4 class="mb-1">${escapeHtml(tableDetail.label || "")}</h4>
                     <div class="text-muted">
@@ -1028,108 +1026,237 @@
                     ${renderItems(tableDetail.items || [], selectedTableKey)}
                 </div>
             `;
-        }
-
-            function resetCreateRoleForm() {
-            if (nameEl) nameEl.value = "";
-            if (descriptionEl) descriptionEl.value = "";
-            if (tableSelectEl) tableSelectEl.value = "";
-            selectedTableKey = "";
-            selectedValuesByTable = {};
-            showFeedback("", "");
-            renderDetail();
-        }
+            }
 
             async function saveCreateRole() {
-            const roleName = (nameEl?.value || "").trim();
-            const roleDescription = (descriptionEl?.value || "").trim();
+                const roleName = (nameEl?.value || "").trim();
+                const roleDescription = (descriptionEl?.value || "").trim();
 
-            if (!roleName) {
-            showFeedback("warning", "Inserisci il nome del ruolo.");
-            return;
-        }
+                if (!roleName) {
+                    showFeedback("warning", "Inserisci il nome del ruolo.");
+                    return;
+                }
 
-            if (!roleDescription) {
-            showFeedback("warning", "Inserisci la descrizione del ruolo.");
-            return;
-        }
+                if (!roleDescription) {
+                    showFeedback("warning", "Inserisci la descrizione del ruolo.");
+                    return;
+                }
 
-            if (selectedTableKey) {
-            setSelectedIdsForTable(selectedTableKey, collectCheckedIdsFromDetail());
-        }
+                if (selectedTableKey) {
+                    setSelectedIdsForTable(selectedTableKey, collectCheckedIdsFromDetail());
+                }
 
-            const payload = {
-            name: roleName,
-            description: roleDescription,
-            links: selectedValuesByTable,
-        };
+                const payload = {
+                    name: roleName,
+                    description: roleDescription,
+                    links: selectedValuesByTable,
+                };
 
-            const saveBtn = document.getElementById("btn-create-role-save");
-            if (saveBtn) saveBtn.disabled = true;
+                const saveBtn = document.getElementById("btn-create-role-save");
+                if (saveBtn) saveBtn.disabled = true;
 
-            showFeedback("info", "Salvataggio in corso...");
+                showFeedback("info", "Salvataggio in corso...");
 
-            try {
-            const resp = await fetch("/api/impostazioni/crea-ruolo", {
-            method: "POST",
-            headers: {
-            "Content-Type": "application/json",
-            "X-Requested-With": "XMLHttpRequest",
-        },
-            credentials: "same-origin",
-            body: JSON.stringify(payload),
-        });
+                try {
+                    const resp = await fetch("/api/impostazioni/crea-ruolo", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "X-Requested-With": "XMLHttpRequest",
+                        },
+                        credentials: "same-origin",
+                        body: JSON.stringify(payload),
+                    });
 
-            let data = {};
-            try {
-            data = await resp.json();
-        } catch (_) {
-            data = {};
-        }
+                    let data = {};
+                    try {
+                        data = await resp.json();
+                    } catch (_) {
+                        data = {};
+                    }
 
-            if (!resp.ok || data.ok === false) {
-            showFeedback("danger", data.error || "Errore durante la creazione del ruolo.");
-            return;
-        }
+                    if (!resp.ok || data.ok === false) {
+                        showFeedback("danger", data.error || "Errore durante la creazione del ruolo.");
+                        return;
+                    }
 
-            showFeedback("success", data.message || "Ruolo creato correttamente.");
-            resetCreateRoleForm();
-        } catch (err) {
-            console.error("Errore creazione ruolo:", err);
-            showFeedback("danger", "Errore di comunicazione con il server.");
-        } finally {
-            const newSaveBtn = document.getElementById("btn-create-role-save");
-            if (newSaveBtn) {
-            newSaveBtn.disabled = false;
-        }
-        }
-        }
+                    showFeedback("success", data.message || "Ruolo creato correttamente.");
+                    window.location.reload();
+                } catch (err) {
+                    console.error("Errore creazione ruolo:", err);
+                    showFeedback("danger", "Errore di comunicazione con il server.");
+                } finally {
+                    const newSaveBtn = document.getElementById("btn-create-role-save");
+                    if (newSaveBtn) {
+                        newSaveBtn.disabled = false;
+                    }
+                }
+            }
 
             tableSelectEl?.addEventListener("change", function () {
-            if (selectedTableKey) {
-            setSelectedIdsForTable(selectedTableKey, collectCheckedIdsFromDetail());
-        }
+                if (selectedTableKey) {
+                    setSelectedIdsForTable(selectedTableKey, collectCheckedIdsFromDetail());
+                }
 
-            selectedTableKey = this.value || "";
-            renderDetail();
-        });
+                selectedTableKey = this.value || "";
+                renderDetail();
+            });
 
             document.addEventListener("change", function (event) {
-            if (event.target.closest(".js-create-role-checkbox") && selectedTableKey) {
-            setSelectedIdsForTable(selectedTableKey, collectCheckedIdsFromDetail());
-        }
-        });
+                if (event.target.closest(".js-create-role-checkbox") && selectedTableKey) {
+                    setSelectedIdsForTable(selectedTableKey, collectCheckedIdsFromDetail());
+                }
+            });
 
             document.addEventListener("click", function (event) {
-            if (event.target.closest("#btn-create-role-reset")) {
-            resetCreateRoleForm();
-            return;
-        }
+                if (event.target.closest("#btn-create-role-save")) {
+                    saveCreateRole();
+                }
+            });
 
-            if (event.target.closest("#btn-create-role-save")) {
-            saveCreateRole();
-        }
-        });
+            renderDetail();
+        })();
+        (() => {
+            const selectEl = document.getElementById("select-delete-role");
+            const feedbackEl = document.getElementById("delete-role-feedback");
+            const detailEl = document.getElementById("delete-role-detail");
+            const dataEl = document.getElementById("deletable-roles-data");
+
+            let deletableRoleDetails = {};
+            let selectedRoleId = "";
+
+            try {
+                deletableRoleDetails = JSON.parse(dataEl?.textContent || "{}");
+            } catch (_) {
+                deletableRoleDetails = {};
+            }
+
+            function escapeHtml(value) {
+                return String(value ?? "")
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;")
+                    .replace(/"/g, "&quot;")
+                    .replace(/'/g, "&#039;");
+            }
+
+            function showFeedback(type, message) {
+                if (!feedbackEl) return;
+
+                if (!message) {
+                    feedbackEl.innerHTML = "";
+                    return;
+                }
+
+                const classMap = {
+                    success: "alert-success",
+                    danger: "alert-danger",
+                    warning: "alert-warning",
+                    info: "alert-info",
+                };
+
+                const alertClass = classMap[type] || "alert-secondary";
+
+                feedbackEl.innerHTML = `
+                <div class="alert ${alertClass} mb-0">
+                    ${escapeHtml(message)}
+                </div>
+            `;
+            }
+
+            function renderDetail() {
+                if (!detailEl) return;
+
+                const detail = deletableRoleDetails[String(selectedRoleId)];
+
+                if (!selectedRoleId || !detail) {
+                    detailEl.innerHTML = `
+                    <div class="alert alert-info mb-0">
+                        Seleziona un ruolo per visualizzare il riepilogo dell'eliminazione.
+                    </div>
+                `;
+                    return;
+                }
+
+                detailEl.innerHTML = `
+                <div class="mb-4">
+                    <h4 class="mb-1">${escapeHtml(detail.name || "")}</h4>
+                    <div class="text-muted">${escapeHtml(detail.description || "")}</div>
+                </div>
+
+                <div class="alert alert-warning mb-0">
+                    Verranno eliminate tutte le connessioni del ruolo, le assegnazioni utenti
+                    e le relazioni nelle tabelle collegate. Utenti collegati: <strong>${escapeHtml(detail.users_count)}</strong>
+                </div>
+            `;
+            }
+
+            async function deleteRole() {
+                if (!selectedRoleId) {
+                    showFeedback("warning", "Seleziona un ruolo da eliminare.");
+                    return;
+                }
+
+                const detail = deletableRoleDetails[String(selectedRoleId)] || {};
+                const label = detail.description || detail.name || selectedRoleId;
+
+                const confirmed = window.confirm(
+                    `Confermi l'eliminazione definitiva del ruolo "${label}"?`
+                );
+                if (!confirmed) return;
+
+                showFeedback("info", "Eliminazione in corso...");
+
+                try {
+                    const resp = await fetch("/api/impostazioni/elimina-ruolo", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "X-Requested-With": "XMLHttpRequest",
+                        },
+                        credentials: "same-origin",
+                        body: JSON.stringify({role_id: Number(selectedRoleId)}),
+                    });
+
+                    let data = {};
+                    try {
+                        data = await resp.json();
+                    } catch (_) {
+                        data = {};
+                    }
+
+                    if (!resp.ok || data.ok === false) {
+                        showFeedback("danger", data.error || "Errore durante l'eliminazione del ruolo.");
+                        return;
+                    }
+
+                    showFeedback("success", data.message || "Ruolo eliminato correttamente.");
+                    window.location.reload();
+                } catch (err) {
+                    console.error("Errore eliminazione ruolo:", err);
+                    showFeedback("danger", "Errore di comunicazione con il server.");
+                }
+            }
+
+            selectEl?.addEventListener("change", function () {
+                selectedRoleId = this.value || "";
+                showFeedback("", "");
+                renderDetail();
+            });
+
+            document.addEventListener("click", function (event) {
+                if (event.target.closest("#btn-delete-role-reset")) {
+                    if (selectEl) selectEl.value = "";
+                    selectedRoleId = "";
+                    showFeedback("", "");
+                    renderDetail();
+                    return;
+                }
+
+                if (event.target.closest("#btn-delete-role-confirm")) {
+                    deleteRole();
+                }
+            });
 
             renderDetail();
         })();

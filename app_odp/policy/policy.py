@@ -433,6 +433,25 @@ class RbacPolicy:
 
         return list(self.descendant_manageable_roles)
 
+    @cached_property
+    def can_view_role_creation_section(self) -> bool:
+        return self.can("modifica_permessi_ruolo")
+
+    def role_creation_manageable_roles(self) -> list[Roles]:
+        if not self.can_view_role_creation_section:
+            return []
+
+        return list(self.descendant_manageable_roles)
+
+    @cached_property
+    def can_view_role_delete_section(self) -> bool:
+        return self.can("modifica_permessi_ruolo")
+
+    def role_delete_manageable_roles(self) -> list[Roles]:
+        if not self.can_view_role_delete_section:
+            return []
+        return list(self.descendant_manageable_roles)
+
     def role_assignment_roles_query(self):
         manageable_ids = self.role_assignment_manageable_role_ids
         if not manageable_ids:

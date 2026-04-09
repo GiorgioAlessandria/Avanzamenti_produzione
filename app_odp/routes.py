@@ -51,7 +51,7 @@ from app_odp.models import (
     roles_manageable_roles,
 )
 from app_odp.policy.decorator import require_perm
-from app_odp.policy.policy import RbacPolicy
+from app_odp.policy.policy import RbacPolicy, PROTECTED_ROLE_NAMES
 from app_odp.odp_output import txt_generator, DEFAULT_AVP_CFG
 
 
@@ -157,6 +157,73 @@ ROLE_LINK_CONFIG = {
         "desc_attr": "description",
     },
 }
+
+
+def _role_config_items_for_creation(policy: RbacPolicy, cfg: dict) -> list[dict]:
+    model = cfg["model"]
+    code_attr = cfg["code_attr"]
+    desc_attr = cfg["desc_attr"]
+
+    if model is Roles:
+        rows = policy.role_creation_manageable_roles()
+    else:
+        rows = model.query.order_by(
+            func.lower(
+                func.coalesce(
+                    getattr(model, desc_attr),
+                    getattr(model, code_attr),
+                )
+            ),
+            func.lower(getattr(model, code_attr)),
+        ).all()
+
+    return [
+        {
+            "id": getattr(row, cfg["model_id"]),
+            "codice": getattr(row, code_attr, "") or "",
+            "descrizione": getattr(row, desc_attr, "") or "",
+        }
+        for row in rows
+    ]
+
+
+def _valid_role_creation_ids(policy: RbacPolicy, cfg: dict) -> set[int]:
+    model = cfg["model"]
+
+    if model is Roles:
+        return {int(role.id) for role in policy.role_creation_manageable_roles()}
+
+    model_id_attr = getattr(model, cfg["model_id"])
+    stmt = select(model_id_attr)
+    return {int(x) for x in db.session.execute(stmt).scalars().all()}
+
+
+def _normalize_role_creation_links(raw_links) -> dict[str, set[int]]:
+    if raw_links in (None, ""):
+        return {}
+
+    if not isinstance(raw_links, dict):
+        raise ValueError("Il payload 'links' deve essere un oggetto JSON.")
+
+    normalized = {}
+
+    for key, raw_values in raw_links.items():
+        if key not in ROLE_LINK_CONFIG:
+            raise ValueError(f"Tabella non valida nel payload: {key}")
+
+        if raw_values in (None, ""):
+            normalized[key] = set()
+            continue
+
+        if not isinstance(raw_values, (list, tuple, set)):
+            raise ValueError(f"I valori per '{key}' devono essere una lista di id.")
+
+        try:
+            normalized[key] = {int(x) for x in raw_values}
+        except (TypeError, ValueError):
+            raise ValueError(f"Gli id per '{key}' non sono validi.")
+
+    return normalized
 
 
 def _new_dash_kpi_bucket() -> dict:
@@ -3671,13 +3738,26 @@ def impostazioni():
     role_link_details = {}
     role_link_role_options = []
 
-    permission_role_options = []
-    permission_details = {}
-
     ruoli_link_gestibili = policy.role_link_manageable_roles()
-    show_role_creation_section = False
+
+    show_role_creation_section = policy.can_view_role_creation_section
     role_creation_tables = []
     role_creation_options = {}
+
+    show_role_delete_section = policy.can_view_role_delete_section
+    deletable_role_options = []
+    deletable_role_details = {}
+
+    if show_role_creation_section:
+        role_creation_tables = [
+            {"key": key, "label": cfg["label"]} for key, cfg in ROLE_LINK_CONFIG.items()
+        ]
+
+        for key, cfg in ROLE_LINK_CONFIG.items():
+            role_creation_options[key] = {
+                "label": cfg["label"],
+                "items": _role_config_items_for_creation(policy, cfg),
+            }
 
     if show_role_assignment_section:
         assignable_users = (
@@ -3845,7 +3925,25 @@ def impostazioni():
                         if x.id in ruolo_risorse_ids
                     ),
                 }
+    if show_role_delete_section:
+        ruoli_eliminabili = policy.role_delete_manageable_roles()
+        deletable_role_options = ruoli_eliminabili
 
+        for ruolo in ruoli_eliminabili:
+            utenti_collegati_ids = (
+                db.session.execute(
+                    select(user_roles.c.user_id).where(user_roles.c.role_id == ruolo.id)
+                )
+                .scalars()
+                .all()
+            )
+
+            deletable_role_details[str(ruolo.id)] = {
+                "id": ruolo.id,
+                "name": ruolo.name or "",
+                "description": ruolo.description or "",
+                "users_count": len(set(int(x) for x in utenti_collegati_ids)),
+            }
     return render_template(
         "impostazioni.j2",
         ruolo_options=ruolo_options,
@@ -3856,15 +3954,137 @@ def impostazioni():
         manageable_roles=manageable_roles,
         show_role_assignment_section=show_role_assignment_section,
         show_user_abac_section=show_user_abac_section,
-        permission_role_options=permission_role_options,
-        permission_details=permission_details,
+        show_role_creation_section=show_role_creation_section,
+        role_creation_tables=role_creation_tables,
+        role_creation_options=role_creation_options,
         role_link_tables=role_link_tables,
         role_link_details=role_link_details,
         show_role_links_section=show_role_links_section,
         role_link_role_options=role_link_role_options,
-        role_creation_tables=role_creation_tables,
-        role_creation_options=role_creation_options,
+        show_role_delete_section=show_role_delete_section,
+        deletable_role_options=deletable_role_options,
+        deletable_role_details=deletable_role_details,
     )
+
+
+@main_bp.post("/api/impostazioni/elimina-ruolo")
+@login_required
+def api_elimina_ruolo():
+    policy = RbacPolicy(current_user)
+
+    if not policy.can_view_role_delete_section:
+        return jsonify({"ok": False, "error": "Permesso insufficiente."}), 403
+
+    data = request.get_json(silent=True) or {}
+    role_id_raw = data.get("role_id")
+
+    try:
+        role_id = int(role_id_raw)
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "Parametro role_id non valido."}), 400
+
+    ruolo = Roles.query.get(role_id)
+    if ruolo is None:
+        return jsonify({"ok": False, "error": "Ruolo non trovato."}), 404
+
+    if not policy.can_manage_target_role(ruolo):
+        return jsonify({"ok": False, "error": "Ruolo non eliminabile."}), 403
+
+    if (ruolo.name or "").strip().lower() in PROTECTED_ROLE_NAMES:
+        return jsonify(
+            {
+                "ok": False,
+                "error": "Questo ruolo è protetto e non può essere eliminato.",
+            }
+        ), 403
+
+    try:
+        impacted_user_ids = set(
+            int(x)
+            for x in db.session.execute(
+                select(user_roles.c.user_id).where(user_roles.c.role_id == ruolo.id)
+            )
+            .scalars()
+            .all()
+        )
+
+        # rimuove assegnazioni utente -> ruolo
+        db.session.execute(delete(user_roles).where(user_roles.c.role_id == ruolo.id))
+
+        # pulizia override ABAC utenti che avevano quel ruolo
+        if impacted_user_ids:
+            db.session.execute(
+                delete(users_lavorazioni).where(
+                    users_lavorazioni.c.user_id.in_(sorted(impacted_user_ids))
+                )
+            )
+            db.session.execute(
+                delete(users_risorse).where(
+                    users_risorse.c.user_id.in_(sorted(impacted_user_ids))
+                )
+            )
+
+        # pulizia link role -> entità
+        db.session.execute(
+            delete(roles_permission).where(roles_permission.c.role_id == ruolo.id)
+        )
+        db.session.execute(
+            delete(roles_reparti).where(roles_reparti.c.roles_id == ruolo.id)
+        )
+        db.session.execute(
+            delete(roles_risorse).where(roles_risorse.c.roles_id == ruolo.id)
+        )
+        db.session.execute(
+            delete(roles_lavorazioni).where(roles_lavorazioni.c.roles_id == ruolo.id)
+        )
+        db.session.execute(
+            delete(roles_magazzini).where(roles_magazzini.c.roles_id == ruolo.id)
+        )
+        db.session.execute(
+            delete(roles_famiglia).where(roles_famiglia.c.roles_id == ruolo.id)
+        )
+        db.session.execute(
+            delete(roles_macrofamiglia).where(
+                roles_macrofamiglia.c.roles_id == ruolo.id
+            )
+        )
+
+        # pulizia relazioni tra ruoli
+        db.session.execute(
+            delete(roles_ineritance).where(
+                (roles_ineritance.c.role_id == ruolo.id)
+                | (roles_ineritance.c.included_role == ruolo.id)
+            )
+        )
+
+        db.session.execute(
+            delete(roles_manageable_roles).where(
+                (roles_manageable_roles.c.manager_role_id == ruolo.id)
+                | (roles_manageable_roles.c.managed_role_id == ruolo.id)
+            )
+        )
+
+        db.session.execute(delete(Roles).where(Roles.id == ruolo.id))
+
+        db.session.commit()
+
+    except Exception as exc:
+        db.session.rollback()
+        return jsonify(
+            {
+                "ok": False,
+                "error": f"Errore eliminazione ruolo: {exc}",
+            }
+        ), 500
+
+    return jsonify(
+        {
+            "ok": True,
+            "message": "Ruolo eliminato correttamente.",
+            "role_id": role_id,
+            "impacted_users": sorted(impacted_user_ids),
+        }
+    ), 200
 
 
 @main_bp.post("/api/impostazioni/assegna-ruolo")
@@ -3938,6 +4158,143 @@ def api_assegna_ruolo():
             "role_description": ruolo.description or ruolo.name or "",
         }
     ), 200
+
+
+@main_bp.post("/api/impostazioni/crea-ruolo")
+@login_required
+def api_crea_ruolo():
+    policy = RbacPolicy(current_user)
+
+    if not policy.can_view_role_creation_section:
+        return jsonify({"ok": False, "error": "Permesso insufficiente."}), 403
+
+    data = request.get_json(silent=True) or {}
+
+    name = _norm_text(data.get("name"))
+    description = _norm_text(data.get("description"))
+
+    try:
+        links = _normalize_role_creation_links(data.get("links") or {})
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+    if not name:
+        return jsonify({"ok": False, "error": "Il nome ruolo è obbligatorio."}), 400
+
+    if not description:
+        return jsonify(
+            {"ok": False, "error": "La descrizione ruolo è obbligatoria."}
+        ), 400
+
+    if not re.fullmatch(r"[A-Za-z0-9_]+", name):
+        return jsonify(
+            {
+                "ok": False,
+                "error": "Il nome ruolo può contenere solo lettere, numeri e underscore.",
+            }
+        ), 400
+
+    normalized_name = name.strip()
+    normalized_name_lower = normalized_name.lower()
+
+    if normalized_name_lower in PROTECTED_ROLE_NAMES:
+        return jsonify(
+            {
+                "ok": False,
+                "error": "Non è consentito creare questo ruolo.",
+            }
+        ), 403
+
+    existing_role = Roles.query.filter(
+        func.lower(Roles.name) == normalized_name_lower
+    ).first()
+    if existing_role is not None:
+        return jsonify(
+            {
+                "ok": False,
+                "error": "Esiste già un ruolo con questo nome.",
+            }
+        ), 409
+
+    validated_links: dict[str, set[int]] = {}
+
+    for table_key, selected_ids in links.items():
+        cfg = ROLE_LINK_CONFIG[table_key]
+        valid_ids = _valid_role_creation_ids(policy, cfg)
+
+        invalid_ids = selected_ids - valid_ids
+        if invalid_ids:
+            return jsonify(
+                {
+                    "ok": False,
+                    "error": f"Il payload contiene id non validi per '{table_key}'.",
+                    "table_key": table_key,
+                    "invalid_ids": sorted(invalid_ids),
+                }
+            ), 400
+
+        validated_links[table_key] = set(selected_ids)
+
+    try:
+        nuovo_ruolo = Roles(
+            name=normalized_name,
+            description=description,
+        )
+        db.session.add(nuovo_ruolo)
+        db.session.flush()
+
+        # Il ruolo appena creato diventa automaticamente subordinato ai ruoli diretti del creatore.
+        parent_links = [
+            {
+                "manager_role_id": int(parent_role.id),
+                "managed_role_id": int(nuovo_ruolo.id),
+            }
+            for parent_role in policy.direct_assigned_roles
+        ]
+        if parent_links:
+            db.session.execute(roles_manageable_roles.insert(), parent_links)
+
+        for table_key, selected_ids in validated_links.items():
+            if not selected_ids:
+                continue
+
+            cfg = ROLE_LINK_CONFIG[table_key]
+            assoc_table = cfg["assoc_table"]
+
+            db.session.execute(
+                assoc_table.insert(),
+                [
+                    {
+                        cfg["left_fk"]: int(nuovo_ruolo.id),
+                        cfg["right_fk"]: int(item_id),
+                    }
+                    for item_id in sorted(selected_ids)
+                ],
+            )
+
+        db.session.commit()
+
+    except Exception as exc:
+        db.session.rollback()
+        return jsonify(
+            {
+                "ok": False,
+                "error": f"Errore creazione ruolo: {exc}",
+            }
+        ), 500
+
+    return jsonify(
+        {
+            "ok": True,
+            "message": "Ruolo creato correttamente.",
+            "role": {
+                "id": int(nuovo_ruolo.id),
+                "name": nuovo_ruolo.name or "",
+                "description": nuovo_ruolo.description or "",
+            },
+            "links": {key: sorted(value) for key, value in validated_links.items()},
+        }
+    ), 201
 
 
 @main_bp.post("/api/impostazioni/utente-abac")
