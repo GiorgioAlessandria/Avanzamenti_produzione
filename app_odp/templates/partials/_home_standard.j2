@@ -1718,33 +1718,28 @@
     })();
 </script>
 <script>
-    async function exportAvpTxt({suffix = "officina"} = {}) {
+    async function exportAvpTxt({suffix = "officina", outboxId} = {}) {
         try {
-            const resp = await fetch("/api/erp/export/avp", {
+            const closeResp = await fetch("/api/ordini/chiudi", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
                     "X-Requested-With": "XMLHttpRequest"
                 },
                 credentials: "same-origin",
-                body: JSON.stringify({suffix})
+                body: JSON.stringify(payload)
             });
 
-            let data = {};
-            try {
-                data = await resp.json();
-            } catch (_) {
-                data = {};
+            const closeData = await closeResp.json();
+
+            if (!closeResp.ok || closeData.ok === false) {
+                throw new Error(closeData.error || "Errore chiusura ordine");
             }
 
-            if (!resp.ok || data.ok === false) {
-                return {
-                    ok: false,
-                    error: data.error || "Errore durante la generazione del file ERP."
-                };
-            }
-
-            return {ok: true, data};
+            const exportResp = await exportAvpTxt({
+                suffix: `${closeData.id_documento}_${closeData.id_riga}`,
+                outboxId: closeData.outbox_id
+            });
         } catch (err) {
             console.error("Errore export AVP:", err);
             return {

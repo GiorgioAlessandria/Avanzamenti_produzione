@@ -157,7 +157,7 @@ def txt_generator(export_rows: list[dict]) -> list[str]:
         magazzino_principale=magazzino,
         codice_risorsa=risorsa,
         causale_prestazione="",
-        ore_lavorate=str(tempo_funzionamento),
+        ore_lavorate=str(ore_per_pezzo),
     )
     lines.append(product_line)
 
@@ -178,7 +178,7 @@ def txt_generator(export_rows: list[dict]) -> list[str]:
         magazzino_principale=magazzino,
         codice_risorsa=risorsa,
         causale_prestazione="",
-        ore_lavorate=str(tempo_funzionamento),
+        ore_lavorate=str(ore_per_pezzo),
     )
     lines.append(product_time_line)
 
@@ -207,11 +207,11 @@ def txt_generator(export_rows: list[dict]) -> list[str]:
             tipo_record="RIG",
             tipo_documento="710",
             registrazione_data=created_at,
-            codice_documento=id_documento,
+            registrazione_numero=id_documento,
             operazione_avanzamento="703",
             riferimento_ordine=riferimento_ordine,
-            codice_articolo=codice_articolo,
-            variante=variante_articolo,
+            codice_articolo=component.get("CodArt", ""),
+            variante=component.get("VarianteArt", ""),
             quantita_principale=component.get("Quantita", ""),
             riga_saldata=salda_riga,
             riferimento_lotto=lotto_component,
