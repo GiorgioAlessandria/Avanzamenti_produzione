@@ -4,6 +4,7 @@
             data-tipodocumento="{{ singolo_odp.CodTipoDoc }}"
             data-iddocumento="{{ singolo_odp.IdDocumento }}"
             data-idriga="{{ singolo_odp.IdRiga }}"
+            data-variante="{{ singolo_odp.VarianteArt }}"
             data-ordine="{{ singolo_odp.RifRegistraz }}"
             data-codice="{{ singolo_odp.CodArt }}"
             data-indicemodifica="{{ singolo_odp.IndiceModifica }}"
@@ -25,10 +26,11 @@
                     {{ singolo_odp.CodArt }}
                 </button>
             </td>
+            <td>{{ singolo_odp.VarianteArt }}</td>
             {% set rev = singolo_odp.IndiceModifica %}
             <td>{{ "-" if rev is none or (rev|string|trim|upper) == "X" else rev }}</td>
-            <td>{{ singolo_odp.DesArt }}</td>
             <td>{{ singolo_odp.QtyDaLavorare or singolo_odp.Quantita }}</td>
+            <td>{{ singolo_odp.DesArt }}</td>
             <td>{{ singolo_odp.DataFineSched | db_date("%Y-%m-%d %H:%M:%S","%d/%m/%Y") }}</td>
             <td>{{ singolo_odp.RisorsaAttiva }}</td>
             <td data-col="stato">{{ singolo_odp.StatoOrdine }}</td>

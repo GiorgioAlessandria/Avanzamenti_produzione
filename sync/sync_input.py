@@ -244,34 +244,36 @@ def unione_fasi_componenti(
     df_fasi: pd.DataFrame, df_componenti: pd.DataFrame, df_articoli: pd.DataFrame
 ) -> pd.DataFrame:
     """
-    Join tra il df delle fasi e quello dei componenti per fase. Al df_componenti vengono rinominate le righe IdRigaPadre e IdRiga rispettivamente in IdRiga e IdRigacomponente
-    Viene inoltre aggiunta la descrizione del componente per codice articolo
-    :param df_fasi: dataframe fasi
-    :type df_fasi: pd.DataFrame
-    :param df_componenti: dataframe componenti per fase
-    :type df_componenti: pd.DataFrame
-    :return: Dataframe composto dai codici articolo (CodArt) divisi per fase con le quantità di materiale necessario a codice per fase
-    :rtype: pd.DataFrame
+    Join tra il df delle fasi e quello dei componenti per fase.
+    Al df_componenti vengono rinominate le righe IdRigaPadre e IdRiga
+    rispettivamente in IdRiga e IdRigacomponente.
+    Viene inoltre aggiunta la descrizione del componente per codice articolo.
+    VarianteArt dei componenti resta quella proveniente da vwESOdPComponenti.
     """
     df_componenti = df_componenti.rename(
         columns={"IdRiga": "IdRigacomponente", "IdRigaPadre": "IdRiga"}
     )
+
     fasi_indexed = df_fasi.set_index(["IdDocumento", "IdRiga", "NumFase"], drop=True)
     comp_indexed = df_componenti.set_index(
         ["IdDocumento", "IdRiga", "NumFase"], drop=True
     )
+
     df_fasi_componenti = fasi_indexed.join(
         comp_indexed,
         on=["IdDocumento", "IdRiga", "NumFase"],
         validate="1:m",
         how="left",
     )
+
     df_fasi_componenti = df_fasi_componenti.reset_index(drop=False)
+
     df_fasi_componenti = df_fasi_componenti.merge(
         df_articoli[["CodArt", "DesArt", "TecniciUm", "GestioneLotto"]],
         on="CodArt",
         how="left",
     )
+
     return df_fasi_componenti
 
 
@@ -615,6 +617,7 @@ INPUT_ODP_ERP_COLS = [
     "CodTipoDoc",
     "IndiceModifica",
     "TempoAttrezzaggio",
+    "VarianteArt",
 ]
 
 INPUT_ODP_RUNTIME_COLS = [
@@ -629,6 +632,7 @@ INPUT_ODP_RUNTIME_COLS = [
     "RisorsaAttiva",
     "LavorazioneAttiva",
     "AttrezzaggioAttivo",
+    "VarianteArt",
 ]
 
 INPUT_ODP_ERP_UPDATE_COLS = [c for c in INPUT_ODP_ERP_COLS if c not in PK_COLS]
@@ -733,6 +737,7 @@ def _build_runtime_seed(df_input_odp: pd.DataFrame) -> pd.DataFrame:
             "CodLavorazione",
             "CodRisorsaProd",
             "TempoAttrezzaggio",
+            "VarianteArt",
         ]
     ].copy()
 
@@ -857,6 +862,7 @@ def _build_input_odp_log_rows(
                 "LavorazioneAttiva",
                 "AttrezzaggioAttivo",
                 "Note",
+                "VarianteArt",
             ]
         ].copy()
         if not df_new_runtime.empty

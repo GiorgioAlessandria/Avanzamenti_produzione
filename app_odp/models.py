@@ -908,9 +908,6 @@ class InputOdp(db.Model):
         rt = self._ensure_runtime_row()
         rt.LavorazioneAttiva = self._text(value)
 
-    def __repr__(self):
-        return f"<{self.__dict__}>"
-
     @property
     def RifOrdinePrinc(self) -> str:
         return self._text(getattr(self.runtime_row, "RifOrdinePrinc", ""))

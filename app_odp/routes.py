@@ -793,10 +793,22 @@ def _componenti_lotto_per_ordine(
             continue
 
         cod_art = _norm_text(comp.get("CodArt", ""))
-        if not cod_art or cod_art in codici_visti:
+        variante_art = _norm_text(comp.get("VarianteArt", ""))
+
+        chiave_componente = (cod_art, variante_art)
+
+        if not cod_art or chiave_componente in codici_visti:
             continue
 
-        codici_visti.add(cod_art)
+        codici_visti.add(chiave_componente)
+
+        lotti_query = GiacenzaLotti.query.filter_by(CodArt=cod_art)
+
+        # Se la tabella giacenze gestisce anche la variante, filtra anche quella.
+        if hasattr(GiacenzaLotti, "VarianteArt"):
+            lotti_query = lotti_query.filter_by(VarianteArt=variante_art)
+
+        lotti_db = lotti_query.all()
 
         lotti_db = GiacenzaLotti.query.filter_by(CodArt=cod_art).all()
         lotti_list = []
@@ -825,6 +837,7 @@ def _componenti_lotto_per_ordine(
                     "Quantita": comp.get("Quantita", 0),
                     "NumFase": comp.get("NumFase", ""),
                     "GestioneLotto": "si",
+                    "VarianteArt": _norm_text(comp.get("VarianteArt", "")),
                     "lotti": lotti_list,
                 }
             )
@@ -983,6 +996,7 @@ def _add_input_odp_closure_log(
             QtyDaLavorarePost=_norm_text(qty_post),
             ClosedBy=_norm_text(closed_by),
             ClosedAt=_norm_text(closed_at),
+            VarianteArt=_norm_text(getattr(ordine, "VarianteArt", "")),
         )
     )
 
@@ -1046,6 +1060,7 @@ def _add_input_odp_takeover_log(
             QtyDaLavorarePost=_norm_text(qty_post),
             ClosedBy=_norm_text(taken_by),
             ClosedAt=_norm_text(taken_at),
+            VarianteArt=_norm_text(getattr(ordine, "VarianteArt", "")),
         )
     )
 
@@ -1109,6 +1124,7 @@ def _add_input_odp_suspend_log(
             LavorazioneAttiva=_norm_text(ordine.LavorazioneAttiva),
             AttrezzaggioAttivo=_norm_text(ordine.AttrezzaggioAttivo),
             RifOrdinePrinc=_norm_text(getattr(ordine, "RifOrdinePrinc", "")),
+            VarianteArt=_norm_text(getattr(ordine, "VarianteArt", "")),
             Note=ordine.Note,
             FaseConsuntivata=None,
             QuantitaConforme=None,
@@ -1678,6 +1694,7 @@ def _ensure_stato_attivo(
             LavorazioneAttiva=_norm_text(getattr(ordine, "LavorazioneAttiva", "")),
             AttrezzaggioAttivo=_norm_text(getattr(ordine, "AttrezzaggioAttivo", "")),
             RifOrdinePrinc=rif_ordine_princ,
+            VarianteArt=_norm_text(getattr(ordine, "VarianteArt", "")),
         )
         db.session.add(stato)
         return stato
@@ -1692,7 +1709,7 @@ def _ensure_stato_attivo(
         stato.Tempo_funzionamento = "0"
     if rif_ordine_princ is not None:
         stato.RifOrdinePrinc = rif_ordine_princ
-
+    stato.VarianteArt = _norm_text(getattr(ordine, "VarianteArt", ""))
     stato.data_ultima_attivazione = now_iso
     return stato
 
@@ -1892,6 +1909,7 @@ def _append_operazione_log(
         DataUltimaAttivazionePost=_norm_text(
             runtime_post.get("data_ultima_attivazione")
         ),
+        VarianteArt=_norm_text(getattr(ordine, "VarianteArt", "")),
         TempoFunzionamentoPre=_norm_text(runtime_pre.get("tempo_funzionamento")),
         TempoFunzionamentoPost=_norm_text(runtime_post.get("tempo_funzionamento")),
         ElapsedSeconds=_norm_text(elapsed_seconds),
