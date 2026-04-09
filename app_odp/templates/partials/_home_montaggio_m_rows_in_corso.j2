@@ -18,6 +18,7 @@
                         type="button"
                         class="btn btn-link p-0 text-decoration-none open-materiali-modal"
                         data-codart="{{ singolo_odp.CodArt|e }}"
+                        data-variante="{{ singolo_odp.VarianteArt|e }}"
                         data-fase-attiva="{{ singolo_odp.FaseAttiva }}"
                         data-distinta='{{ singolo_odp.DistintaMateriale|tojson }}'>
                     {{ singolo_odp.CodArt }}

@@ -1,63 +1,17 @@
 from __future__ import annotations
-from typing import Optional, Literal
+
 from datetime import datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import json
-import re
-from icecream import ic
-
-DEFAULT_AVP_CFG = {
-    # TES
-    "tes_tipo_documento": 704,
-    "tes_numero_registrazione": 0,
-    "tes_appendice": "",
-    # RIG
-    "rig_tipo_op_qta": 702,
-    "rig_tipo_op_ore": 709,
-    "rig_magazzino_principale": "0",
-    "rig_causale_prestazione": 0,
-    # campo 90
-    # possibili valori:
-    # - "raw_rif_registraz"
-    # - "riga"
-    # - "riga_fase"
-    # - "barcode17"
-    # - "barcode22"
-    "rif90_mode": "raw_rif_registraz",
-    # quantità esportata:
-    # - "ok"      => solo quantita_ok
-    # - "worked"  => quantita_ok + quantita_ko
-    "qta_mode": "ok",
-    # compatibilità con il comportamento attuale
-    "include_header": False,
-    # per ora lasciato disattivo per non cambiare il tracciato esistente
-    "include_tes": False,
-}
-
-AVP_COLUMNS = [
-    "TipoRecord",  # 1
-    "TESTipoDoc",  # 10
-    "TESDataReg",  # 20
-    "TESNReg",  # 30
-    "TESApp",  # 40
-    "RIGTipoOpAvp",  # 80
-    "RIGRifORP",  # 90
-    "RIGCodArt",  # 100
-    "RIGQta",  # 140
-    "RIGMagPrinc",  # 210
-    "RIGCodRisorsa",  # 300
-    "RIGCausalePrest",  # 310
-    "RIGOreLav",  # 322
-]
 
 
 def _text(value) -> str:
     return str(value or "").strip()
 
 
-def _parse_decimal(value) -> Decimal:
+def _to_decimal(value) -> Decimal:
     raw = _text(value).replace(",", ".")
-    if raw == "":
+    if not raw:
         return Decimal("0")
     try:
         return Decimal(raw)
@@ -65,293 +19,23 @@ def _parse_decimal(value) -> Decimal:
         return Decimal("0")
 
 
-def _format_decimal_it(value, places: int = 2) -> str:
-    dec = _parse_decimal(value)
-    quant = Decimal("1") if places <= 0 else Decimal("1." + ("0" * places))
-    dec = dec.quantize(quant, rounding=ROUND_HALF_UP)
-    return f"{dec:.{places}f}".replace(".", ",")
-
-
-def _format_datetime_for_avp(value) -> str:
-    raw = _text(value)
-    if not raw:
-        return datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-
-    try:
-        dt = datetime.fromisoformat(raw)
-        return dt.strftime("%d/%m/%Y %H:%M:%S")
-    except ValueError:
-        pass
-
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%d/%m/%Y %H:%M:%S", "%Y-%m-%d"):
-        try:
-            dt = datetime.strptime(raw, fmt)
-            return dt.strftime("%d/%m/%Y %H:%M:%S")
-        except ValueError:
-            pass
-
-    return raw
-
-
-def _zero_fill_digits(value, width: int) -> str:
-    raw = re.sub(r"\D+", "", _text(value))
-    if not raw:
-        raw = "0"
-    return raw.zfill(width)
-
-
-def _parse_jsonish_list(value) -> list[str]:
-    if value in (None, ""):
-        return []
-
-    if isinstance(value, (list, tuple, set)):
-        raw_items = list(value)
-    else:
-        raw = str(value).strip()
-        if not raw:
-            return []
-        try:
-            parsed = json.loads(raw)
-        except Exception:
-            return [raw]
-        raw_items = parsed if isinstance(parsed, list) else [parsed]
-
-    out = []
-    for item in raw_items:
-        s = _text(item)
-        if s:
-            out.append(s)
-    return out
-
-
-def _fase_to_int(value) -> int | None:
-    s = _text(value)
-    if not s:
-        return None
-    try:
-        return int(float(s))
-    except (TypeError, ValueError):
-        return None
-
-
-def _parse_phase_list(value) -> list[str]:
-    raw = _text(value)
-    if not raw:
-        return []
-
-    try:
-        parsed = json.loads(raw)
-    except Exception:
-        parsed = None
-
-    if isinstance(parsed, list):
-        out = []
-        for item in parsed:
-            fase_int = _fase_to_int(item)
-            if fase_int is not None and fase_int > 0:
-                out.append(str(fase_int))
-        return out
-
-    totale_fasi = _fase_to_int(raw)
-    if totale_fasi is not None and totale_fasi > 0:
-        return [str(i) for i in range(1, totale_fasi + 1)]
-
-    return []
-
-
-def _active_value_for_phase(raw_values, raw_phases, fase_corrente: str) -> str:
-    values = _parse_jsonish_list(raw_values)
-    phases = _parse_phase_list(raw_phases)
-    fase_corrente = _text(fase_corrente)
-
-    if not values:
-        return ""
-
-    if phases and len(phases) == len(values):
-        for fase, value in zip(phases, values):
-            if fase == fase_corrente:
-                return _text(value)
-
-    fase_int = _fase_to_int(fase_corrente)
-    if fase_int is not None:
-        idx = fase_int - 1
-        if 0 <= idx < len(values):
-            return _text(values[idx])
-
-    return _text(values[0])
-
-
-def _build_rif_orp(payload: dict, cfg: dict) -> str:
-    mode = _text(cfg.get("rif90_mode")) or "raw_rif_registraz"
-
-    rif_reg = _text(payload.get("rif_registraz"))
-    id_doc = _text(payload.get("id_documento"))
-    id_riga = _text(payload.get("id_riga"))
-    fase = _text(payload.get("fase"))
-
-    if mode == "raw_rif_registraz":
-        return rif_reg
-
-    if mode == "riga":
-        if rif_reg:
-            return ".".join([x for x in [rif_reg, id_riga] if x])
-        return ""
-
-    if mode == "riga_fase":
-        if rif_reg:
-            return ".".join([x for x in [rif_reg, id_riga, fase] if x])
-        return ""
-
-    if mode == "barcode17":
-        return (
-            f"{_zero_fill_digits(id_doc, 9)}"
-            f"{_zero_fill_digits(id_riga, 4)}"
-            f"{_zero_fill_digits(fase, 4)}"
-        )
-
-    if mode == "barcode22":
-        return (
-            f"{_zero_fill_digits(id_doc, 9)}"
-            f"{_zero_fill_digits(id_riga, 9)}"
-            f"{_zero_fill_digits(fase, 4)}"
-        )
-
-    return rif_reg
-
-
-def _pick_resource_code(source_row, fase_corrente: str) -> str:
-    if source_row is None:
-        return ""
-
-    raw_risorse = _text(getattr(source_row, "CodRisorsaProd", ""))
-    raw_fasi = _text(getattr(source_row, "NumFase", ""))
-
-    by_phase = _active_value_for_phase(raw_risorse, raw_fasi, fase_corrente)
-    if by_phase:
-        return by_phase
-
-    risorsa_attiva = _text(getattr(source_row, "RisorsaAttiva", ""))
-    if risorsa_attiva:
-        return risorsa_attiva
-
-    return raw_risorse
-
-
-def _pick_magazzino_principale(source_row, cfg: dict) -> str:
-    if source_row is None:
-        return _text(cfg.get("rig_magazzino_principale", "0"))
-
-    cod_mag = _text(getattr(source_row, "CodMagPrincipale", ""))
-    return cod_mag or _text(cfg.get("rig_magazzino_principale", "0"))
-
-
-def _pick_tipo_documento(source_row, cfg: dict):
-    tipo_doc = _text(getattr(source_row, "CodTipoDoc", "")) if source_row else ""
-    return tipo_doc or cfg.get("tes_tipo_documento", 704)
-
-
-def _pick_qta_export(payload: dict, cfg: dict) -> Decimal:
-    q_ok = _parse_decimal(payload.get("quantita_ok"))
-    q_ko = _parse_decimal(payload.get("quantita_ko"))
-
-    mode = _text(cfg.get("qta_mode")) or "ok"
-    if mode == "worked":
-        return q_ok + q_ko
-
-    return q_ok
-
-
-def _serialize_avp_cell(value, numeric: bool = False) -> str:
-    if value is None:
-        value = ""
-
-    text = str(value)
-
-    if numeric:
-        return text
-
-    escaped = text.replace('"', '""')
-    return f'"{escaped}"'
-
-
-def _serialize_avp_row(values: list, numeric_indexes: set[int] | None = None) -> str:
-    numeric_indexes = numeric_indexes or set()
-    rendered = []
-    for idx, value in enumerate(values):
-        rendered.append(_serialize_avp_cell(value, numeric=(idx in numeric_indexes)))
-    return ";".join(rendered)
-
-
-def _build_tes_row(first_payload: dict, source_row, cfg: dict) -> list:
-    tipo_doc = _pick_tipo_documento(source_row, cfg)
-    data_reg = _format_datetime_for_avp(first_payload.get("created_at"))
-    n_reg = cfg.get("tes_numero_registrazione", 0)
-    tes_app = cfg.get("tes_appendice", "")
-
-    return [
-        "TES",
-        tipo_doc,
-        data_reg,
-        n_reg,
-        tes_app,
-        0,
-        "",
-        "",
-        _format_decimal_it(0, 2),
-        "",
-        "",
-        0,
-        _format_decimal_it(0, 3),
-    ]
-
-
-def _build_rig_row(payload: dict, source_row, cfg: dict) -> list | None:
-    qta = _pick_qta_export(payload, cfg)
-    ore = _parse_decimal(payload.get("tempo_funzionamento"))
-
-    if qta <= 0 and ore <= 0:
-        return None
-
-    tipo_doc = _pick_tipo_documento(source_row, cfg)
-    data_reg = _format_datetime_for_avp(payload.get("created_at"))
-    n_reg = cfg.get("tes_numero_registrazione", 0)
-    tes_app = cfg.get("tes_appendice", "")
-    fase = _text(payload.get("fase"))
-
-    return [
-        "RIG",
-        tipo_doc,
-        data_reg,
-        n_reg,
-        tes_app,
-        cfg.get("rig_tipo_op_qta", 702),
-        _build_rif_orp(payload, cfg),
-        _text(payload.get("cod_art")),
-        _format_decimal_it(qta, 2),
-        _pick_magazzino_principale(source_row, cfg),
-        _pick_resource_code(source_row, fase),
-        cfg.get("rig_causale_prestazione", 0),
-        _format_decimal_it(ore, 3),
-    ]
-
-
 def row_writer(
-    tipo_record: Literal["TES", "RIG"],
-    tipo_documento: int = 710,
-    registrazione_data: str = "",
-    registrazione_numero: int = None,
+    tipo_record,
+    tipo_documento=710,
+    registrazione_data="",
+    registrazione_numero=None,
     operazione_avanzamento="",
     riferimento_ordine="",
-    codice_articolo: str = "",
-    quantita_principale: int = None,
-    quantita_scarti_prima: int = None,
-    quantita_scarti_seconda: int = None,
-    riga_saldata: Literal[1, 0] = None,
-    riferimento_lotto: int = None,
-    magazzino_principale: int = None,
-    codice_risorsa: str = "",
-    causale_prestazione: str = "",
-    ore_lavorate: float = None,
+    codice_articolo="",
+    quantita_principale=None,
+    quantita_scarti_prima=None,
+    quantita_scarti_seconda=None,
+    riga_saldata=None,
+    riferimento_lotto=None,
+    magazzino_principale=None,
+    codice_risorsa="",
+    causale_prestazione="",
+    ore_lavorate=None,
 ):
     tipo_documento = tipo_documento if tipo_documento is not None else ""
     registrazione_numero = (
@@ -370,186 +54,136 @@ def row_writer(
         magazzino_principale if magazzino_principale is not None else ""
     )
     ore_lavorate = ore_lavorate if ore_lavorate is not None else ""
-    riga = f"{tipo_record};{registrazione_numero};{registrazione_data};{tipo_documento};{operazione_avanzamento};{riferimento_ordine};{codice_articolo};{quantita_principale};{quantita_scarti_prima};{quantita_scarti_seconda};{riga_saldata};{riferimento_lotto};{magazzino_principale};{codice_risorsa};{causale_prestazione};{ore_lavorate}"
-    return riga
+
+    return (
+        f"{tipo_record};{registrazione_numero};{registrazione_data};{tipo_documento};"
+        f"{operazione_avanzamento};{riferimento_ordine};{codice_articolo};"
+        f"{quantita_principale};{quantita_scarti_prima};{quantita_scarti_seconda};"
+        f"{riga_saldata};{riferimento_lotto};{magazzino_principale};"
+        f"{codice_risorsa};{causale_prestazione};{ore_lavorate}"
+    )
 
 
-def txt_generator(export_rows: list[dict], cfg: dict | None = None) -> str:
-    """
-    Struttura txt 17 colonne
-    Testata
-    1:tipo record; "TES"
-    10: tipo documento; "70[0-9]"
-    20: registrazione data; dd/mm/YYYY HH:MM
-    30: registrazione numero; ?
-    80: tipo operazione avanzamento; ""
-    90: riferimento ordine produzione; ""
-    100: Codice articolo; ""
-    140: Quantità principale; ""
-    150: Quantità scarti prima scelta; ""
-    160: Quantità scarti seconda scelta; ""
-    290: Riga saldata; ""
-    340: Riferimento lotto pf:codice alfanumerico; ""
-    210: magazzino principale; ""
-    300: Codice risorsa; ""
-    310: Causale prestazione; ""
-    322: ore lavorate risorsa 1; ""
-    Riga
-    1: tipo record; RIG
-    10: tipo documento; ""
-    20: registrazione data "";
-    30: registrazione numero "";
-    80: tipo operazione avanzamento "3[0-9]" esempio: 701;
-    90: riferimento ordine produzione "4[0-9].[0-9].2[0-9].[0-9],2[0-9]." es. 2008.1.15.1,00;
-    100: Codice articolo "2[A-Z]2[0-9]-3[0-9]-4[0-9]" es. BE12-345-6789;
-    140: Quantità principale "3[0-9]";
-    150: Quantità scarti prima scelta "3[0-9]";
-    160: Quantità scarti seconda scelta "3[0-9]";
-    290: Riga saldata "1/0" es. 0;
-    340: Riferimento lotto pf:codice alfanumerico "6[0-9]" es. 612345;
-    210: magazzino principale "[0-9]?[0-9]" es. 0;
-    300: Codice risorsa "10[A-Z]" es. ASSEMBLAGGIO;
-    310: Causale prestazione "";
-    322: ore lavorate risorsa 1 "2[0-9],2[0-9]" es.23,58;
-    """
+def txt_generator(export_rows: list[dict]) -> list[str]:
     if not export_rows:
         raise ValueError("Nessun record pending da esportare")
 
-    final_cfg = dict(DEFAULT_AVP_CFG)
-    if cfg:
-        final_cfg.update(cfg)
+    payload = export_rows[0]["payload"]
+
+    created_at = datetime.fromisoformat(payload["created_at"]).strftime(
+        "%d/%m/%Y %H:%M"
+    )
+    id_documento = payload["id_documento"]
+    id_riga = payload["id_riga"]
+    rif_registraz = payload["rif_registraz"]
+    fase = payload["fase"]
+
+    codice_articolo = payload["cod_art"]
+    lotto_articolo = payload["lotto_prodotto"]
+    magazzino = payload["magazzino"]
+    risorsa = payload["risorsa"]
+    salda_riga = payload["salda_riga"]
+
+    q_ok = _to_decimal(payload["quantita_ok"])
+    q_ko = _to_decimal(payload["quantita_ko"])
+    q_lavorata = q_ok + q_ko
+    tempo_funzionamento = _to_decimal(payload["tempo_funzionamento"])
+
+    distinta_base = json.loads(payload["distinta_base"] or "[]")
+    lotti_components = payload.get("lotti") or []
+
+    riferimento_ordine = f"{rif_registraz}.{id_riga},00"
+    riferimento_ordine_time = f"{rif_registraz}.{id_riga},00.{fase},00"
 
     lines = []
-    data_registrazione = datetime.fromisoformat(
-        export_rows[0]["payload"]["created_at"]
-    ).strftime("%d/%m/%Y %H:%M")
 
     head_line = row_writer(
         tipo_record="TES",
         tipo_documento="710",
-        registrazione_data=data_registrazione,
-        registrazione_numero=export_rows[0]["payload"]["id_documento"],
+        registrazione_data=created_at,
+        registrazione_numero=id_documento,
     )
     lines.append(head_line)
-    distinta_base_json = json.loads(export_rows[0]["payload"]["distinta_base"])
-    distinta_base = [riga for riga in distinta_base_json]
-    codice_articolo = export_rows[0]["payload"]["cod_art"]
-    lotto_articolo = export_rows[0]["payload"]["lotto_prodotto"]
-    riferimento_ordine = f"{export_rows[0]['payload']['rif_registraz']}.{export_rows[0]['payload']['id_riga']},00"
-    riferimento_ordine_time = f"{export_rows[0]['payload']['rif_registraz']}.{export_rows[0]['payload']['id_riga']},00.{export_rows[0]['payload']['fase']},00"
+
+    ore_per_pezzo = tempo_funzionamento / q_lavorata
 
     product_line = row_writer(
         tipo_record="RIG",
         tipo_documento="710",
-        registrazione_data=data_registrazione,
-        registrazione_numero=export_rows[0]["payload"]["id_documento"],
+        registrazione_data=created_at,
+        registrazione_numero=id_documento,
         operazione_avanzamento="701",
         riferimento_ordine=riferimento_ordine,
         codice_articolo=codice_articolo,
-        quantita_principale=export_rows[0]["payload"]["quantita_ok"],
-        quantita_scarti_prima=export_rows[0]["payload"]["quantita_ko"],
+        quantita_principale=str(q_ok),
+        quantita_scarti_prima=str(q_ko),
         quantita_scarti_seconda=0,
-        riga_saldata=export_rows[0]["payload"]["salda_riga"],
+        riga_saldata=salda_riga,
         riferimento_lotto=lotto_articolo,
-        magazzino_principale=export_rows[0]["payload"]["magazzino"],
-        codice_risorsa=export_rows[0]["payload"]["risorsa"],
+        magazzino_principale=magazzino,
+        codice_risorsa=risorsa,
         causale_prestazione="",
-        ore_lavorate=(
-            export_rows[0]["payload"]["tempo_funzionamento"]
-            / (
-                export_rows[0]["payload"]["quantita_ok"]
-                + export_rows[0]["payload"]["quantita_ko"]
-            )
-        ),
+        ore_lavorate=ore_per_pezzo,
     )
+    lines.append(product_line)
+
     product_time_line = row_writer(
         tipo_record="RIG",
         tipo_documento="710",
-        registrazione_data=data_registrazione,
-        registrazione_numero=export_rows[0]["payload"]["id_documento"],
+        registrazione_data=created_at,
+        registrazione_numero=id_documento,
         operazione_avanzamento="709",
         riferimento_ordine=riferimento_ordine_time,
         codice_articolo=codice_articolo,
-        quantita_principale=export_rows[0]["payload"]["quantita_ok"],
-        quantita_scarti_prima=export_rows[0]["payload"]["quantita_ko"],
+        quantita_principale=str(q_ok),
+        quantita_scarti_prima=str(q_ko),
         quantita_scarti_seconda=0,
-        riga_saldata=export_rows[0]["payload"]["salda_riga"],
+        riga_saldata=salda_riga,
         riferimento_lotto=lotto_articolo,
-        magazzino_principale=export_rows[0]["payload"]["magazzino"],
-        codice_risorsa=export_rows[0]["payload"]["risorsa"],
+        magazzino_principale=magazzino,
+        codice_risorsa=risorsa,
         causale_prestazione="",
-        ore_lavorate=export_rows[0]["payload"]["tempo_funzionamento"],
+        ore_lavorate=str(tempo_funzionamento),
     )
-    lines.append(product_line)
-    component_list = []
-    lotti_components = export_rows[0]["payload"]["lotti"]
+    lines.append(product_time_line)
+
     for component in distinta_base:
+        if not isinstance(component, dict):
+            continue
+
         riga_lotto_component = next(
             (
                 riga
                 for riga in lotti_components
-                if riga["CodArt"] == component["CodArt"]
+                if _text(riga.get("CodArt")) == _text(component.get("CodArt"))
+                and _text(riga.get("VarianteArt"))
+                == _text(component.get("VarianteArt"))
             ),
             None,
         )
+
         lotto_component = (
-            riga_lotto_component["RifLottoAlfa"] if riga_lotto_component else None
+            _text(riga_lotto_component.get("RifLottoAlfa"))
+            if riga_lotto_component
+            else None
         )
 
         component_line = row_writer(
             tipo_record="RIG",
             tipo_documento="710",
-            registrazione_data=data_registrazione,
-            registrazione_numero=export_rows[0]["payload"]["id_documento"],
+            registrazione_data=created_at,
+            registrazione_numero=id_documento,
             operazione_avanzamento="703",
             riferimento_ordine=riferimento_ordine,
-            codice_articolo=component["CodArt"],
-            quantita_principale=component["Quantita"],
-            riga_saldata=export_rows[0]["payload"]["salda_riga"],
+            codice_articolo=component.get("CodArt", ""),
+            quantita_principale=component.get("Quantita", ""),
+            riga_saldata=salda_riga,
             riferimento_lotto=lotto_component,
-            magazzino_principale=export_rows[0]["payload"]["magazzino"],
-            codice_risorsa=export_rows[0]["payload"]["risorsa"],
+            magazzino_principale=magazzino,
+            codice_risorsa=risorsa,
             causale_prestazione="",
-            ore_lavorate=export_rows[0]["payload"]["tempo_funzionamento"],
+            ore_lavorate=str(tempo_funzionamento),
         )
         lines.append(component_line)
+
     return lines
-
-    # if final_cfg.get("include_header"):
-    #    lines.append(_serialize_avp_row(AVP_COLUMNS))
-
-    # if final_cfg.get("include_tes"):
-    #    first_payload = export_rows[0].get("payload") or {}
-    #    first_source_row = export_rows[0].get("source_row")
-    #    tes_row = _build_tes_row(first_payload, first_source_row, final_cfg)
-    #    lines.append(
-    #        _serialize_avp_row(
-    #            tes_row,
-    #            numeric_indexes={1, 3, 5, 8, 11, 12},
-    #        )
-    #    )
-
-    # for row in export_rows:
-    #    payload = row.get("payload") or {}
-    #    source_row = row.get("source_row")
-
-    #    rig_row = _build_rig_row(payload, source_row, final_cfg)
-    #    if rig_row is not None:
-    #        lines.append(
-    #            _serialize_avp_row(
-    #                rig_row,
-    #                numeric_indexes={1, 3, 5, 8, 11, 12},
-    #            )
-    #        )
-
-    # if not lines:
-    #    raise ValueError("Nessuna riga AVP esportabile")
-
-    # payload = {}
-
-    # with open("log.txt", "a", encoding="utf-8") as f:
-    #    for i, record in enumerate(righe):
-    #        riga = formatter_per_posizione[i](record)
-    #        f.write(riga + "\n")
-
-    return "\n".join(lines) + "\n"

@@ -53,7 +53,7 @@ from app_odp.models import (
 )
 from app_odp.policy.decorator import require_perm
 from app_odp.policy.policy import RbacPolicy, PROTECTED_ROLE_NAMES
-from app_odp.odp_output import txt_generator, DEFAULT_AVP_CFG
+from app_odp.odp_output import txt_generator
 
 
 try:
@@ -874,6 +874,7 @@ def _normalize_lotti_for_payload(lotti_input: list[dict]) -> list[dict]:
         rows.append(
             {
                 "CodArt": _norm_text(row.get("CodArt")),
+                "VarianteArt": _norm_text(row.get("VarianteArt")),
                 "RifLottoAlfa": _norm_text(row.get("RifLottoAlfa")),
                 "Quantita": str(row.get("Quantita", 0)),
                 "Esito": _norm_text(row.get("Esito", "ok")),
@@ -1307,12 +1308,6 @@ def _write_txt_content(
     return path_txt
 
 
-def _erp_avp_cfg() -> dict:
-    cfg = dict(DEFAULT_AVP_CFG)
-    cfg.update(current_app.config.get("ERP_AVP_DEFAULTS", {}) or {})
-    return cfg
-
-
 def _json_loads_safe(raw, default):
     try:
         return json.loads(raw)
@@ -1320,15 +1315,16 @@ def _json_loads_safe(raw, default):
         return default
 
 
-def _get_pending_avp_outbox() -> list[ErpOutbox]:
-    return (
-        ErpOutbox.query.filter(
-            ErpOutbox.kind == "consuntivo_fase",
-            ErpOutbox.status == "pending",
-        )
-        .order_by(ErpOutbox.outbox_id.asc())
-        .all()
+def _get_pending_avp_outbox(outbox_id: int | None = None) -> list[ErpOutbox]:
+    q = ErpOutbox.query.filter(
+        ErpOutbox.kind == "consuntivo_fase",
+        ErpOutbox.status == "pending",
     )
+
+    if outbox_id is not None:
+        q = q.filter(ErpOutbox.outbox_id == outbox_id)
+
+    return q.order_by(ErpOutbox.outbox_id.asc()).all()
 
 
 def _get_outbox_payload(outbox: ErpOutbox) -> dict:
@@ -1336,9 +1332,9 @@ def _get_outbox_payload(outbox: ErpOutbox) -> dict:
     return payload if isinstance(payload, dict) else {}
 
 
-def _get_pending_avp_export_rows() -> list[dict]:
+def _get_pending_avp_export_rows(outbox_id: int | None = None) -> list[dict]:
     rows = []
-    for outbox in _get_pending_avp_outbox():
+    for outbox in _get_pending_avp_outbox(outbox_id=outbox_id):
         rows.append(
             {
                 "outbox": outbox,
@@ -1377,6 +1373,42 @@ def _first_not_blank(*values, default=""):
         if text:
             return text
     return default
+
+
+def _build_export_distinta_base(
+    ordine,
+    fase_corrente: str,
+    q_lavorata: Decimal,
+    q_tot: Decimal,
+) -> str:
+    distinta = _parse_distinta_materiale(ordine)
+    fase_corrente_int = _fase_to_int(fase_corrente)
+
+    out = []
+
+    for comp in distinta:
+        if not isinstance(comp, dict):
+            continue
+
+        comp_fase = _fase_to_int(comp.get("NumFase"))
+        if fase_corrente_int is not None and comp_fase != fase_corrente_int:
+            continue
+
+        qty_scalata = _scaled_component_qty(
+            comp.get("Quantita"),
+            q_lavorata=q_lavorata,
+            q_tot=q_tot,
+        )
+
+        out.append(
+            {
+                **comp,
+                "Quantita": _decimal_to_text(qty_scalata),
+                "VarianteArt": _norm_text(comp.get("VarianteArt", "")),
+            }
+        )
+
+    return json.dumps(out, ensure_ascii=False)
 
 
 @main_bp.context_processor
@@ -3032,8 +3064,15 @@ def api_chiudi_ordine():
                 409,
             )
 
+        distinta_base_export = _build_export_distinta_base(
+            ordine=ordine,
+            fase_corrente=fase_corrente,
+            q_lavorata=q_lavorata,
+            q_tot=q_tot,
+        )
+
         payload = _build_phase_payload(
-            distinta_base=ordine.DistintaMateriale,
+            distinta_base=ordine.distinta_base_export,
             ordine=ordine,
             fase_corrente=fase_corrente,
             q_ok=q_ok,
@@ -3447,9 +3486,15 @@ def api_chiudi_ordine_montaggio_macchina():
         tempo_finale = _norm_text(stato.Tempo_funzionamento) or "0"
 
     fase_corrente = _fase_corrente_for_export(ordine, stato=stato, fase_override=fase)
+    distinta_base_export = _build_export_distinta_base(
+        ordine=ordine,
+        fase_corrente=fase_corrente,
+        q_lavorata=q_tot,
+        q_tot=q_tot,
+    )
     payload = _build_phase_payload(
         ordine=ordine,
-        distinta_base=ordine.DistintaMateriale,
+        distinta_base=ordine.distinta_base_export,
         fase_corrente=fase_corrente,
         q_ok=q_ok,
         q_nok=q_nok,
@@ -3686,26 +3731,36 @@ def generazione_lotti(dt=None) -> str:
 @require_perm("home")
 def api_export_avp_txt():
     data = request.get_json(silent=True) or {}
-    suffix = _norm_text(data.get("suffix")) or "manuale"
 
-    export_rows = _get_pending_avp_export_rows()
+    suffix = _norm_text(data.get("suffix")) or "manuale"
+    outbox_id_raw = data.get("outbox_id")
+
+    try:
+        outbox_id = int(outbox_id_raw)
+    except (TypeError, ValueError):
+        return jsonify(
+            {
+                "ok": False,
+                "error": "Parametro outbox_id obbligatorio e non valido.",
+            }
+        ), 400
+
+    export_rows = _get_pending_avp_export_rows(outbox_id=outbox_id)
     if not export_rows:
         return (
             jsonify(
                 {
                     "ok": False,
-                    "error": "Nessun record ERP pending da esportare",
+                    "error": "Nessun record ERP pending trovato per l'outbox richiesto.",
                 }
             ),
             404,
         )
 
     outbox_rows = [row["outbox"] for row in export_rows]
+
     try:
-        list_line = txt_generator(
-            export_rows,
-            cfg=_erp_avp_cfg(),
-        )
+        list_line = txt_generator(export_rows)
         path_txt = _write_txt_content(
             list_line,
             prefix="AVPB",
@@ -3733,6 +3788,7 @@ def api_export_avp_txt():
         )
     except Exception as exc:
         err = str(exc)
+
     try:
         for row in outbox_rows:
             row.status = "error"
@@ -3742,15 +3798,7 @@ def api_export_avp_txt():
     except Exception:
         db.session.rollback()
 
-    return (
-        jsonify(
-            {
-                "ok": False,
-                "error": f"Errore generazione file AVP: {err}",
-            }
-        ),
-        500,
-    )
+    return jsonify({"ok": False, "error": f"Errore generazione file AVP: {err}"}), 500
 
 
 @main_bp.route("/impostazioni")
