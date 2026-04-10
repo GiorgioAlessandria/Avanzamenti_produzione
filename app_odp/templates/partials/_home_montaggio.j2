@@ -1591,8 +1591,10 @@
                 if (qty > giacenza) {
                     errors.push(`${cod} lotto ${lottoVal}: qtà ${qty} > giacenza ${giacenza}.`);
                 }
-
-                const key = `${cod}|${lottoVal}`;
+                const lottoSelect = row.querySelector(".lotto-select-sl");
+                const selectedOption = lottoSelect?.options?.[lottoSelect.selectedIndex];
+                const codMag = selectedOption?.dataset?.codmag || "";
+                const key = `${cod}|${lottoVal}|${codMag}`;
                 if (usati.has(key)) {
                     errors.push(`${cod}: lotto ${lottoVal} duplicato non consentito.`);
                 }
@@ -1601,11 +1603,13 @@
                 if (!perCodice[cod]) perCodice[cod] = 0;
                 perCodice[cod] += qty;
 
+
                 lottiPayload.push({
                     CodArt: cod,
                     RifLottoAlfa: lottoVal,
+                    CodMag: codMag,
                     Quantita: qty,
-                    Esito: "ok"
+                    Esito: esito
                 });
             });
 
@@ -2172,8 +2176,10 @@
                 if (qty > giacenza) {
                     errors.push(`${cod} lotto ${lottoVal}: qtà ${qty} > giacenza ${giacenza}.`);
                 }
-
-                const lottoKey = `${cod}|${lottoVal}`;
+                const lottoSelect = row.querySelector(".lotto-select-sl");
+                const selectedOption = lottoSelect?.options?.[lottoSelect.selectedIndex];
+                const codMag = selectedOption?.dataset?.codmag || "";
+                const lottoKey = `${cod}|${lottoVal}|${codMag}`;
                 if (!perLotto[lottoKey]) {
                     perLotto[lottoKey] = {
                         cod,
@@ -2198,10 +2204,10 @@
                 if (esito === "ok") perCodice[cod].ok += qty;
                 else perCodice[cod].ko += qty;
                 perCodice[cod].totale += qty;
-
                 lottiPayload.push({
                     CodArt: cod,
                     RifLottoAlfa: lottoVal,
+                    CodMag: codMag,
                     Quantita: qty,
                     Esito: esito
                 });

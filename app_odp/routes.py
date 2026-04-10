@@ -868,6 +868,7 @@ def _normalize_lotti_for_payload(lotti_input: list[dict]) -> list[dict]:
                 "CodArt": _norm_text(row.get("CodArt")),
                 "VarianteArt": _norm_text(row.get("VarianteArt")),
                 "RifLottoAlfa": _norm_text(row.get("RifLottoAlfa")),
+                "CodMag": _norm_text(row.get("CodMag")),
                 "Quantita": str(row.get("Quantita", 0)),
                 "Esito": _norm_text(row.get("Esito", "ok")),
             }
@@ -2967,9 +2968,17 @@ def api_chiudi_ordine():
                     400,
                 )
 
-            lotto_db = GiacenzaLotti.query.filter_by(
-                CodArt=cod_art, RifLottoAlfa=rif_lotto
-            ).first()
+            cod_mag = _norm_text(lotto_row.get("CodMag"))
+
+            lotto_query = GiacenzaLotti.query.filter_by(
+                CodArt=cod_art,
+                RifLottoAlfa=rif_lotto,
+            )
+
+            if cod_mag:
+                lotto_query = lotto_query.filter_by(CodMag=cod_mag)
+
+            lotto_db = lotto_query.first()
             if lotto_db is None:
                 return (
                     jsonify(
@@ -3412,9 +3421,17 @@ def api_chiudi_ordine_montaggio_macchina():
                     }
                 ), 400
 
-            lotto_db = GiacenzaLotti.query.filter_by(
-                CodArt=cod_art, RifLottoAlfa=rif_lotto
-            ).first()
+            cod_mag = _norm_text(lotto_row.get("CodMag"))
+
+            lotto_query = GiacenzaLotti.query.filter_by(
+                CodArt=cod_art,
+                RifLottoAlfa=rif_lotto,
+            )
+
+            if cod_mag:
+                lotto_query = lotto_query.filter_by(CodMag=cod_mag)
+
+            lotto_db = lotto_query.first()
 
             if lotto_db is None:
                 return jsonify(

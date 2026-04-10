@@ -1462,7 +1462,10 @@
                     errors.push(`${cod} lotto ${lottoVal}: qtà ${qty} > giacenza ${giacenza}.`);
                 }
 
-                const lottoKey = `${cod}|${lottoVal}`;
+                const lottoSelect = row.querySelector(".lotto-select-sl");
+                const selectedOption = lottoSelect?.options?.[lottoSelect.selectedIndex];
+                const codMag = selectedOption?.dataset?.codmag || "";
+                const lottoKey = `${cod}|${lottoVal}|${codMag}`;
                 if (!perLotto[lottoKey]) {
                     perLotto[lottoKey] = {
                         cod,
@@ -1491,6 +1494,7 @@
                 lottiPayload.push({
                     CodArt: cod,
                     RifLottoAlfa: lottoVal,
+                    CodMag: codMag,
                     Quantita: qty,
                     Esito: esito
                 });

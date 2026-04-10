@@ -205,6 +205,7 @@ def txt_generator(export_rows: list[dict]) -> list[str]:
             for riga_lotto_component in righe_lotto_component:
                 lotto_component = _text(riga_lotto_component.get("RifLottoAlfa"))
                 quantita_lotto = _text(riga_lotto_component.get("Quantita"))
+                magazzino_lotto = _text(riga_lotto_component.get("CodMag")) or magazzino
 
                 component_line = row_writer(
                     tipo_record="RIG",
@@ -218,7 +219,7 @@ def txt_generator(export_rows: list[dict]) -> list[str]:
                     quantita_principale=quantita_lotto,
                     riga_saldata=salda_riga,
                     riferimento_lotto=lotto_component,
-                    magazzino_principale=magazzino,
+                    magazzino_principale=magazzino_lotto,
                     codice_risorsa=risorsa,
                     causale_prestazione="",
                     ore_lavorate=str(ore_per_pezzo),
