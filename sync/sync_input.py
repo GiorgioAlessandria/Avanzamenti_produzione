@@ -594,6 +594,7 @@ INPUT_ODP_ERP_COLS = [
     "IdDocumento",
     "IdRiga",
     "RifRegistraz",
+    "NumProgrRiga",
     "CodArt",
     "DesArt",
     "Quantita",

@@ -376,6 +376,7 @@ class OdpRuntimeLog(db.Model):
     Note = db.Column(db.Text)
     RifOrdinePrinc = db.Column(db.Text)
     VarianteArt = db.Column(db.Text)
+    NumProgrRiga = db.Column(db.Text)
 
     __table_args__ = (
         db.Index("ix_odp_runtime_log_doc_riga", "IdDocumento", "IdRiga"),
@@ -765,6 +766,7 @@ class InputOdp(db.Model):
     CodTipoDoc = db.Column(db.Text)
     TempoAttrezzaggio = db.Column(db.Text)
     VarianteArt = db.Column(db.Text)
+    NumProgrRiga = db.Column(db.Text)
 
     __table_args__ = (db.PrimaryKeyConstraint("IdDocumento", "IdRiga"),)
 

@@ -63,7 +63,8 @@ def row_writer(
     quantita_scarti_prima=None,
     quantita_scarti_seconda=None,
     riga_saldata=None,
-    riferimento_lotto=None,
+    riferimento_lotto_padre=None,
+    riferimento_lotto_pf=None,
     magazzino_principale=None,
     codice_risorsa="",
     causale_prestazione="",
@@ -82,7 +83,12 @@ def row_writer(
         riga_saldata = riga_saldata if riga_saldata is not None else "0"
     else:
         riga_saldata = ""
-    riferimento_lotto = riferimento_lotto if riferimento_lotto is not None else ""
+    riferimento_lotto_pf = (
+        riferimento_lotto_pf if riferimento_lotto_pf is not None else ""
+    )
+    riferimento_lotto_padre = (
+        riferimento_lotto_padre if riferimento_lotto_padre is not None else ""
+    )
     magazzino_principale = (
         magazzino_principale if magazzino_principale is not None else ""
     )
@@ -92,7 +98,7 @@ def row_writer(
         f"{tipo_record};{tipo_documento};{registrazione_data};{codice_documento};"
         f"{operazione_avanzamento};{riferimento_ordine};{codice_articolo};{variante};"
         f"{quantita_principale};{quantita_scarti_prima};{quantita_scarti_seconda};"
-        f"{riga_saldata};{riferimento_lotto};{magazzino_principale};"
+        f"{riga_saldata};{riferimento_lotto_padre};{riferimento_lotto_pf};{magazzino_principale};"
         f"{codice_risorsa};{causale_prestazione};{ore_lavorate}"
     )
 
@@ -158,7 +164,8 @@ def txt_generator(export_rows: list[dict]) -> list[str]:
         quantita_scarti_prima=str(q_ko),
         quantita_scarti_seconda=0,
         riga_saldata=salda_riga,
-        riferimento_lotto=lotto_articolo,
+        riferimento_lotto_padre=lotto_articolo,
+        riferimento_lotto_pf=lotto_articolo,
         magazzino_principale=magazzino,
         codice_risorsa=risorsa,
         causale_prestazione="",
@@ -179,7 +186,8 @@ def txt_generator(export_rows: list[dict]) -> list[str]:
         quantita_scarti_prima=str(q_ko),
         quantita_scarti_seconda=0,
         riga_saldata=salda_riga,
-        riferimento_lotto=lotto_articolo,
+        riferimento_lotto_padre=lotto_articolo,
+        riferimento_lotto_pf=lotto_articolo,
         magazzino_principale=magazzino,
         codice_risorsa=risorsa,
         causale_prestazione="",
@@ -218,7 +226,8 @@ def txt_generator(export_rows: list[dict]) -> list[str]:
                     variante=component.get("VarianteArt", ""),
                     quantita_principale=quantita_lotto,
                     riga_saldata=salda_riga,
-                    riferimento_lotto=lotto_component,
+                    riferimento_lotto_padre=lotto_component,
+                    riferimento_lotto_pf=lotto_articolo,
                     magazzino_principale=magazzino_lotto,
                     codice_risorsa=risorsa,
                     causale_prestazione="",
@@ -237,7 +246,8 @@ def txt_generator(export_rows: list[dict]) -> list[str]:
                 variante=component.get("VarianteArt", ""),
                 quantita_principale=component.get("Quantita", ""),
                 riga_saldata=salda_riga,
-                riferimento_lotto=None,
+                riferimento_lotto_padre="",
+                riferimento_lotto_pf=lotto_articolo,
                 magazzino_principale=magazzino,
                 codice_risorsa=risorsa,
                 causale_prestazione="",
