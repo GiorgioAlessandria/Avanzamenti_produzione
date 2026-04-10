@@ -1,4 +1,5 @@
 from __future__ import annotations
+from typing import Literal
 
 from datetime import datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
@@ -50,7 +51,7 @@ def _load_distinta_base(value) -> list[dict]:
 
 
 def row_writer(
-    tipo_record,
+    tipo_record=Literal["TES", "RIG"],
     tipo_documento=710,
     registrazione_data="",
     codice_documento=None,
@@ -77,7 +78,10 @@ def row_writer(
     quantita_scarti_seconda = (
         quantita_scarti_seconda if quantita_scarti_seconda is not None else ""
     )
-    riga_saldata = riga_saldata if riga_saldata is not None else "0"
+    if tipo_record == "RIG":
+        riga_saldata = riga_saldata if riga_saldata is not None else "0"
+    else:
+        riga_saldata = ""
     riferimento_lotto = riferimento_lotto if riferimento_lotto is not None else ""
     magazzino_principale = (
         magazzino_principale if magazzino_principale is not None else ""
@@ -127,22 +131,23 @@ def txt_generator(export_rows: list[dict]) -> list[str]:
 
     head_line = row_writer(
         tipo_record="TES",
-        tipo_documento="710",
+        tipo_documento=710,
         registrazione_data=created_at,
         codice_documento=id_documento,
     )
     lines.append(head_line)
 
     ore_per_pezzo = Decimal("0")
+    print(tempo_funzionamento, q_lavorata)
     if q_lavorata > 0:
         ore_per_pezzo = (tempo_funzionamento / q_lavorata).quantize(
-            Decimal("0.0001"),
+            Decimal("0.01"),
             rounding=ROUND_HALF_UP,
         )
 
     product_line = row_writer(
         tipo_record="RIG",
-        tipo_documento="710",
+        tipo_documento=710,
         registrazione_data=created_at,
         codice_documento=id_documento,
         operazione_avanzamento="701",
@@ -163,7 +168,7 @@ def txt_generator(export_rows: list[dict]) -> list[str]:
 
     product_time_line = row_writer(
         tipo_record="RIG",
-        tipo_documento="710",
+        tipo_documento=710,
         registrazione_data=created_at,
         codice_documento=id_documento,
         operazione_avanzamento="709",
@@ -205,9 +210,9 @@ def txt_generator(export_rows: list[dict]) -> list[str]:
 
         component_line = row_writer(
             tipo_record="RIG",
-            tipo_documento="710",
+            tipo_documento=710,
             registrazione_data=created_at,
-            registrazione_numero=id_documento,
+            codice_documento=id_documento,
             operazione_avanzamento="703",
             riferimento_ordine=riferimento_ordine,
             codice_articolo=component.get("CodArt", ""),
@@ -218,7 +223,7 @@ def txt_generator(export_rows: list[dict]) -> list[str]:
             magazzino_principale=magazzino,
             codice_risorsa=risorsa,
             causale_prestazione="",
-            ore_lavorate=str(tempo_funzionamento),
+            ore_lavorate=str(ore_per_pezzo),
         )
         lines.append(component_line)
 

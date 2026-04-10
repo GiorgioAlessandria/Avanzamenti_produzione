@@ -1756,7 +1756,10 @@
                     return;
                 }
 
-                const exportResult = await exportAvpTxt({suffix: "montaggio_m"});
+                const exportResult = await exportAvpTxt({
+                    suffix: "montaggio_m",
+                    outboxId: data.outbox_id
+                });
                 if (!exportResult.ok) {
                     alert(exportResult.error || "Ordine chiuso, ma file ERP non generato.");
                 }
@@ -2469,7 +2472,10 @@
                     return;
                 }
 
-                const exportResult = await exportAvpTxt({suffix: "montaggio_sl"});
+                const exportResult = await exportAvpTxt({
+                    suffix: "montaggio_sl",
+                    outboxId: data.outbox_id
+                });
                 if (!exportResult.ok) {
                     alert(exportResult.error || "Ordine chiuso, ma file ERP non generato.");
                 }
@@ -2508,7 +2514,14 @@
     })();
 </script>
 <script>
-    async function exportAvpTxt({suffix = "montaggio"} = {}) {
+    async function exportAvpTxt({suffix = "montaggio", outboxId} = {}) {
+        if (!outboxId) {
+            return {
+                ok: false,
+                error: "outbox_id mancante per la generazione del file ERP."
+            };
+        }
+
         try {
             const resp = await fetch("/api/erp/export/avp", {
                 method: "POST",
@@ -2517,7 +2530,10 @@
                     "X-Requested-With": "XMLHttpRequest"
                 },
                 credentials: "same-origin",
-                body: JSON.stringify({suffix})
+                body: JSON.stringify({
+                    suffix,
+                    outbox_id: outboxId
+                })
             });
 
             let data = {};
