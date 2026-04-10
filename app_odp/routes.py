@@ -1292,11 +1292,11 @@ def _write_txt_content(
     *,
     prefix: str = "AVPB",
     suffix: str = "",
-    encoding: str = "utf-8-sig",
+    encoding: str = "utf-8",
 ) -> Path:
     path_txt = _build_export_txt_path(prefix=prefix, suffix=suffix)
     content = "\n".join(lines) + "\n"
-    path_txt.write_text(content, encoding=encoding, newline="\n")
+    path_txt.write_text(content, encoding=encoding, newline="\r\n")
     return path_txt
 
 
@@ -3751,7 +3751,7 @@ def api_export_avp_txt():
             list_line,
             prefix="AVPB",
             suffix=suffix,
-            encoding="utf-8-sig",
+            encoding="utf-8",
         )
 
         now_iso = _now_rome_dt().isoformat(timespec="seconds")
