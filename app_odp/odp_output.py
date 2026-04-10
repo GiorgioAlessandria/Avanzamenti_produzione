@@ -51,7 +51,7 @@ def _load_distinta_base(value) -> list[dict]:
 
 
 def row_writer(
-    tipo_record=Literal["TES", "RIG"],
+    tipo_record: Literal["TES", "RIG"],
     tipo_documento=710,
     registrazione_data="",
     codice_documento=None,
@@ -191,40 +191,57 @@ def txt_generator(export_rows: list[dict]) -> list[str]:
         if not isinstance(component, dict):
             continue
 
-        riga_lotto_component = next(
-            (
-                riga
-                for riga in lotti_components
-                if _text(riga.get("CodArt")) == _text(component.get("CodArt"))
-                and _text(riga.get("VarianteArt"))
-                == _text(component.get("VarianteArt"))
-            ),
-            None,
-        )
+        cod_art_component = _text(component.get("CodArt"))
+        variante_component = _text(component.get("VarianteArt"))
 
-        lotto_component = (
-            _text(riga_lotto_component.get("RifLottoAlfa"))
-            if riga_lotto_component
-            else None
-        )
+        righe_lotto_component = [
+            riga
+            for riga in lotti_components
+            if _text(riga.get("CodArt")) == cod_art_component
+            and _text(riga.get("VarianteArt")) == variante_component
+        ]
 
-        component_line = row_writer(
-            tipo_record="RIG",
-            tipo_documento=710,
-            registrazione_data=created_at,
-            codice_documento=id_documento,
-            operazione_avanzamento="703",
-            riferimento_ordine=riferimento_ordine,
-            codice_articolo=component.get("CodArt", ""),
-            variante=component.get("VarianteArt", ""),
-            quantita_principale=component.get("Quantita", ""),
-            riga_saldata=salda_riga,
-            riferimento_lotto=lotto_component,
-            magazzino_principale=magazzino,
-            codice_risorsa=risorsa,
-            causale_prestazione="",
-            ore_lavorate=str(ore_per_pezzo),
-        )
-        lines.append(component_line)
+        if righe_lotto_component:
+            for riga_lotto_component in righe_lotto_component:
+                lotto_component = _text(riga_lotto_component.get("RifLottoAlfa"))
+                quantita_lotto = _text(riga_lotto_component.get("Quantita"))
+
+                component_line = row_writer(
+                    tipo_record="RIG",
+                    tipo_documento=710,
+                    registrazione_data=created_at,
+                    codice_documento=id_documento,
+                    operazione_avanzamento="703",
+                    riferimento_ordine=riferimento_ordine,
+                    codice_articolo=component.get("CodArt", ""),
+                    variante=component.get("VarianteArt", ""),
+                    quantita_principale=quantita_lotto,
+                    riga_saldata=salda_riga,
+                    riferimento_lotto=lotto_component,
+                    magazzino_principale=magazzino,
+                    codice_risorsa=risorsa,
+                    causale_prestazione="",
+                    ore_lavorate=str(ore_per_pezzo),
+                )
+                lines.append(component_line)
+        else:
+            component_line = row_writer(
+                tipo_record="RIG",
+                tipo_documento=710,
+                registrazione_data=created_at,
+                codice_documento=id_documento,
+                operazione_avanzamento="703",
+                riferimento_ordine=riferimento_ordine,
+                codice_articolo=component.get("CodArt", ""),
+                variante=component.get("VarianteArt", ""),
+                quantita_principale=component.get("Quantita", ""),
+                riga_saldata=salda_riga,
+                riferimento_lotto=None,
+                magazzino_principale=magazzino,
+                codice_risorsa=risorsa,
+                causale_prestazione="",
+                ore_lavorate=str(ore_per_pezzo),
+            )
+            lines.append(component_line)
 
     return lines
