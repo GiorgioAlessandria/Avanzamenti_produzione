@@ -14,8 +14,8 @@
                     <input type="text"
                            id="create-user-username"
                            class="form-control"
-                           placeholder="Cognome Nome">
-                    maxlength="100">
+                           placeholder="cognome_nome"
+                           maxlength="100">
                 </div>
 
                 <label for="create-user-public-id"
@@ -91,6 +91,21 @@
                             id="btn-create-user-save">
                         Crea utente
                     </button>
+                </div>
+                <div class="mb-3">
+                    <label for="create-user-login-code"
+                           class="form-label fw-semibold">
+                        Login code
+                    </label>
+                    <input type="text"
+                           id="create-user-login-code"
+                           class="form-control"
+                           minlength="12"
+                           autocomplete="off"
+                           placeholder="Minimo 12 caratteri alfanumerici">
+                    <div class="form-text">
+                        Obbligatorio. Solo lettere e numeri, minimo 12 caratteri.
+                    </div>
                 </div>
             </div>
         </div>

@@ -21,6 +21,7 @@
         {% endif %}
         {% if show_user_registry_section %}
             {% include "partials/_impostazioni_anagrafica_utenti.j2" %}
+            {% include "partials/_impostazioni_reset_login_code.j2" %}
         {% endif %}
         {% if show_role_delete_section %}
             {% include "partials/_impostazioni_elimina_ruolo.j2" %}
@@ -1296,6 +1297,7 @@
             const createRepartoEl = document.getElementById("create-user-reparto-princ");
             const createActiveEl = document.getElementById("create-user-active");
             const createPublicIdEl = document.getElementById("create-user-public-id");
+            const createLoginCodeEl = document.getElementById("create-user-login-code");
 
             let registryUsers = [];
             let selectedUserId = "";
@@ -1403,6 +1405,7 @@
                 const payload = {
                     username: (createUsernameEl?.value || "").trim(),
                     public_id: (createPublicIdEl?.value || "").trim(),
+                    login_code: (createLoginCodeEl?.value || "").trim(),
                     role_id: Number(createRoleEl?.value || 0),
                     genere: (createGenereEl?.value || "").trim(),
                     reparto_princ: (createRepartoEl?.value || "").trim(),
@@ -1506,6 +1509,189 @@
 
                 if (event.target.closest("#btn-toggle-user-active")) {
                     toggleUserActive();
+                }
+            });
+
+            renderDetail();
+        })();
+        (() => {
+            const usersDataEl = document.getElementById("registry-users-data");
+            const selectUserEl = document.getElementById("select-user-reset-login-code");
+            const loginCodeEl = document.getElementById("reset-login-code-value");
+            const feedbackEl = document.getElementById("reset-login-code-feedback");
+            const detailEl = document.getElementById("reset-login-code-detail");
+
+            let registryUsers = [];
+            let selectedUserId = "";
+
+            try {
+                registryUsers = JSON.parse(usersDataEl?.textContent || "[]");
+            } catch (_) {
+                registryUsers = [];
+            }
+
+            function escapeHtml(value) {
+                return String(value ?? "")
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;")
+                    .replace(/"/g, "&quot;")
+                    .replace(/'/g, "&#039;");
+            }
+
+            function showFeedback(type, message) {
+                if (!feedbackEl) return;
+
+                if (!message) {
+                    feedbackEl.innerHTML = "";
+                    return;
+                }
+
+                const classMap = {
+                    success: "alert-success",
+                    danger: "alert-danger",
+                    warning: "alert-warning",
+                    info: "alert-info",
+                };
+
+                feedbackEl.innerHTML = `
+            <div class="alert ${classMap[type] || "alert-secondary"} mb-0">
+                ${escapeHtml(message)}
+            </div>
+        `;
+            }
+
+            function getSelectedUser() {
+                return registryUsers.find(
+                    user => String(user.id) === String(selectedUserId)
+                ) || null;
+            }
+
+            function renderDetail() {
+                if (!detailEl) return;
+
+                const user = getSelectedUser();
+
+                if (!user) {
+                    detailEl.innerHTML = `
+                <div class="alert alert-info mb-0">
+                    Seleziona un utente e inserisci il nuovo login code.
+                </div>
+            `;
+                    return;
+                }
+
+                detailEl.innerHTML = `
+            <div class="mb-4">
+                <h4 class="mb-1">${escapeHtml(user.username)}</h4>
+                <div class="text-muted">
+                    Ruolo:
+                    <strong>${escapeHtml(user.current_role_description || user.current_role_name || "Nessuno")}</strong>
+                </div>
+                <div class="text-muted">
+                    Stato:
+                    <strong>${user.active ? "Attivo" : "Inattivo"}</strong>
+                </div>
+            </div>
+
+            <div class="alert alert-warning mb-0">
+                Il login code precedente verrà sostituito.
+            </div>
+        `;
+            }
+
+            async function saveResetLoginCode() {
+                const user = getSelectedUser();
+                const loginCode = (loginCodeEl?.value || "").trim();
+
+                if (!user) {
+                    showFeedback("warning", "Seleziona un utente.");
+                    return;
+                }
+
+                if (!loginCode) {
+                    showFeedback("warning", "Inserisci il nuovo login code.");
+                    return;
+                }
+
+                if (loginCode.length < 12) {
+                    showFeedback("warning", "Il login code deve contenere almeno 12 caratteri.");
+                    return;
+                }
+
+                if (!/^[A-Za-z0-9]+$/.test(loginCode)) {
+                    showFeedback("warning", "Il login code può contenere solo lettere e numeri.");
+                    return;
+                }
+
+                const confirmed = window.confirm(
+                    `Confermi il reset del login code per "${user.username}"?`
+                );
+                if (!confirmed) return;
+
+                const saveBtn = document.getElementById("btn-reset-login-code-save");
+                if (saveBtn) saveBtn.disabled = true;
+
+                showFeedback("info", "Salvataggio in corso...");
+
+                try {
+                    const resp = await fetch("/api/impostazioni/reset-login-code", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "X-Requested-With": "XMLHttpRequest",
+                        },
+                        credentials: "same-origin",
+                        body: JSON.stringify({
+                            user_id: Number(user.id),
+                            login_code: loginCode,
+                        }),
+                    });
+
+                    let data = {};
+                    try {
+                        data = await resp.json();
+                    } catch (_) {
+                        data = {};
+                    }
+
+                    if (!resp.ok || data.ok === false) {
+                        showFeedback("danger", data.error || "Errore reset login code.");
+                        return;
+                    }
+
+                    if (loginCodeEl) loginCodeEl.value = "";
+                    showFeedback("success", data.message || "Login code aggiornato correttamente.");
+                } catch (err) {
+                    console.error(err);
+                    showFeedback("danger", "Errore di comunicazione con il server.");
+                } finally {
+                    const newSaveBtn = document.getElementById("btn-reset-login-code-save");
+                    if (newSaveBtn) newSaveBtn.disabled = false;
+                }
+            }
+
+            function resetForm() {
+                selectedUserId = "";
+                if (selectUserEl) selectUserEl.value = "";
+                if (loginCodeEl) loginCodeEl.value = "";
+                showFeedback("", "");
+                renderDetail();
+            }
+
+            selectUserEl?.addEventListener("change", function () {
+                selectedUserId = this.value || "";
+                renderDetail();
+            });
+
+            document.addEventListener("click", function (event) {
+                if (event.target.closest("#btn-reset-login-code-save")) {
+                    saveResetLoginCode();
+                    return;
+                }
+
+                if (event.target.closest("#btn-reset-login-code-cancel")) {
+                    resetForm();
                 }
             });
 

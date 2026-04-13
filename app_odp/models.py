@@ -9,6 +9,7 @@ from sqlalchemy import and_
 from sqlalchemy.orm import foreign
 import hashlib
 from werkzeug.security import generate_password_hash, check_password_hash
+import re
 
 db = SQLAlchemy()
 
@@ -633,6 +634,23 @@ class User(UserMixin, db.Model):
         secondary=users_risorse,
         lazy="joined",
     )
+
+    @staticmethod
+    def validate_login_code(raw_code: str) -> str:
+        code = User._normalize_login_code(raw_code)
+
+        if not code:
+            raise ValueError("Il login_code è obbligatorio.")
+
+        if len(code) < 12:
+            raise ValueError("Il login_code deve contenere almeno 12 caratteri.")
+
+        if not re.fullmatch(r"[A-Z0-9]+", code):
+            raise ValueError(
+                "Il login_code deve essere alfanumerico e contenere solo lettere e numeri."
+            )
+
+        return code
 
     @staticmethod
     def _normalize_login_code(raw_code: str) -> str:

@@ -4122,6 +4122,21 @@ def impostazioni():
     )
 
 
+def _validate_login_code(raw_value) -> str:
+    login_code = _norm_text(raw_value)
+
+    if not login_code:
+        raise ValueError("Il login_code è obbligatorio.")
+
+    if len(login_code) < 12:
+        raise ValueError("Il login_code deve contenere almeno 12 caratteri.")
+
+    if not re.fullmatch(r"[A-Za-z0-9]+", login_code):
+        raise ValueError("Il login_code può contenere solo lettere e numeri.")
+
+    return login_code
+
+
 @main_bp.post("/api/impostazioni/crea-utente")
 @login_required
 def api_crea_utente():
@@ -4139,6 +4154,7 @@ def api_crea_utente():
     role_id_raw = data.get("role_id")
     public_id_source = _norm_text(data.get("public_id"))
     public_id = _build_public_id_from_full_name(public_id_source)
+    login_code_raw = data.get("login_code")
 
     try:
         role_id = int(role_id_raw)
@@ -4163,6 +4179,7 @@ def api_crea_utente():
         return jsonify(
             {"ok": False, "error": "Esiste già un utente con questo username."}
         ), 409
+
     if not public_id:
         return jsonify(
             {"ok": False, "error": "Il public_id non può essere vuoto."}
@@ -4173,6 +4190,11 @@ def api_crea_utente():
         return jsonify(
             {"ok": False, "error": "Esiste già un utente con questo public_id."}
         ), 409
+
+    try:
+        login_code = _validate_login_code(login_code_raw)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
 
     if reparto_princ:
         reparto_exists = Reparti.query.filter(Reparti.Codice == reparto_princ).first()
@@ -4189,6 +4211,8 @@ def api_crea_utente():
             genere=genere or None,
             RepartoPrinc=reparto_princ or None,
         )
+        utente.set_login_code(login_code)
+
         db.session.add(utente)
         db.session.flush()
 
@@ -4227,6 +4251,65 @@ def api_crea_utente():
             },
         }
     ), 201
+
+
+@main_bp.post("/api/impostazioni/reset-login-code")
+@login_required
+def api_reset_login_code():
+    policy = RbacPolicy(current_user)
+
+    if not policy.can_view_role_assignment_section:
+        return jsonify({"ok": False, "error": "Permesso insufficiente."}), 403
+
+    data = request.get_json(silent=True) or {}
+
+    user_id_raw = data.get("user_id")
+    login_code_raw = data.get("login_code")
+
+    try:
+        user_id = int(user_id_raw)
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "Utente non valido."}), 400
+
+    utente = User.query.get(user_id)
+    if utente is None:
+        return jsonify({"ok": False, "error": "Utente non trovato."}), 404
+
+    if int(utente.id) == int(current_user.id):
+        return jsonify(
+            {
+                "ok": False,
+                "error": "Non puoi resettare il tuo login_code da questa funzione.",
+            }
+        ), 403
+
+    if not policy.can_manage_target_user(utente):
+        return jsonify({"ok": False, "error": "Utente non gestibile."}), 403
+
+    try:
+        login_code = _validate_login_code(login_code_raw)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+    try:
+        utente.set_login_code(login_code)
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        return jsonify(
+            {
+                "ok": False,
+                "error": f"Errore reset login_code: {exc}",
+            }
+        ), 500
+
+    return jsonify(
+        {
+            "ok": True,
+            "message": "Login code aggiornato correttamente.",
+            "user_id": utente.id,
+        }
+    ), 200
 
 
 @main_bp.post("/api/impostazioni/utente-attivo")
