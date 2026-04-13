@@ -20,17 +20,6 @@ def _to_decimal(value) -> Decimal:
         return Decimal("0")
 
 
-def _codice_articolo_export(cod_art, variante_art="") -> str:
-    cod_art = _text(cod_art)
-    variante_art = _text(variante_art)
-
-    if not variante_art:
-        return cod_art
-
-    # Se il gestionale vuole un altro formato, basta cambiare questa riga.
-    return f"{cod_art}|{variante_art}"
-
-
 def _load_distinta_base(value) -> list[dict]:
     if isinstance(value, list):
         return [row for row in value if isinstance(row, dict)]
@@ -114,7 +103,7 @@ def txt_generator(export_rows: list[dict]) -> list[str]:
     id_riga = payload["id_riga"]
     rif_registraz = payload["rif_registraz"]
     fase = payload["fase"]
-    num_progr_riga = payload["num_progr_riga"]
+    num_progr_riga = payload["num_progr_riga"].split(".")[0]
 
     codice_articolo = payload["cod_art"]
     variante_articolo = payload.get("variante", "")
@@ -145,12 +134,12 @@ def txt_generator(export_rows: list[dict]) -> list[str]:
     lines.append(head_line)
 
     ore_per_pezzo = Decimal("0")
-    print(tempo_funzionamento, q_lavorata)
     if q_lavorata > 0:
         ore_per_pezzo = (tempo_funzionamento / q_lavorata).quantize(
             Decimal("0.01"),
             rounding=ROUND_HALF_UP,
         )
+    print(tempo_funzionamento, q_lavorata, ore_per_pezzo)
 
     product_line = row_writer(
         tipo_record="RIG",
@@ -183,7 +172,7 @@ def txt_generator(export_rows: list[dict]) -> list[str]:
         riferimento_ordine=riferimento_ordine_time,
         codice_articolo=codice_articolo,
         variante=variante_articolo,
-        quantita_principale=str(q_ok),
+        quantita_principale=0,
         quantita_scarti_prima=str(q_ko),
         quantita_scarti_seconda=0,
         riga_saldata=salda_riga,

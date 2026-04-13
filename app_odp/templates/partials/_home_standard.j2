@@ -43,6 +43,9 @@
         <input type="hidden"
                data-bind="lavorazione"
                id="toast1-lavorazione">
+        <input type="hidden"
+               data-bind="numprogrriga"
+               id="toast1-numprogrriga">
 
         <div class="row"
              style="font-size: 20px;  border-radius: 4px;">
@@ -142,6 +145,9 @@
             <input type="hidden"
                    id="toast2-fase"
                    data-bind="fase">
+            <input type="hidden"
+                   data-bind="numprogrriga"
+                   id="toast2-numprogrriga">
 
             <select id="causale_attivita_sl">
                 {% for causale in causali_attivita %}
@@ -204,6 +210,9 @@
             <input type="hidden"
                    data-bind="fase"
                    id="toast-riatt-sl-fase">
+            <input type="hidden"
+                   data-bind="numprogrriga"
+                   id="toast-riatt-sl-numprogrriga">
 
             <input class="btn btn-lg btn-primary"
                    type="submit"
@@ -255,6 +264,9 @@
         <input type="hidden"
                data-bind="fase"
                id="toast-chiudi-sl-fase">
+        <input type="hidden"
+               data-bind="numprogrriga"
+               id="toast-chidi-sl-numprogrriga">
 
         <div class="container">
             <!-- Quantità conforme / non conforme -->
@@ -828,6 +840,8 @@
         const selectMascherato = document.getElementById("toast-ordine-mascherato-select");
         const idDocumentoPrincipale = document.getElementById("toast-ordine-mascherato-iddocumento-principale")?.value?.trim() || "";
         const idRigaPrincipale = document.getElementById("toast-ordine-mascherato-idriga-principale")?.value?.trim() || "";
+        const numProgrRiga =
+            document.getElementById("toast-chiudi-sl-numprogrriga")?.value?.trim() || "";
 
         if (!window.validateDrawingScanToast1()) {
             return;
@@ -857,7 +871,8 @@
                     id_documento: idDocumento,
                     id_riga: idRiga,
                     id_documento_principale: idDocumentoPrincipale,
-                    id_riga_principale: idRigaPrincipale
+                    id_riga_principale: idRigaPrincipale,
+                    num_progr_riga: numProgrRiga
                 })
             });
 
@@ -909,6 +924,8 @@
         const causale = document.getElementById("causale_attivita_sl")?.value?.trim() || "";
         const tempoNonFunzionamentoMinuti =
             document.getElementById("toast-sosp-sl-tempo-fermo-macchina")?.value?.trim() || "0";
+        const numProgrRiga =
+            document.getElementById("toast-chiudi-sl-numprogrriga")?.value?.trim() || "";
 
         if (!idDocumento || !idRiga) return;
 
@@ -924,7 +941,8 @@
                 id_riga: idRiga,
                 causale: causale,
                 modalita: "sl",
-                tempo_non_funzionamento_minuti: tempoNonFunzionamentoMinuti
+                tempo_non_funzionamento_minuti: tempoNonFunzionamentoMinuti,
+                num_progr_riga: numProgrRiga
 
             })
         });
@@ -953,6 +971,8 @@
         const btn = this;
         const idDocumento = document.getElementById("toast-riatt-sl-iddocumento")?.value?.trim() || "";
         const idRiga = document.getElementById("toast-riatt-sl-idriga")?.value?.trim() || "";
+        const numProgrRiga =
+            document.getElementById("toast-chiudi-sl-numprogrriga")?.value?.trim() || "";
 
         if (!idDocumento || !idRiga) {
             console.error("IdDocumento o IdRiga mancanti");
@@ -972,7 +992,8 @@
                 body: JSON.stringify({
                     id_documento: idDocumento,
                     id_riga: idRiga,
-                    modalita: "sl"
+                    modalita: "sl",
+                    num_progr_riga: numProgrRiga
                 })
             });
 
@@ -1363,7 +1384,8 @@
                     body: JSON.stringify({
                         id_documento: idDocumento,
                         id_riga: idRiga,
-                        modalita: "sl"
+                        modalita: "sl",
+                        num_progr_riga: numProgrRiga
                     })
                 });
 
@@ -1593,6 +1615,8 @@
             const qOrdResiduaRaw = document.getElementById("toast-chiudi-sl-quantita")?.value?.trim() || "";
             const nOrdResiduaRaw = parseSystemQty(qOrdResiduaRaw);
             const nOrdResidua = Number.isFinite(nOrdResiduaRaw) ? Math.round(nOrdResiduaRaw) : NaN;
+            const numProgrRiga =
+                document.getElementById("toast-chiudi-sl-numprogrriga")?.value?.trim() || "";
             if (!Number.isInteger(nConf) || nConf < 0) {
                 alert("Quantità conforme non valida: inserire un numero intero >= 0.");
                 return;
@@ -1670,7 +1694,8 @@
                         note: note,
                         lotti: lottiPayload,
                         chiusura_parziale: chiusuraParziale,
-                        tempo_non_funzionamento_minuti: tempoNonFunzionamentoMinuti
+                        tempo_non_funzionamento_minuti: tempoNonFunzionamentoMinuti,
+                        num_progr_riga: numProgrRiga
                     })
                 });
 
