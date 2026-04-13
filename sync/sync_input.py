@@ -1543,7 +1543,7 @@ def read_cycle() -> None:
     list_sleep = []
     try:
         with Session(sqlite_engine_app) as session:
-            while counter < 2:
+            while True:
                 wait_if_not_allowed(START_H, END_H, ALLOWED_WEEKDAYS)
                 start = time_mod.time()
 

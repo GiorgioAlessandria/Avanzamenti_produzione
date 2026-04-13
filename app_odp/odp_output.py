@@ -103,7 +103,7 @@ def txt_generator(export_rows: list[dict]) -> list[str]:
     id_riga = payload["id_riga"]
     rif_registraz = payload["rif_registraz"]
     fase = payload["fase"]
-    num_progr_riga = payload["num_progr_riga"].split(".")[0]
+    num_progr_riga = payload["num_progr_riga"]
 
     codice_articolo = payload["cod_art"]
     variante_articolo = payload.get("variante", "")
@@ -139,8 +139,6 @@ def txt_generator(export_rows: list[dict]) -> list[str]:
             Decimal("0.01"),
             rounding=ROUND_HALF_UP,
         )
-    print(tempo_funzionamento, q_lavorata, ore_per_pezzo)
-
     product_line = row_writer(
         tipo_record="RIG",
         tipo_documento=710,

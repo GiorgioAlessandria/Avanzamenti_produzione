@@ -7,6 +7,8 @@ import json
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import and_
 from sqlalchemy.orm import foreign
+import hashlib
+from werkzeug.security import generate_password_hash, check_password_hash
 
 db = SQLAlchemy()
 
@@ -604,6 +606,10 @@ class User(UserMixin, db.Model):
         default=lambda: str(uuid.uuid4()),
     )
     username = db.Column(db.String, unique=True, nullable=False)
+
+    login_code_lookup = db.Column(db.String(64), unique=True, index=True)
+    login_code_hash = db.Column(db.String(255))
+
     active = db.Column(
         db.Boolean, nullable=False, default=True, server_default=db.text("1")
     )
@@ -627,6 +633,28 @@ class User(UserMixin, db.Model):
         secondary=users_risorse,
         lazy="joined",
     )
+
+    @staticmethod
+    def _normalize_login_code(raw_code: str) -> str:
+        return (raw_code or "").strip().upper()
+
+    def set_login_code(self, raw_code: str) -> None:
+        code = self._normalize_login_code(raw_code)
+        if not code:
+            raise ValueError("Il codice accesso non può essere vuoto.")
+
+        self.login_code_lookup = hashlib.sha256(code.encode("utf-8")).hexdigest()
+        self.login_code_hash = generate_password_hash(code)
+
+    def check_login_code(self, raw_code: str) -> bool:
+        code = self._normalize_login_code(raw_code)
+        if not code or not self.login_code_hash:
+            return False
+        return check_password_hash(self.login_code_hash, code)
+
+    @property
+    def is_active(self):
+        return bool(self.active)
 
     @property
     def is_active(self):

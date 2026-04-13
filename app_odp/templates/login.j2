@@ -1,24 +1,35 @@
 <!DOCTYPE html>
-<html class="vw-100 h-auto" data-bs-theme="light" lang="it">
+<html class="vw-100 h-auto"
+      data-bs-theme="light"
+      lang="it">
 
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, shrink-to-fit=no">
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0, shrink-to-fit=no">
     <title>Avanzamenti di produzione</title>
-    <meta property="og:type" content="website">
-    <meta name="description" content="Templates bootstrap studio per gli avanzamenti di produzione">
-    <link rel="stylesheet" href="{{ url_for('static', filename='assets/bootstrap/css/bootstrap.min.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='assets/fonts/ionicons.min.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='assets/css/Login-Form-Basic-icons.css') }}">
+    <meta property="og:type"
+          content="website">
+    <meta name="description"
+          content="Templates bootstrap studio per gli avanzamenti di produzione">
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='assets/bootstrap/css/bootstrap.min.css') }}">
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='assets/fonts/ionicons.min.css') }}">
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='assets/css/Login-Form-Basic-icons.css') }}">
 </head>
 
 <body class="w-100 h-auto">
-<h1 class="d-flex justify-content-end mt-1 mx-2" style="width: auto;height: auto;"><img class="img-fluid"
-                                                                                        width="250" height="89"
-                                                                                        src="{{ url_for('static', filename='/assets/img/logo_completo.jpg') }}"
-                                                                                        alt="logo_completo"></h1>
+<h1 class="d-flex justify-content-end mt-1 mx-2"
+    style="width: auto;height: auto;"><img class="img-fluid"
+                                           width="250"
+                                           height="89"
+                                           src="{{ url_for('static', filename='/assets/img/logo_completo.jpg') }}"
+                                           alt="logo_completo"></h1>
 <main style="width: auto;height: auto;">
-    <section class="position-relative py-4 py-xl-5" style="width: auto;height: auto;">
+    <section class="position-relative py-4 py-xl-5"
+             style="width: auto;height: auto;">
         <div class="container">
             <div class="row mb-5">
                 <div class="col-md-8 col-xl-6 text-center mx-auto">
@@ -32,9 +43,14 @@
                             <div class="bs-icon-xl bs-icon-circle bs-icon-primary my-4 bs-icon">
                                 <svg
                                         xmlns="http://www.w3.org/2000/svg"
-                                        height="1em" viewBox="0 0 24 24" width="1em" fill="currentColor">
+                                        height="1em"
+                                        viewBox="0 0 24 24"
+                                        width="1em"
+                                        fill="currentColor">
                                     <g>
-                                        <rect fill="none" height="24" width="24"></rect>
+                                        <rect fill="none"
+                                              height="24"
+                                              width="24"></rect>
                                     </g>
                                     <g>
                                         <path
@@ -43,25 +59,39 @@
                                     </g>
                                 </svg>
                             </div>
-                            <form class="text-center" method="post">
+                            <form class="text-center"
+                                  method="post"
+                                  autocomplete="off">
                                 <div class="mb-3">
-                                    <label for="username"></label><select id="username" name="username"
-                                                                          class="form-select form-select-lg"
-                                                                          readonly="True" required>
-                                    <option value="" disabled {% if not default_user_id %}selected{% endif %}>
-                                        -- Scegli un utente --
-                                    </option>
-
-                                    {% for user in users %}
-                                        <option value="{{ user.id }}" {% if default_user_id and
-                                                user.id==default_user_id %}selected{% endif %}>
-                                            {{ user.username }}
-                                        </option>
-                                    {% endfor %}
-                                </select>
+                                    <label for="login_code"
+                                           class="form-label visually-hidden">Codice accesso</label>
+                                    <input
+                                            id="login_code"
+                                            name="login_code"
+                                            type="password"
+                                            class="form-control form-control-lg text-center"
+                                            placeholder="Codice accesso"
+                                            autofocus
+                                            required
+                                            autocomplete="off"
+                                            autocapitalize="characters"
+                                            spellcheck="false"
+                                    >
                                 </div>
-                                <input class="btn btn-lg btn-primary w-100 h-100" type="submit"
-                                       style="width: auto;height: auto;" name="Login" value="Login"/>
+
+                                {% if error %}
+                                    <div class="alert alert-danger py-2"
+                                         role="alert">
+                                        {{ error }}
+                                    </div>
+                                {% endif %}
+
+                                <input
+                                        class="btn btn-lg btn-primary w-100 h-100"
+                                        type="submit"
+                                        name="Login"
+                                        value="Login"
+                                />
                             </form>
                         </div>
                     </div>
