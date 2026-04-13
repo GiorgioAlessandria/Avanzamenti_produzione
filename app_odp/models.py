@@ -750,8 +750,8 @@ class GiacenzaLotti(db.Model):
 
     CodArt = db.Column(db.Text, primary_key=True)
     RifLottoAlfa = db.Column(db.Text, primary_key=True)
+    CodMag = db.Column(db.Text, primary_key=True)
     Giacenza = db.Column(db.Text, nullable=False)
-    CodMag = db.Column(db.Text, nullable=False)
 
 
 class TipologieStato(db.Model):

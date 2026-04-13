@@ -589,7 +589,7 @@ def inserisci_o_ignora(sqltable, conn, keys, data_iter) -> int:
 # region ELABORAZIONE
 
 PK_COLS = ("IdDocumento", "IdRiga")
-
+LOTTI_PK_COLS = ("CodArt", "RifLottoAlfa", "CodMag")
 INPUT_ODP_ERP_COLS = [
     "IdDocumento",
     "IdRiga",
@@ -647,21 +647,28 @@ def _fetch_existing_pks(
 ) -> set[tuple]:
     """
     Ritorna un set di PK già presenti nella tabella indicata.
-    Chunking per evitare limiti di parametri SQLite.
+    Supporta PK composte di lunghezza variabile.
     """
     if not pk_tuples:
         return set()
 
     md = sa.MetaData()
     t = sa.Table(table_name, md, autoload_with=engine)
-    tpl = sa.tuple_(t.c[pk_cols[0]], t.c[pk_cols[1]])
+    pk_columns = [t.c[col] for col in pk_cols]
 
     existing = set()
     for chunk in _chunked(pk_tuples, 400):
-        q = sa.select(t.c[pk_cols[0]], t.c[pk_cols[1]]).where(tpl.in_(chunk))
+        if len(pk_columns) == 1:
+            values = [row[0] for row in chunk]
+            where_clause = pk_columns[0].in_(values)
+        else:
+            where_clause = sa.tuple_(*pk_columns).in_(chunk)
+
+        q = sa.select(*pk_columns).where(where_clause)
+
         with engine.connect() as conn:
             rows = conn.execute(q).fetchall()
-            existing.update(tuple(r) for r in rows)
+            existing.update(tuple(row) for row in rows)
 
     return existing
 
@@ -671,13 +678,14 @@ def _update_rows_by_pk(
     df: pd.DataFrame,
     *,
     table_name: str,
-    pk_cols: tuple[str, str] = ("IdDocumento", "IdRiga"),
+    pk_cols: tuple[str, ...] = ("IdDocumento", "IdRiga"),
     update_cols: list[str],
     chunk_size: int = 500,
 ) -> int:
     """
     UPDATE batch (executemany) su SQLite.
     Aggiorna solo le colonne indicate in update_cols.
+    Supporta PK composte di lunghezza variabile.
     """
     if df.empty or not update_cols:
         return 0
@@ -685,14 +693,10 @@ def _update_rows_by_pk(
     md = sa.MetaData()
     t = sa.Table(table_name, md, autoload_with=engine)
 
-    pk_bind_names = {
-        pk_cols[0]: f"b_pk_{pk_cols[0]}",
-        pk_cols[1]: f"b_pk_{pk_cols[1]}",
-    }
+    pk_bind_names = {col: f"b_pk_{col}" for col in pk_cols}
 
     where_clause = sa.and_(
-        t.c[pk_cols[0]] == sa.bindparam(pk_bind_names[pk_cols[0]]),
-        t.c[pk_cols[1]] == sa.bindparam(pk_bind_names[pk_cols[1]]),
+        *(t.c[col] == sa.bindparam(pk_bind_names[col]) for col in pk_cols)
     )
 
     stmt = (
@@ -708,8 +712,8 @@ def _update_rows_by_pk(
     records = []
     for rec in df_exec.to_dict("records"):
         row = dict(rec)
-        row[pk_bind_names[pk_cols[0]]] = row.pop(pk_cols[0])
-        row[pk_bind_names[pk_cols[1]]] = row.pop(pk_cols[1])
+        for col in pk_cols:
+            row[pk_bind_names[col]] = row.pop(col)
         records.append(row)
 
     updated = 0
@@ -722,6 +726,44 @@ def _update_rows_by_pk(
                 updated += len(chunk)
 
     return updated
+
+
+def _delete_rows_by_pk(
+    engine,
+    *,
+    table_name: str,
+    pk_cols: tuple[str, ...],
+    pk_tuples: list[tuple],
+    chunk_size: int = 400,
+) -> int:
+    """
+    DELETE batch su SQLite per PK composte di lunghezza variabile.
+    """
+    if not pk_tuples:
+        return 0
+
+    md = sa.MetaData()
+    t = sa.Table(table_name, md, autoload_with=engine)
+    pk_columns = [t.c[col] for col in pk_cols]
+
+    deleted = 0
+    with engine.begin() as conn:
+        for chunk in _chunked(pk_tuples, chunk_size):
+            if len(pk_columns) == 1:
+                values = [row[0] for row in chunk]
+                where_clause = pk_columns[0].in_(values)
+            else:
+                where_clause = sa.tuple_(*pk_columns).in_(chunk)
+
+            stmt = sa.delete(t).where(where_clause)
+            res = conn.execute(stmt)
+
+            if getattr(res, "rowcount", None) is not None and res.rowcount >= 0:
+                deleted += int(res.rowcount)
+            else:
+                deleted += len(chunk)
+
+    return deleted
 
 
 def _build_runtime_seed(df_input_odp: pd.DataFrame) -> pd.DataFrame:
@@ -1327,14 +1369,25 @@ def elaborazione_dati(session: Session) -> None:
     ]
     df_new_runtime = df_runtime_seed.loc[mask_new_runtime].copy()
 
-    df_giacenza_lotti = leggi_view(table="vwESGiacenzaLotti").pipe(
-        filtri_giacenza_lotti
+    df_giacenza_lotti = (
+        leggi_view(table="vwESGiacenzaLotti")
+        .pipe(filtri_giacenza_lotti)[["CodArt", "RifLottoAlfa", "CodMag", "Giacenza"]]
+        .copy()
+    )
+
+    df_giacenza_lotti = df_giacenza_lotti.where(pd.notna(df_giacenza_lotti), None)
+
+    df_giacenza_lotti = df_giacenza_lotti.drop_duplicates(
+        subset=list(LOTTI_PK_COLS),
+        keep="last",
     )
 
     righe_inserite_odp = 0
     righe_aggiornate_odp = 0
     righe_inserite_runtime = 0
     righe_inserite_lotti = 0
+    righe_aggiornate_lotti = 0
+    righe_eliminate_lotti = 0
 
     try:
         if not df_new_erp.empty:
@@ -1370,9 +1423,32 @@ def elaborazione_dati(session: Session) -> None:
                 or 0
             )
 
-        if not df_giacenza_lotti.empty:
+        incoming_lotti_keys = set(
+            map(tuple, df_giacenza_lotti[list(LOTTI_PK_COLS)].astype(str).to_numpy())
+        )
+
+        existing_lotti = _fetch_existing_pks(
+            sqlite_engine_app,
+            list(incoming_lotti_keys) if incoming_lotti_keys else [],
+            pk_cols=LOTTI_PK_COLS,
+            table_name="giacenza_lotti",
+        )
+
+        mask_new_lotti = [
+            tuple(x) not in existing_lotti
+            for x in df_giacenza_lotti[list(LOTTI_PK_COLS)].astype(str).to_numpy()
+        ]
+        mask_existing_lotti = [
+            tuple(x) in existing_lotti
+            for x in df_giacenza_lotti[list(LOTTI_PK_COLS)].astype(str).to_numpy()
+        ]
+
+        df_new_lotti = df_giacenza_lotti.loc[mask_new_lotti].copy()
+        df_existing_lotti = df_giacenza_lotti.loc[mask_existing_lotti].copy()
+
+        if not df_new_lotti.empty:
             righe_inserite_lotti = int(
-                df_giacenza_lotti.to_sql(
+                df_new_lotti.to_sql(
                     name="giacenza_lotti",
                     con=sqlite_engine_app,
                     if_exists="append",
@@ -1380,6 +1456,55 @@ def elaborazione_dati(session: Session) -> None:
                     method=inserisci_o_ignora,
                 )
                 or 0
+            )
+
+        if not df_existing_lotti.empty:
+            righe_aggiornate_lotti = _update_rows_by_pk(
+                sqlite_engine_app,
+                df_existing_lotti,
+                table_name="giacenza_lotti",
+                pk_cols=LOTTI_PK_COLS,
+                update_cols=["Giacenza"],
+            )
+
+        # mirror completo: elimina ciò che non esiste più nella view filtrata
+        current_local_lotti = _fetch_existing_pks(
+            sqlite_engine_app,
+            list(
+                map(
+                    tuple,
+                    df_giacenza_lotti[list(LOTTI_PK_COLS)].astype(str).to_numpy(),
+                )
+            )
+            if not df_giacenza_lotti.empty
+            else [],
+            pk_cols=LOTTI_PK_COLS,
+            table_name="giacenza_lotti",
+        )
+
+        # recupero completo chiavi locali reali
+        md = sa.MetaData()
+        t_lotti = sa.Table("giacenza_lotti", md, autoload_with=sqlite_engine_app)
+        with sqlite_engine_app.connect() as conn:
+            all_local_lotti = {
+                tuple(row)
+                for row in conn.execute(
+                    sa.select(
+                        t_lotti.c["CodArt"],
+                        t_lotti.c["RifLottoAlfa"],
+                        t_lotti.c["CodMag"],
+                    )
+                ).fetchall()
+            }
+
+        keys_to_delete = sorted(all_local_lotti - incoming_lotti_keys)
+
+        if keys_to_delete:
+            righe_eliminate_lotti = _delete_rows_by_pk(
+                sqlite_engine_app,
+                table_name="giacenza_lotti",
+                pk_cols=LOTTI_PK_COLS,
+                pk_tuples=keys_to_delete,
             )
 
         # log punto 1: solo nuovi ordini
@@ -1397,13 +1522,17 @@ def elaborazione_dati(session: Session) -> None:
         righe_aggiornate_odp = 0
         righe_inserite_runtime = 0
         righe_inserite_lotti = 0
+        righe_aggiornate_lotti = 0
+        righe_eliminate_lotti = 0
 
     logging.info(
-        "Sync input_odp completato | nuovi ERP=%s | aggiornati ERP=%s | nuovi runtime=%s | nuovi lotti=%s",
+        "Sync input_odp completato | nuovi ERP=%s | aggiornati ERP=%s | nuovi runtime=%s | nuovi lotti=%s | lotti aggiornati=%s | lotti eliminati=%s",
         righe_inserite_odp,
         righe_aggiornate_odp,
         righe_inserite_runtime,
         righe_inserite_lotti,
+        righe_aggiornate_lotti,
+        righe_eliminate_lotti,
     )
 
 
