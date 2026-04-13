@@ -1,12 +1,14 @@
 {% for singolo_odp in odp %}
     {% if singolo_odp.StatoOrdine != "Pianificata" and singolo_odp.StatoOrdine != "Chiusa" %}
-        <tr data-row-key="{{ singolo_odp.IdDocumento }}|{{ singolo_odp.IdRiga }}"
+        <tr data-row-key="{{ singolo_odp.IdDocumento }}|{{ singolo_odp.NumProgrRiga }}"
             data-tipodocumento="{{ singolo_odp.CodTipoDoc }}"
             data-iddocumento="{{ singolo_odp.IdDocumento }}"
+            data-numprogrriga="{{ singolo_odp.NumProgrRiga }}"
             data-idriga="{{ singolo_odp.IdRiga }}"
             data-variante="{{ singolo_odp.VarianteArt }}"
-            data-ordine="{{ singolo_odp.RifRegistraz }}.{{ singolo_odp.IdRiga }}"
+            data-ordine="{{ singolo_odp.RifRegistraz }}.{{ singolo_odp.NumProgrRiga }}"
             data-codice="{{ singolo_odp.CodArt }}"
+            data-numprogrriga="{{ singolo_odp.NumProgrRiga }}"
             data-indicemodifica="{{ singolo_odp.IndiceModifica }}"
             data-descrizione="{{ singolo_odp.DesArt }}"
             data-quantita="{{ singolo_odp.QtyDaLavorare or singolo_odp.Quantita }}"
@@ -16,7 +18,7 @@
             data-risorsaprod="{{ singolo_odp.RisorsaAttiva }}"
             data-tempoattrezzaggio="{{ singolo_odp.AttrezzaggioAttivo }}"
             data-statoordine="{{ singolo_odp.StatoOrdine }}">
-            <td>{{ singolo_odp.RifRegistraz }}.{{ singolo_odp.IdRiga }}</td>
+            <td>{{ singolo_odp.RifRegistraz }}.{{ singolo_odp.NumProgrRiga }}</td>
             <td>
                 <button
                         type="button"

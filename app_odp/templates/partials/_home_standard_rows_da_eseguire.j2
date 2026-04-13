@@ -1,11 +1,12 @@
 {% for singolo_odp in odp %}
     {% if singolo_odp.StatoOrdine == "Pianificata" %}
-        <tr data-row-key="{{ singolo_odp.IdDocumento }}|{{ singolo_odp.IdRiga }}"
+        <tr data-row-key="{{ singolo_odp.IdDocumento }}|{{ singolo_odp.NumProgrRiga }}"
             data-tipodocumento="{{ singolo_odp.CodTipoDoc }}"
             data-iddocumento="{{ singolo_odp.IdDocumento }}"
+            data-numprogrriga="{{ singolo_odp.NumProgrRiga }}"
             data-idriga="{{ singolo_odp.IdRiga }}"
             data-variante="{{ singolo_odp.VarianteArt }}"
-            data-ordine="{{ singolo_odp.RifRegistraz }}.{{ singolo_odp.IdRiga }}"
+            data-ordine="{{ singolo_odp.RifRegistraz }}.{{ singolo_odp.NumProgrRiga }}"
             data-codice="{{ singolo_odp.CodArt }}"
             data-indicemodifica="{{ singolo_odp.IndiceModifica }}"
             data-descrizione="{{ singolo_odp.DesArt }}"
@@ -16,7 +17,7 @@
             data-lavorazione="{{ singolo_odp.LavorazioneAttiva }}"
             data-tempoattrezzaggio="{{ singolo_odp.AttrezzaggioAttivo }}"
             data-risorsaprod="{{ singolo_odp.RisorsaAttiva }}">
-            <td>{{ singolo_odp.RifRegistraz }}.{{ singolo_odp.IdRiga }}</td>
+            <td>{{ singolo_odp.RifRegistraz }}.{{ singolo_odp.NumProgrRiga }}</td>
             <td>{{ singolo_odp.CodArt }}</td>
             {% set rev = singolo_odp.IndiceModifica %}
             <td>{{ "-" if rev is none or (rev|string|trim|upper) == "X" else rev }}</td>

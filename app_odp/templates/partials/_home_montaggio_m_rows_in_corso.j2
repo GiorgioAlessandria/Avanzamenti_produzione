@@ -1,18 +1,19 @@
 {% for singolo_odp in odp %}
     {% if singolo_odp.GestioneMatricola == 'si' and singolo_odp.StatoOrdine != "Pianificata" and singolo_odp.StatoOrdine != "Chiusa" %}
-        <tr data-row-key="{{ singolo_odp.IdDocumento }}|{{ singolo_odp.IdRiga }}"
+        <tr data-row-key="{{ singolo_odp.IdDocumento }}|{{ singolo_odp.NumProgrRiga }}"
             data-tipodocumento="{{ singolo_odp.CodTipoDoc }}"
             data-iddocumento="{{ singolo_odp.IdDocumento }}"
             data-variante="{{ singolo_odp.VarianteArt }}"
+            data-numprogrriga="{{ singolo_odp.NumProgrRiga }}"
             data-idriga="{{ singolo_odp.IdRiga }}"
-            data-ordine="{{ singolo_odp.RifRegistraz }}.{{ singolo_odp.IdRiga }}"
+            data-ordine="{{ singolo_odp.RifRegistraz }}.{{ singolo_odp.NumProgrRiga }}"
             data-codice="{{ singolo_odp.CodArt }}"
             data-descrizione="{{ singolo_odp.DesArt }}"
             data-matricola="{{ singolo_odp.CodMatricola }}"
             data-datacons="{{ singolo_odp.DataFineSched }}"
             data-fase="{{ singolo_odp.FaseAttiva }}"
             data-stato="{{ singolo_odp.StatoOrdine }}">
-            <td>{{ singolo_odp.RifRegistraz }}.{{ singolo_odp.IdRiga }}</td>
+            <td>{{ singolo_odp.RifRegistraz }}.{{ singolo_odp.NumProgrRiga }}</td>
             <td>
                 <button
                         type="button"
@@ -24,7 +25,6 @@
                     {{ singolo_odp.CodArt }}
                 </button>
             </td>
-            <td>{{ singolo_odp.VarianteArt }}</td>
             <td>{{ singolo_odp.DesArt }}</td>
             <td>{{ singolo_odp.CodMatricola }}</td>
             <td>{{ singolo_odp.DataFineSched | db_date("%Y-%m-%d %H:%M:%S","%d/%m/%Y") }}</td>

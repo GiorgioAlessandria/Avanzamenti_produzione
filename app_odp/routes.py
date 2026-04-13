@@ -1231,6 +1231,7 @@ def _build_phase_payload(
         "magazzino": magazzino,
         "distinta_base": distinta_base,
         "variante": variante,
+        "num_progr_riga": ordine.NumProgrRiga,
     }
 
 
@@ -2161,6 +2162,7 @@ def api_prendi_ordine():
                 "active_tab": tab,
                 "last_event_id": _last_log_token(),
                 "fragments": fragments,
+                "num_progr_riga": ordine.NumProgrRiga,
             }
         ),
         200,
@@ -2293,6 +2295,7 @@ def api_sospendi_ordine():
                 "active_tab": tab,
                 "last_event_id": _last_log_token(),
                 "fragments": fragments,
+                "num_progr_riga": ordine.NumProgrRiga,
             }
         ),
         200,
@@ -2437,6 +2440,7 @@ def api_sospendi_ordine_montaggio_macchina():
                 "active_tab": tab,
                 "last_event_id": _last_log_token(),
                 "fragments": fragments,
+                "num_progr_riga": ordine.NumProgrRiga,
             }
         ),
         200,
@@ -2602,6 +2606,7 @@ def api_riattiva_ordine():
                 "active_tab": tab,
                 "last_event_id": _last_log_token(),
                 "fragments": fragments,
+                "num_progr_riga": ordine.NumProgrRiga,
             }
         ),
         200,
@@ -2782,6 +2787,7 @@ def api_riattiva_ordine_montaggio_macchina():
                 "active_tab": tab,
                 "last_event_id": _last_log_token(),
                 "fragments": fragments,
+                "num_progr_riga": ordine.NumProgrRiga,
             }
         ),
         200,
@@ -3296,6 +3302,7 @@ def api_chiudi_ordine():
                 "active_tab": tab,
                 "last_event_id": _last_log_token(),
                 "fragments": fragments,
+                "num_progr_riga": ordine.NumProgrRiga,
             }
         ),
         200,
@@ -3651,6 +3658,7 @@ def api_chiudi_ordine_montaggio_macchina():
                 "active_tab": tab,
                 "last_event_id": _last_log_token(),
                 "fragments": fragments,
+                "num_progr_riga": ordine.NumProgrRiga,
             }
         ),
         200,

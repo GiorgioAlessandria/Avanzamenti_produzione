@@ -114,6 +114,7 @@ def txt_generator(export_rows: list[dict]) -> list[str]:
     id_riga = payload["id_riga"]
     rif_registraz = payload["rif_registraz"]
     fase = payload["fase"]
+    num_progr_riga = payload["num_progr_riga"]
 
     codice_articolo = payload["cod_art"]
     variante_articolo = payload.get("variante", "")
@@ -130,8 +131,8 @@ def txt_generator(export_rows: list[dict]) -> list[str]:
     distinta_base = _load_distinta_base(payload.get("distinta_base"))
     lotti_components = payload.get("lotti") or []
 
-    riferimento_ordine = f"{rif_registraz}.{id_riga},00"
-    riferimento_ordine_time = f"{rif_registraz}.{id_riga},00.{fase},00"
+    riferimento_ordine = f"{rif_registraz}.{num_progr_riga},00"
+    riferimento_ordine_time = f"{rif_registraz}.{num_progr_riga},00.{fase},00"
 
     lines = []
 
