@@ -673,6 +673,33 @@ def _fetch_existing_pks(
     return existing
 
 
+def _fetch_blocked_outbox_pks(log_engine) -> set[tuple[str, str]]:
+    """
+    Restituisce le PK (IdDocumento, IdRiga) presenti in erp_outbox
+    nel db di log. Qualsiasi PK presente qui non deve più essere
+    reinserita da sync_input.
+    """
+    md = sa.MetaData()
+    erp_outbox = sa.Table("erp_outbox", md, autoload_with=log_engine)
+
+    stmt = sa.select(
+        erp_outbox.c.IdDocumento,
+        erp_outbox.c.IdRiga,
+    ).distinct()
+
+    with log_engine.connect() as conn:
+        rows = conn.execute(stmt).fetchall()
+
+    blocked = set()
+    for id_documento, id_riga in rows:
+        id_documento = _norm_text(id_documento)
+        id_riga = _norm_text(id_riga)
+        if id_documento and id_riga:
+            blocked.add((id_documento, id_riga))
+
+    return blocked
+
+
 def _update_rows_by_pk(
     engine,
     df: pd.DataFrame,
@@ -1328,6 +1355,26 @@ def elaborazione_dati(session: Session) -> None:
     df_input_odp = df_input_odp[INPUT_ODP_ERP_COLS].copy()
     df_input_odp = df_input_odp.where(pd.notna(df_input_odp), None)
     df_input_odp = df_input_odp.drop_duplicates(subset=list(PK_COLS))
+    blocked_outbox_pks = _fetch_blocked_outbox_pks(sqlite_engine_log)
+
+    if blocked_outbox_pks and not df_input_odp.empty:
+        pk_series = df_input_odp.apply(
+            lambda row: (
+                _norm_text(row.get("IdDocumento")),
+                _norm_text(row.get("IdRiga")),
+            ),
+            axis=1,
+        )
+
+        mask_blocked = pk_series.isin(blocked_outbox_pks)
+        righe_escluse = int(mask_blocked.sum())
+
+        if righe_escluse:
+            logging.info(
+                "Escluse %s righe da sync_input per presenza in erp_outbox.",
+                righe_escluse,
+            )
+            df_input_odp = df_input_odp.loc[~mask_blocked].copy()
 
     # --- seed runtime iniziale ---
     df_runtime_seed = _build_runtime_seed(df_input_odp)
