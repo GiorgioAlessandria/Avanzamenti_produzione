@@ -157,7 +157,7 @@ def txt_generator(export_rows: list[dict]) -> list[str]:
         magazzino_principale=magazzino,
         codice_risorsa=risorsa,
         causale_prestazione="",
-        ore_lavorate=str(ore_per_pezzo),
+        ore_lavorate=str(tempo_funzionamento),
     )
     lines.append(product_line)
 
@@ -179,7 +179,7 @@ def txt_generator(export_rows: list[dict]) -> list[str]:
         magazzino_principale=magazzino,
         codice_risorsa=risorsa,
         causale_prestazione="",
-        ore_lavorate=str(ore_per_pezzo),
+        ore_lavorate=str(tempo_funzionamento),
     )
     lines.append(product_time_line)
 
@@ -219,7 +219,7 @@ def txt_generator(export_rows: list[dict]) -> list[str]:
                     magazzino_principale=magazzino_lotto,
                     codice_risorsa=risorsa,
                     causale_prestazione="",
-                    ore_lavorate=str(ore_per_pezzo),
+                    ore_lavorate=str(tempo_funzionamento),
                 )
                 lines.append(component_line)
         else:
@@ -239,7 +239,7 @@ def txt_generator(export_rows: list[dict]) -> list[str]:
                 magazzino_principale=magazzino,
                 codice_risorsa=risorsa,
                 causale_prestazione="",
-                ore_lavorate=str(ore_per_pezzo),
+                ore_lavorate=str(tempo_funzionamento),
             )
             lines.append(component_line)
 

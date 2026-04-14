@@ -36,7 +36,7 @@
                id="toast-presa-fase">
         <input type="hidden"
                data-bind="numprogrriga"
-               id="toast_presa-numprogrriga">
+               id="toast-presa-numprogrriga">
 
         <button class="btn btn-lg btn-primary"
                 type="button"
@@ -1032,7 +1032,7 @@
             const idDocumento = document.getElementById("toast-presa-iddocumento")?.value?.trim() || "";
             const idRiga = document.getElementById("toast-presa-idriga")?.value?.trim() || "";
             const numProgrRiga =
-                document.getElementById("toast-chiudi-sl-numprogrriga")?.value?.trim() || "";
+                document.getElementById("toast-presa-numprogrriga")?.value?.trim() || "";
 
 
             if (!idDocumento || !idRiga) {
@@ -1047,8 +1047,11 @@
                     method: "POST",
                     headers: {"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"},
                     credentials: "same-origin",
-                    body: JSON.stringify({id_documento: idDocumento, id_riga: idRiga}),
-                    num_progr_riga: numProgrRiga
+                    body: JSON.stringify({
+                        id_documento: idDocumento,
+                        id_riga: idRiga,
+                        num_progr_riga: numProgrRiga
+                    })
                 });
                 let data = {};
                 try {
@@ -1090,6 +1093,9 @@
             e.preventDefault();
             const idDocumento = document.getElementById("toast-presa-m-iddocumento")?.value?.trim() || "";
             const idRiga = document.getElementById("toast-presa-m-idriga")?.value?.trim() || "";
+            const numProgrRiga =
+                document.getElementById("toast-presa-m-numprogrriga")?.value?.trim() || "";
+
 
             if (!idDocumento || !idRiga) {
                 alert("Errore: IdDocumento o IdRiga mancanti (macchina). Seleziona una riga prima di attivare.");
@@ -1103,8 +1109,11 @@
                     method: "POST",
                     headers: {"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"},
                     credentials: "same-origin",
-                    body: JSON.stringify({id_documento: idDocumento, id_riga: idRiga}),
-                    num_progr_riga: numProgrRiga
+                    body: JSON.stringify({
+                        id_documento: idDocumento,
+                        id_riga: idRiga,
+                        num_progr_riga: numProgrRiga
+                    })
                 });
                 let data = {};
                 try {
@@ -1151,6 +1160,8 @@
             const idDocumento = document.getElementById("toast-sosp-iddocumento")?.value?.trim() || "";
             const idRiga = document.getElementById("toast-sosp-idriga")?.value?.trim() || "";
             const causale = document.getElementById("causale_attivita")?.value?.trim() || "";
+            const numProgrRiga =
+                document.getElementById("toast-sosp-numprogrriga")?.value?.trim() || "";
 
             if (!idDocumento || !idRiga) {
                 alert("IdDocumento o IdRiga mancanti.");
@@ -1211,7 +1222,7 @@
             const matricola = document.getElementById("toast-sosp-m-matricola")?.value?.trim() || "";
             const fase = document.getElementById("toast-sosp-m-fase")?.value?.trim() || "";
             const numProgrRiga =
-                document.getElementById("toast-chiudi-sl-numprogrriga")?.value?.trim() || "";
+                document.getElementById("toast-sosp-m-numprogrriga")?.value?.trim() || "";
 
             if (!idDocumento || !idRiga) {
                 alert("IdDocumento o IdRiga mancanti.");
@@ -1275,7 +1286,7 @@
             const idDocumento = document.getElementById("toast-riatt-sl-iddocumento")?.value?.trim() || "";
             const idRiga = document.getElementById("toast-riatt-sl-idriga")?.value?.trim() || "";
             const numProgrRiga =
-                document.getElementById("toast-chiudi-sl-numprogrriga")?.value?.trim() || "";
+                document.getElementById("toast-riatt-sl-numprogrriga")?.value?.trim() || "";
 
             if (!idDocumento || !idRiga) {
                 alert("IdDocumento o IdRiga mancanti.");
@@ -1288,8 +1299,12 @@
                     method: "POST",
                     headers: {"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"},
                     credentials: "same-origin",
-                    body: JSON.stringify({id_documento: idDocumento, id_riga: idRiga, modalita: "sl"}),
-                    num_progr_riga: numProgrRiga
+                    body: JSON.stringify({
+                        id_documento: idDocumento,
+                        id_riga: idRiga,
+                        modalita: "sl",
+                        num_progr_riga: numProgrRiga
+                    })
                 });
                 let data = {};
                 try {
@@ -1329,7 +1344,7 @@
             const matricola = document.getElementById("toast-riatt-m-matricola")?.value?.trim() || "";
             const fase = document.getElementById("toast-riatt-m-fase")?.value?.trim() || "";
             const numProgrRiga =
-                document.getElementById("toast-chiudi-sl-numprogrriga")?.value?.trim() || "";
+                document.getElementById("toast-riatt-m-numprogrriga")?.value?.trim() || "";
 
             if (!idDocumento || !idRiga) {
                 alert("IdDocumento o IdRiga mancanti.");
@@ -1396,9 +1411,6 @@
         const alertEl = document.getElementById("lotti-alert-m");
         const tbody = document.getElementById("tbody-lotti-m");
         const riepilogo = document.getElementById("lotti-riepilogo-m");
-        const numProgrRiga =
-            document.getElementById("toast-chiudi-sl-numprogrriga")?.value?.trim() || "";
-
         if (!toastEl || !section || !tbody) return;
 
         function escHtml(s) {
@@ -1523,7 +1535,7 @@
             riepilogo.innerHTML = html;
         }
 
-        async function fetchLottiData(idDocumento, idRiga) {
+        async function fetchLottiData(idDocumento, idRiga, numProgrRiga) {
             section.style.display = "none";
             loading.style.display = "";
             tbody.innerHTML = "";
@@ -1631,7 +1643,7 @@
                 if (qty > giacenza) {
                     errors.push(`${cod} lotto ${lottoVal}: qtà ${qty} > giacenza ${giacenza}.`);
                 }
-                const lottoSelect = row.querySelector(".lotto-select-sl");
+                const lottoSelect = row.querySelector(".lotto-select-m");
                 const selectedOption = lottoSelect?.options?.[lottoSelect.selectedIndex];
                 const codMag = selectedOption?.dataset?.codmag || "";
                 const key = `${cod}|${lottoVal}|${codMag}`;
@@ -1649,7 +1661,6 @@
                     RifLottoAlfa: lottoVal,
                     CodMag: codMag,
                     Quantita: qty,
-                    Esito: esito
                 });
             });
 
@@ -1732,9 +1743,12 @@
             requestAnimationFrame(() => {
                 const idDoc = document.getElementById("toast-chiudi-m-iddocumento")?.value?.trim() || "";
                 const idRiga = document.getElementById("toast-chiudi-m-idriga")?.value?.trim() || "";
+                const numProgrRiga =
+                    document.getElementById("toast-chiudi-m-numprogrriga")?.value?.trim() || "";
+
 
                 if (idDoc && idRiga) {
-                    fetchLottiData(idDoc, idRiga);
+                    fetchLottiData(idDoc, idRiga, numProgrRiga);
                 } else {
                     section.style.display = "none";
                 }
@@ -1751,7 +1765,7 @@
             const fase = document.getElementById("toast-chiudi-m-fase")?.value?.trim() || "";
             const note = document.getElementById("toast-chiudi-m-note")?.value?.trim() || "";
             const numProgrRiga =
-                document.getElementById("toast-chiudi-sl-numprogrriga")?.value?.trim() || "";
+                document.getElementById("toast-chiudi-m-numprogrriga")?.value?.trim() || "";
 
             if (!idDocumento || !idRiga) {
                 alert("Ordine non valido (IdDocumento/IdRiga mancanti).");
@@ -1861,8 +1875,6 @@
         const inpNote = document.getElementById("toast-chiudi-sl-note");
         const chkParziale = document.getElementById("toast-chiudi-sl-parziale");
         const chkTotale = document.getElementById("toast-chiudi-sl-totale");
-        const numProgrRiga =
-            document.getElementById("toast-chiudi-sl-numprogrriga")?.value?.trim() || "";
 
         if (!toastEl || !section || !tbody || !inpConf || !inpNonConf) return;
 
@@ -1930,11 +1942,6 @@
                 const n = parseIntQty(raw);
                 el.value = Number.isFinite(n) ? String(n) : "0";
             });
-        }
-
-        function getQuantitaOrdineCorrente() {
-            const n = parseSystemQty(hidTot?.value);
-            return Number.isFinite(n) ? n : 0;
         }
 
         function getQuantitaLavorataCorrente() {
@@ -2100,7 +2107,7 @@
             riepilogo.innerHTML = html;
         }
 
-        async function fetchLottiData(idDocumento, idRiga) {
+        async function fetchLottiData(idDocumento, idRiga, numProgrRiga) {
             section.style.display = "none";
             loading.style.display = "";
             tbody.innerHTML = "";
@@ -2202,8 +2209,6 @@
                 const esito = row.querySelector(".lotto-esito-sl")?.value || "ok";
                 const qtyRaw = row.querySelector(".lotto-qty-sl")?.value;
                 const qty = parseIntQty(qtyRaw);
-                const numProgrRiga =
-                    document.getElementById("toast-chiudi-sl-numprogrriga")?.value?.trim() || "";
 
                 if (!Number.isInteger(qty) || qty <= 0) {
                     errors.push(`${cod} lotto ${lottoVal}: inserire una quantità intera > 0.`);
@@ -2391,9 +2396,10 @@
 
                 const idDoc = document.getElementById("toast-chiudi-sl-iddocumento")?.value?.trim() || "";
                 const idRiga = document.getElementById("toast-chiudi-sl-idriga")?.value?.trim() || "";
+                const numProgrRiga = document.getElementById("toast-chiudi-sl-numprogrriga")?.value?.trim() || "";
 
                 if (idDoc && idRiga) {
-                    fetchLottiData(idDoc, idRiga);
+                    fetchLottiData(idDoc, idRiga, numProgrRiga);
                 } else {
                     section.style.display = "none";
                 }
@@ -2535,12 +2541,6 @@
                 });
                 if (!exportResult.ok) {
                     alert(exportResult.error || "Ordine chiuso, ma file ERP non generato.");
-                }
-
-                bootstrap.Toast.getOrCreateInstance(toastEl).hide();
-
-                if (data.fragments && window.applyHomeFragments) {
-                    window.applyHomeFragments(data.fragments);
                 }
 
                 bootstrap.Toast.getOrCreateInstance(toastEl).hide();
