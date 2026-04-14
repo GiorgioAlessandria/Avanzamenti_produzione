@@ -42,6 +42,7 @@ CodArt = [
 percorso_db = "//Serverspring02/PythonDB/Avanzamenti_produzione/app_odp/instance/RBAC.db"
 percorso_db_log = "//Serverspring02/PythonDB/Avanzamenti_produzione/app_odp/instance/db_log.sqlite"
 percorso_file_output = "V:/Avanzamenti_produzione/output"
+percorso_db_acq = "//Serverspring02/PythonDB/Avanzamenti_produzione/app_odp/instance/db_acq.sqlite"
 [sync_config]
 tempo_polling = 2
 counter_righe = 0
