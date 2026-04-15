@@ -89,6 +89,32 @@
                             {% endfor %}
                         </ul>
                     </div>
+                {% elif current_user.is_authenticated and current_user.has_role('responsabile_acquisti') %}
+                    <div class="d-flex flex-column align-items-center">
+                        <h1 class="mb-0">Acquisti - Benvenut{{ genere }} {{ current_user.username }}</h1>
+
+                        <div class="btn-group d-flex mt-3"
+                             id="acquisti-header-tabs"
+                             style="margin: 10px;">
+                            <button class="btn btn-lg btn-outline-primary js-acq-section-btn-base active"
+                                    type="button"
+                                    data-section="giacenza">
+                                Giacenza
+                            </button>
+
+                            <button class="btn btn-lg btn-outline-primary js-acq-section-btn-base"
+                                    type="button"
+                                    data-section="materiale">
+                                Materiale necessario
+                            </button>
+
+                            <button class="btn btn-lg btn-outline-primary js-acq-section-btn-base"
+                                    type="button"
+                                    data-section="ordini">
+                                Ordini produzione
+                            </button>
+                        </div>
+                    </div>
                 {% endif %}
             </div>
             <div class="col-md-4 d-flex w-auto flex-grow-1 justify-content-end align-items-center"
@@ -604,6 +630,88 @@
             const row = event.target.closest("table.table-selectable tbody tr[data-row-key]");
             if (!row) return;
             markSelectedRow(row);
+        });
+    </script>
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            const checkboxFilters = document.querySelectorAll(".js-table-filter-checkbox");
+
+            checkboxFilters.forEach((input) => {
+                input.addEventListener("change", () => {
+                    const tableId = input.dataset.targetTable;
+                    if (tableId) applyCheckboxFiltersToTable(tableId);
+                });
+            });
+
+            function applyCheckboxFiltersToTable(tableId) {
+                const table = document.getElementById(tableId);
+                if (!table) return;
+
+                const tbody = table.querySelector("tbody");
+                if (!tbody) return;
+
+                const rows = tbody.querySelectorAll("tr");
+
+                const textFilters = document.querySelectorAll(
+                    `.js-table-filter[data-target-table="${cssEscape(tableId)}"]`
+                );
+
+                const checkFilters = document.querySelectorAll(
+                    `.js-table-filter-checkbox[data-target-table="${cssEscape(tableId)}"]`
+                );
+
+                rows.forEach((row) => {
+                    let visible = true;
+
+                    for (const filterInput of textFilters) {
+                        const filterValue = (filterInput.value || "").trim().toLowerCase();
+                        if (!filterValue) continue;
+
+                        const mode = filterInput.dataset.filterMode || "rowtext";
+                        const key = filterInput.dataset.filterKey || "";
+                        const columnIndex = parseInt(filterInput.dataset.filterColumn ?? "-1", 10);
+
+                        let textToCheck = "";
+
+                        if (mode === "dataset") {
+                            textToCheck = (row.dataset[key] || "").toLowerCase();
+                        } else if (mode === "column") {
+                            const cell = row.cells[columnIndex];
+                            textToCheck = (cell ? cell.textContent : "").trim().toLowerCase();
+                        } else {
+                            textToCheck = row.textContent.toLowerCase();
+                        }
+
+                        if (!textToCheck.includes(filterValue)) {
+                            visible = false;
+                            break;
+                        }
+                    }
+
+                    if (!visible) {
+                        row.style.display = "none";
+                        return;
+                    }
+
+                    for (const checkInput of checkFilters) {
+                        const key = checkInput.dataset.filterKey || "";
+
+                        if (!checkInput.checked) continue;
+
+                        if (key === "negative") {
+                            const isNegative = (row.dataset.negative || "") === "1";
+                            if (!isNegative) {
+                                visible = false;
+                                break;
+                            }
+                        }
+                    }
+
+                    row.style.display = visible ? "" : "none";
+                });
+            }
+
+            window.applyCheckboxFiltersToTable = applyCheckboxFiltersToTable;
         });
     </script>
 {% endblock %}

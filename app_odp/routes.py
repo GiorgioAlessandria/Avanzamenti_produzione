@@ -5254,20 +5254,16 @@ def dash_reparto():
 def home_acquisti():
     magazzini_default = ["0", "10", "13"]
 
-    magazzini_sel = request.args.getlist("mag")
-    magazzini_sel = [_norm_text(x) for x in magazzini_sel if _norm_text(x)]
-    if not magazzini_sel:
-        magazzini_sel = magazzini_default
-
     cod_art_filter = _norm_text(request.args.get("cod_art"))
     descr_filter = _norm_text(request.args.get("descr"))
     solo_negativi = request.args.get("solo_negativi") == "1"
 
-    q = (
-        db.session.query(AcqGiacenze, AcqArticoli)
-        .outerjoin(AcqArticoli, AcqArticoli.CodArt == AcqGiacenze.CodArt)
-        .filter(AcqGiacenze.CodMag.in_(magazzini_sel))
+    q = db.session.query(AcqGiacenze, AcqArticoli).outerjoin(
+        AcqArticoli,
+        AcqArticoli.CodArt == AcqGiacenze.CodArt,
     )
+
+    q = q.filter(AcqGiacenze.CodMag.in_(magazzini_default))
 
     if cod_art_filter:
         q = q.filter(AcqGiacenze.CodArt.ilike(f"%{cod_art_filter}%"))
@@ -5275,27 +5271,31 @@ def home_acquisti():
     if descr_filter:
         q = q.filter(AcqArticoli.DesArt.ilike(f"%{descr_filter}%"))
 
-    if solo_negativi:
-        q = q.filter(AcqGiacenze.Giacenza < 0)
-
     rows = q.order_by(
         AcqGiacenze.CodArt.asc(),
         AcqGiacenze.CodMag.asc(),
     ).all()
 
-    giacenze_rows = []
+    grouped = {}
+
     for giacenza, articolo in rows:
-        giacenze_rows.append(
+        cod_art = _norm_text(giacenza.CodArt)
+        if not cod_art:
+            continue
+
+        row = grouped.setdefault(
+            cod_art,
             {
-                "CodArt": giacenza.CodArt or "",
-                "CodMag": giacenza.CodMag or "",
-                "Giacenza": float(giacenza.Giacenza or 0),
+                "CodArt": cod_art,
                 "DesArt": (articolo.DesArt if articolo else "") or "",
-                "LottoRiordino": float(
-                    (articolo.LottoRiordino if articolo else 0) or 0
-                ),
+                "Mag_0": 0.0,
+                "Mag_10": 0.0,
+                "Mag_13": 0.0,
                 "PuntoRiordino": float(
                     (articolo.PuntoRiordino if articolo else 0) or 0
+                ),
+                "LottoRiordino": float(
+                    (articolo.LottoRiordino if articolo else 0) or 0
                 ),
                 "PianTempoApprovFisso": int(
                     (articolo.PianTempoApprovFisso if articolo else 0) or 0
@@ -5304,15 +5304,38 @@ def home_acquisti():
                     articolo.DataPrevistaApprovvigionamento if articolo else ""
                 )
                 or "",
-                "is_negative": float(giacenza.Giacenza or 0) < 0,
-            }
+                "is_negative_any": False,
+            },
         )
+
+        cod_mag = _norm_text(giacenza.CodMag)
+        qty = float(giacenza.Giacenza or 0)
+
+        if cod_mag == "0":
+            row["Mag_0"] = qty
+        elif cod_mag == "10":
+            row["Mag_10"] = qty
+        elif cod_mag == "13":
+            row["Mag_13"] = qty
+
+        if qty < 0:
+            row["is_negative_any"] = True
+
+        if articolo and not row["DesArt"]:
+            row["DesArt"] = articolo.DesArt or ""
+
+    giacenze_rows = list(grouped.values())
+
+    if solo_negativi:
+        giacenze_rows = [
+            row
+            for row in giacenze_rows
+            if row["Mag_0"] < 0 or row["Mag_10"] < 0 or row["Mag_13"] < 0
+        ]
 
     return render_template(
         "home_acquisti.j2",
         giacenze_rows=giacenze_rows,
-        magazzini_sel=magazzini_sel,
-        magazzini_options=magazzini_default,
         cod_art_filter=cod_art_filter,
         descr_filter=descr_filter,
         solo_negativi=solo_negativi,
