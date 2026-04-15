@@ -9,27 +9,18 @@
             <div class="col-12">
                 <div class="card shadow-sm">
                     <div class="card-body py-2">
-                        <div>
-                            <h1 class="mb-1">Acquisti</h1>
-                            <p class="text-muted mb-0">
-                                Giacenze, materiale necessario e ordini di produzione.
-                            </p>
-                        </div>
-
-                        <div class="d-flex flex-wrap gap-2"
+                        <div class="align-items-center d-flex justify-content-between mb-0"
                              id="acquisti-section-switch">
                             <button class="btn btn-primary js-acq-section-btn active"
                                     type="button"
                                     data-section="giacenza">
                                 Giacenza
                             </button>
-
                             <button class="btn btn-outline-primary js-acq-section-btn"
                                     type="button"
                                     data-section="materiale">
                                 Materiale necessario
                             </button>
-
                             <button class="btn btn-outline-primary js-acq-section-btn"
                                     type="button"
                                     data-section="ordini">
@@ -40,13 +31,10 @@
                 </div>
             </div>
 
-            <div class="col-12">
+            <div class="col-flex">
                 <section class="card shadow-sm"
                          id="acquisti-filters-container"
                          data-active-filters="giacenza">
-                    <div class="card-header">
-                        <h2 class="h5 mb-0">Filtri</h2>
-                    </div>
                     <div class="card-body">
                         <div class="acq-filters-panel"
                              data-section="giacenza">
@@ -81,7 +69,7 @@
                          data-section="materiale">
                         <div class="card shadow-sm">
                             <div class="card-body">
-                                <h2 class="h4 mb-2">Materiale necessario</h2>
+                                <h2 class="h5 mb-2">Materiale necessario</h2>
                                 <p class="text-muted mb-0">
                                     Sezione in preparazione.
                                 </p>
