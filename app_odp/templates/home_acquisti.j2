@@ -49,7 +49,7 @@
 
                         <div class="acq-filters-panel d-none"
                              data-section="ordini">
-                            <div class="text-muted">Filtri ordini di produzione da definire.</div>
+                            {% include "partials/_acquisti_filters_ordini.j2" %}
                         </div>
                     </div>
                 </section>
@@ -176,123 +176,125 @@
         })();
         (() => {
             document.addEventListener("DOMContentLoaded", () => {
-                const modalEl = document.getElementById("modalAcqMateriale");
-                const modalBody = document.getElementById("modal-acq-materiale-body");
-                const modalTitleExtra = document.getElementById("modal-acq-materiale-title-extra");
+                const root = document.getElementById("acquisti-page");
+                if (!root) return;
 
-                if (!modalEl || !modalBody || !modalTitleExtra) return;
+                const bridgeUrl = root.dataset.bridgeUrl;
+                if (!bridgeUrl) return;
 
-                function escapeHtml(value) {
-                    return String(value || "")
-                        .replaceAll("&", "&amp;")
-                        .replaceAll("<", "&lt;")
-                        .replaceAll(">", "&gt;")
-                        .replaceAll('"', "&quot;")
-                        .replaceAll("'", "&#039;");
+                const POLL_MS = 30000;
+                let isRefreshing = false;
+
+                function getAcquistiFilterSnapshot() {
+                    const snapshot = {};
+
+                    document.querySelectorAll(
+                        "#acquisti-filters-container .js-table-filter, " +
+                        "#acquisti-filters-container .js-table-filter-checkbox"
+                    ).forEach((el) => {
+                        const key = el.id || `${el.dataset.targetTable || ""}|${el.dataset.filterKey || ""}`;
+                        if (!key) return;
+
+                        if (el.classList.contains("js-table-filter-checkbox")) {
+                            snapshot[key] = Boolean(el.checked);
+                        } else {
+                            snapshot[key] = el.value ?? "";
+                        }
+                    });
+
+                    return snapshot;
                 }
 
-                function renderTable(rows, columns) {
-                    if (!rows || !rows.length) {
-                        return `<div class="text-muted">Nessuna riga presente.</div>`;
-                    }
+                function restoreAcquistiFilterSnapshot(snapshot) {
+                    document.querySelectorAll(
+                        "#acquisti-filters-container .js-table-filter, " +
+                        "#acquisti-filters-container .js-table-filter-checkbox"
+                    ).forEach((el) => {
+                        const key = el.id || `${el.dataset.targetTable || ""}|${el.dataset.filterKey || ""}`;
+                        if (!key || !(key in snapshot)) return;
 
-                    const thead = columns
-                        .map(col => `<th>${escapeHtml(col.label)}</th>`)
-                        .join("");
-
-                    const tbody = rows
-                        .map((row) => {
-                            const tds = columns
-                                .map(col => `<td>${escapeHtml(row[col.key] ?? "")}</td>`)
-                                .join("");
-                            return `<tr>${tds}</tr>`;
-                        })
-                        .join("");
-
-                    return `
-                    <div class="table-responsive">
-                        <table class="table table-sm table-striped table-hover align-middle mb-0">
-                            <thead class="table-light">
-                                <tr>${thead}</tr>
-                            </thead>
-                            <tbody>${tbody}</tbody>
-                        </table>
-                    </div>
-                `;
+                        if (el.classList.contains("js-table-filter-checkbox")) {
+                            el.checked = Boolean(snapshot[key]);
+                        } else {
+                            el.value = snapshot[key];
+                        }
+                    });
                 }
 
-                document.addEventListener("click", (event) => {
-                    const btn = event.target.closest(".js-open-acq-material-modal");
-                    if (!btn) return;
+                function getAllAcquistiTargetTableIds() {
+                    const ids = new Set();
 
-                    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+                    document.querySelectorAll(
+                        "#acquisti-filters-container .js-table-filter[data-target-table], " +
+                        "#acquisti-filters-container .js-table-filter-checkbox[data-target-table]"
+                    ).forEach((el) => {
+                        const tableId = (el.dataset.targetTable || "").trim();
+                        if (tableId) ids.add(tableId);
+                    });
 
-                    const raw = btn.getAttribute("data-material") || "{}";
-                    let payload = {};
+                    return [...ids];
+                }
 
-                    try {
-                        payload = JSON.parse(raw);
-                    } catch (err) {
-                        console.error(err);
-                        modalTitleExtra.textContent = "";
-                        modalBody.innerHTML = `<div class="alert alert-danger mb-0">Errore nel dettaglio materiale.</div>`;
-                        modal.show();
+                function reapplyAllAcquistiFilters() {
+                    const tableIds = getAllAcquistiTargetTableIds();
+
+                    tableIds.forEach((tableId) => {
+                        window.applyFiltersToTable?.(tableId);
+                    });
+
+                    window.applyAcqGiacenzaRowState?.();
+                    window.applyRowColors?.();
+                    window.applyAcquistiOrdiniFilters?.();
+                }
+
+                async function refreshAcquistiTables() {
+                    if (isRefreshing) return;
+
+                    if (document.querySelector("#modalAcqMateriale.show")) {
                         return;
                     }
 
-                    const codArt = payload.cod_art || "";
-                    const variante = payload.variante_art || "";
-                    const desArt = payload.des_art || "";
-                    const magUm = payload.mag_um || "";
+                    isRefreshing = true;
+                    const filterSnapshot = getAcquistiFilterSnapshot();
 
+                    try {
+                        const response = await fetch(bridgeUrl, {
+                            method: "GET",
+                            headers: {
+                                "Accept": "application/json",
+                                "X-Requested-With": "XMLHttpRequest",
+                            },
+                            cache: "no-store",
+                        });
 
-                    const titolo = [codArt, variante].filter(Boolean).join(" - ");
-                    modalTitleExtra.textContent = titolo ? `- ${titolo}` : "";
+                        if (!response.ok) return;
 
-                    const distintaHtml = renderTable(
-                        payload.in_distinta || [],
-                        [
-                            {key: "Ordine", label: "Ordine"},
-                            {key: "Stato", label: "Stato"},
-                            {key: "Fase", label: "Fase"},
-                            {key: "MagUM", label: "UdM"},
-                            {key: "Quantita", label: "Quantità"},
-                            {key: "DescrizioneOrdine", label: "Articolo ordine"},
-                        ]
-                    );
+                        const data = await response.json();
+                        if (!data || !data.ok) return;
 
-                    const ordineHtml = renderTable(
-                        payload.in_ordine || [],
-                        [
-                            {key: "Ordine", label: "Ordine"},
-                            {key: "Stato", label: "Stato"},
-                            {key: "MagUM", label: "UdM"},
-                            {key: "Quantita", label: "Quantità residua"},
-                            {key: "DescrizioneOrdine", label: "Articolo ordine"},
-                        ]
-                    );
+                        const fragments = data.fragments || {};
 
-                    modalBody.innerHTML = `
-                    <div class="mb-3">
-                        <div><strong>Codice:</strong> ${escapeHtml(codArt)}</div>
-                        <div><strong>Variante:</strong> ${escapeHtml(variante)}</div>
-                        <div><strong>Descrizione:</strong> ${escapeHtml(desArt)}</div>
-                        <div><strong>UdM:</strong> ${escapeHtml(magUm)}</div>
-                    </div>
+                        Object.entries(fragments).forEach(([targetId, html]) => {
+                            const target = document.getElementById(targetId);
+                            if (target) {
+                                target.innerHTML = html;
+                            }
+                        });
 
-                    <div class="mb-4">
-                        <h6 class="mb-2">Presente in distinta base</h6>
-                        ${distintaHtml}
-                    </div>
+                        restoreAcquistiFilterSnapshot(filterSnapshot);
+                        reapplyAllAcquistiFilters();
+                    } catch (err) {
+                        console.error("Errore refresh acquisti:", err);
+                    } finally {
+                        isRefreshing = false;
+                    }
+                }
 
-                    <div>
-                        <h6 class="mb-2">Presente come articolo ordine</h6>
-                        ${ordineHtml}
-                    </div>
-                `;
+                window.refreshAcquistiTables = refreshAcquistiTables;
+                window.setInterval(refreshAcquistiTables, POLL_MS);
 
-                    modal.show();
-                });
+                // opzionale ma utile anche al primo caricamento
+                reapplyAllAcquistiFilters();
             });
         })();
     </script>
@@ -307,6 +309,7 @@
 
                 const POLL_MS = 30000;
                 let isRefreshing = false;
+
 
                 async function refreshAcquistiTables() {
                     if (isRefreshing) return;
@@ -344,6 +347,8 @@
                         window.applyAcqGiacenzaRowState?.();
                         window.applyFiltersToTable?.("acquisti_giacenza_table");
                         window.applyFiltersToTable?.("acquisti_materiale_table");
+                        window.applyRowColors?.();
+                        window.applyAcquistiOrdiniFilters?.();
                     } catch (err) {
                         console.error("Errore refresh acquisti:", err);
                     } finally {
@@ -353,6 +358,46 @@
 
                 window.refreshAcquistiTables = refreshAcquistiTables;
                 window.setInterval(refreshAcquistiTables, POLL_MS);
+            });
+        })();
+    </script>
+    <script>
+        (() => {
+            document.addEventListener("DOMContentLoaded", () => {
+                const sourceInput = document.getElementById("filter-acq-ordini-rifglobale");
+                if (!sourceInput) return;
+
+                const hiddenFilterIds = [
+                    "filter-acq-ordini-rif-montaggio-sl",
+                    "filter-acq-ordini-rif-montaggio-m",
+                    "filter-acq-ordini-rif-officina",
+                    "filter-acq-ordini-rif-carpenteria",
+                ];
+
+                const orderTableIds = [
+                    "acquisti_ordini_montaggio_sl_table",
+                    "acquisti_ordini_montaggio_m_table",
+                    "acquisti_ordini_officina_table",
+                    "acquisti_ordini_carpenteria_table",
+                ];
+
+                function applyAcquistiOrdiniFilters() {
+                    const value = sourceInput.value || "";
+
+                    hiddenFilterIds.forEach((id) => {
+                        const hiddenInput = document.getElementById(id);
+                        if (hiddenInput) hiddenInput.value = value;
+                    });
+
+                    orderTableIds.forEach((tableId) => {
+                        window.applyFiltersToTable?.(tableId);
+                    });
+                }
+
+                sourceInput.addEventListener("input", applyAcquistiOrdiniFilters);
+                window.applyAcquistiOrdiniFilters = applyAcquistiOrdiniFilters;
+
+                applyAcquistiOrdiniFilters();
             });
         })();
     </script>

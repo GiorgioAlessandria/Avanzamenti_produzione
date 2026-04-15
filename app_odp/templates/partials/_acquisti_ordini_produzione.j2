@@ -2,31 +2,25 @@
     <div class="row g-3 h-100">
 
         <!-- Colonna Montaggio -->
-        <!-- Colonna Montaggio -->
         <div class="col-12 col-xxl-4 d-flex flex-column h-100"
              style="min-height: 0;">
-
-            <div class="card shadow-sm mb-3 flex-shrink-0">
-                <div class="card-header">
-                    <h2 class="h5 mb-0">Montaggio</h2>
-                </div>
-            </div>
 
             <div class="d-flex flex-column flex-grow-1 gap-3"
                  style="min-height: 0;">
 
                 <div class="card shadow-sm d-flex flex-column flex-fill"
-                     style="min-height: 0;">
+                     style="min-height: 0; max-height: 32vh">
                     <div class="card-header flex-shrink-0">
                         <h3 class="h6 mb-0">Ordini SL</h3>
                     </div>
                     <div class="card-body py-2 flex-grow-1 overflow-hidden">
                         <div class="table-responsive h-100"
                              style="overflow: auto;">
-                            <table class="table table-sm table-striped table-hover table-sortable align-middle mb-0"
+                            <table class="table table-sm table-striped table-hover table-sortable table-state-rowcolor align-middle mb-0"
                                    id="acquisti_ordini_montaggio_sl_table">
                                 <thead>
                                 <tr>
+                                    <th data-sort="text">Ordine</th>
                                     <th data-sort="text">Codice</th>
                                     <th data-sort="text">Variante</th>
                                     <th data-sort="text">Rev.</th>
@@ -38,7 +32,8 @@
                                 <tbody id="tbody_acquisti_ordini_montaggio_sl">
                                 {% if ordini_rows.montaggio_sl %}
                                     {% for row in ordini_rows.montaggio_sl %}
-                                        <tr>
+                                        <tr data-ordineproduzione="{{ row.OrdineProduzione|e }}">
+                                            <td>{{ row.OrdineProduzione }}</td>
                                             <td>{{ row.CodArt }}</td>
                                             <td>{{ row.VarianteArt }}</td>
                                             <td>{{ row.Revisione }}</td>
@@ -49,7 +44,7 @@
                                     {% endfor %}
                                 {% else %}
                                     <tr>
-                                        <td colspan="6"
+                                        <td colspan="7"
                                             class="text-center text-muted py-3">
                                             Nessun ordine SL.
                                         </td>
@@ -62,17 +57,18 @@
                 </div>
 
                 <div class="card shadow-sm d-flex flex-column flex-fill"
-                     style="min-height: 0;">
+                     style="min-height: 0; max-height: 32vh">
                     <div class="card-header flex-shrink-0">
                         <h3 class="h6 mb-0">Ordini macchina</h3>
                     </div>
                     <div class="card-body py-2 flex-grow-1 overflow-hidden">
                         <div class="table-responsive h-100"
                              style="overflow: auto;">
-                            <table class="table table-sm table-striped table-hover table-sortable align-middle mb-0"
+                            <table class="table table-sm table-striped table-hover table-sortable table-state-rowcolor align-middle mb-0"
                                    id="acquisti_ordini_montaggio_m_table">
                                 <thead>
                                 <tr>
+                                    <th data-sort="text">Ordine</th>
                                     <th data-sort="text">Codice</th>
                                     <th data-sort="text">Descrizione</th>
                                     <th data-sort="num">Qty</th>
@@ -82,7 +78,8 @@
                                 <tbody id="tbody_acquisti_ordini_montaggio_m">
                                 {% if ordini_rows.montaggio_m %}
                                     {% for row in ordini_rows.montaggio_m %}
-                                        <tr>
+                                        <tr data-ordineproduzione="{{ row.OrdineProduzione|e }}">
+                                            <td>{{ row.OrdineProduzione }}</td>
                                             <td>{{ row.CodArt }}</td>
                                             <td>{{ row.DesArt }}</td>
                                             <td>{{ row.Qty }}</td>
@@ -91,7 +88,7 @@
                                     {% endfor %}
                                 {% else %}
                                     <tr>
-                                        <td colspan="4"
+                                        <td colspan="5"
                                             class="text-center text-muted py-3">
                                             Nessun ordine macchina.
                                         </td>
@@ -115,10 +112,11 @@
                 <div class="card-body py-2 flex-grow-1 overflow-hidden">
                     <div class="table-responsive h-100"
                          style="overflow: auto;">
-                        <table class="table table-sm table-striped table-hover table-sortable align-middle mb-0"
+                        <table class="table table-sm table-striped table-hover table-sortable table-state-rowcolor align-middle mb-0"
                                id="acquisti_ordini_officina_table">
                             <thead>
                             <tr>
+                                <th data-sort="text">Ordine</th>
                                 <th data-sort="text">Codice</th>
                                 <th data-sort="text">Variante</th>
                                 <th data-sort="text">Rev.</th>
@@ -130,7 +128,8 @@
                             <tbody id="tbody_acquisti_ordini_officina">
                             {% if ordini_rows.officina %}
                                 {% for row in ordini_rows.officina %}
-                                    <tr>
+                                    <tr data-ordineproduzione="{{ row.OrdineProduzione|e }}">
+                                        <td>{{ row.OrdineProduzione }}</td>
                                         <td>{{ row.CodArt }}</td>
                                         <td>{{ row.VarianteArt }}</td>
                                         <td>{{ row.Revisione }}</td>
@@ -141,7 +140,7 @@
                                 {% endfor %}
                             {% else %}
                                 <tr>
-                                    <td colspan="6"
+                                    <td colspan="7"
                                         class="text-center text-muted py-3">
                                         Nessun ordine officina.
                                     </td>
@@ -163,10 +162,11 @@
                 <div class="card-body py-2 flex-grow-1 overflow-hidden">
                     <div class="table-responsive h-100"
                          style="overflow: auto;">
-                        <table class="table table-sm table-striped table-hover table-sortable align-middle mb-0"
+                        <table class="table table-sm table-striped table-hover table-sortable table-state-rowcolor align-middle mb-0"
                                id="acquisti_ordini_carpenteria_table">
                             <thead>
                             <tr>
+                                <th data-sort="text">Ordine</th>
                                 <th data-sort="text">Codice</th>
                                 <th data-sort="text">Variante</th>
                                 <th data-sort="text">Rev.</th>
@@ -178,7 +178,8 @@
                             <tbody id="tbody_acquisti_ordini_carpenteria">
                             {% if ordini_rows.carpenteria %}
                                 {% for row in ordini_rows.carpenteria %}
-                                    <tr>
+                                    <tr data-ordineproduzione="{{ row.OrdineProduzione|e }}">
+                                        <td>{{ row.OrdineProduzione }}</td>
                                         <td>{{ row.CodArt }}</td>
                                         <td>{{ row.VarianteArt }}</td>
                                         <td>{{ row.Revisione }}</td>
@@ -189,7 +190,7 @@
                                 {% endfor %}
                             {% else %}
                                 <tr>
-                                    <td colspan="6"
+                                    <td colspan="7"
                                         class="text-center text-muted py-3">
                                         Nessun ordine carpenteria.
                                     </td>

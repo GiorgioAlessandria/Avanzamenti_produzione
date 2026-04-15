@@ -5729,7 +5729,6 @@ def _build_acquisti_ordini_rows() -> dict:
 
     for ordine in ordini:
         stato = _ordine_stato_effettivo(ordine)
-        stato_norm = stato.lower()
 
         if not _is_open_order_state(stato):
             continue
@@ -5743,10 +5742,6 @@ def _build_acquisti_ordini_rows() -> dict:
             or "1"
         )
 
-        runtime = getattr(ordine, "runtime_row", None)
-        qty = _qty_da_lavorare_text(ordine, stato=runtime)
-
-        fase_attiva = _norm_text(getattr(ordine, "FaseAttiva", "")) or "1"
         reparto_attivo_raw = _active_value_for_phase(
             getattr(ordine, "CodReparto", ""),
             getattr(ordine, "NumFase", ""),
@@ -5756,7 +5751,10 @@ def _build_acquisti_ordini_rows() -> dict:
             reparto_attivo_raw
         ) or _first_code_from_cell(getattr(ordine, "CodReparto", ""))
 
+        ordine_produzione = _ordine_ref_label(ordine)
+
         row_sl = {
+            "OrdineProduzione": ordine_produzione,
             "CodArt": _norm_text(getattr(ordine, "CodArt", "")),
             "VarianteArt": _norm_text(getattr(ordine, "VarianteArt", "")),
             "Revisione": _norm_text(getattr(ordine, "IndiceModifica", "")),
@@ -5766,6 +5764,7 @@ def _build_acquisti_ordini_rows() -> dict:
         }
 
         row_m = {
+            "OrdineProduzione": ordine_produzione,
             "CodArt": _norm_text(getattr(ordine, "CodArt", "")),
             "DesArt": _norm_text(getattr(ordine, "DesArt", "")),
             "Qty": qty,
@@ -5792,6 +5791,7 @@ def _build_acquisti_ordini_rows() -> dict:
         buckets[key].sort(
             key=lambda x: (
                 _ordine_state_rank(x.get("Stato", "")),
+                (x.get("OrdineProduzione") or "").lower(),
                 (x.get("CodArt") or "").lower(),
                 (x.get("VarianteArt") or "").lower(),
                 (x.get("Revisione") or "").lower(),
@@ -5802,6 +5802,7 @@ def _build_acquisti_ordini_rows() -> dict:
     buckets["montaggio_m"].sort(
         key=lambda x: (
             _ordine_state_rank(x.get("Stato", "")),
+            (x.get("OrdineProduzione") or "").lower(),
             (x.get("CodArt") or "").lower(),
             (x.get("DesArt") or "").lower(),
         )
