@@ -15,6 +15,7 @@
                 <tr>
                     <th data-sort="text">CodArt</th>
                     <th data-sort="text">Descrizione</th>
+                    <th data-sort="text">UdM</th>
                     <th data-sort="num">Mag 0</th>
                     <th data-sort="num">Mag 10</th>
                     <th data-sort="num">Mag 13</th>
@@ -35,11 +36,12 @@
 
                         <tr data-codart="{{ row.CodArt or '' }}"
                             data-desart="{{ row.DesArt or '' }}"
+
                             data-negative="{{ '1' if is_negative_mag0 else '0' }}"
                             data-understock="{{ '1' if is_understock_mag0 else '0' }}">
                             <td>{{ row.CodArt or '' }}</td>
                             <td>{{ row.DesArt or '' }}</td>
-
+                            <td>{{ row.MagUM or '' }}</td>
                             <td class="{% if is_negative_mag0 %}fw-bold{% endif %}">
                                 {{ row.Mag_0 }}
                             </td>

@@ -226,7 +226,8 @@ def ensure_schema():
                                                     PuntoRiordino REAL,
                                                     PianTempoApprovFisso INTEGER,
                                                     DataPrevistaApprovvigionamento TEXT,
-                                                    synced_at TEXT
+                                                    synced_at TEXT,
+                                                    MagUM TEXT
         )
         """,
         """

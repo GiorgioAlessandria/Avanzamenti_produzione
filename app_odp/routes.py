@@ -5385,6 +5385,7 @@ def _new_acq_material_row(cod_art: str, variante_art: str) -> dict:
         "Mag0Missing": True,
         "DistintaDettagli": [],
         "OrdineDettagli": [],
+        "MagUM": "",
     }
 
 
@@ -5490,6 +5491,10 @@ def _build_acquisti_materiale_rows() -> list[dict]:
             row = grouped.setdefault(
                 key, _new_acq_material_row(comp_cod_art, comp_variante)
             )
+            articolo_comp = articoli_map.get(comp_cod_art)
+
+            if not row["MagUM"]:
+                row["MagUM"] = _extract_comp_udm(comp, articolo=articolo_comp)
 
             if not row["DesArt"]:
                 row["DesArt"] = comp_des_art
@@ -5499,6 +5504,12 @@ def _build_acquisti_materiale_rows() -> list[dict]:
             elif "attiv" in stato_norm or "sospes" in stato_norm:
                 row["MaterialeImpegnato"] += float(qty_comp_residua)
 
+            articolo_ordine = articoli_map.get(cod_art_ordine)
+            if not row["MagUM"]:
+                row["MagUM"] = _first_not_blank_text(
+                    getattr(articolo_ordine, "MagUM", "") if articolo_ordine else "",
+                )
+
             row["DistintaDettagli"].append(
                 {
                     "Ordine": ordine_ref,
@@ -5507,6 +5518,7 @@ def _build_acquisti_materiale_rows() -> list[dict]:
                     "Quantita": _decimal_to_text(qty_comp_residua),
                     "Tipo": "distinta",
                     "DescrizioneOrdine": des_art_ordine,
+                    "MagUM": _extract_comp_udm(comp, articolo=articolo_comp),
                 }
             )
 
@@ -5515,10 +5527,10 @@ def _build_acquisti_materiale_rows() -> list[dict]:
     for _, row in grouped.items():
         articolo = articoli_map.get(row["CodArt"])
         giacenza_mag0 = giacenze_mag0.get(row["CodArt"])
-
-        if articolo is not None:
-            if not row["DesArt"]:
-                row["DesArt"] = _norm_text(getattr(articolo, "DesArt", ""))
+        if not row["MagUM"]:
+            row["MagUM"] = _first_not_blank_text(
+                getattr(articolo, "MagUM", "") if articolo else "",
+            )
 
             row["LottoRiordino"] = float(getattr(articolo, "LottoRiordino", 0) or 0)
             row["PuntoRiordino"] = float(getattr(articolo, "PuntoRiordino", 0) or 0)
@@ -5574,6 +5586,7 @@ def _build_acquisti_materiale_rows() -> list[dict]:
             "cod_art": row["CodArt"],
             "variante_art": row["VarianteArt"],
             "des_art": row["DesArt"],
+            "mag_um": row["MagUM"],
             "in_distinta": row["DistintaDettagli"],
             "in_ordine": row["OrdineDettagli"],
         }
@@ -5589,6 +5602,24 @@ def _build_acquisti_materiale_rows() -> list[dict]:
     )
 
     return rows_out
+
+
+def _first_not_blank_text(*values) -> str:
+    for value in values:
+        txt = _norm_text(value)
+        if txt:
+            return txt
+    return ""
+
+
+def _extract_comp_udm(comp: dict, articolo=None) -> str:
+    return _first_not_blank_text(
+        comp.get("TecniciUm"),
+        comp.get("MagUM"),
+        comp.get("Udm"),
+        comp.get("UM"),
+        getattr(articolo, "MagUM", ""),
+    )
 
 
 @main_bp.get("/acquisti")
@@ -5641,6 +5672,7 @@ def home_acquisti():
                 "PuntoRiordino": float(
                     (articolo.PuntoRiordino if articolo else 0) or 0
                 ),
+                "MagUM": _norm_text(getattr(articolo, "MagUM", "")) if articolo else "",
                 "LottoRiordino": float(
                     (articolo.LottoRiordino if articolo else 0) or 0
                 ),
@@ -5663,8 +5695,11 @@ def home_acquisti():
         if qty < 0:
             row["is_negative_any"] = True
 
-        if articolo and not row["DesArt"]:
-            row["DesArt"] = articolo.DesArt or ""
+        if articolo:
+            if not row["DesArt"]:
+                row["DesArt"] = articolo.DesArt or ""
+            if not row["MagUM"]:
+                row["MagUM"] = _norm_text(getattr(articolo, "MagUM", ""))
 
     giacenze_rows = list(grouped.values())
 

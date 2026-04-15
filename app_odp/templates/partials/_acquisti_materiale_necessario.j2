@@ -16,6 +16,7 @@
                     <th data-sort="text">Articolo</th>
                     <th data-sort="text">Var.</th>
                     <th data-sort="text">Descrizione</th>
+                    <th data-sort="text">UdM</th>
                     <th data-sort="num">Giacenza</th>
                     <th data-sort="num">Fabbisogno pianificato</th>
                     <th data-sort="num">Fabbisogno impegnato</th>
@@ -43,7 +44,7 @@
                             <td>{{ row.CodArt or '' }}</td>
                             <td>{{ row.VarianteArt or '' }}</td>
                             <td>{{ row.DesArt or '' }}</td>
-
+                            <td>{{ row.MagUM or '' }}</td>
                             <td>
                                 {% if row.Mag0Missing %}
                                     <span class="fw-semibold">Assente</span>

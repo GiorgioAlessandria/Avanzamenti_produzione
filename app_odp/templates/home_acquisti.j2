@@ -244,6 +244,8 @@
                     const codArt = payload.cod_art || "";
                     const variante = payload.variante_art || "";
                     const desArt = payload.des_art || "";
+                    const magUm = payload.mag_um || "";
+
 
                     const titolo = [codArt, variante].filter(Boolean).join(" - ");
                     modalTitleExtra.textContent = titolo ? `- ${titolo}` : "";
@@ -254,6 +256,7 @@
                             {key: "Ordine", label: "Ordine"},
                             {key: "Stato", label: "Stato"},
                             {key: "Fase", label: "Fase"},
+                            {key: "MagUM", label: "UdM"},
                             {key: "Quantita", label: "Quantità"},
                             {key: "DescrizioneOrdine", label: "Articolo ordine"},
                         ]
@@ -264,6 +267,7 @@
                         [
                             {key: "Ordine", label: "Ordine"},
                             {key: "Stato", label: "Stato"},
+                            {key: "MagUM", label: "UdM"},
                             {key: "Quantita", label: "Quantità residua"},
                             {key: "DescrizioneOrdine", label: "Articolo ordine"},
                         ]
@@ -274,6 +278,7 @@
                         <div><strong>Codice:</strong> ${escapeHtml(codArt)}</div>
                         <div><strong>Variante:</strong> ${escapeHtml(variante)}</div>
                         <div><strong>Descrizione:</strong> ${escapeHtml(desArt)}</div>
+                        <div><strong>UdM:</strong> ${escapeHtml(magUm)}</div>
                     </div>
 
                     <div class="mb-4">

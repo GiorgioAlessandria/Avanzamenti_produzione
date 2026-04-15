@@ -1113,6 +1113,7 @@ class AcqArticoli(db.Model):
 
     CodArt = db.Column(db.Text, primary_key=True)
     DesArt = db.Column(db.Text)
+    MagUM = db.Column(db.Text)
     LottoRiordino = db.Column(db.Float)
     PuntoRiordino = db.Column(db.Float)
     PianTempoApprovFisso = db.Column(db.Integer)
