@@ -1,13 +1,14 @@
 <div class="card shadow-sm h-100 d-flex flex-column">
-    <div class="card-header d-flex justify-content-between align-items-center">
+    <div class="card-header d-flex justify-content-between align-items-center flex-shrink-0">
         <h2 class="h4 mb-0">Giacenza complessiva</h2>
         <span class="text-muted small">
             Disponibilità per articolo
         </span>
     </div>
 
-    <div class="card-body py-2 d-flex flex-column flex-grow-1">
-        <div class="table-responsive flex-grow-1">
+    <div class="card-body py-2 d-flex flex-column flex-grow-1 overflow-hidden">
+        <div class="table-responsive flex-grow-1"
+             style="overflow: auto;">
             <table class="table table-striped table-hover table-sortable table-sticky-wrap align-middle mb-0"
                    id="acquisti_giacenza_table">
                 <thead>
@@ -27,13 +28,19 @@
                 <tbody id="tbody_acquisti_giacenza">
                 {% if giacenze_rows %}
                     {% for row in giacenze_rows %}
+                        {% set mag0 = row.Mag_0 if row.Mag_0 is not none else 0 %}
+                        {% set punto_riordino = row.PuntoRiordino if row.PuntoRiordino is not none else 0 %}
+                        {% set is_negative_mag0 = mag0 < 0 %}
+                        {% set is_understock_mag0 = (not is_negative_mag0) and (mag0 < punto_riordino) %}
+
                         <tr data-codart="{{ row.CodArt or '' }}"
                             data-desart="{{ row.DesArt or '' }}"
-                            data-negative="{{ '1' if row.is_negative_any else '0' }}">
+                            data-negative="{{ '1' if is_negative_mag0 else '0' }}"
+                            data-understock="{{ '1' if is_understock_mag0 else '0' }}">
                             <td>{{ row.CodArt or '' }}</td>
                             <td>{{ row.DesArt or '' }}</td>
 
-                            <td class="{% if row.Mag_0 < 0 %}text-danger fw-bold{% endif %}">
+                            <td class="{% if is_negative_mag0 %}fw-bold{% endif %}">
                                 {{ row.Mag_0 }}
                             </td>
 

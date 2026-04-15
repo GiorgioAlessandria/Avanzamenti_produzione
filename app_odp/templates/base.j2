@@ -611,16 +611,17 @@
     </script>
     <script>
         document.addEventListener("DOMContentLoaded", () => {
-            const checkboxFilters = document.querySelectorAll(".js-table-filter-checkbox");
+            const allTextFilters = document.querySelectorAll(".js-table-filter");
+            const allCheckboxFilters = document.querySelectorAll(".js-table-filter-checkbox");
 
-            checkboxFilters.forEach((input) => {
-                input.addEventListener("change", () => {
-                    const tableId = input.dataset.targetTable;
-                    if (tableId) applyCheckboxFiltersToTable(tableId);
-                });
-            });
+            function cssEscape(value) {
+                if (window.CSS && typeof window.CSS.escape === "function") {
+                    return window.CSS.escape(value);
+                }
+                return String(value).replace(/"/g, '\\"');
+            }
 
-            function applyCheckboxFiltersToTable(tableId) {
+            function applyFiltersToTable(tableId) {
                 const table = document.getElementById(tableId);
                 if (!table) return;
 
@@ -629,18 +630,18 @@
 
                 const rows = tbody.querySelectorAll("tr");
 
-                const textFilters = document.querySelectorAll(
+                const textFiltersForTable = document.querySelectorAll(
                     `.js-table-filter[data-target-table="${cssEscape(tableId)}"]`
                 );
 
-                const checkFilters = document.querySelectorAll(
+                const checkboxFiltersForTable = document.querySelectorAll(
                     `.js-table-filter-checkbox[data-target-table="${cssEscape(tableId)}"]`
                 );
 
                 rows.forEach((row) => {
                     let visible = true;
 
-                    for (const filterInput of textFilters) {
+                    for (const filterInput of textFiltersForTable) {
                         const filterValue = (filterInput.value || "").trim().toLowerCase();
                         if (!filterValue) continue;
 
@@ -665,21 +666,26 @@
                         }
                     }
 
-                    if (!visible) {
-                        row.style.display = "none";
-                        return;
-                    }
+                    if (visible) {
+                        for (const checkInput of checkboxFiltersForTable) {
+                            if (!checkInput.checked) continue;
 
-                    for (const checkInput of checkFilters) {
-                        const key = checkInput.dataset.filterKey || "";
+                            const key = checkInput.dataset.filterKey || "";
 
-                        if (!checkInput.checked) continue;
+                            if (key === "negative") {
+                                const isNegative = (row.dataset.negative || "") === "1";
+                                if (!isNegative) {
+                                    visible = false;
+                                    break;
+                                }
+                            }
 
-                        if (key === "negative") {
-                            const isNegative = (row.dataset.negative || "") === "1";
-                            if (!isNegative) {
-                                visible = false;
-                                break;
+                            if (key === "understock") {
+                                const isUnderstock = (row.dataset.understock || "") === "1";
+                                if (!isUnderstock) {
+                                    visible = false;
+                                    break;
+                                }
                             }
                         }
                     }
@@ -688,7 +694,22 @@
                 });
             }
 
-            window.applyCheckboxFiltersToTable = applyCheckboxFiltersToTable;
+            allTextFilters.forEach((input) => {
+                const eventName = input.tagName === "SELECT" ? "change" : "input";
+                input.addEventListener(eventName, () => {
+                    const tableId = input.dataset.targetTable;
+                    if (tableId) applyFiltersToTable(tableId);
+                });
+            });
+
+            allCheckboxFilters.forEach((input) => {
+                input.addEventListener("change", () => {
+                    const tableId = input.dataset.targetTable;
+                    if (tableId) applyFiltersToTable(tableId);
+                });
+            });
+
+            window.applyFiltersToTable = applyFiltersToTable;
         });
     </script>
 {% endblock %}

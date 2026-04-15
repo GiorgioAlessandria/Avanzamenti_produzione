@@ -5,8 +5,8 @@
 {% block content %}
     <main class="container-fluid mt-2 mb-3 d-flex flex-column"
           id="acquisti-page"
-          style="min-height: calc(100vh - 140px);">
-        <div class="row g-3">
+          style="height: calc(100vh - 140px); overflow: hidden;">
+        <div class="row g-3 flex-shrink-0">
             <div class="col-12">
                 <div class="card shadow-sm">
                     <div class="card-body py-2">
@@ -32,68 +32,65 @@
                 </div>
             </div>
 
-            <div class="col-12 flex-grow-1 d-flex">
+            <div class="col-12 flex-shrink-0">
+                <section class="card shadow-sm"
+                         id="acquisti-filters-container">
+                    <div class="card-body py-2">
+                        <div class="acq-filters-panel"
+                             data-section="giacenza">
+                            {% include "partials/_acquisti_filters_giacenza.j2" %}
+                        </div>
+
+                        <div class="acq-filters-panel d-none"
+                             data-section="materiale">
+                            <div class="text-muted">Filtri materiale necessario da definire.</div>
+                        </div>
+
+                        <div class="acq-filters-panel d-none"
+                             data-section="ordini">
+                            <div class="text-muted">Filtri ordini di produzione da definire.</div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </div>
+
+        <div class="row g-3 flex-grow-1 mt-0 overflow-hidden">
+            <div class="col-12 h-100">
                 <section id="acquisti-content-container"
-                         class="w-100 d-flex flex-column">
-                    <div class="acq-section-panel flex-grow-1 d-flex flex-column"
+                         class="h-100">
+                    <div class="acq-section-panel h-100"
                          data-section="giacenza">
                         {% include "partials/_acquisti_giacenza.j2" %}
                     </div>
 
-                    <div class="acq-filters-panel d-none"
+                    <div class="acq-section-panel d-none h-100"
                          data-section="materiale">
-                        <div class="text-muted">
-                            Filtri materiale necessario da definire.
+                        <div class="card shadow-sm h-100">
+                            <div class="card-body">
+                                <h2 class="h5 mb-2">Materiale necessario</h2>
+                                <p class="text-muted mb-0">Sezione in preparazione.</p>
+                            </div>
                         </div>
                     </div>
 
-                    <div class="acq-filters-panel d-none"
+                    <div class="acq-section-panel d-none h-100"
                          data-section="ordini">
-                        <div class="text-muted">
-                            Filtri ordini di produzione da definire.
+                        <div class="card shadow-sm h-100">
+                            <div class="card-body">
+                                <h2 class="h4 mb-2">Ordini di produzione</h2>
+                                <p class="text-muted mb-0">Sezione in preparazione.</p>
+                            </div>
                         </div>
                     </div>
+                </section>
             </div>
-            </section>
-        </div>
-
-        <div class="col-12">
-            <section id="acquisti-content-container">
-                <div class="acq-section-panel"
-                     data-section="giacenza">
-                    {% include "partials/_acquisti_giacenza.j2" %}
-                </div>
-
-                <div class="acq-section-panel d-none"
-                     data-section="materiale">
-                    <div class="card shadow-sm">
-                        <div class="card-body">
-                            <h2 class="h5 mb-2">Materiale necessario</h2>
-                            <p class="text-muted mb-0">
-                                Sezione in preparazione.
-                            </p>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="acq-section-panel d-none"
-                     data-section="ordini">
-                    <div class="card shadow-sm">
-                        <div class="card-body">
-                            <h2 class="h4 mb-2">Ordini di produzione</h2>
-                            <p class="text-muted mb-0">
-                                Sezione in preparazione.
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            </section>
-        </div>
         </div>
     </main>
 {% endblock %}
 
 {% block extra_js %}
+    {{ super() }}
     <script>
         (() => {
             const sectionButtons = document.querySelectorAll(".js-acq-section-btn");
@@ -130,6 +127,29 @@
             });
 
             setActiveSection("giacenza");
+        })();
+        (() => {
+            function applyAcqGiacenzaRowState() {
+                const table = document.getElementById("acquisti_giacenza_table");
+                if (!table) return;
+
+                table.querySelectorAll("tbody tr").forEach((row) => {
+                    row.classList.remove("row-acq-negative", "row-acq-understock");
+
+                    const isNegative = (row.dataset.negative || "") === "1";
+                    const isUnderstock = (row.dataset.understock || "") === "1";
+
+                    // precedenza assoluta al negativo
+                    if (isNegative) {
+                        row.classList.add("row-acq-negative");
+                    } else if (isUnderstock) {
+                        row.classList.add("row-acq-understock");
+                    }
+                });
+            }
+
+            document.addEventListener("DOMContentLoaded", applyAcqGiacenzaRowState);
+            window.applyAcqGiacenzaRowState = applyAcqGiacenzaRowState;
         })();
     </script>
 {% endblock %}
