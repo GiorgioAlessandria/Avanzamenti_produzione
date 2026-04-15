@@ -5622,16 +5622,8 @@ def _extract_comp_udm(comp: dict, articolo=None) -> str:
     )
 
 
-@main_bp.get("/acquisti")
-@login_required
-@require_perm("home_acquisti")
-def home_acquisti():
+def _build_acquisti_giacenze_rows() -> list[dict]:
     magazzini_default = ["0", "10", "13"]
-    materiali_rows = _build_acquisti_materiale_rows()
-
-    cod_art_filter = _norm_text(request.args.get("cod_art"))
-    descr_filter = _norm_text(request.args.get("descr"))
-    solo_negativi = request.args.get("solo_negativi") == "1"
 
     q = db.session.query(AcqGiacenze, AcqArticoli).outerjoin(
         AcqArticoli,
@@ -5639,12 +5631,6 @@ def home_acquisti():
     )
 
     q = q.filter(AcqGiacenze.CodMag.in_(magazzini_default))
-
-    if cod_art_filter:
-        q = q.filter(AcqGiacenze.CodArt.ilike(f"%{cod_art_filter}%"))
-
-    if descr_filter:
-        q = q.filter(AcqArticoli.DesArt.ilike(f"%{descr_filter}%"))
 
     rows = q.order_by(
         AcqGiacenze.CodArt.asc(),
@@ -5666,13 +5652,13 @@ def home_acquisti():
             {
                 "CodArt": cod_art,
                 "DesArt": (articolo.DesArt if articolo else "") or "",
+                "MagUM": _norm_text(getattr(articolo, "MagUM", "")) if articolo else "",
                 "Mag_0": 0.0,
                 "Mag_10": 0.0,
                 "Mag_13": 0.0,
                 "PuntoRiordino": float(
                     (articolo.PuntoRiordino if articolo else 0) or 0
                 ),
-                "MagUM": _norm_text(getattr(articolo, "MagUM", "")) if articolo else "",
                 "LottoRiordino": float(
                     (articolo.LottoRiordino if articolo else 0) or 0
                 ),
@@ -5701,20 +5687,154 @@ def home_acquisti():
             if not row["MagUM"]:
                 row["MagUM"] = _norm_text(getattr(articolo, "MagUM", ""))
 
-    giacenze_rows = list(grouped.values())
+    return list(grouped.values())
 
-    if solo_negativi:
-        giacenze_rows = [
-            row
-            for row in giacenze_rows
-            if row["Mag_0"] < 0 or row["Mag_10"] < 0 or row["Mag_13"] < 0
-        ]
+
+def _ordine_state_rank(stato: str) -> int:
+    s = _norm_text(stato).lower()
+    if "attiv" in s:
+        return 0
+    if "sospes" in s:
+        return 1
+    if "pianificat" in s:
+        return 2
+    return 9
+
+
+def _build_acquisti_ordini_rows() -> dict:
+    ordini = _base_odp_query().all()
+
+    buckets = {
+        "montaggio_sl": [],
+        "montaggio_m": [],
+        "officina": [],
+        "carpenteria": [],
+    }
+
+    for ordine in ordini:
+        stato = _norm_text(getattr(ordine, "StatoOrdine", ""))
+        stato_norm = stato.lower()
+
+        if stato_norm == "chiusa":
+            continue
+
+        if (
+            "attiv" not in stato_norm
+            and "pianificat" not in stato_norm
+            and "sospes" not in stato_norm
+        ):
+            continue
+
+        runtime = getattr(ordine, "runtime_row", None)
+        qty = _qty_da_lavorare_text(ordine, stato=runtime)
+
+        fase_attiva = _norm_text(getattr(ordine, "FaseAttiva", "")) or "1"
+        reparto_attivo_raw = _active_value_for_phase(
+            getattr(ordine, "CodReparto", ""),
+            getattr(ordine, "NumFase", ""),
+            fase_attiva,
+        )
+        reparto_attivo = _first_code_from_cell(
+            reparto_attivo_raw
+        ) or _first_code_from_cell(getattr(ordine, "CodReparto", ""))
+
+        row_sl = {
+            "CodArt": _norm_text(getattr(ordine, "CodArt", "")),
+            "VarianteArt": _norm_text(getattr(ordine, "VarianteArt", "")),
+            "Revisione": _norm_text(getattr(ordine, "IndiceModifica", "")),
+            "DesArt": _norm_text(getattr(ordine, "DesArt", "")),
+            "Qty": qty,
+            "Stato": stato,
+        }
+
+        row_m = {
+            "CodArt": _norm_text(getattr(ordine, "CodArt", "")),
+            "DesArt": _norm_text(getattr(ordine, "DesArt", "")),
+            "Qty": qty,
+            "Stato": stato,
+        }
+
+        is_macchina = (
+            _norm_text(getattr(ordine, "GestioneMatricola", "")).lower() == "si"
+        )
+
+        if reparto_attivo == "10":
+            if is_macchina:
+                buckets["montaggio_m"].append(row_m)
+            else:
+                buckets["montaggio_sl"].append(row_sl)
+
+        elif reparto_attivo == "20":
+            buckets["officina"].append(row_sl)
+
+        elif reparto_attivo == "30":
+            buckets["carpenteria"].append(row_sl)
+
+    for key in ("montaggio_sl", "officina", "carpenteria"):
+        buckets[key].sort(
+            key=lambda x: (
+                _ordine_state_rank(x.get("Stato", "")),
+                (x.get("CodArt") or "").lower(),
+                (x.get("VarianteArt") or "").lower(),
+                (x.get("Revisione") or "").lower(),
+                (x.get("DesArt") or "").lower(),
+            )
+        )
+
+    buckets["montaggio_m"].sort(
+        key=lambda x: (
+            _ordine_state_rank(x.get("Stato", "")),
+            (x.get("CodArt") or "").lower(),
+            (x.get("DesArt") or "").lower(),
+        )
+    )
+
+    return buckets
+
+
+@main_bp.get("/acquisti")
+@login_required
+@require_perm("home_acquisti")
+def home_acquisti():
+    giacenze_rows = _build_acquisti_giacenze_rows()
+    materiali_rows = _build_acquisti_materiale_rows()
+    ordini_rows = _build_acquisti_ordini_rows()
 
     return render_template(
         "home_acquisti.j2",
         giacenze_rows=giacenze_rows,
         materiali_rows=materiali_rows,
-        cod_art_filter=cod_art_filter,
-        descr_filter=descr_filter,
-        solo_negativi=solo_negativi,
+        ordini_rows=ordini_rows,
+    )
+
+
+@main_bp.get("/api/acquisti/bridge")
+@login_required
+@require_perm("home_acquisti")
+def api_acquisti_bridge():
+    giacenze_rows = _build_acquisti_giacenze_rows()
+    materiali_rows = _build_acquisti_materiale_rows()
+    ordini_rows = _build_acquisti_ordini_rows()
+
+    fragments = {
+        "tbody_acquisti_giacenza": render_template(
+            "partials/_acquisti_giacenza_rows.j2",
+            giacenze_rows=giacenze_rows,
+        ),
+        "tbody_acquisti_materiale": render_template(
+            "partials/_acquisti_materiale_rows.j2",
+            materiali_rows=materiali_rows,
+        ),
+        "acquisti_ordini_section": render_template(
+            "partials/_acquisti_ordini_produzione.j2",
+            ordini_rows=ordini_rows,
+        ),
+    }
+
+    return jsonify(
+        {
+            "ok": True,
+            "refreshed_at": _now_rome_dt().isoformat(timespec="seconds"),
+            "fragments": fragments,
+        }
     )

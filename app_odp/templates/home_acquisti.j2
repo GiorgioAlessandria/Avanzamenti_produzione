@@ -5,6 +5,7 @@
 {% block content %}
     <main class="container-fluid mt-2 mb-3 d-flex flex-column"
           id="acquisti-page"
+          data-bridge-url="{{ url_for('main.api_acquisti_bridge') }}"
           style="height: calc(100vh - 140px); overflow: hidden;">
         <div class="row g-3 flex-shrink-0">
             <div class="col-12">
@@ -76,11 +77,9 @@
 
                     <div class="acq-section-panel d-none h-100"
                          data-section="ordini">
-                        <div class="card shadow-sm h-100">
-                            <div class="card-body">
-                                <h2 class="h4 mb-2">Ordini di produzione</h2>
-                                <p class="text-muted mb-0">Sezione in preparazione.</p>
-                            </div>
+                        <div id="acquisti_ordini_section"
+                             class="h-100">
+                            {% include "partials/_acquisti_ordini_produzione.j2" %}
                         </div>
                     </div>
                 </section>
@@ -294,6 +293,66 @@
 
                     modal.show();
                 });
+            });
+        })();
+    </script>
+    <script>
+        (() => {
+            document.addEventListener("DOMContentLoaded", () => {
+                const root = document.getElementById("acquisti-page");
+                if (!root) return;
+
+                const bridgeUrl = root.dataset.bridgeUrl;
+                if (!bridgeUrl) return;
+
+                const POLL_MS = 30000;
+                let isRefreshing = false;
+
+                async function refreshAcquistiTables() {
+                    if (isRefreshing) return;
+
+                    if (document.querySelector("#modalAcqMateriale.show")) {
+                        return;
+                    }
+
+                    isRefreshing = true;
+
+                    try {
+                        const response = await fetch(bridgeUrl, {
+                            method: "GET",
+                            headers: {
+                                "Accept": "application/json",
+                                "X-Requested-With": "XMLHttpRequest",
+                            },
+                            cache: "no-store",
+                        });
+
+                        if (!response.ok) return;
+
+                        const data = await response.json();
+                        if (!data || !data.ok) return;
+
+                        const fragments = data.fragments || {};
+
+                        Object.entries(fragments).forEach(([targetId, html]) => {
+                            const target = document.getElementById(targetId);
+                            if (target) {
+                                target.innerHTML = html;
+                            }
+                        });
+
+                        window.applyAcqGiacenzaRowState?.();
+                        window.applyFiltersToTable?.("acquisti_giacenza_table");
+                        window.applyFiltersToTable?.("acquisti_materiale_table");
+                    } catch (err) {
+                        console.error("Errore refresh acquisti:", err);
+                    } finally {
+                        isRefreshing = false;
+                    }
+                }
+
+                window.refreshAcquistiTables = refreshAcquistiTables;
+                window.setInterval(refreshAcquistiTables, POLL_MS);
             });
         })();
     </script>

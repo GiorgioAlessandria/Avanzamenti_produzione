@@ -1,0 +1,54 @@
+<tbody>
+{% if materiali_rows %}
+    {% for row in materiali_rows %}
+        <tr class="
+        {% if row.Mag0Missing %}row-acq-material-missing{% endif %}
+        {% if row.RimanenzaMaterialeCritica %} row-acq-material-critical{% elif row.RimanenzaMaterialeSottoScorta %} row-acq-material-understock{% endif %}
+    "
+            data-codart="{{ row.CodArt or '' }}"
+            data-variante="{{ row.VarianteArt or '' }}"
+            data-desart="{{ row.DesArt or '' }}"
+            data-rem-critical="{{ '1' if row.RimanenzaMaterialeCritica else '0' }}"
+            data-rem-understock="{{ '1' if row.RimanenzaMaterialeSottoScorta else '0' }}">
+            <td>{{ row.CodArt or '' }}</td>
+            <td>{{ row.VarianteArt or '' }}</td>
+            <td>{{ row.DesArt or '' }}</td>
+            <td>{{ row.MagUM or '' }}</td>
+            <td>
+                {% if row.Mag0Missing %}
+                    <span class="fw-semibold">Assente</span>
+                {% else %}
+                    {{ row.QtyMag0Text }}
+                {% endif %}
+            </td>
+
+            <td>{{ row.MaterialeDaConsumareText }}</td>
+            <td>{{ row.MaterialeImpegnatoText }}</td>
+            <td>{{ row.MaterialeProdottoText }}</td>
+
+            <td class="{% if row.RimanenzaMaterialeCritica %}fw-bold{% elif row.RimanenzaMaterialeSottoScorta %}fw-semibold{% endif %}">
+                {{ row.RimanenzaMaterialeText }}
+            </td>
+
+            <td>{{ row.PuntoRiordinoText }}</td>
+            <td>{{ row.PianTempoApprovFisso }}</td>
+            <td>{{ row.LottoRiordinoText }}</td>
+
+            <td>
+                <button type="button"
+                        class="btn btn-sm btn-outline-primary js-open-acq-material-modal"
+                        data-material='{{ row.ModalPayload | tojson | forceescape }}'>
+                    Ordini
+                </button>
+            </td>
+        </tr>
+    {% endfor %}
+{% else %}
+    <tr>
+        <td colspan="12"
+            class="text-center text-muted py-4">
+            Nessun materiale disponibile.
+        </td>
+    </tr>
+{% endif %}
+</tbody>
