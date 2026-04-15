@@ -13,13 +13,15 @@
                    id="acquisti_materiale_table">
                 <thead>
                 <tr>
-                    <th data-sort="text">CodArt</th>
-                    <th data-sort="text">Variante</th>
+                    <th data-sort="text">Articolo</th>
+                    <th data-sort="text">Var.</th>
                     <th data-sort="text">Descrizione</th>
                     <th data-sort="num">Giacenza</th>
-                    <th data-sort="num">Materiale da consumare</th>
-                    <th data-sort="num">Materiale impegnato</th>
-                    <th data-sort="num">Materiale che verrà prodotto</th>
+                    <th data-sort="num">Fabbisogno pianificato</th>
+                    <th data-sort="num">Fabbisogno impegnato</th>
+                    <th data-sort="num">Produzione prevista</th>
+                    <th data-sort="num">Rimanenza finale</th>
+                    <th data-sort="num">Scorta</th>
                     <th data-sort="num">Lead time</th>
                     <th data-sort="num">Lotto minimo</th>
                     <th data-sort="text">Dettaglio</th>
@@ -29,13 +31,19 @@
                 <tbody>
                 {% if materiali_rows %}
                     {% for row in materiali_rows %}
-                        <tr class="{% if row.Mag0Missing %}row-acq-material-missing{% endif %}"
+                        <tr class="
+        {% if row.Mag0Missing %}row-acq-material-missing{% endif %}
+        {% if row.RimanenzaMaterialeCritica %} row-acq-material-critical{% elif row.RimanenzaMaterialeSottoScorta %} row-acq-material-understock{% endif %}
+    "
                             data-codart="{{ row.CodArt or '' }}"
                             data-variante="{{ row.VarianteArt or '' }}"
-                            data-desart="{{ row.DesArt or '' }}">
+                            data-desart="{{ row.DesArt or '' }}"
+                            data-rem-critical="{{ '1' if row.RimanenzaMaterialeCritica else '0' }}"
+                            data-rem-understock="{{ '1' if row.RimanenzaMaterialeSottoScorta else '0' }}">
                             <td>{{ row.CodArt or '' }}</td>
                             <td>{{ row.VarianteArt or '' }}</td>
                             <td>{{ row.DesArt or '' }}</td>
+
                             <td>
                                 {% if row.Mag0Missing %}
                                     <span class="fw-semibold">Assente</span>
@@ -43,11 +51,19 @@
                                     {{ row.QtyMag0Text }}
                                 {% endif %}
                             </td>
+
                             <td>{{ row.MaterialeDaConsumareText }}</td>
                             <td>{{ row.MaterialeImpegnatoText }}</td>
                             <td>{{ row.MaterialeProdottoText }}</td>
+
+                            <td class="{% if row.RimanenzaMaterialeCritica %}fw-bold{% elif row.RimanenzaMaterialeSottoScorta %}fw-semibold{% endif %}">
+                                {{ row.RimanenzaMaterialeText }}
+                            </td>
+
+                            <td>{{ row.PuntoRiordinoText }}</td>
                             <td>{{ row.PianTempoApprovFisso }}</td>
                             <td>{{ row.LottoRiordinoText }}</td>
+
                             <td>
                                 <button type="button"
                                         class="btn btn-sm btn-outline-primary js-open-acq-material-modal"
@@ -59,7 +75,7 @@
                     {% endfor %}
                 {% else %}
                     <tr>
-                        <td colspan="10"
+                        <td colspan="12"
                             class="text-center text-muted py-4">
                             Nessun materiale disponibile.
                         </td>

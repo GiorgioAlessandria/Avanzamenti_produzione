@@ -34,6 +34,34 @@
         </div>
 
         <div class="col">
+            <div class="form-check mb-2">
+                <input class="form-check-input js-table-filter-checkbox"
+                       type="checkbox"
+                       id="filter-acq-materiale-critical"
+                       data-target-table="acquisti_materiale_table"
+                       data-filter-key="rem-critical">
+                <label class="form-check-label"
+                       for="filter-acq-materiale-critical">
+                    Rimanenza &le; 0
+                </label>
+            </div>
+        </div>
+
+        <div class="col">
+            <div class="form-check mb-2">
+                <input class="form-check-input js-table-filter-checkbox"
+                       type="checkbox"
+                       id="filter-acq-materiale-understock"
+                       data-target-table="acquisti_materiale_table"
+                       data-filter-key="rem-understock">
+                <label class="form-check-label"
+                       for="filter-acq-materiale-understock">
+                    Rimanenza &le; Scorta
+                </label>
+            </div>
+        </div>
+
+        <div class="col">
             <button class="btn btn-outline-success w-100 w-xl-auto"
                     type="button"
                     id="btn-export-acq-materiale">
@@ -41,4 +69,5 @@
             </button>
         </div>
     </div>
+</div>
 </div>

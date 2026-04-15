@@ -687,6 +687,22 @@
                                     break;
                                 }
                             }
+
+                            if (key === "rem-critical") {
+                                const isCritical = (row.dataset.remCritical || "") === "1";
+                                if (!isCritical) {
+                                    visible = false;
+                                    break;
+                                }
+                            }
+
+                            if (key === "rem-understock") {
+                                const isRemUnderstock = (row.dataset.remUnderstock || "") === "1";
+                                if (!isRemUnderstock) {
+                                    visible = false;
+                                    break;
+                                }
+                            }
                         }
                     }
 

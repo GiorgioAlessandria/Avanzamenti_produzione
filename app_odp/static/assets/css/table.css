@@ -87,3 +87,13 @@ table.table-state-rowcolor tbody tr.row-state-sospeso {
     background-color: rgba(220, 53, 69, 0.55) !important;
     color: #000 !important;
 }
+
+#acquisti_materiale_table tbody tr.row-acq-material-critical > td {
+    background-color: rgba(220, 53, 69, 0.55) !important;
+    color: #000 !important;
+}
+
+#acquisti_materiale_table tbody tr.row-acq-material-understock > td {
+    background-color: rgba(255, 193, 7, 0.55) !important;
+    color: #000 !important;
+}

@@ -5378,6 +5378,7 @@ def _new_acq_material_row(cod_art: str, variante_art: str) -> dict:
         "MaterialeDaConsumare": 0.0,
         "MaterialeImpegnato": 0.0,
         "MaterialeProdotto": 0.0,
+        "RimanenzaMateriale": 0.0,
         "PianTempoApprovFisso": 0,
         "LottoRiordino": 0.0,
         "PuntoRiordino": 0.0,
@@ -5493,10 +5494,10 @@ def _build_acquisti_materiale_rows() -> list[dict]:
             if not row["DesArt"]:
                 row["DesArt"] = comp_des_art
 
-            if "attiv" in stato_norm:
-                row["MaterialeImpegnato"] += float(qty_comp_residua)
-            else:
+            if "pianificat" in stato_norm:
                 row["MaterialeDaConsumare"] += float(qty_comp_residua)
+            elif "attiv" in stato_norm or "sospes" in stato_norm:
+                row["MaterialeImpegnato"] += float(qty_comp_residua)
 
             row["DistintaDettagli"].append(
                 {
@@ -5531,7 +5532,13 @@ def _build_acquisti_materiale_rows() -> list[dict]:
         else:
             row["QtyMag0"] = None
             row["Mag0Missing"] = True
-
+        qty_mag0_for_balance = float(row["QtyMag0"] or 0)
+        row["RimanenzaMateriale"] = (
+            qty_mag0_for_balance
+            + float(row["MaterialeProdotto"] or 0)
+            - float(row["MaterialeDaConsumare"] or 0)
+            - float(row["MaterialeImpegnato"] or 0)
+        )
         row["QtyMag0Text"] = (
             ""
             if row["QtyMag0"] is None
@@ -5556,7 +5563,13 @@ def _build_acquisti_materiale_rows() -> list[dict]:
             )
         )
         row["OrdineDettagli"].sort(key=lambda x: ((x.get("Ordine") or "").lower(),))
-
+        row["RimanenzaMaterialeText"] = _decimal_to_text(
+            Decimal(str(row["RimanenzaMateriale"]))
+        )
+        row["RimanenzaMaterialeCritica"] = row["RimanenzaMateriale"] <= 0
+        row["RimanenzaMaterialeSottoScorta"] = not row[
+            "RimanenzaMaterialeCritica"
+        ] and row["RimanenzaMateriale"] <= float(row["PuntoRiordino"] or 0)
         row["ModalPayload"] = {
             "cod_art": row["CodArt"],
             "variante_art": row["VarianteArt"],
