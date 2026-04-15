@@ -1105,3 +1105,57 @@ class InputOdpRuntime(db.Model):
 
     def __repr__(self):
         return f"<InputOdpRuntime {self.__dict__}>"
+
+
+class AcqArticoli(db.Model):
+    __bind_key__ = "acq"
+    __tablename__ = "acq_articoli"
+
+    CodArt = db.Column(db.Text, primary_key=True)
+    DesArt = db.Column(db.Text)
+    LottoRiordino = db.Column(db.Float)
+    PuntoRiordino = db.Column(db.Float)
+    PianTempoApprovFisso = db.Column(db.Integer)
+    DataPrevistaApprovvigionamento = db.Column(db.Text)
+    synced_at = db.Column(db.Text)
+
+
+class AcqGiacenze(db.Model):
+    __bind_key__ = "acq"
+    __tablename__ = "acq_giacenze"
+
+    CodArt = db.Column(db.Text, primary_key=True)
+    CodMag = db.Column(db.Text, primary_key=True)
+    Giacenza = db.Column(db.Float)
+    synced_at = db.Column(db.Text)
+
+
+class AcqFabbisognoOdp(db.Model):
+    __bind_key__ = "acq"
+    __tablename__ = "acq_fabbisogno_odp"
+
+    IdDocumento = db.Column(db.Text, primary_key=True)
+    IdRiga = db.Column(db.Text, primary_key=True)
+    NumFase = db.Column(db.Text, primary_key=True)
+    CodArt = db.Column(db.Text, primary_key=True)
+    VarianteArt = db.Column(db.Text, primary_key=True)
+    QuantitaNecessaria = db.Column(db.Float)
+    synced_at = db.Column(db.Text)
+
+
+class AcqRiepilogoMateriali(db.Model):
+    __bind_key__ = "acq"
+    __tablename__ = "acq_riepilogo_materiali"
+
+    IdDocumento = db.Column(db.Text, primary_key=True)
+    IdRiga = db.Column(db.Text, primary_key=True)
+    NumFase = db.Column(db.Text, primary_key=True)
+    CodArt = db.Column(db.Text, primary_key=True)
+    VarianteArt = db.Column(db.Text, primary_key=True)
+    QuantitaNecessaria = db.Column(db.Float)
+    GiacenzaTotale = db.Column(db.Float)
+    LottoRiordino = db.Column(db.Float)
+    PuntoRiordino = db.Column(db.Float)
+    PianTempoApprovFisso = db.Column(db.Integer)
+    DataPrevistaApprovvigionamento = db.Column(db.Text)
+    synced_at = db.Column(db.Text)

@@ -50,6 +50,10 @@ from app_odp.models import (
     roles_macrofamiglia,
     roles_ineritance,
     roles_manageable_roles,
+    AcqArticoli,
+    AcqGiacenze,
+    AcqFabbisognoOdp,
+    AcqRiepilogoMateriali,
 )
 from app_odp.policy.decorator import require_perm
 from app_odp.policy.policy import RbacPolicy, PROTECTED_ROLE_NAMES
@@ -5241,4 +5245,75 @@ def dash_reparto():
     return render_template(
         "dash_reparto.j2",
         utenti_dashboard=lista_utenti,
+    )
+
+
+@main_bp.get("/acquisti")
+@login_required
+@require_perm("home_acquisti")
+def home_acquisti():
+    magazzini_default = ["0", "10", "13"]
+
+    magazzini_sel = request.args.getlist("mag")
+    magazzini_sel = [_norm_text(x) for x in magazzini_sel if _norm_text(x)]
+    if not magazzini_sel:
+        magazzini_sel = magazzini_default
+
+    cod_art_filter = _norm_text(request.args.get("cod_art"))
+    descr_filter = _norm_text(request.args.get("descr"))
+    solo_negativi = request.args.get("solo_negativi") == "1"
+
+    q = (
+        db.session.query(AcqGiacenze, AcqArticoli)
+        .outerjoin(AcqArticoli, AcqArticoli.CodArt == AcqGiacenze.CodArt)
+        .filter(AcqGiacenze.CodMag.in_(magazzini_sel))
+    )
+
+    if cod_art_filter:
+        q = q.filter(AcqGiacenze.CodArt.ilike(f"%{cod_art_filter}%"))
+
+    if descr_filter:
+        q = q.filter(AcqArticoli.DesArt.ilike(f"%{descr_filter}%"))
+
+    if solo_negativi:
+        q = q.filter(AcqGiacenze.Giacenza < 0)
+
+    rows = q.order_by(
+        AcqGiacenze.CodArt.asc(),
+        AcqGiacenze.CodMag.asc(),
+    ).all()
+
+    giacenze_rows = []
+    for giacenza, articolo in rows:
+        giacenze_rows.append(
+            {
+                "CodArt": giacenza.CodArt or "",
+                "CodMag": giacenza.CodMag or "",
+                "Giacenza": float(giacenza.Giacenza or 0),
+                "DesArt": (articolo.DesArt if articolo else "") or "",
+                "LottoRiordino": float(
+                    (articolo.LottoRiordino if articolo else 0) or 0
+                ),
+                "PuntoRiordino": float(
+                    (articolo.PuntoRiordino if articolo else 0) or 0
+                ),
+                "PianTempoApprovFisso": int(
+                    (articolo.PianTempoApprovFisso if articolo else 0) or 0
+                ),
+                "DataPrevistaApprovvigionamento": (
+                    articolo.DataPrevistaApprovvigionamento if articolo else ""
+                )
+                or "",
+                "is_negative": float(giacenza.Giacenza or 0) < 0,
+            }
+        )
+
+    return render_template(
+        "home_acquisti.j2",
+        giacenze_rows=giacenze_rows,
+        magazzini_sel=magazzini_sel,
+        magazzini_options=magazzini_default,
+        cod_art_filter=cod_art_filter,
+        descr_filter=descr_filter,
+        solo_negativi=solo_negativi,
     )

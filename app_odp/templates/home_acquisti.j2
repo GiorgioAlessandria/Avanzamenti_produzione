@@ -1,0 +1,144 @@
+{% extends "base.j2" %}
+
+{% block title %}Acquisti{% endblock %}
+
+{% block content %}
+    <main class="container-fluid mt-4 mb-4"
+          id="acquisti-page">
+        <div class="row g-3">
+            <div class="col-12">
+                <div class="card shadow-sm">
+                    <div class="card-body d-flex flex-column flex-lg-row justify-content-between align-items-start align-items-lg-center gap-3">
+                        <div>
+                            <h1 class="mb-1">Acquisti</h1>
+                            <p class="text-muted mb-0">
+                                Giacenze, materiale necessario e ordini di produzione.
+                            </p>
+                        </div>
+
+                        <div class="d-flex flex-wrap gap-2"
+                             id="acquisti-section-switch">
+                            <button class="btn btn-primary js-acq-section-btn active"
+                                    type="button"
+                                    data-section="giacenza">
+                                Giacenza
+                            </button>
+
+                            <button class="btn btn-outline-primary js-acq-section-btn"
+                                    type="button"
+                                    data-section="materiale">
+                                Materiale necessario
+                            </button>
+
+                            <button class="btn btn-outline-primary js-acq-section-btn"
+                                    type="button"
+                                    data-section="ordini">
+                                Ordini produzione
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-12">
+                <section class="card shadow-sm"
+                         id="acquisti-filters-container"
+                         data-active-filters="giacenza">
+                    <div class="card-header">
+                        <h2 class="h5 mb-0">Filtri</h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="acq-filters-panel"
+                             data-section="giacenza">
+                            {% include "partials/_acquisti_filters_giacenza.j2" %}
+                        </div>
+
+                        <div class="acq-filters-panel d-none"
+                             data-section="materiale">
+                            <div class="text-muted">
+                                Filtri materiale necessario da definire.
+                            </div>
+                        </div>
+
+                        <div class="acq-filters-panel d-none"
+                             data-section="ordini">
+                            <div class="text-muted">
+                                Filtri ordini di produzione da definire.
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <div class="col-12">
+                <section id="acquisti-content-container">
+                    <div class="acq-section-panel"
+                         data-section="giacenza">
+                        {% include "partials/_acquisti_giacenza.j2" %}
+                    </div>
+
+                    <div class="acq-section-panel d-none"
+                         data-section="materiale">
+                        <div class="card shadow-sm">
+                            <div class="card-body">
+                                <h2 class="h4 mb-2">Materiale necessario</h2>
+                                <p class="text-muted mb-0">
+                                    Sezione in preparazione.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="acq-section-panel d-none"
+                         data-section="ordini">
+                        <div class="card shadow-sm">
+                            <div class="card-body">
+                                <h2 class="h4 mb-2">Ordini di produzione</h2>
+                                <p class="text-muted mb-0">
+                                    Sezione in preparazione.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </main>
+{% endblock %}
+
+{% block extra_js %}
+    {{ super() }}
+
+    <script>
+        (() => {
+            const sectionButtons = document.querySelectorAll(".js-acq-section-btn");
+            const sectionPanels = document.querySelectorAll(".acq-section-panel");
+            const filterPanels = document.querySelectorAll(".acq-filters-panel");
+
+            function setActiveSection(sectionName) {
+                sectionButtons.forEach((btn) => {
+                    const isActive = btn.dataset.section === sectionName;
+                    btn.classList.toggle("active", isActive);
+                    btn.classList.toggle("btn-primary", isActive);
+                    btn.classList.toggle("btn-outline-primary", !isActive);
+                });
+
+                sectionPanels.forEach((panel) => {
+                    panel.classList.toggle("d-none", panel.dataset.section !== sectionName);
+                });
+
+                filterPanels.forEach((panel) => {
+                    panel.classList.toggle("d-none", panel.dataset.section !== sectionName);
+                });
+            }
+
+            sectionButtons.forEach((btn) => {
+                btn.addEventListener("click", () => {
+                    setActiveSection(btn.dataset.section);
+                });
+            });
+
+            setActiveSection("giacenza");
+        })();
+    </script>
+{% endblock %}

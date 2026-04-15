@@ -1,0 +1,53 @@
+<div class="card shadow-sm">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h2 class="h4 mb-0">Giacenza complessiva</h2>
+        <span class="text-muted small">
+            Disponibilità per articolo e magazzino
+        </span>
+    </div>
+
+    <div class="card-body">
+        <div class="table-responsive"
+             style="max-height: 70vh; overflow: auto;">
+            <table class="table table-striped table-hover table-sortable table-sticky-wrap align-middle"
+                   id="acquisti_giacenza_table">
+                <thead>
+                <tr>
+                    <th data-sort="text">CodArt</th>
+                    <th data-sort="text">Descrizione</th>
+                    <th data-sort="text">Magazzino</th>
+                    <th data-sort="num">Giacenza</th>
+                    <th data-sort="num">Punto riordino</th>
+                    <th data-sort="num">Lotto riordino</th>
+                    <th data-sort="num">Lead time</th>
+                    <th data-sort="date">Data prevista approvvigionamento</th>
+                </tr>
+                </thead>
+
+                <tbody id="tbody_acquisti_giacenza">
+                {% if giacenze %}
+                    {% for row in giacenze %}
+                        {% set giacenza_value = row.Giacenza if row.Giacenza is not none else 0 %}
+                        {% set is_negative = giacenza_value < 0 %}
+                        <tr data-codart="{{ row.CodArt or '' }}"
+                            data-desart="{{ row.DesArt or '' }}"
+                            data-codmag="{{ row.CodMag or '' }}"
+                            data-negative="{{ '1' if is_negative else '0' }}">
+                            <td>{{ row.CodArt or '' }}</td>
+                            <td>{{ row.DesArt or '' }}</td>
+                            <td>{{ row.CodMag or '' }}</td>
+                            <td class="{% if is_negative %}text-danger fw-bold{% endif %}">
+                                {{ row.Giacenza if row.Giacenza is not none else '' }}
+                            </td>
+                            <td>{{ row.PuntoRiordino if row.PuntoRiordino is not none else '' }}</td>
+                            <td>{{ row.LottoRiordino if row.LottoRiordino is not none else '' }}</td>
+                            <td>{{ row.PianTempoApprovFisso if row.PianTempoApprovFisso is not none else '' }}</td>
+                            <td>{{ row.DataPrevistaApprovvigionamento or '' }}</td>
+                        </tr>
+                    {% endfor %}
+                {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>

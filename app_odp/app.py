@@ -89,7 +89,8 @@ def create_app():
         f"sqlite:///{configurazione['Percorsi']['percorso_db']}"
     )
     app.config["SQLALCHEMY_BINDS"] = {
-        "log": f"sqlite:///{configurazione['Percorsi']['percorso_db_log']}"
+        "log": f"sqlite:///{configurazione['Percorsi']['percorso_db_log']}",
+        "acq": f"sqlite:///{configurazione['Percorsi']['percorso_db_acq']}",
     }
     app.config["ERP_EXPORT_DIR"] = configurazione["Percorsi"]["percorso_file_output"]
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False

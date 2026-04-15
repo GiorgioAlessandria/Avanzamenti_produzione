@@ -3,7 +3,7 @@ import hashlib
 
 from flask import Blueprint, render_template, request, redirect, url_for
 from flask_login import login_user, logout_user, login_required, current_user
-
+from app_odp.policy.policy import RbacPolicy
 from app_odp.models import User
 
 try:
@@ -14,10 +14,22 @@ finally:
 auth_bp = Blueprint("auth", __name__)
 
 
+def _get_post_login_redirect(user):
+    policy = RbacPolicy(user)
+
+    if policy.can("home"):
+        return url_for("main.home")
+
+    if policy.can("home_acquisti"):
+        return url_for("main.home_acquisti")
+
+    return None
+
+
 @auth_bp.route("/login", methods=["GET", "POST"])
 def login():
     if current_user.is_authenticated:
-        return redirect(url_for("main.home"))
+        return redirect(_get_post_login_redirect(current_user))
 
     if request.method == "POST":
         login_code = (request.form.get("login_code") or "").strip().upper()
@@ -42,7 +54,7 @@ def login():
             ), 401
 
         login_user(user)
-        return redirect(url_for("main.home"))
+        return redirect(_get_post_login_redirect(user))
 
     return render_template("login.j2")
 
