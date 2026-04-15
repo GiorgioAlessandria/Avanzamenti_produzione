@@ -3,8 +3,9 @@
 {% block title %}Acquisti{% endblock %}
 
 {% block content %}
-    <main class="container-fluid mt-2 mb-3"
-          id="acquisti-page">
+    <main class="container-fluid mt-2 mb-3 d-flex flex-column"
+          id="acquisti-page"
+          style="min-height: calc(100vh - 140px);">
         <div class="row g-3">
             <div class="col-12">
                 <div class="card shadow-sm">
@@ -31,65 +32,63 @@
                 </div>
             </div>
 
-            <div class="col-flex">
-                <section class="card shadow-sm"
-                         id="acquisti-filters-container"
-                         data-active-filters="giacenza">
-                    <div class="card-body">
-                        <div class="acq-filters-panel"
-                             data-section="giacenza">
-                            {% include "partials/_acquisti_filters_giacenza.j2" %}
-                        </div>
-
-                        <div class="acq-filters-panel d-none"
-                             data-section="materiale">
-                            <div class="text-muted">
-                                Filtri materiale necessario da definire.
-                            </div>
-                        </div>
-
-                        <div class="acq-filters-panel d-none"
-                             data-section="ordini">
-                            <div class="text-muted">
-                                Filtri ordini di produzione da definire.
-                            </div>
-                        </div>
-                    </div>
-                </section>
-            </div>
-
-            <div class="col-12">
-                <section id="acquisti-content-container">
-                    <div class="acq-section-panel"
+            <div class="col-12 flex-grow-1 d-flex">
+                <section id="acquisti-content-container"
+                         class="w-100 d-flex flex-column">
+                    <div class="acq-section-panel flex-grow-1 d-flex flex-column"
                          data-section="giacenza">
                         {% include "partials/_acquisti_giacenza.j2" %}
                     </div>
 
-                    <div class="acq-section-panel d-none"
+                    <div class="acq-filters-panel d-none"
                          data-section="materiale">
-                        <div class="card shadow-sm">
-                            <div class="card-body">
-                                <h2 class="h5 mb-2">Materiale necessario</h2>
-                                <p class="text-muted mb-0">
-                                    Sezione in preparazione.
-                                </p>
-                            </div>
+                        <div class="text-muted">
+                            Filtri materiale necessario da definire.
                         </div>
                     </div>
 
-                    <div class="acq-section-panel d-none"
+                    <div class="acq-filters-panel d-none"
                          data-section="ordini">
-                        <div class="card shadow-sm">
-                            <div class="card-body">
-                                <h2 class="h4 mb-2">Ordini di produzione</h2>
-                                <p class="text-muted mb-0">
-                                    Sezione in preparazione.
-                                </p>
-                            </div>
+                        <div class="text-muted">
+                            Filtri ordini di produzione da definire.
                         </div>
                     </div>
-                </section>
             </div>
+            </section>
+        </div>
+
+        <div class="col-12">
+            <section id="acquisti-content-container">
+                <div class="acq-section-panel"
+                     data-section="giacenza">
+                    {% include "partials/_acquisti_giacenza.j2" %}
+                </div>
+
+                <div class="acq-section-panel d-none"
+                     data-section="materiale">
+                    <div class="card shadow-sm">
+                        <div class="card-body">
+                            <h2 class="h5 mb-2">Materiale necessario</h2>
+                            <p class="text-muted mb-0">
+                                Sezione in preparazione.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="acq-section-panel d-none"
+                     data-section="ordini">
+                    <div class="card shadow-sm">
+                        <div class="card-body">
+                            <h2 class="h4 mb-2">Ordini di produzione</h2>
+                            <p class="text-muted mb-0">
+                                Sezione in preparazione.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
         </div>
     </main>
 {% endblock %}
