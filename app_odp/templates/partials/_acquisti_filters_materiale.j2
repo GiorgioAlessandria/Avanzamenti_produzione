@@ -1,0 +1,44 @@
+<div class="container-fluid px-0">
+    <div class="row mb-0 g-3 align-items-end">
+        <div class="col">
+            <input type="text"
+                   id="filter-acq-materiale-codart"
+                   class="form-control js-table-filter"
+                   placeholder="Filtra per codice..."
+                   data-target-table="acquisti_materiale_table"
+                   data-filter-mode="dataset"
+                   data-filter-key="codart"
+                   autocomplete="off">
+        </div>
+
+        <div class="col">
+            <input type="text"
+                   id="filter-acq-materiale-variante"
+                   class="form-control js-table-filter"
+                   placeholder="Filtra per variante..."
+                   data-target-table="acquisti_materiale_table"
+                   data-filter-mode="dataset"
+                   data-filter-key="variante"
+                   autocomplete="off">
+        </div>
+
+        <div class="col">
+            <input type="text"
+                   id="filter-acq-materiale-desart"
+                   class="form-control js-table-filter"
+                   placeholder="Filtra per descrizione..."
+                   data-target-table="acquisti_materiale_table"
+                   data-filter-mode="dataset"
+                   data-filter-key="desart"
+                   autocomplete="off">
+        </div>
+
+        <div class="col">
+            <button class="btn btn-outline-success w-100 w-xl-auto"
+                    type="button"
+                    id="btn-export-acq-materiale">
+                Export Excel
+            </button>
+        </div>
+    </div>
+</div>

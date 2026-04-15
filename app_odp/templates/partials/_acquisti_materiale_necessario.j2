@@ -1,10 +1,72 @@
-<section class="card shadow-sm mb-4">
-    <div class="card-header">
-        <h2 class="mb-0">Materiale necessario</h2>
+<div class="card shadow-sm h-100 d-flex flex-column">
+    <div class="card-header d-flex justify-content-between align-items-center flex-shrink-0">
+        <h2 class="h4 mb-0">Materiale necessario</h2>
+        <span class="text-muted small">
+            Fabbisogno residuo ordini aperti
+        </span>
     </div>
-    <div class="card-body">
-        <div class="alert alert-info mb-0">
-            Sezione in preparazione.
+
+    <div class="card-body py-2 d-flex flex-column flex-grow-1 overflow-hidden">
+        <div class="table-responsive flex-grow-1"
+             style="overflow: auto;">
+            <table class="table table-striped table-hover table-sortable table-sticky-wrap align-middle mb-0"
+                   id="acquisti_materiale_table">
+                <thead>
+                <tr>
+                    <th data-sort="text">CodArt</th>
+                    <th data-sort="text">Variante</th>
+                    <th data-sort="text">Descrizione</th>
+                    <th data-sort="num">Giacenza</th>
+                    <th data-sort="num">Materiale da consumare</th>
+                    <th data-sort="num">Materiale impegnato</th>
+                    <th data-sort="num">Materiale che verrà prodotto</th>
+                    <th data-sort="num">Lead time</th>
+                    <th data-sort="num">Lotto minimo</th>
+                    <th data-sort="text">Dettaglio</th>
+                </tr>
+                </thead>
+
+                <tbody>
+                {% if materiali_rows %}
+                    {% for row in materiali_rows %}
+                        <tr class="{% if row.Mag0Missing %}row-acq-material-missing{% endif %}"
+                            data-codart="{{ row.CodArt or '' }}"
+                            data-variante="{{ row.VarianteArt or '' }}"
+                            data-desart="{{ row.DesArt or '' }}">
+                            <td>{{ row.CodArt or '' }}</td>
+                            <td>{{ row.VarianteArt or '' }}</td>
+                            <td>{{ row.DesArt or '' }}</td>
+                            <td>
+                                {% if row.Mag0Missing %}
+                                    <span class="fw-semibold">Assente</span>
+                                {% else %}
+                                    {{ row.QtyMag0Text }}
+                                {% endif %}
+                            </td>
+                            <td>{{ row.MaterialeDaConsumareText }}</td>
+                            <td>{{ row.MaterialeImpegnatoText }}</td>
+                            <td>{{ row.MaterialeProdottoText }}</td>
+                            <td>{{ row.PianTempoApprovFisso }}</td>
+                            <td>{{ row.LottoRiordinoText }}</td>
+                            <td>
+                                <button type="button"
+                                        class="btn btn-sm btn-outline-primary js-open-acq-material-modal"
+                                        data-material='{{ row.ModalPayload | tojson | forceescape }}'>
+                                    Ordini
+                                </button>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="10"
+                            class="text-center text-muted py-4">
+                            Nessun materiale disponibile.
+                        </td>
+                    </tr>
+                {% endif %}
+                </tbody>
+            </table>
         </div>
     </div>
-</section>
+</div>

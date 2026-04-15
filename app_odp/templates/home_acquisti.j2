@@ -41,9 +41,9 @@
                             {% include "partials/_acquisti_filters_giacenza.j2" %}
                         </div>
 
-                        <div class="acq-filters-panel d-none"
+                        <div class="acq-section-panel d-none h-100"
                              data-section="materiale">
-                            <div class="text-muted">Filtri materiale necessario da definire.</div>
+                            {% include "partials/_acquisti_filters_materiale.j2" %}
                         </div>
 
                         <div class="acq-filters-panel d-none"
@@ -67,9 +67,9 @@
                     <div class="acq-section-panel d-none h-100"
                          data-section="materiale">
                         <div class="card shadow-sm h-100">
-                            <div class="card-body">
-                                <h2 class="h5 mb-2">Materiale necessario</h2>
-                                <p class="text-muted mb-0">Sezione in preparazione.</p>
+                            <div class="acq-section-panel d-none h-100"
+                                 data-section="materiale">
+                                {% include "partials/_acquisti_materiale_necessario.j2" %}
                             </div>
                         </div>
                     </div>
@@ -87,6 +87,30 @@
             </div>
         </div>
     </main>
+
+    <div class="modal fade"
+         id="modalAcqMateriale"
+         tabindex="-1"
+         aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        Dettaglio materiale
+                        <span id="modal-acq-materiale-title-extra"></span>
+                    </h5>
+                    <button type="button"
+                            class="btn-close"
+                            data-bs-dismiss="modal"
+                            aria-label="Close"></button>
+                </div>
+
+                <div class="modal-body">
+                    <div id="modal-acq-materiale-body"></div>
+                </div>
+            </div>
+        </div>
+    </div>
 {% endblock %}
 
 {% block extra_js %}
@@ -151,5 +175,113 @@
             document.addEventListener("DOMContentLoaded", applyAcqGiacenzaRowState);
             window.applyAcqGiacenzaRowState = applyAcqGiacenzaRowState;
         })();
+        (() => {
+            const modalEl = document.getElementById("modalAcqMateriale");
+            const modalBody = document.getElementById("modal-acq-materiale-body");
+            const modalTitleExtra = document.getElementById("modal-acq-materiale-title-extra");
+
+            if (!modalEl || !modalBody || !modalTitleExtra) return;
+
+            const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+
+            function escapeHtml(value) {
+                return String(value || "")
+                    .replaceAll("&", "&amp;")
+                    .replaceAll("<", "&lt;")
+                    .replaceAll(">", "&gt;")
+                    .replaceAll('"', "&quot;")
+                    .replaceAll("'", "&#039;");
+            }
+
+            function renderTable(rows, columns) {
+                if (!rows || !rows.length) {
+                    return `<div class="text-muted">Nessuna riga presente.</div>`;
+                }
+
+                const thead = columns.map(col => `<th>${escapeHtml(col.label)}</th>`).join("");
+                const tbody = rows.map((row) => {
+                    const tds = columns.map(col => `<td>${escapeHtml(row[col.key] ?? "")}</td>`).join("");
+                    return `<tr>${tds}</tr>`;
+                }).join("");
+
+                return `
+                <div class="table-responsive">
+                    <table class="table table-sm table-striped table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>${thead}</tr>
+                        </thead>
+                        <tbody>${tbody}</tbody>
+                    </table>
+                </div>
+            `;
+            }
+
+            document.addEventListener("click", (event) => {
+                const btn = event.target.closest(".js-open-acq-material-modal");
+                if (!btn) return;
+
+                const raw = btn.getAttribute("data-material") || "{}";
+                let payload = {};
+
+                try {
+                    payload = JSON.parse(raw);
+                } catch (err) {
+                    console.error(err);
+                    modalTitleExtra.textContent = "";
+                    modalBody.innerHTML = `<div class="alert alert-danger mb-0">Errore nel dettaglio materiale.</div>`;
+                    modal.show();
+                    return;
+                }
+
+                const codArt = payload.cod_art || "";
+                const variante = payload.variante_art || "";
+                const desArt = payload.des_art || "";
+
+                const titolo = [codArt, variante].filter(Boolean).join(" - ");
+                modalTitleExtra.textContent = titolo ? `- ${titolo}` : "";
+
+                const distintaHtml = renderTable(
+                    payload.in_distinta || [],
+                    [
+                        {key: "Ordine", label: "Ordine"},
+                        {key: "Stato", label: "Stato"},
+                        {key: "Fase", label: "Fase"},
+                        {key: "Quantita", label: "Quantità"},
+                        {key: "DescrizioneOrdine", label: "Articolo ordine"},
+                    ]
+                );
+
+                const ordineHtml = renderTable(
+                    payload.in_ordine || [],
+                    [
+                        {key: "Ordine", label: "Ordine"},
+                        {key: "Stato", label: "Stato"},
+                        {key: "Quantita", label: "Quantità residua"},
+                        {key: "DescrizioneOrdine", label: "Articolo ordine"},
+                    ]
+                );
+
+                modalBody.innerHTML = `
+                <div class="mb-3">
+                    <div><strong>Codice:</strong> ${escapeHtml(codArt)}</div>
+                    <div><strong>Variante:</strong> ${escapeHtml(variante)}</div>
+                    <div><strong>Descrizione:</strong> ${escapeHtml(desArt)}</div>
+                </div>
+
+                <div class="mb-4">
+                    <h6 class="mb-2">Presente in distinta base</h6>
+                    ${distintaHtml}
+                </div>
+
+                <div>
+                    <h6 class="mb-2">Presente come articolo ordine</h6>
+                    ${ordineHtml}
+                </div>
+            `;
+
+                modal.show();
+            });
+        })();
+    </script>
     </script>
 {% endblock %}

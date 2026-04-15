@@ -5330,11 +5330,260 @@ def dash_reparto():
     )
 
 
+def _ordine_ref_label(ordine) -> str:
+    rif = _norm_text(getattr(ordine, "RifRegistraz", ""))
+    prog = _norm_text(getattr(ordine, "NumProgrRiga", "")) or _norm_text(
+        getattr(ordine, "IdRiga", "")
+    )
+    if rif and prog:
+        return f"{rif}.{prog}"
+    return (
+        rif or prog or f"{_norm_text(ordine.IdDocumento)}.{_norm_text(ordine.IdRiga)}"
+    )
+
+
+def _remaining_phase_codes_for_ordine(ordine) -> set[str]:
+    fasi = _phase_sequence_for_ordine(ordine)
+    fase_attiva_int = _fase_to_int(getattr(ordine, "FaseAttiva", "")) or 1
+
+    if not fasi:
+        return {str(fase_attiva_int)}
+
+    idx = 0
+    for i, fase in enumerate(fasi):
+        fase_int = _fase_to_int(fase)
+        if fase_int is not None and fase_int >= fase_attiva_int:
+            idx = i
+            break
+
+    out = set()
+    for fase in fasi[idx:]:
+        fase_int = _fase_to_int(fase)
+        if fase_int is not None:
+            out.add(str(fase_int))
+
+    return out or {str(fase_attiva_int)}
+
+
+def _material_key(cod_art: str, variante_art: str) -> tuple[str, str]:
+    return (_norm_text(cod_art), _norm_text(variante_art))
+
+
+def _new_acq_material_row(cod_art: str, variante_art: str) -> dict:
+    return {
+        "CodArt": _norm_text(cod_art),
+        "VarianteArt": _norm_text(variante_art),
+        "DesArt": "",
+        "QtyMag0": None,
+        "MaterialeDaConsumare": 0.0,
+        "MaterialeImpegnato": 0.0,
+        "MaterialeProdotto": 0.0,
+        "PianTempoApprovFisso": 0,
+        "LottoRiordino": 0.0,
+        "PuntoRiordino": 0.0,
+        "Mag0Missing": True,
+        "DistintaDettagli": [],
+        "OrdineDettagli": [],
+    }
+
+
+def _build_acquisti_materiale_rows() -> list[dict]:
+    ordini = _base_odp_query().all()
+
+    articoli_map = {
+        _norm_text(row.CodArt): row
+        for row in AcqArticoli.query.all()
+        if _norm_text(row.CodArt)
+    }
+
+    giacenze_mag0 = {
+        _norm_text(row.CodArt): float(row.Giacenza or 0)
+        for row in AcqGiacenze.query.filter(AcqGiacenze.CodMag == "0").all()
+        if _norm_text(row.CodArt)
+    }
+
+    grouped: dict[tuple[str, str], dict] = {}
+
+    for ordine in ordini:
+        stato_norm = _norm_text(getattr(ordine, "StatoOrdine", "")).lower()
+        if stato_norm == "chiusa":
+            continue
+
+        if (
+            "attiv" not in stato_norm
+            and "pianificat" not in stato_norm
+            and "sospes" not in stato_norm
+        ):
+            continue
+
+        runtime = getattr(ordine, "runtime_row", None)
+
+        try:
+            qty_residua = _qty_da_lavorare_decimal(ordine, stato=runtime)
+        except ValueError:
+            continue
+
+        if qty_residua <= 0:
+            continue
+
+        try:
+            qty_totale = _parse_qty_decimal(getattr(ordine, "Quantita", "0"))
+        except ValueError:
+            qty_totale = qty_residua
+
+        ordine_ref = _ordine_ref_label(ordine)
+        cod_art_ordine = _norm_text(getattr(ordine, "CodArt", ""))
+        variante_ordine = _norm_text(getattr(ordine, "VarianteArt", ""))
+        des_art_ordine = _norm_text(getattr(ordine, "DesArt", ""))
+
+        # materiale prodotto dall'ordine
+        if cod_art_ordine:
+            key = _material_key(cod_art_ordine, variante_ordine)
+            row = grouped.setdefault(
+                key, _new_acq_material_row(cod_art_ordine, variante_ordine)
+            )
+
+            if not row["DesArt"]:
+                row["DesArt"] = des_art_ordine
+
+            row["MaterialeProdotto"] += float(qty_residua)
+            row["OrdineDettagli"].append(
+                {
+                    "Ordine": ordine_ref,
+                    "Stato": _norm_text(ordine.StatoOrdine),
+                    "Quantita": _decimal_to_text(qty_residua),
+                    "Tipo": "ordine",
+                    "DescrizioneOrdine": des_art_ordine,
+                }
+            )
+
+        # materiali in distinta per tutte le fasi residue
+        remaining_phases = _remaining_phase_codes_for_ordine(ordine)
+        distinta = _parse_distinta_materiale(ordine)
+
+        for comp in distinta:
+            if not isinstance(comp, dict):
+                continue
+
+            comp_phase = _fase_to_int(comp.get("NumFase"))
+            if comp_phase is None or str(comp_phase) not in remaining_phases:
+                continue
+
+            comp_cod_art = _norm_text(comp.get("CodArt", ""))
+            comp_variante = _norm_text(comp.get("VarianteArt", ""))
+            comp_des_art = _norm_text(comp.get("DesArt", ""))
+
+            if not comp_cod_art:
+                continue
+
+            qty_comp_residua = _scaled_component_qty(
+                comp.get("Quantita"),
+                q_lavorata=qty_residua,
+                q_tot=qty_totale,
+            )
+
+            if qty_comp_residua <= 0:
+                continue
+
+            key = _material_key(comp_cod_art, comp_variante)
+            row = grouped.setdefault(
+                key, _new_acq_material_row(comp_cod_art, comp_variante)
+            )
+
+            if not row["DesArt"]:
+                row["DesArt"] = comp_des_art
+
+            if "attiv" in stato_norm:
+                row["MaterialeImpegnato"] += float(qty_comp_residua)
+            else:
+                row["MaterialeDaConsumare"] += float(qty_comp_residua)
+
+            row["DistintaDettagli"].append(
+                {
+                    "Ordine": ordine_ref,
+                    "Stato": _norm_text(ordine.StatoOrdine),
+                    "Fase": str(comp_phase),
+                    "Quantita": _decimal_to_text(qty_comp_residua),
+                    "Tipo": "distinta",
+                    "DescrizioneOrdine": des_art_ordine,
+                }
+            )
+
+    rows_out = []
+
+    for _, row in grouped.items():
+        articolo = articoli_map.get(row["CodArt"])
+        giacenza_mag0 = giacenze_mag0.get(row["CodArt"])
+
+        if articolo is not None:
+            if not row["DesArt"]:
+                row["DesArt"] = _norm_text(getattr(articolo, "DesArt", ""))
+
+            row["LottoRiordino"] = float(getattr(articolo, "LottoRiordino", 0) or 0)
+            row["PuntoRiordino"] = float(getattr(articolo, "PuntoRiordino", 0) or 0)
+            row["PianTempoApprovFisso"] = int(
+                getattr(articolo, "PianTempoApprovFisso", 0) or 0
+            )
+
+        if giacenza_mag0 is not None:
+            row["QtyMag0"] = float(giacenza_mag0)
+            row["Mag0Missing"] = False
+        else:
+            row["QtyMag0"] = None
+            row["Mag0Missing"] = True
+
+        row["QtyMag0Text"] = (
+            ""
+            if row["QtyMag0"] is None
+            else _decimal_to_text(Decimal(str(row["QtyMag0"])))
+        )
+        row["MaterialeDaConsumareText"] = _decimal_to_text(
+            Decimal(str(row["MaterialeDaConsumare"]))
+        )
+        row["MaterialeImpegnatoText"] = _decimal_to_text(
+            Decimal(str(row["MaterialeImpegnato"]))
+        )
+        row["MaterialeProdottoText"] = _decimal_to_text(
+            Decimal(str(row["MaterialeProdotto"]))
+        )
+        row["LottoRiordinoText"] = _decimal_to_text(Decimal(str(row["LottoRiordino"])))
+        row["PuntoRiordinoText"] = _decimal_to_text(Decimal(str(row["PuntoRiordino"])))
+
+        row["DistintaDettagli"].sort(
+            key=lambda x: (
+                (x.get("Ordine") or "").lower(),
+                (x.get("Fase") or "").lower(),
+            )
+        )
+        row["OrdineDettagli"].sort(key=lambda x: ((x.get("Ordine") or "").lower(),))
+
+        row["ModalPayload"] = {
+            "cod_art": row["CodArt"],
+            "variante_art": row["VarianteArt"],
+            "des_art": row["DesArt"],
+            "in_distinta": row["DistintaDettagli"],
+            "in_ordine": row["OrdineDettagli"],
+        }
+
+        rows_out.append(row)
+
+    rows_out.sort(
+        key=lambda x: (
+            0 if x["Mag0Missing"] else 1,
+            (x["CodArt"] or "").lower(),
+            (x["VarianteArt"] or "").lower(),
+        )
+    )
+
+    return rows_out
+
+
 @main_bp.get("/acquisti")
 @login_required
 @require_perm("home_acquisti")
 def home_acquisti():
     magazzini_default = ["0", "10", "13"]
+    materiali_rows = _build_acquisti_materiale_rows()
 
     cod_art_filter = _norm_text(request.args.get("cod_art"))
     descr_filter = _norm_text(request.args.get("descr"))
@@ -5416,6 +5665,7 @@ def home_acquisti():
     return render_template(
         "home_acquisti.j2",
         giacenze_rows=giacenze_rows,
+        materiali_rows=materiali_rows,
         cod_art_filter=cod_art_filter,
         descr_filter=descr_filter,
         solo_negativi=solo_negativi,
