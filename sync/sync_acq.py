@@ -271,8 +271,10 @@ def ensure_schema():
     ]
 
     with sqlite_engine_acq.begin() as conn:
-        for stmt in ddl:
-            conn.execute(sa.text(stmt))
+        cols = conn.execute(sa.text("PRAGMA table_info(acq_articoli)")).fetchall()
+        col_names = {row[1] for row in cols}
+        if "MagUM" not in col_names:
+            conn.execute(sa.text("ALTER TABLE acq_articoli ADD COLUMN MagUM TEXT"))
 
 
 # endregion
@@ -285,10 +287,10 @@ def build_acq_articoli(df_articoli: pd.DataFrame) -> pd.DataFrame:
     synced_at = datetime.now(ZoneInfo(TIMEZONE or "Europe/Rome")).isoformat(
         timespec="seconds"
     )
-
     needed_cols = [
         "CodArt",
         "DesArt",
+        "MagUM",
         "LottoRiordino",
         "PuntoRiordino",
         "PianTempoApprovFisso",
@@ -296,12 +298,11 @@ def build_acq_articoli(df_articoli: pd.DataFrame) -> pd.DataFrame:
     for col in needed_cols:
         if col not in df_articoli.columns:
             df_articoli[col] = None
-
     df = df_articoli[needed_cols].copy()
     df = df.dropna(subset=["CodArt"], how="any")
     df["CodArt"] = df["CodArt"].astype(str).str.strip()
     df = df[df["CodArt"] != ""]
-
+    df["MagUM"] = df["MagUM"].fillna("").astype(str).str.strip()
     df["LottoRiordino"] = df["LottoRiordino"].apply(_safe_float)
     df["PuntoRiordino"] = df["PuntoRiordino"].apply(_safe_float)
     df["PianTempoApprovFisso"] = df["PianTempoApprovFisso"].apply(_safe_int)
@@ -315,6 +316,7 @@ def build_acq_articoli(df_articoli: pd.DataFrame) -> pd.DataFrame:
         [
             "CodArt",
             "DesArt",
+            "MagUM",
             "LottoRiordino",
             "PuntoRiordino",
             "PianTempoApprovFisso",
