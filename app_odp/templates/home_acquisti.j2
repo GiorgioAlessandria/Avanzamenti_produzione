@@ -235,6 +235,115 @@
                     return [...ids];
                 }
 
+                function parseDateDDMMYYYY(s) {
+                    const m = String(s).trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?/);
+                    if (!m) return NaN;
+                    const dd = Number(m[1]);
+                    const mm = Number(m[2]) - 1;
+                    const yyyy = Number(m[3]);
+                    const hh = m[4] ? Number(m[4]) : 0;
+                    const mi = m[5] ? Number(m[5]) : 0;
+                    return new Date(yyyy, mm, dd, hh, mi).getTime();
+                }
+
+                function guessType(value) {
+                    const v = String(value).trim().replace(/\./g, "").replace(",", ".");
+                    if (v === "") return "text";
+                    if (!isNaN(Number(v))) return "num";
+                    if (!isNaN(parseDateDDMMYYYY(value))) return "date";
+                    return "text";
+                }
+
+                function cellValue(tr, colIndex) {
+                    const td = tr.children[colIndex];
+                    return td ? td.textContent.trim() : "";
+                }
+
+                function compareFactory(type, desc, colIndex) {
+                    return (a, b) => {
+                        const avRaw = cellValue(a, colIndex);
+                        const bvRaw = cellValue(b, colIndex);
+
+                        if (avRaw === "" && bvRaw === "") return 0;
+                        if (avRaw === "") return 1;
+                        if (bvRaw === "") return -1;
+
+                        let res = 0;
+
+                        if (type === "num") {
+                            const av = Number(avRaw.replace(/\./g, "").replace(",", "."));
+                            const bv = Number(bvRaw.replace(/\./g, "").replace(",", "."));
+                            res = av - bv;
+                        } else if (type === "date") {
+                            const av = parseDateDDMMYYYY(avRaw);
+                            const bv = parseDateDDMMYYYY(bvRaw);
+                            res = av - bv;
+                        } else {
+                            res = avRaw.localeCompare(bvRaw, undefined, {
+                                numeric: true,
+                                sensitivity: "base",
+                            });
+                        }
+
+                        return desc ? -res : res;
+                    };
+                }
+
+                function getAcquistiSortSnapshot() {
+                    const snapshot = {};
+
+                    document.querySelectorAll("#acquisti-content-container table.table-sortable[id]").forEach((table) => {
+                        const activeTh = table.querySelector("thead th[data-sort-dir]");
+                        if (!activeTh) return;
+
+                        const colIndex = activeTh.cellIndex;
+                        const dir = activeTh.getAttribute("data-sort-dir");
+                        const declaredType = (activeTh.getAttribute("data-sort") || "").toLowerCase();
+
+                        let type = declaredType;
+                        if (!type) {
+                            const tbody = table.tBodies[0];
+                            const rows = tbody ? Array.from(tbody.rows) : [];
+                            const sample = rows.map((r) => cellValue(r, colIndex)).find((v) => v !== "") || "";
+                            type = guessType(sample);
+                        }
+
+                        snapshot[table.id] = {
+                            colIndex,
+                            dir,
+                            type,
+                        };
+                    });
+
+                    return snapshot;
+                }
+
+                function restoreAcquistiSortSnapshot(snapshot) {
+                    Object.entries(snapshot || {}).forEach(([tableId, meta]) => {
+                        const table = document.getElementById(tableId);
+                        if (!table) return;
+
+                        const thead = table.tHead;
+                        const tbody = table.tBodies[0];
+                        if (!thead || !tbody) return;
+
+                        const ths = Array.from(thead.querySelectorAll("th"));
+                        ths.forEach((th, idx) => {
+                            if (idx === meta.colIndex) {
+                                th.setAttribute("data-sort-dir", meta.dir);
+                            } else {
+                                th.removeAttribute("data-sort-dir");
+                            }
+                        });
+
+                        const rows = Array.from(tbody.rows);
+                        const desc = meta.dir === "desc";
+
+                        rows.sort(compareFactory(meta.type || "text", desc, meta.colIndex));
+                        rows.forEach((row) => tbody.appendChild(row));
+                    });
+                }
+
                 function reapplyAllAcquistiFilters() {
                     const tableIds = getAllAcquistiTargetTableIds();
 
@@ -256,6 +365,7 @@
 
                     isRefreshing = true;
                     const filterSnapshot = getAcquistiFilterSnapshot();
+                    const sortSnapshot = getAcquistiSortSnapshot();
 
                     try {
                         const response = await fetch(bridgeUrl, {
@@ -282,6 +392,7 @@
                         });
 
                         restoreAcquistiFilterSnapshot(filterSnapshot);
+                        restoreAcquistiSortSnapshot(sortSnapshot);
                         reapplyAllAcquistiFilters();
                     } catch (err) {
                         console.error("Errore refresh acquisti:", err);
@@ -295,69 +406,6 @@
 
                 // opzionale ma utile anche al primo caricamento
                 reapplyAllAcquistiFilters();
-            });
-        })();
-    </script>
-    <script>
-        (() => {
-            document.addEventListener("DOMContentLoaded", () => {
-                const root = document.getElementById("acquisti-page");
-                if (!root) return;
-
-                const bridgeUrl = root.dataset.bridgeUrl;
-                if (!bridgeUrl) return;
-
-                const POLL_MS = 30000;
-                let isRefreshing = false;
-
-
-                async function refreshAcquistiTables() {
-                    if (isRefreshing) return;
-
-                    if (document.querySelector("#modalAcqMateriale.show")) {
-                        return;
-                    }
-
-                    isRefreshing = true;
-
-                    try {
-                        const response = await fetch(bridgeUrl, {
-                            method: "GET",
-                            headers: {
-                                "Accept": "application/json",
-                                "X-Requested-With": "XMLHttpRequest",
-                            },
-                            cache: "no-store",
-                        });
-
-                        if (!response.ok) return;
-
-                        const data = await response.json();
-                        if (!data || !data.ok) return;
-
-                        const fragments = data.fragments || {};
-
-                        Object.entries(fragments).forEach(([targetId, html]) => {
-                            const target = document.getElementById(targetId);
-                            if (target) {
-                                target.innerHTML = html;
-                            }
-                        });
-
-                        window.applyAcqGiacenzaRowState?.();
-                        window.applyFiltersToTable?.("acquisti_giacenza_table");
-                        window.applyFiltersToTable?.("acquisti_materiale_table");
-                        window.applyRowColors?.();
-                        window.applyAcquistiOrdiniFilters?.();
-                    } catch (err) {
-                        console.error("Errore refresh acquisti:", err);
-                    } finally {
-                        isRefreshing = false;
-                    }
-                }
-
-                window.refreshAcquistiTables = refreshAcquistiTables;
-                window.setInterval(refreshAcquistiTables, POLL_MS);
             });
         })();
     </script>
