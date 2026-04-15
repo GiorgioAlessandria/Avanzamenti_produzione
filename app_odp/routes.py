@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, date, timedelta
 from zoneinfo import ZoneInfo
 import json
 import re
@@ -1616,6 +1616,88 @@ def _norm_text(value) -> str:
 
 def _now_rome_dt() -> datetime:
     return datetime.now(ROME_TZ)
+
+
+def _easter_sunday(year: int) -> date:
+    a = year % 19
+    b = year // 100
+    c = year % 100
+    d = b // 4
+    e = b % 4
+    f = (b + 8) // 25
+    g = (b - f + 1) // 3
+    h = (19 * a + b - d - g + 15) % 30
+    i = c // 4
+    k = c % 4
+    l = (32 + 2 * e + 2 * i - h - k) % 7
+    m = (a + 11 * h + 22 * l) // 451
+    month = (h + l - 7 * m + 114) // 31
+    day = ((h + l - 7 * m + 114) % 31) + 1
+    return date(year, month, day)
+
+
+def _italian_holidays(year: int) -> set[date]:
+    easter = _easter_sunday(year)
+    easter_monday = easter + timedelta(days=1)
+
+    return {
+        date(year, 1, 1),  # Capodanno
+        date(year, 1, 6),  # Epifania
+        date(year, 4, 25),  # Liberazione
+        date(year, 5, 1),  # Festa del Lavoro
+        date(year, 6, 2),  # Festa della Repubblica
+        date(year, 8, 15),  # Ferragosto
+        date(year, 11, 1),  # Ognissanti
+        date(year, 12, 8),  # Immacolata
+        date(year, 12, 25),  # Natale
+        date(year, 12, 26),  # Santo Stefano
+        easter_monday,  # Lunedì dell'Angelo
+    }
+
+
+def _is_business_day(day_value: date) -> bool:
+    if day_value.weekday() >= 5:
+        return False
+    return day_value not in _italian_holidays(day_value.year)
+
+
+def _normalize_to_business_day(day_value: date) -> date:
+    current = day_value
+    while not _is_business_day(current):
+        current += timedelta(days=1)
+    return current
+
+
+def _add_business_days(start_day: date, business_days: int) -> date:
+    current = _normalize_to_business_day(start_day)
+
+    if business_days <= 0:
+        return current
+
+    remaining = int(business_days)
+
+    while remaining > 0:
+        current += timedelta(days=1)
+        if _is_business_day(current):
+            remaining -= 1
+
+    return current
+
+
+def _format_date_it(day_value: date | None) -> str:
+    if not day_value:
+        return ""
+    return day_value.strftime("%d/%m/%Y")
+
+
+def _calc_supply_date_from_today(lead_time_days) -> date | None:
+    try:
+        lead_days = int(float(lead_time_days or 0))
+    except (TypeError, ValueError):
+        return None
+
+    today_rome = _now_rome_dt().date()
+    return _add_business_days(today_rome, lead_days)
 
 
 def _parse_iso_dt(value) -> datetime | None:
@@ -5283,6 +5365,9 @@ def home_acquisti():
         if not cod_art:
             continue
 
+        lead_time_days = int((articolo.PianTempoApprovFisso if articolo else 0) or 0)
+        data_prevista_calc = _calc_supply_date_from_today(lead_time_days)
+
         row = grouped.setdefault(
             cod_art,
             {
@@ -5297,13 +5382,8 @@ def home_acquisti():
                 "LottoRiordino": float(
                     (articolo.LottoRiordino if articolo else 0) or 0
                 ),
-                "PianTempoApprovFisso": int(
-                    (articolo.PianTempoApprovFisso if articolo else 0) or 0
-                ),
-                "DataPrevistaApprovvigionamento": (
-                    articolo.DataPrevistaApprovvigionamento if articolo else ""
-                )
-                or "",
+                "PianTempoApprovFisso": lead_time_days,
+                "DataPrevistaApprovvigionamento": _format_date_it(data_prevista_calc),
                 "is_negative_any": False,
             },
         )
