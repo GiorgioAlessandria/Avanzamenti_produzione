@@ -235,28 +235,7 @@
                    style="color: rgb(0,0,0);font-size: 25px;">LogOut</a></div>
             {% if current_user.is_authenticated and current_user.has_permission('home_acquisti') %}
                 {% if is_home_acquisti %}
-                    <div class="row d-flex w-100 h-100 justify-content-start align-items-center ms-0 me-0 mb-0"
-                         style="width: auto;height: auto;font-size: 25px;">
-                        <div class="col-md-12 text-start d-flex justify-content-start align-items-center ps-0 pe-0"
-                             style="width: auto;height: auto;font-size: 25px;">
-                            <svg xmlns="http://www.w3.org/2000/svg"
-                                 width="1em"
-                                 height="1em"
-                                 viewBox="0 0 24 24"
-                                 fill="none"
-                                 stroke="currentColor"
-                                 stroke-width="2"
-                                 stroke-linecap="round"
-                                 stroke-linejoin="round"
-                                 style="font-size: 25px;">
-                                <path d="M15 18l-6-6l6-6"></path>
-                            </svg>
-                            <a href="{{ url_for('main.home') }}"
-                               style="color: rgb(0,0,0);font-size: 25px;">
-                                <span style="color: rgb(33, 37, 41);">Torna alla produzione</span>
-                            </a>
-                        </div>
-                    </div>
+
                 {% else %}
                     <div class="row d-flex w-100 h-100 justify-content-start align-items-center ms-0 me-0 mb-0"
                          style="width: auto;height: auto;font-size: 25px;">

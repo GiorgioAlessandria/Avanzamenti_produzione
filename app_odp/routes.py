@@ -5701,6 +5701,22 @@ def _ordine_state_rank(stato: str) -> int:
     return 9
 
 
+def _ordine_stato_effettivo(ordine) -> str:
+    runtime = getattr(ordine, "runtime_row", None)
+    stato_runtime = _norm_text(getattr(runtime, "Stato_odp", ""))
+    if stato_runtime:
+        return stato_runtime
+    return _norm_text(getattr(ordine, "StatoOrdine", ""))
+
+
+def _is_open_order_state(stato: str) -> bool:
+    s = _norm_text(stato).lower()
+    if s == "chiusa":
+        return False
+
+    return "attiv" in s or "pianificat" in s or "sospes" in s or "apert" in s
+
+
 def _build_acquisti_ordini_rows() -> dict:
     ordini = _base_odp_query().all()
 
@@ -5712,18 +5728,20 @@ def _build_acquisti_ordini_rows() -> dict:
     }
 
     for ordine in ordini:
-        stato = _norm_text(getattr(ordine, "StatoOrdine", ""))
+        stato = _ordine_stato_effettivo(ordine)
         stato_norm = stato.lower()
 
-        if stato_norm == "chiusa":
+        if not _is_open_order_state(stato):
             continue
 
-        if (
-            "attiv" not in stato_norm
-            and "pianificat" not in stato_norm
-            and "sospes" not in stato_norm
-        ):
-            continue
+        runtime = getattr(ordine, "runtime_row", None)
+        qty = _qty_da_lavorare_text(ordine, stato=runtime)
+
+        fase_attiva = (
+            _norm_text(getattr(runtime, "FaseAttiva", ""))
+            or _norm_text(getattr(ordine, "FaseAttiva", ""))
+            or "1"
+        )
 
         runtime = getattr(ordine, "runtime_row", None)
         qty = _qty_da_lavorare_text(ordine, stato=runtime)
