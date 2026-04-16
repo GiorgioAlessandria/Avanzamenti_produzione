@@ -49,6 +49,8 @@ _INITIALIZED = False
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s"
 )
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_CONFIG_PATH = PROJECT_ROOT / "app_odp" / "static" / "config.toml"
 
 
 def init(config_path: str | pathlib.Path = None, *, force: bool = False):
@@ -60,7 +62,7 @@ def init(config_path: str | pathlib.Path = None, *, force: bool = False):
         return
 
     if config_path is None:
-        config_path = Path("app_odp//static//config.toml")
+        config_path = DEFAULT_CONFIG_PATH
 
     CONFIG = load_config(config_path)
 

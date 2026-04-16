@@ -37,12 +37,11 @@ CodArt = [
     "RDMU18",
     "RDMU19",
     "RDMU20",
-] #lasciare la voce vuota per rimuovere i valori vuoti
-[Percorsi]
-percorso_db = "//Serverspring02/PythonDB/Avanzamenti_produzione/app_odp/instance/RBAC.db"
-percorso_db_log = "//Serverspring02/PythonDB/Avanzamenti_produzione/app_odp/instance/db_log.sqlite"
-percorso_file_output = "V:/Avanzamenti_produzione/output"
-percorso_db_acq = "//Serverspring02/PythonDB/Avanzamenti_produzione/app_odp/instance/db_acq.sqlite"
+] #lasciare la voce vuota per rimuovere i valori vuoti[Percorsi]
+percorso_db = "C:/inetpub/wwwroot/FlaskSites/Avanzamenti_produzione/app_odp/instance/RBAC.db"
+percorso_db_log = "C:/inetpub/wwwroot/FlaskSites/Avanzamenti_produzione/app_odp/instance/db_log.sqlite"
+percorso_db_acq = "C:/inetpub/wwwroot/FlaskSites/Avanzamenti_produzione/app_odp/instance/db_acq.sqlite"
+percorso_file_output = "C:/inetpub/wwwroot/FlaskSites/Avanzamenti_produzione/output"
 [sync_config]
 tempo_polling = 2
 counter_righe = 0

@@ -24,10 +24,6 @@ import urllib.parse
 import pathlib
 from sqlalchemy.engine import Connection as SAConnection
 
-try:
-    from icecream import ic
-except:
-    pass
 # endregion
 # region COSTANTI
 CONFIG = None
@@ -48,7 +44,8 @@ _INITIALIZED = False
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s"
 )
-
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_CONFIG_PATH = PROJECT_ROOT / "app_odp" / "static" / "config.toml"
 nuovo_ciclo = 0
 
 
@@ -73,7 +70,7 @@ def init(config_path: str | pathlib.Path = None, *, force: bool = False):
         return
 
     if config_path is None:
-        config_path = Path("app_odp//static//config.toml")
+        config_path = DEFAULT_CONFIG_PATH
 
     CONFIG = load_config(config_path)
 

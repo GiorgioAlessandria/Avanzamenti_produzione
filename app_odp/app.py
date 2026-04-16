@@ -1,24 +1,25 @@
-from flask import Flask, request, g
-from flask_login import LoginManager
-from .filters import register_filters
-
-from app_odp.models import db, User
-from app_odp.auth import auth_bp
-from app_odp.routes import main_bp
-import tomllib
-from flask_login import current_user
-from app_odp.policy.policy import RbacPolicy
-from pathlib import Path
+import os
 import logging
-from uuid import uuid4
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
+
+from flask import Flask, request, g
+from flask_login import LoginManager, current_user
 from sqlalchemy import event
 from sqlalchemy.engine import Engine
 
-try:
-    from icecream import ic
-finally:
-    pass
-CONFIG_PATH = Path("app_odp/static/config.toml")
+from .filters import register_filters
+from app_odp.models import db, User
+from app_odp.auth import auth_bp
+from app_odp.routes import main_bp
+from app_odp.policy.policy import RbacPolicy
+import tomllib
+from uuid import uuid4
+
+APP_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = APP_DIR.parent
+CONFIG_PATH = APP_DIR / "static" / "config.toml"
+LOG_DIR = PROJECT_ROOT / "logs"
 
 
 def _apply_sqlite_pragmas(engine: Engine) -> None:
@@ -28,8 +29,33 @@ def _apply_sqlite_pragmas(engine: Engine) -> None:
         try:
             cursor.execute("PRAGMA busy_timeout=5000;")
             cursor.execute("PRAGMA journal_mode=WAL;")
+            cursor.execute("PRAGMA foreign_keys=ON;")
         finally:
             cursor.close()
+
+
+def setup_file_logging(app):
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+    handler = RotatingFileHandler(
+        LOG_DIR / "flask_app.log",
+        maxBytes=5_000_000,
+        backupCount=5,
+        encoding="utf-8",
+    )
+    handler.setLevel(logging.INFO)
+    handler.setFormatter(
+        logging.Formatter("%(asctime)s | %(levelname)s | %(name)s | %(message)s")
+    )
+
+    if not any(
+        isinstance(h, RotatingFileHandler)
+        and getattr(h, "baseFilename", "").endswith("flask_app.log")
+        for h in app.logger.handlers
+    ):
+        app.logger.addHandler(handler)
+
+    app.logger.setLevel(logging.INFO)
 
 
 def load_config(config: Path) -> dict:
@@ -79,10 +105,13 @@ def create_app():
         template_folder="templates",
     )
     # setup_request_logging(app)
-    app.debug = True
+    app.debug = False
 
-    # chiave segreta per sessioni e Flask-Login
-    app.config["SECRET_KEY"] = "Berserk"
+    secret_key = os.environ.get("AVP_SECRET_KEY")
+    if not secret_key:
+        raise RuntimeError("Variabile ambiente AVP_SECRET_KEY mancante.")
+
+    app.config["SECRET_KEY"] = secret_key
 
     # DB SQLite dentro instance
     app.config["SQLALCHEMY_DATABASE_URI"] = (
@@ -120,7 +149,12 @@ def create_app():
     with app.app_context():
         for eng in db.engines.values():
             _apply_sqlite_pragmas(eng)
+
+        db.create_all()
         db.create_all(bind_key="log")
+        db.create_all(bind_key="acq")
+
+    setup_file_logging(app)
     app.register_blueprint(auth_bp)
     app.register_blueprint(main_bp)
     return app
