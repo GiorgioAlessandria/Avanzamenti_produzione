@@ -3,10 +3,10 @@
 {% block title %}Acquisti{% endblock %}
 
 {% block content %}
-    <main class="container-fluid mt-2 mb-3 d-flex flex-column"
+    <main class="container-fluid mt-2 mb-3 d-flex flex-column px-0"
           id="acquisti-page"
           data-bridge-url="{{ url_for('main.api_acquisti_bridge') }}"
-          style="height: calc(100vh - 140px); overflow: hidden;">
+          style="height: calc(100vh - 140px); overflow: hidden; min-height: 0;">
         <div class="row g-3 flex-shrink-0">
             <div class="col-12">
                 <div class="card shadow-sm">
@@ -42,7 +42,7 @@
                             {% include "partials/_acquisti_filters_giacenza.j2" %}
                         </div>
 
-                        <div class="acq-section-panel d-none h-100"
+                        <div class="acq-filters-panel d-none"
                              data-section="materiale">
                             {% include "partials/_acquisti_filters_materiale.j2" %}
                         </div>
@@ -54,35 +54,36 @@
                     </div>
                 </section>
             </div>
-        </div>
 
-        <div class="row g-3 flex-grow-1 mt-0 overflow-hidden">
-            <div class="col-12 h-100">
-                <section id="acquisti-content-container"
-                         class="h-100">
-                    <div class="acq-section-panel h-100"
-                         data-section="giacenza">
-                        {% include "partials/_acquisti_giacenza.j2" %}
-                    </div>
+            <div class="row g-3 flex-grow-1 mt-0 overflow-hidden"
+                 style="min-height: 0;">
+                <div class="col-12 h-100 overflow-hidden">
+                    <section id="acquisti-content-container"
+                             class="h-100 overflow-hidden"
+                             style="min-height: 0;">
+                        <div class="acq-section-panel h-100"
+                             data-section="giacenza"
+                             style="min-height: 0;">
+                            {% include "partials/_acquisti_giacenza.j2" %}
+                        </div>
 
-                    <div class="acq-section-panel d-none h-100"
-                         data-section="materiale">
-                        <div class="card shadow-sm h-100">
-                            <div class="acq-section-panel d-none h-100"
-                                 data-section="materiale">
-                                {% include "partials/_acquisti_materiale_necessario.j2" %}
+                        <div class="acq-section-panel d-none h-100"
+                             data-section="materiale"
+                             style="min-height: 0;">
+                            {% include "partials/_acquisti_materiale_necessario.j2" %}
+                        </div>
+
+                        <div class="acq-section-panel d-none h-100"
+                             data-section="ordini"
+                             style="min-height: 0;">
+                            <div id="acquisti_ordini_section"
+                                 class="h-100"
+                                 style="min-height: 0;">
+                                {% include "partials/_acquisti_ordini_produzione.j2" %}
                             </div>
                         </div>
-                    </div>
-
-                    <div class="acq-section-panel d-none h-100"
-                         data-section="ordini">
-                        <div id="acquisti_ordini_section"
-                             class="h-100">
-                            {% include "partials/_acquisti_ordini_produzione.j2" %}
-                        </div>
-                    </div>
-                </section>
+                    </section>
+                </div>
             </div>
         </div>
     </main>
@@ -446,6 +447,122 @@
                 window.applyAcquistiOrdiniFilters = applyAcquistiOrdiniFilters;
 
                 applyAcquistiOrdiniFilters();
+            });
+        })();
+    </script>
+    <script>
+        (() => {
+            function escHtml(value) {
+                return String(value ?? "")
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;")
+                    .replace(/"/g, "&quot;")
+                    .replace(/'/g, "&#039;");
+            }
+
+            function renderEmptyState(message) {
+                return `<div class="text-muted">${escHtml(message)}</div>`;
+            }
+
+            function renderRowsTable(title, rows, columns) {
+                if (!Array.isArray(rows) || rows.length === 0) {
+                    return `
+                    <div class="mb-3">
+                        <h6 class="mb-2">${escHtml(title)}</h6>
+                        ${renderEmptyState("Nessun dato disponibile.")}
+                    </div>
+                `;
+                }
+
+                const thead = columns.map(col => `<th>${escHtml(col.label)}</th>`).join("");
+                const tbody = rows.map(row => {
+                    const tds = columns.map(col => `<td>${escHtml(row?.[col.key] ?? "")}</td>`).join("");
+                    return `<tr>${tds}</tr>`;
+                }).join("");
+
+                return `
+                <div class="mb-3">
+                    <h6 class="mb-2">${escHtml(title)}</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-striped table-hover align-middle mb-0">
+                            <thead>
+                                <tr>${thead}</tr>
+                            </thead>
+                            <tbody>
+                                ${tbody}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+            }
+
+            document.addEventListener("click", (event) => {
+                const btn = event.target.closest(".js-open-acq-material-modal");
+                if (!btn) return;
+
+                const modalEl = document.getElementById("modalAcqMateriale");
+                const titleExtraEl = document.getElementById("modal-acq-materiale-title-extra");
+                const bodyEl = document.getElementById("modal-acq-materiale-body");
+
+                if (!modalEl || !titleExtraEl || !bodyEl) return;
+
+                let payload = {};
+                try {
+                    payload = JSON.parse(btn.dataset.material || "{}");
+                } catch (err) {
+                    console.error("Payload modal materiale non valido:", err);
+                    titleExtraEl.textContent = "";
+                    bodyEl.innerHTML = `<div class="alert alert-danger mb-0">Impossibile leggere il dettaglio materiale.</div>`;
+                    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                    return;
+                }
+
+                const codArt = payload.cod_art || "";
+                const variante = payload.variante_art || "";
+                const desArt = payload.des_art || "";
+                const magUm = payload.mag_um || "";
+
+                titleExtraEl.textContent = [codArt, variante].filter(Boolean).join(" - ");
+
+                const headerInfo = `
+                <div class="mb-3">
+                    <div><strong>Codice:</strong> ${escHtml(codArt || "-")}</div>
+                    <div><strong>Variante:</strong> ${escHtml(variante || "-")}</div>
+                    <div><strong>Descrizione:</strong> ${escHtml(desArt || "-")}</div>
+                    <div><strong>UdM:</strong> ${escHtml(magUm || "-")}</div>
+                </div>
+            `;
+
+                const distintaHtml = renderRowsTable(
+                    "Impeghi in distinta",
+                    payload.in_distinta || [],
+                    [
+                        {key: "Ordine", label: "Ordine"},
+                        {key: "DescrizioneOrdine", label: "Descrizione ordine"},
+                        {key: "Stato", label: "Stato"},
+                        {key: "Fase", label: "Fase"},
+                        {key: "Quantita", label: "Quantità"},
+                        {key: "MagUM", label: "UdM"},
+                    ]
+                );
+
+                const ordineHtml = renderRowsTable(
+                    "Produzione prevista",
+                    payload.in_ordine || [],
+                    [
+                        {key: "Ordine", label: "Ordine"},
+                        {key: "DescrizioneOrdine", label: "Descrizione ordine"},
+                        {key: "Stato", label: "Stato"},
+                        {key: "Quantita", label: "Quantità"},
+                        {key: "Tipo", label: "Tipo"},
+                    ]
+                );
+
+                bodyEl.innerHTML = headerInfo + distintaHtml + ordineHtml;
+
+                bootstrap.Modal.getOrCreateInstance(modalEl).show();
             });
         })();
     </script>
