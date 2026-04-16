@@ -3,6 +3,9 @@ from zoneinfo import ZoneInfo
 import json
 import re
 import unicodedata
+from io import BytesIO
+from openpyxl import Workbook
+from openpyxl.styles import Font
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 from sqlalchemy.orm import selectinload
@@ -14,6 +17,7 @@ from flask import (
     abort,
     jsonify,
     current_app,
+    send_file,
 )
 from flask_login import login_required, current_user
 from sqlalchemy import func, select, delete
@@ -5856,4 +5860,213 @@ def api_acquisti_bridge():
             "refreshed_at": _now_rome_dt().isoformat(timespec="seconds"),
             "fragments": fragments,
         }
+    )
+
+
+def _contains_insensitive(value, needle: str) -> bool:
+    needle_norm = _norm_text(needle).lower()
+    if not needle_norm:
+        return True
+    return needle_norm in _norm_text(value).lower()
+
+
+def _filter_acquisti_giacenze_rows(
+    rows: list[dict],
+    *,
+    codart: str = "",
+    desart: str = "",
+    only_negative: bool = False,
+    only_understock: bool = False,
+) -> list[dict]:
+    out = []
+
+    for row in rows:
+        mag0 = float(row.get("Mag_0") or 0)
+        punto_riordino = float(row.get("PuntoRiordino") or 0)
+
+        is_negative_mag0 = mag0 < 0
+        is_understock_mag0 = (not is_negative_mag0) and (mag0 < punto_riordino)
+
+        if not _contains_insensitive(row.get("CodArt"), codart):
+            continue
+        if not _contains_insensitive(row.get("DesArt"), desart):
+            continue
+        if only_negative and not is_negative_mag0:
+            continue
+        if only_understock and not is_understock_mag0:
+            continue
+
+        out.append(row)
+
+    return out
+
+
+def _filter_acquisti_materiale_rows(
+    rows: list[dict],
+    *,
+    codart: str = "",
+    variante: str = "",
+    desart: str = "",
+    only_critical: bool = False,
+    only_understock: bool = False,
+) -> list[dict]:
+    out = []
+
+    for row in rows:
+        if not _contains_insensitive(row.get("CodArt"), codart):
+            continue
+        if not _contains_insensitive(row.get("VarianteArt"), variante):
+            continue
+        if not _contains_insensitive(row.get("DesArt"), desart):
+            continue
+        if only_critical and not bool(row.get("RimanenzaMaterialeCritica")):
+            continue
+        if only_understock and not bool(row.get("RimanenzaMaterialeSottoScorta")):
+            continue
+
+        out.append(row)
+
+    return out
+
+
+def _build_acquisti_excel_workbook(section: str, rows: list[dict]) -> Workbook:
+    wb = Workbook()
+    ws = wb.active
+
+    if section == "giacenza":
+        ws.title = "Giacenza"
+        headers = [
+            "CodArt",
+            "Descrizione",
+            "UdM",
+            "Mag 0",
+            "Mag 10",
+            "Mag 13",
+            "Punto riordino",
+            "Lotto riordino",
+            "Lead time",
+            "Data prevista approvvigionamento",
+        ]
+        data_rows = [
+            [
+                row.get("CodArt", ""),
+                row.get("DesArt", ""),
+                row.get("MagUM", ""),
+                row.get("Mag_0", 0),
+                row.get("Mag_10", 0),
+                row.get("Mag_13", 0),
+                row.get("PuntoRiordino", 0),
+                row.get("LottoRiordino", 0),
+                row.get("PianTempoApprovFisso", 0),
+                row.get("DataPrevistaApprovvigionamento", ""),
+            ]
+            for row in rows
+        ]
+
+    elif section == "materiale":
+        ws.title = "Materiale"
+        headers = [
+            "Articolo",
+            "Var.",
+            "Descrizione",
+            "UdM",
+            "Giacenza",
+            "Fabbisogno pianificato",
+            "Fabbisogno impegnato",
+            "Produzione prevista",
+            "Rimanenza finale",
+            "Scorta",
+            "Lead time",
+            "Lotto minimo",
+            "Dettaglio",
+        ]
+        data_rows = [
+            [
+                row.get("CodArt", ""),
+                row.get("VarianteArt", ""),
+                row.get("DesArt", ""),
+                row.get("MagUM", ""),
+                "Assente" if row.get("Mag0Missing") else row.get("QtyMag0Text", ""),
+                row.get("MaterialeDaConsumareText", ""),
+                row.get("MaterialeImpegnatoText", ""),
+                row.get("MaterialeProdottoText", ""),
+                row.get("RimanenzaMaterialeText", ""),
+                row.get("PuntoRiordinoText", ""),
+                row.get("PianTempoApprovFisso", 0),
+                row.get("LottoRiordinoText", ""),
+                "Ordini",
+            ]
+            for row in rows
+        ]
+    else:
+        raise ValueError(f"Sezione export non valida: {section}")
+
+    ws.append(headers)
+    for row in data_rows:
+        ws.append(row)
+
+    # stile intestazione
+    for cell in ws[1]:
+        cell.font = Font(bold=True)
+
+    ws.freeze_panes = "A2"
+
+    # larghezza colonne semplice
+    for column_cells in ws.columns:
+        max_len = 0
+        column_letter = column_cells[0].column_letter
+        for cell in column_cells:
+            value = "" if cell.value is None else str(cell.value)
+            if len(value) > max_len:
+                max_len = len(value)
+        ws.column_dimensions[column_letter].width = min(max(max_len + 2, 10), 40)
+
+    return wb
+
+
+@main_bp.get("/api/acquisti/export/<section>")
+@login_required
+@require_perm("home_acquisti")
+def api_export_acquisti_excel(section):
+    section = _norm_text(section).lower()
+
+    if section == "giacenza":
+        rows = _build_acquisti_giacenze_rows()
+        rows = _filter_acquisti_giacenze_rows(
+            rows,
+            codart=request.args.get("codart", ""),
+            desart=request.args.get("desart", ""),
+            only_negative=_parse_bool_flag(request.args.get("negative")),
+            only_understock=_parse_bool_flag(request.args.get("understock")),
+        )
+        file_name = f"acquisti_giacenza_{_now_rome_dt().strftime('%Y%m%d_%H%M%S')}.xlsx"
+
+    elif section == "materiale":
+        rows = _build_acquisti_materiale_rows()
+        rows = _filter_acquisti_materiale_rows(
+            rows,
+            codart=request.args.get("codart", ""),
+            variante=request.args.get("variante", ""),
+            desart=request.args.get("desart", ""),
+            only_critical=_parse_bool_flag(request.args.get("critical")),
+            only_understock=_parse_bool_flag(request.args.get("understock")),
+        )
+        file_name = (
+            f"acquisti_materiale_{_now_rome_dt().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        )
+
+    else:
+        abort(404)
+
+    wb = _build_acquisti_excel_workbook(section, rows)
+
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    return send_file(
+        output,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name=file_name,
     )

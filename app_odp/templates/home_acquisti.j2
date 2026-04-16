@@ -7,8 +7,10 @@
           id="acquisti-page"
           data-bridge-url="{{ url_for('main.api_acquisti_bridge') }}"
           style="height: calc(100vh - 140px); overflow: hidden; min-height: 0;">
-        <div class="row g-3 flex-shrink-0">
-            <div class="col-12">
+        <div class="d-flex flex-column gap-3 flex-grow-1"
+             style="min-height: 0;">
+
+            <div class="flex-shrink-0">
                 <div class="card shadow-sm">
                     <div class="card-body py-2">
                         <div class="align-items-center d-flex justify-content-between mb-0"
@@ -33,7 +35,7 @@
                 </div>
             </div>
 
-            <div class="col-12 flex-shrink-0">
+            <div class="flex-shrink-0">
                 <section class="card shadow-sm"
                          id="acquisti-filters-container">
                     <div class="card-body py-2">
@@ -55,35 +57,33 @@
                 </section>
             </div>
 
-            <div class="row g-3 flex-grow-1 mt-0 overflow-hidden"
+            <div class="flex-grow-1 overflow-hidden"
                  style="min-height: 0;">
-                <div class="col-12 h-100 overflow-hidden">
-                    <section id="acquisti-content-container"
-                             class="h-100 overflow-hidden"
-                             style="min-height: 0;">
-                        <div class="acq-section-panel h-100"
-                             data-section="giacenza"
-                             style="min-height: 0;">
-                            {% include "partials/_acquisti_giacenza.j2" %}
-                        </div>
+                <section id="acquisti-content-container"
+                         class="h-100 overflow-hidden"
+                         style="min-height: 0;">
+                    <div class="acq-section-panel h-100"
+                         data-section="giacenza"
+                         style="min-height: 0;">
+                        {% include "partials/_acquisti_giacenza.j2" %}
+                    </div>
 
-                        <div class="acq-section-panel d-none h-100"
-                             data-section="materiale"
-                             style="min-height: 0;">
-                            {% include "partials/_acquisti_materiale_necessario.j2" %}
-                        </div>
+                    <div class="acq-section-panel d-none h-100"
+                         data-section="materiale"
+                         style="min-height: 0;">
+                        {% include "partials/_acquisti_materiale_necessario.j2" %}
+                    </div>
 
-                        <div class="acq-section-panel d-none h-100"
-                             data-section="ordini"
+                    <div class="acq-section-panel d-none h-100"
+                         data-section="ordini"
+                         style="min-height: 0;">
+                        <div id="acquisti_ordini_section"
+                             class="h-100"
                              style="min-height: 0;">
-                            <div id="acquisti_ordini_section"
-                                 class="h-100"
-                                 style="min-height: 0;">
-                                {% include "partials/_acquisti_ordini_produzione.j2" %}
-                            </div>
+                            {% include "partials/_acquisti_ordini_produzione.j2" %}
                         </div>
-                    </section>
-                </div>
+                    </div>
+                </section>
             </div>
         </div>
     </main>
@@ -111,6 +111,21 @@
             </div>
         </div>
     </div>
+    <style>
+        #acquisti-page .table-responsive {
+            overflow: auto;
+        }
+
+        #acquisti-page table thead th {
+            position: sticky;
+            top: 0;
+            z-index: 20;
+            background: var(--bs-info);
+            color: #000;
+            box-shadow: inset 0 -1px 0 #000, inset 0 1px 0 #000;
+        }
+    </style>
+
 {% endblock %}
 
 {% block extra_js %}
@@ -563,6 +578,51 @@
                 bodyEl.innerHTML = headerInfo + distintaHtml + ordineHtml;
 
                 bootstrap.Modal.getOrCreateInstance(modalEl).show();
+            });
+        })();
+    </script>
+    <script>
+        (() => {
+            function getInputValue(id) {
+                return document.getElementById(id)?.value?.trim() || "";
+            }
+
+            function getCheckboxValue(id) {
+                return document.getElementById(id)?.checked ? "true" : "false";
+            }
+
+            function startAcquistiExcelExport(section) {
+                const params = new URLSearchParams();
+
+                if (section === "giacenza") {
+                    params.set("codart", getInputValue("filter-acq-giacenza-codart"));
+                    params.set("desart", getInputValue("filter-acq-giacenza-desart"));
+                    params.set("negative", getCheckboxValue("filter-acq-giacenza-negativi"));
+                    params.set("understock", getCheckboxValue("filter-acq-giacenza-understock"));
+                }
+
+                if (section === "materiale") {
+                    params.set("codart", getInputValue("filter-acq-materiale-codart"));
+                    params.set("variante", getInputValue("filter-acq-materiale-variante"));
+                    params.set("desart", getInputValue("filter-acq-materiale-desart"));
+                    params.set("critical", getCheckboxValue("filter-acq-materiale-critical"));
+                    params.set("understock", getCheckboxValue("filter-acq-materiale-understock"));
+                }
+
+                window.location.href = `/api/acquisti/export/${section}?${params.toString()}`;
+            }
+
+            document.addEventListener("click", (event) => {
+                const giacenzaBtn = event.target.closest("#btn-export-acq-giacenza");
+                if (giacenzaBtn) {
+                    startAcquistiExcelExport("giacenza");
+                    return;
+                }
+
+                const materialeBtn = event.target.closest("#btn-export-acq-materiale");
+                if (materialeBtn) {
+                    startAcquistiExcelExport("materiale");
+                }
             });
         })();
     </script>
