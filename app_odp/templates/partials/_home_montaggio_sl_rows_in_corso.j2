@@ -1,5 +1,6 @@
 {% for singolo_odp in odp %}
     {% if singolo_odp.GestioneMatricola == "no" and singolo_odp.StatoOrdine != "Pianificata" and singolo_odp.StatoOrdine != "Chiusa" %}
+        {% set operatore = singolo_odp.runtime_row.Utente_operazione if singolo_odp.runtime_row else "" %}
         <tr data-row-key="{{ singolo_odp.IdDocumento }}|{{ singolo_odp.NumProgrRiga }}"
             data-tipodocumento="{{ singolo_odp.CodTipoDoc }}"
             data-iddocumento="{{ singolo_odp.IdDocumento }}"
@@ -15,7 +16,8 @@
             data-fase="{{ singolo_odp.FaseAttiva }}"
             data-datacons="{{ singolo_odp.DataFineSched }}"
             data-risorsaprod="{{ singolo_odp.RisorsaAttiva }}"
-            data-statoordine="{{ singolo_odp.StatoOrdine }}">
+            data-statoordine="{{ singolo_odp.StatoOrdine }}"
+            data-operatore="{{ operatore }}">
             <td>{{ singolo_odp.RifRegistraz }}.{{ singolo_odp.NumProgrRiga }}</td>
             <td>
                 <button
@@ -36,6 +38,7 @@
             <td>{{ singolo_odp.DataFineSched | db_date("%Y-%m-%d %H:%M:%S","%d/%m/%Y") }}</td>
             <td>{{ singolo_odp.RisorsaAttiva }}</td>
             <td data-col="stato">{{ singolo_odp.StatoOrdine }}</td>
+            <td>{{ operatore or "-" }}</td>
         </tr>
     {% endif %}
 {% endfor %}
