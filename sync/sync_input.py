@@ -15,14 +15,13 @@ from pathlib import Path
 import pandas as pd
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 import functools as ft
 from zoneinfo import ZoneInfo
 from datetime import datetime, time, timedelta
 import time as time_mod
 import urllib.parse
 import pathlib
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import Connection as SAConnection
 
 try:
@@ -51,6 +50,17 @@ logging.basicConfig(
 )
 
 nuovo_ciclo = 0
+
+
+def _enable_sqlite_foreign_keys(engine) -> None:
+    if engine is None or engine.dialect.name != "sqlite":
+        return
+
+    @event.listens_for(engine, "connect")
+    def _set_sqlite_pragma(dbapi_connection, connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
 
 
 def init(config_path: str | pathlib.Path = None, *, force: bool = False):
@@ -94,6 +104,9 @@ def init(config_path: str | pathlib.Path = None, *, force: bool = False):
     sqlite_engine_app = create_engine(f"sqlite:///{percorso_db}")
     sqlserver_engine_app = create_engine(f"mssql+pyodbc:///?odbc_connect={params}")
     sqlite_engine_log = create_engine(f"sqlite:///{percorso_db_log}")
+
+    _enable_sqlite_foreign_keys(sqlite_engine_app)
+    _enable_sqlite_foreign_keys(sqlite_engine_log)
 
     logging.info("sqlite_engine_app=%s", sqlite_engine_app.url)
     logging.info("sqlserver_engine_app=%s", sqlserver_engine_app.url)
@@ -637,6 +650,73 @@ INPUT_ODP_RUNTIME_COLS = [
 ]
 
 INPUT_ODP_ERP_UPDATE_COLS = [c for c in INPUT_ODP_ERP_COLS if c not in PK_COLS]
+RBAC_SUPPORT_SYNC_CONFIG = (
+    {
+        "view": "vwESCausaliAttivita",
+        "table": "causaliattivita",
+        "rename_map": {
+            "CausaleAttivita": "CausaleAttivita",
+            "DesCausaleAttivita": "DesCausaleAttivita",
+            "CodCategoriaAttivita": "CodCategoriaAttivita",
+            "TipoCausale": "TipoCausale",
+        },
+        "key_cols": ("CausaleAttivita",),
+    },
+    {
+        "view": "vwESFamiglia",
+        "table": "famiglia",
+        "rename_map": {
+            "CodFamiglia": "Codice",
+            "Des": "Descrizione",
+        },
+        "key_cols": ("Codice",),
+    },
+    {
+        "view": "vwESLavorazioni",
+        "table": "lavorazioni",
+        "rename_map": {
+            "CodLavorazione": "Codice",
+            "DesLavorazione": "Descrizione",
+        },
+        "key_cols": ("Codice",),
+    },
+    {
+        "view": "vwESMacroFamiglia",
+        "table": "macrofamiglia",
+        "rename_map": {
+            "CodMacrofamiglia": "Codice",
+            "Des": "Descrizione",
+        },
+        "key_cols": ("Codice",),
+    },
+    {
+        "view": "vwESMagazzini",
+        "table": "magazzini",
+        "rename_map": {
+            "CodMag": "Codice",
+            "DesMagazzino": "Descrizione",
+        },
+        "key_cols": ("Codice",),
+    },
+    {
+        "view": "vwESReparti",
+        "table": "reparti",
+        "rename_map": {
+            "CodReparto": "Codice",
+            "Des": "Descrizione",
+        },
+        "key_cols": ("Codice",),
+    },
+    {
+        "view": "vwESRisorse",
+        "table": "risorse",
+        "rename_map": {
+            "CodRisorsaProd": "Codice",
+            "DesRisorsaProd": "Descrizione",
+        },
+        "key_cols": ("Codice",),
+    },
+)
 
 
 def _fetch_existing_pks(
@@ -671,6 +751,180 @@ def _fetch_existing_pks(
             existing.update(tuple(row) for row in rows)
 
     return existing
+
+
+def _fetch_all_keys(
+    engine,
+    *,
+    table_name: str,
+    key_cols: tuple[str, ...],
+) -> set[tuple]:
+    md = sa.MetaData()
+    t = sa.Table(table_name, md, autoload_with=engine)
+    cols = [t.c[col] for col in key_cols]
+
+    stmt = sa.select(*cols)
+
+    with engine.connect() as conn:
+        rows = conn.execute(stmt).fetchall()
+
+    return {tuple(_norm_text(value) for value in row) for row in rows}
+
+
+def _clean_support_value(value):
+    if pd.isna(value):
+        return None
+    return _norm_text(value)
+
+
+def _prepare_support_df(
+    df_source: pd.DataFrame,
+    *,
+    rename_map: dict[str, str],
+    key_cols: tuple[str, ...],
+) -> pd.DataFrame:
+    missing_cols = [col for col in rename_map if col not in df_source.columns]
+    if missing_cols:
+        raise KeyError(
+            f"Colonne mancanti nella view per sync support table: {missing_cols}"
+        )
+
+    source_cols = list(rename_map.keys())
+    target_cols = list(rename_map.values())
+
+    df = df_source[source_cols].rename(columns=rename_map).copy()
+
+    for col in target_cols:
+        df[col] = df[col].apply(_clean_support_value)
+
+    for col in key_cols:
+        df = df[df[col].notna()]
+        df = df[df[col].astype("string").str.strip().ne("")]
+
+    df = df.drop_duplicates(subset=list(key_cols), keep="last")
+    df = df[target_cols].copy()
+    df = df.where(pd.notna(df), None)
+
+    return df
+
+
+def _sync_support_table(
+    engine,
+    *,
+    table_name: str,
+    df_source: pd.DataFrame,
+    key_cols: tuple[str, ...],
+) -> dict[str, int]:
+    incoming_keys = [
+        tuple(_norm_text(value) for value in row)
+        for row in df_source[list(key_cols)].itertuples(index=False, name=None)
+    ]
+
+    existing_keys = (
+        _fetch_existing_pks(
+            engine,
+            incoming_keys,
+            pk_cols=key_cols,
+            table_name=table_name,
+        )
+        if incoming_keys
+        else set()
+    )
+
+    mask_new = [
+        tuple(_norm_text(value) for value in row) not in existing_keys
+        for row in df_source[list(key_cols)].itertuples(index=False, name=None)
+    ]
+    mask_existing = [
+        tuple(_norm_text(value) for value in row) in existing_keys
+        for row in df_source[list(key_cols)].itertuples(index=False, name=None)
+    ]
+
+    df_new = df_source.loc[mask_new].copy()
+    df_existing = df_source.loc[mask_existing].copy()
+
+    update_cols = [col for col in df_source.columns if col not in key_cols]
+
+    inserted = 0
+    updated = 0
+    deleted = 0
+
+    if not df_new.empty:
+        inserted = int(
+            df_new.to_sql(
+                name=table_name,
+                con=engine,
+                if_exists="append",
+                index=False,
+                method=inserisci_o_ignora,
+            )
+            or 0
+        )
+
+    if not df_existing.empty and update_cols:
+        updated = _update_rows_by_pk(
+            engine,
+            df_existing,
+            table_name=table_name,
+            pk_cols=key_cols,
+            update_cols=update_cols,
+        )
+
+    local_keys = _fetch_all_keys(
+        engine,
+        table_name=table_name,
+        key_cols=key_cols,
+    )
+    incoming_keys_set = set(incoming_keys)
+
+    keys_to_delete = sorted(local_keys - incoming_keys_set)
+
+    if keys_to_delete:
+        deleted = _delete_rows_by_pk(
+            engine,
+            table_name=table_name,
+            pk_cols=key_cols,
+            pk_tuples=keys_to_delete,
+        )
+
+    return {
+        "inserted": inserted,
+        "updated": updated,
+        "deleted": deleted,
+    }
+
+
+def _sync_rbac_support_tables() -> dict[str, dict[str, int]]:
+    ensure_init()
+
+    results = {}
+
+    for cfg in RBAC_SUPPORT_SYNC_CONFIG:
+        df_view = leggi_view(table=cfg["view"])
+        df_prepared = _prepare_support_df(
+            df_view,
+            rename_map=cfg["rename_map"],
+            key_cols=cfg["key_cols"],
+        )
+
+        stats = _sync_support_table(
+            sqlite_engine_app,
+            table_name=cfg["table"],
+            df_source=df_prepared,
+            key_cols=cfg["key_cols"],
+        )
+
+        results[cfg["table"]] = stats
+
+        logging.info(
+            "Sync %s completato | nuovi=%s | aggiornati=%s | eliminati=%s",
+            cfg["table"],
+            stats["inserted"],
+            stats["updated"],
+            stats["deleted"],
+        )
+
+    return results
 
 
 def _fetch_blocked_outbox_pks(log_engine) -> set[tuple[str, str]]:
@@ -1292,6 +1546,7 @@ def elaborazione_dati(session: Session) -> None:
     """
 
     ensure_init()
+    _sync_rbac_support_tables()
     global nuovo_ciclo
     df_odp = leggi_view(
         table="vwESOdP",
