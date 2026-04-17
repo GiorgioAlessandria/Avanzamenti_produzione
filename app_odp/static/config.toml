@@ -37,7 +37,8 @@ CodArt = [
     "RDMU18",
     "RDMU19",
     "RDMU20",
-] #lasciare la voce vuota per rimuovere i valori vuoti[Percorsi]
+] #lasciare la voce vuota per rimuovere i valori vuoti
+[Percorsi]
 percorso_db = "C:/inetpub/wwwroot/FlaskSites/Avanzamenti_produzione/app_odp/instance/RBAC.db"
 percorso_db_log = "C:/inetpub/wwwroot/FlaskSites/Avanzamenti_produzione/app_odp/instance/db_log.sqlite"
 percorso_db_acq = "C:/inetpub/wwwroot/FlaskSites/Avanzamenti_produzione/app_odp/instance/db_acq.sqlite"
