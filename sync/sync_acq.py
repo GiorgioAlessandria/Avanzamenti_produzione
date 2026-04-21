@@ -170,6 +170,24 @@ def _norm_text(value) -> str:
     return str(value or "").strip()
 
 
+def _normalize_variante_lookup(value) -> str:
+    variante = _norm_text(value)
+    if not variante:
+        return ""
+    if variante == "-" or variante.upper() == "X":
+        return ""
+    return variante
+
+
+def _normalize_indice_lookup(value) -> str:
+    indice = _norm_text(value)
+    if not indice:
+        return ""
+    if indice == "-" or indice.upper() == "X":
+        return ""
+    return indice
+
+
 def _now_local_date() -> date:
     tz_name = TIMEZONE or "Europe/Rome"
     return datetime.now(ZoneInfo(tz_name)).date()
@@ -383,8 +401,8 @@ def build_acq_articoli_lookup(df_articoli: pd.DataFrame) -> pd.DataFrame:
     df["CodArt"] = df["CodArt"].astype(str).str.strip()
     df = df[df["CodArt"] != ""]
 
-    df["VarianteArt"] = df["VarianteArt"].fillna("").astype(str).str.strip()
-    df["IndiceModifica"] = df["IndiceModifica"].fillna("").astype(str).str.strip()
+    df["VarianteArt"] = df["VarianteArt"].apply(_normalize_variante_lookup)
+    df["IndiceModifica"] = df["IndiceModifica"].apply(_normalize_indice_lookup)
     df["DesArt"] = df["DesArt"].fillna("").astype(str).str.strip()
     df["GestioneLotto"] = df["GestioneLotto"].fillna("").astype(str).str.strip()
     df["GestioneMatricola"] = df["GestioneMatricola"].fillna("").astype(str).str.strip()

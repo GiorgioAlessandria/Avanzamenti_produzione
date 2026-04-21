@@ -1582,14 +1582,32 @@ def _normalize_article_search_token(value) -> str:
     return _norm_text(value)
 
 
+def _normalize_variante_articolo_search(value) -> str:
+    variante = _norm_text(value)
+    if not variante:
+        return ""
+    if variante == "-" or variante.upper() == "X":
+        return ""
+    return variante
+
+
+def _normalize_indice_articolo_search(value) -> str:
+    indice = _norm_text(value)
+    if not indice:
+        return ""
+    if indice == "-" or indice.upper() == "X":
+        return ""
+    return indice
+
+
 def _build_materiale_image_key(
     cod_art: str,
     variante_art: str = "",
     indice_modifica: str = "",
 ) -> str:
     cod_art = _normalize_article_search_token(cod_art)
-    variante_art = _normalize_article_search_token(variante_art)
-    indice_modifica = _normalize_article_search_token(indice_modifica)
+    variante_art = _normalize_variante_articolo_search(variante_art)
+    indice_modifica = _normalize_indice_articolo_search(indice_modifica)
 
     if not cod_art:
         return ""
@@ -1731,8 +1749,8 @@ def _component_matches_search(
 ) -> bool:
     return (
         _normalize_article_search_token(comp.get("CodArt")) == cod_art
-        and _normalize_article_search_token(comp.get("VarianteArt")) == variante_art
-        and _normalize_article_search_token(comp.get("IndiceModifica"))
+        and _normalize_variante_articolo_search(comp.get("VarianteArt")) == variante_art
+        and _normalize_indice_articolo_search(comp.get("IndiceModifica"))
         == indice_modifica
     )
 
@@ -2056,8 +2074,8 @@ def api_metodo_montaggio_pdf():
 @login_required
 def api_materiale_foto():
     cod_art = _normalize_article_search_token(request.args.get("cod_art"))
-    variante_art = _normalize_article_search_token(request.args.get("variante_art"))
-    indice_modifica = _normalize_article_search_token(
+    variante_art = _normalize_variante_articolo_search(request.args.get("variante_art"))
+    indice_modifica = _normalize_indice_articolo_search(
         request.args.get("indice_modifica")
     )
 
@@ -2098,8 +2116,8 @@ def api_ricerca_articolo():
     data = request.get_json(silent=True) or {}
 
     cod_art = _normalize_article_search_token(data.get("cod_art"))
-    variante_art = _normalize_article_search_token(data.get("variante_art"))
-    indice_modifica = _normalize_article_search_token(data.get("indice_modifica"))
+    variante_art = _normalize_variante_articolo_search(data.get("variante_art"))
+    indice_modifica = _normalize_indice_articolo_search(data.get("indice_modifica"))
 
     if not cod_art:
         return jsonify({"ok": False, "error": "CodArt obbligatorio."}), 400

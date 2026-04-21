@@ -614,17 +614,17 @@
     </div>
 </div>
 
-<main class="d-flex flex-column w-100 mt-1 mb-1"
+<main class="d-flex flex-column"
       data-bridge-tab="montaggio"
       style="height: fit-content;">
-    <div class="row text-center w-100 align-items-start mx-0"
+    <div class="row text-center align-items-start mx-0"
          style="width: auto;height: auto;">
-        <div class="col w-100 h-100 ms-0 me-0"
+        <div class="col ms-0 me-0"
              style="width: auto;height: auto;border-color: rgb(0,0,0);">
             <h2 class="w-100 h-100 mb-1"
                 style="width: auto;height: auto;">Ordini semilavorati da eseguire</h2>
             <div class="row mb-1">
-                <div class="col mb-1">
+                <div class="col mb-0">
                     <label><input
                             type="text"
                             class="js-table-filter form-control form-control-sm"
@@ -681,10 +681,10 @@
         </div>
         <div class="col w-100 h-100 ms-0"
              style="width: auto;height: auto;">
-            <h2 class="w-100 h-100 mb-1"
+            <h2 class="w-100 h-100 mb-0"
                 style="width: auto;height: auto;">Ordini semilavorati attivi</h2>
-            <div class="row mb-1">
-                <div class="col mb-1">
+            <div class="row mb-0">
+                <div class="col mb-0">
                     <label><input
                             type="text"
                             class="js-table-filter form-control form-control-sm"
@@ -982,7 +982,7 @@
     <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title d-flex align-items-center gap-2"
+                <h5 class="modal-title d-flex align-items-center gap-1"
                     id="modalMetodoMontaggioLabel">
                     <span>Metodo montaggio</span>
                     <span class="text-muted"
@@ -1109,7 +1109,7 @@
             openEl.href = "#";
             fallbackEl.classList.add("d-none");
         });
-        
+
     })();
 </script>
 <!-- Presa in carico SL + MACCHINA (event delegation) -->
