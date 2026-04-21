@@ -3751,7 +3751,19 @@ def api_chiudi_ordine():
             )
         )
     except ValueError as e:
-        return jsonify({"ok": False, "error": str(e)}), 400
+        current_app.logger.warning(
+            "Invalid registration date during order closure.",
+            exc_info=True,
+        )
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": "Data registrazione non valida.",
+                }
+            ),
+            400,
+        )
 
     registration_iso = registration_dt.isoformat(timespec="seconds")
     lotto_prodotto = None
