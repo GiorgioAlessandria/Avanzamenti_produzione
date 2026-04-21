@@ -1,4 +1,5 @@
 {% set has_disegno_permission = policy and policy.can('controllo_codice_disegno') %}
+{% set has_modifica_data_chiusura_permission = policy and policy.can('modifica_data_chiusura') %}
 {% set lavorazioni_richiesta_disegni = config.get('LAVORAZIONI_RICHIESTA_DISEGNI', []) %}
 <!--toast nuovo ordine in carico -->
 <div class="toast lh-lg hide"
@@ -310,6 +311,19 @@
 
                 </div>
             </div>
+            {% if has_modifica_data_chiusura_permission %}
+                <div class="row mt-2">
+                    <div class="col">
+                        <label for="toast-chiudi-sl-data-registrazione"
+                               style="font-size: 20px;">
+                            Data registrazione:<br>
+                            <input type="date"
+                                   id="toast-chiudi-sl-data-registrazione"
+                                   class="form-control">
+                        </label>
+                    </div>
+                </div>
+            {% endif %}
         </div>
 
         <!-- Sezione Lotti (nascosta di default) -->
@@ -1137,6 +1151,7 @@
         const inpNonConf = document.getElementById("toast-chiudi-sl-quantita-non-conforme");
         const chkParziale = document.getElementById("toast-chiudi-sl-parziale");
         const chkTotale = document.getElementById("toast-chiudi-sl-totale");
+        const inpDataRegistrazione = document.getElementById("toast-chiudi-sl-data-registrazione");
 
         if (!toastEl || !section || !tbody) return;
 
@@ -1144,6 +1159,19 @@
         function escHtml(s) {
             return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
                 .replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+        }
+
+        function todayIsoLocal() {
+            const now = new Date();
+            now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+            return now.toISOString().slice(0, 10);
+        }
+
+        function resetRegistrationDateInput() {
+            if (!inpDataRegistrazione) return;
+            const today = todayIsoLocal();
+            inpDataRegistrazione.max = today;
+            inpDataRegistrazione.value = today;
         }
 
         function showAlert(msg) {
@@ -1268,6 +1296,7 @@
 
         function resetQuantitaInputs() {
             const qResidua = getQuantitaResiduaCorrente();
+            resetRegistrationDateInput();
 
             if (Number.isFinite(qResidua) && qResidua > 0) {
                 inpConf.value = String(Math.round(qResidua));
@@ -1783,7 +1812,8 @@
                         lotti: lottiPayload,
                         chiusura_parziale: chiusuraParziale,
                         tempo_non_funzionamento_minuti: tempoNonFunzionamentoMinuti,
-                        num_progr_riga: numProgrRiga
+                        data_registrazione: inpDataRegistrazione?.value || "",
+                        num_progr_riga: numProgrRiga,
                     })
                 });
 

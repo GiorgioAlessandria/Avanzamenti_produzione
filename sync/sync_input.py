@@ -24,10 +24,6 @@ import urllib.parse
 import pathlib
 from sqlalchemy.engine import Connection as SAConnection
 
-try:
-    from icecream import ic
-except:
-    pass
 # endregion
 # region COSTANTI
 CONFIG = None

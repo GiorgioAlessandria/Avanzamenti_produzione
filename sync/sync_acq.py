@@ -24,10 +24,6 @@ import time as time_mod
 import urllib.parse
 import pathlib
 
-try:
-    from icecream import ic
-except Exception:
-    pass
 # endregion
 
 # region COSTANTI

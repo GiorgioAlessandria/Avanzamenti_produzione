@@ -64,12 +64,6 @@ from app_odp.odp_output import txt_generator
 from threading import Lock
 from time import monotonic
 
-
-try:
-    from icecream import ic
-finally:
-    pass
-
 main_bp = Blueprint("main", __name__)
 ROME_TZ = ZoneInfo("Europe/Rome")
 MONTAGGIO_PDF_INDEX_TTL_SECONDS = 60
@@ -1223,6 +1217,7 @@ def _build_phase_payload(
     lotto_prodotto: dict | None,
     note: str,
     now_iso: str,
+    registrazione_data: str = "",
     chiusura_parziale: bool = False,
     tipo_documento: str = "",
     risorsa: str = "",
@@ -1246,6 +1241,7 @@ def _build_phase_payload(
         "lotto_prodotto": _normalize_lotto_prodotto_for_payload(lotto_prodotto),
         "created_at": now_iso,
         "created_by": _current_username(),
+        "registrazione_data": registrazione_data,
         "salda_riga": salda_riga,
         "tipo_documento": tipo_documento,
         "risorsa": risorsa,
@@ -2316,6 +2312,47 @@ def _parse_iso_dt(value) -> datetime | None:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=ROME_TZ)
     return dt
+
+
+def _today_rome_date() -> date:
+    return _now_rome_dt().date()
+
+
+def _parse_registration_date_input(value) -> date | None:
+    raw = _norm_text(value)
+    if not raw:
+        return None
+
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(raw, fmt).date()
+        except ValueError:
+            continue
+
+    raise ValueError("Data registrazione non valida.")
+
+
+def _resolve_registration_datetime(
+    raw_value,
+    *,
+    allow_override: bool,
+    fallback_dt: datetime,
+) -> tuple[date, datetime, str]:
+    registration_day = fallback_dt.date()
+
+    if allow_override:
+        parsed_day = _parse_registration_date_input(raw_value)
+        if parsed_day is not None:
+            if parsed_day > fallback_dt.date():
+                raise ValueError("La data registrazione non può essere futura.")
+            registration_day = parsed_day
+
+    registration_dt = datetime.combine(
+        registration_day,
+        fallback_dt.timetz().replace(microsecond=0),
+    )
+    registration_date_text = registration_day.strftime("%d/%m/%Y")
+    return registration_day, registration_dt, registration_date_text
 
 
 def _tempo_to_seconds(value) -> int:
@@ -3520,6 +3557,7 @@ def api_chiudi_ordine():
 
     policy = RbacPolicy(current_user)
     ordine = _get_visible_odp_by_key(policy, id_documento, id_riga)
+    can_override_registration_date = policy.can("modifica_data_chiusura")
 
     fase_corrente = _fase_corrente_for_export(ordine)
     blocking_outbox = _get_blocking_outbox_for_phase(
@@ -3703,6 +3741,19 @@ def api_chiudi_ordine():
 
     now_dt = _now_rome_dt()
     now_iso = now_dt.isoformat(timespec="seconds")
+
+    try:
+        _registration_day, registration_dt, registration_date_text = (
+            _resolve_registration_datetime(
+                data.get("data_registrazione"),
+                allow_override=can_override_registration_date,
+                fallback_dt=now_dt,
+            )
+        )
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+
+    registration_iso = registration_dt.isoformat(timespec="seconds")
     lotto_prodotto = None
     action_name = "chiusura_parziale" if chiusura_parziale else "chiusura_finale"
     operation_group_id = _build_operation_group_id(
@@ -3714,7 +3765,7 @@ def api_chiudi_ordine():
     fase_corrente = _fase_corrente_for_export(ordine, stato=stato)
 
     if _norm_text(ordine.GestioneLotto).lower() == "si" and q_ok > 0:
-        rif_lotto_prodotto = generazione_lotti(now_dt)
+        rif_lotto_prodotto = generazione_lotti(registration_dt)
 
         for row in lotti_input:
             esito_row = _norm_text(row.get("Esito", "ok")).lower()
@@ -3773,7 +3824,8 @@ def api_chiudi_ordine():
             lotti_input=lotti_input,
             lotto_prodotto=lotto_prodotto,
             note=note,
-            now_iso=now_iso,
+            now_iso=registration_iso,
+            registrazione_data=registration_date_text,
             chiusura_parziale=True,
             tipo_documento=ordine.CodTipoDoc,
             risorsa=ordine.RisorsaAttiva,
@@ -3796,7 +3848,8 @@ def api_chiudi_ordine():
             lotti_input=lotti_input,
             lotto_prodotto=lotto_prodotto,
             note=note,
-            now_iso=now_iso,
+            now_iso=registration_iso,
+            registrazione_data=registration_date_text,
             chiusura_parziale=False,
             tipo_documento=ordine.CodTipoDoc,
             risorsa=ordine.RisorsaAttiva,
@@ -4021,6 +4074,7 @@ def api_chiudi_ordine_montaggio_macchina():
 
     policy = RbacPolicy(current_user)
     ordine = _get_visible_odp_by_key(policy, id_documento, id_riga)
+    can_override_registration_date = policy.can("modifica_data_chiusura")
 
     if _tab_from_ordine(ordine) != "montaggio":
         return (
@@ -4166,6 +4220,19 @@ def api_chiudi_ordine_montaggio_macchina():
 
     now_dt = _now_rome_dt()
     now_iso = now_dt.isoformat(timespec="seconds")
+
+    try:
+        _registration_day, registration_dt, registration_date_text = (
+            _resolve_registration_datetime(
+                data.get("data_registrazione"),
+                allow_override=can_override_registration_date,
+                fallback_dt=now_dt,
+            )
+        )
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+
+    registration_iso = registration_dt.isoformat(timespec="seconds")
     lotto_prodotto = None
     action_name = "chiusura_macchina"
     elapsed_seconds = 0
@@ -4203,7 +4270,8 @@ def api_chiudi_ordine_montaggio_macchina():
         lotti_input=lotti_input,
         lotto_prodotto=None,
         note=note,
-        now_iso=now_iso,
+        now_iso=registration_iso,
+        registrazione_data=registration_date_text,
         tipo_documento=ordine.CodTipoDoc,
         risorsa=ordine.RisorsaAttiva,
         magazzino=ordine.CodMagPrincipale,

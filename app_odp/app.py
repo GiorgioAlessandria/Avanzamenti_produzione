@@ -14,10 +14,6 @@ from uuid import uuid4
 from sqlalchemy import event
 from sqlalchemy.engine import Engine
 
-try:
-    from icecream import ic
-finally:
-    pass
 CONFIG_PATH = Path("app_odp/static/config.toml")
 
 
