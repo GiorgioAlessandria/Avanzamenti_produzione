@@ -2,7 +2,8 @@ import importlib
 import json
 import sqlite3 as sq
 import sys
-import types
+from datetime import datetime, time
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import pytest
@@ -12,40 +13,28 @@ MODULE_PATH = "sync.sync_input"
 
 
 @pytest.fixture()
-def mod(monkeypatch):
+def mod():
     sys.modules.pop(MODULE_PATH, None)
+    return importlib.import_module(MODULE_PATH)
 
-    fake_app_odp = types.ModuleType("app_odp")
-    fake_models = types.ModuleType("app_odp.models")
 
-    class ChangeEvent:
-        def __init__(self, topic=None, scope=None, payload_json=None):
-            self.topic = topic
-            self.scope = scope
-            self.payload_json = payload_json
-
-    fake_models.ChangeEvent = ChangeEvent
-    fake_app_odp.models = fake_models
-
-    monkeypatch.setitem(sys.modules, "app_odp", fake_app_odp)
-    monkeypatch.setitem(sys.modules, "app_odp.models", fake_models)
-
-    module = importlib.import_module(MODULE_PATH)
-
-    module.CONFIG = None
-    module.config = None
-    module.sqlite_engine_app = None
-    module.sqlserver_engine_app = None
-    module.ALLOWED_WEEKDAYS = None
-    module.START_H = None
-    module.END_H = None
-    module.TIMEZONE = None
-    module.POLL_SECONDS_DEFAULT = None
-    module.ELEMENTI_ESCLUSI = None
-    module.ELEMENTI_SELEZIONATI = None
-    module._INITIALIZED = False
-    module.nuovo_ciclo = 0
-    return module
+@pytest.fixture()
+def mod_reset(mod):
+    mod.CONFIG = None
+    mod.config = None
+    mod.sqlite_engine_app = None
+    mod.sqlserver_engine_app = None
+    mod.sqlite_engine_log = None
+    mod.ALLOWED_WEEKDAYS = None
+    mod.START_H = None
+    mod.END_H = None
+    mod.TIMEZONE = None
+    mod.POLL_SECONDS_DEFAULT = None
+    mod.ELEMENTI_ESCLUSI = None
+    mod.ELEMENTI_SELEZIONATI = None
+    mod._INITIALIZED = False
+    mod.nuovo_ciclo = 0
+    return mod
 
 
 # =========================
@@ -84,7 +73,7 @@ StatoOrdine = "APERTO"
     assert cfg["Elementi_esclusi"]["CodArt"] == ["X"]
 
 
-def test_init_populates_globals_and_ensure_init_calls_init(monkeypatch, mod):
+def test_init_populates_globals_and_ensure_init_calls_init(monkeypatch, mod_reset):
     cfg = {
         "Percorsi": {"percorso_db": "test.sqlite"},
         "sync_config": {
@@ -124,7 +113,7 @@ def test_init_populates_globals_and_ensure_init_calls_init(monkeypatch, mod):
     assert len(calls) == 1
 
 
-def test_init_force_reinitializes_and_reuses_existing_sqlserver(monkeypatch, mod):
+def test_init_force_reinitializes_and_reuses_existing_sqlserver(monkeypatch, mod_reset):
     cfg = {
         "Percorsi": {"percorso_db": "forced.sqlite"},
         "sync_config": {
@@ -994,23 +983,6 @@ def test_read_cycle_continues_when_elaborazione_raises(monkeypatch, mod):
 
     assert calls == ["SESSION", "SESSION"]
     assert sleep_calls == [1.5, 1.5]
-
-
-import importlib
-import json
-from datetime import datetime, time
-
-import pandas as pd
-import pytest
-from zoneinfo import ZoneInfo
-
-
-MODULE_PATH = "sync.sync_input"
-
-
-@pytest.fixture()
-def mod():
-    return importlib.import_module(MODULE_PATH)
 
 
 # -----------------------------------------------------------------------------
