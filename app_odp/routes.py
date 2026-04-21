@@ -56,8 +56,7 @@ from app_odp.models import (
     roles_manageable_roles,
     AcqArticoli,
     AcqGiacenze,
-    AcqFabbisognoOdp,
-    AcqRiepilogoMateriali,
+    AcqArticoliLookup,
 )
 from app_odp.policy.decorator import require_perm
 from app_odp.policy.policy import RbacPolicy, PROTECTED_ROLE_NAMES
@@ -76,6 +75,13 @@ ROME_TZ = ZoneInfo("Europe/Rome")
 MONTAGGIO_PDF_INDEX_TTL_SECONDS = 60
 _montaggio_pdf_index_lock = Lock()
 _montaggio_pdf_index_cache = {
+    "directory": "",
+    "expires_at": 0.0,
+    "files": {},
+}
+MATERIALE_IMG_INDEX_TTL_SECONDS = 60
+_materiale_img_index_lock = Lock()
+_materiale_img_index_cache = {
     "directory": "",
     "expires_at": 0.0,
     "files": {},
@@ -1572,6 +1578,226 @@ def _build_metodo_montaggio_lookup(odp_rows) -> dict[str, dict]:
     return lookup
 
 
+def _normalize_article_search_token(value) -> str:
+    return _norm_text(value)
+
+
+def _build_materiale_image_key(
+    cod_art: str,
+    variante_art: str = "",
+    indice_modifica: str = "",
+) -> str:
+    cod_art = _normalize_article_search_token(cod_art)
+    variante_art = _normalize_article_search_token(variante_art)
+    indice_modifica = _normalize_article_search_token(indice_modifica)
+
+    if not cod_art:
+        return ""
+
+    if variante_art and indice_modifica:
+        return f"{cod_art}.{variante_art}.{indice_modifica}"
+    if variante_art:
+        return f"{cod_art}.{variante_art}"
+    if indice_modifica:
+        return f"{cod_art}..{indice_modifica}"
+    return cod_art
+
+
+def _get_materiale_image_dir() -> Path | None:
+    raw = _norm_text(current_app.config.get("FOTOGRAFIE_MATERIALE"))
+    if not raw:
+        return None
+
+    img_dir = Path(raw).expanduser()
+    try:
+        img_dir = img_dir.resolve()
+    except Exception:
+        pass
+
+    if not img_dir.exists() or not img_dir.is_dir():
+        return None
+
+    return img_dir
+
+
+def _scan_materiale_image_directory(img_dir: Path) -> dict[str, Path]:
+    files = {}
+
+    try:
+        for entry in img_dir.iterdir():
+            if not entry.is_file():
+                continue
+            if entry.suffix.lower() != ".png":
+                continue
+
+            stem = entry.stem.strip()
+            if not stem:
+                continue
+
+            try:
+                resolved = entry.resolve()
+            except Exception:
+                resolved = entry
+
+            files.setdefault(stem.lower(), resolved)
+    except Exception:
+        return {}
+
+    return files
+
+
+def _get_materiale_image_index(
+    *,
+    force_refresh: bool = False,
+) -> tuple[Path | None, dict[str, Path]]:
+    img_dir = _get_materiale_image_dir()
+    if img_dir is None:
+        return None, {}
+
+    directory_key = str(img_dir).lower()
+    now_monotonic = monotonic()
+
+    with _materiale_img_index_lock:
+        cache_valid = (
+            not force_refresh
+            and _materiale_img_index_cache["directory"] == directory_key
+            and float(_materiale_img_index_cache["expires_at"]) > now_monotonic
+        )
+
+        if cache_valid:
+            return img_dir, dict(_materiale_img_index_cache["files"])
+
+        files = _scan_materiale_image_directory(img_dir)
+        _materiale_img_index_cache["directory"] = directory_key
+        _materiale_img_index_cache["expires_at"] = (
+            now_monotonic + MATERIALE_IMG_INDEX_TTL_SECONDS
+        )
+        _materiale_img_index_cache["files"] = files
+
+        return img_dir, dict(files)
+
+
+def _find_materiale_image_path(
+    cod_art: str,
+    variante_art: str = "",
+    indice_modifica: str = "",
+    *,
+    force_refresh: bool = False,
+) -> Path | None:
+    lookup_key = _build_materiale_image_key(
+        cod_art=cod_art,
+        variante_art=variante_art,
+        indice_modifica=indice_modifica,
+    )
+    if not lookup_key:
+        return None
+
+    img_dir, img_index = _get_materiale_image_index(force_refresh=force_refresh)
+    if img_dir is None:
+        return None
+
+    candidate = img_index.get(lookup_key.lower())
+    if candidate is not None and candidate.exists() and candidate.is_file():
+        try:
+            candidate.relative_to(img_dir)
+        except ValueError:
+            return None
+        return candidate
+
+    if not force_refresh:
+        return _find_materiale_image_path(
+            cod_art=cod_art,
+            variante_art=variante_art,
+            indice_modifica=indice_modifica,
+            force_refresh=True,
+        )
+
+    return None
+
+
+def _is_articolo_search_state(stato: str) -> bool:
+    s = _norm_text(stato).lower()
+    if s == "chiusa":
+        return False
+    return "pianificat" in s or "attiv" in s or "sospes" in s
+
+
+def _component_matches_search(
+    comp: dict,
+    *,
+    cod_art: str,
+    variante_art: str,
+    indice_modifica: str,
+) -> bool:
+    return (
+        _normalize_article_search_token(comp.get("CodArt")) == cod_art
+        and _normalize_article_search_token(comp.get("VarianteArt")) == variante_art
+        and _normalize_article_search_token(comp.get("IndiceModifica"))
+        == indice_modifica
+    )
+
+
+def _build_articolo_ordini_attivi_rows(
+    *,
+    cod_art: str,
+    variante_art: str,
+    indice_modifica: str,
+) -> list[dict]:
+    rows = []
+
+    for ordine in _base_odp_query().all():
+        stato = _norm_text(getattr(ordine, "StatoOrdine", ""))
+        if not _is_articolo_search_state(stato):
+            continue
+
+        distinta = _parse_distinta_materiale(ordine)
+        qty_tot = Decimal("0")
+
+        for comp in distinta:
+            if not isinstance(comp, dict):
+                continue
+
+            if not _component_matches_search(
+                comp,
+                cod_art=cod_art,
+                variante_art=variante_art,
+                indice_modifica=indice_modifica,
+            ):
+                continue
+
+            try:
+                qty_tot += _parse_qty_decimal(comp.get("Quantita"))
+            except ValueError:
+                continue
+
+        if qty_tot <= 0:
+            continue
+
+        rows.append(
+            {
+                "Ordine": _ordine_ref_label(ordine),
+                "CodArtProdotto": _norm_text(getattr(ordine, "CodArt", "")),
+                "VarianteProdotto": _norm_text(getattr(ordine, "VarianteArt", "")),
+                "IndiceModificaProdotto": _norm_text(
+                    getattr(ordine, "IndiceModifica", "")
+                ),
+                "DescrizioneProdotto": _norm_text(getattr(ordine, "DesArt", "")),
+                "Stato": stato,
+                "QuantitaComponente": _decimal_to_text(qty_tot),
+            }
+        )
+
+    rows.sort(
+        key=lambda x: (
+            (x.get("Ordine") or "").lower(),
+            (x.get("CodArtProdotto") or "").lower(),
+            (x.get("VarianteProdotto") or "").lower(),
+            (x.get("IndiceModificaProdotto") or "").lower(),
+        )
+    )
+    return rows
+
+
 @main_bp.context_processor
 def inject_policy_and_nav():
     if not current_user.is_authenticated:
@@ -1824,6 +2050,140 @@ def api_metodo_montaggio_pdf():
     )
     response.headers["Content-Disposition"] = f'inline; filename="{pdf_path.name}"'
     return response
+
+
+@main_bp.get("/api/materiali/foto")
+@login_required
+def api_materiale_foto():
+    cod_art = _normalize_article_search_token(request.args.get("cod_art"))
+    variante_art = _normalize_article_search_token(request.args.get("variante_art"))
+    indice_modifica = _normalize_article_search_token(
+        request.args.get("indice_modifica")
+    )
+
+    img_dir = _get_materiale_image_dir()
+    if img_dir is None:
+        abort(404)
+
+    img_path = _find_materiale_image_path(
+        cod_art=cod_art,
+        variante_art=variante_art,
+        indice_modifica=indice_modifica,
+        force_refresh=True,
+    )
+    if img_path is None:
+        abort(404)
+
+    try:
+        img_path = img_path.resolve()
+        img_dir = img_dir.resolve()
+        img_path.relative_to(img_dir)
+    except Exception:
+        abort(403)
+
+    if not img_path.exists() or not img_path.is_file():
+        abort(404)
+
+    return send_file(
+        img_path,
+        mimetype="image/png",
+        as_attachment=False,
+        download_name=img_path.name,
+    )
+
+
+@main_bp.post("/api/materiali/ricerca-articolo")
+@login_required
+def api_ricerca_articolo():
+    data = request.get_json(silent=True) or {}
+
+    cod_art = _normalize_article_search_token(data.get("cod_art"))
+    variante_art = _normalize_article_search_token(data.get("variante_art"))
+    indice_modifica = _normalize_article_search_token(data.get("indice_modifica"))
+
+    if not cod_art:
+        return jsonify({"ok": False, "error": "CodArt obbligatorio."}), 400
+
+    articolo = AcqArticoliLookup.query.filter_by(
+        CodArt=cod_art,
+        VarianteArt=variante_art,
+        IndiceModifica=indice_modifica,
+    ).first()
+
+    if articolo is None:
+        return jsonify(
+            {
+                "ok": True,
+                "found_component": False,
+                "message": "Il codice inserito è errato oppure non è presente a gestionale.",
+                "component": None,
+                "image": {"found": False, "url": "", "file_name": ""},
+                "orders": [],
+                "orders_message": "",
+            }
+        )
+
+    giacenza_totale = (
+        db.session.execute(
+            select(func.coalesce(func.sum(AcqGiacenze.Giacenza), 0.0)).where(
+                AcqGiacenze.CodArt == cod_art
+            )
+        ).scalar()
+        or 0.0
+    )
+
+    image_path = _find_materiale_image_path(
+        cod_art=cod_art,
+        variante_art=variante_art,
+        indice_modifica=indice_modifica,
+    )
+    image_url = (
+        url_for(
+            "main.api_materiale_foto",
+            cod_art=cod_art,
+            variante_art=variante_art,
+            indice_modifica=indice_modifica,
+        )
+        if image_path is not None
+        else ""
+    )
+
+    orders = _build_articolo_ordini_attivi_rows(
+        cod_art=cod_art,
+        variante_art=variante_art,
+        indice_modifica=indice_modifica,
+    )
+
+    return jsonify(
+        {
+            "ok": True,
+            "found_component": True,
+            "message": "",
+            "component": {
+                "CodArt": cod_art,
+                "VarianteArt": variante_art,
+                "IndiceModifica": indice_modifica,
+                "DesArt": _norm_text(getattr(articolo, "DesArt", "")),
+                "MagUM": _norm_text(getattr(articolo, "MagUM", "")),
+                "TecniciUm": _norm_text(getattr(articolo, "TecniciUm", "")),
+                "GiacenzaTotale": float(giacenza_totale or 0.0),
+                "GiacenzaTotaleText": _decimal_to_text(
+                    Decimal(str(float(giacenza_totale or 0.0)))
+                ),
+            },
+            "image": {
+                "found": image_path is not None,
+                "url": image_url,
+                "file_name": image_path.name if image_path is not None else "",
+            },
+            "orders": orders,
+            "orders_message": (
+                ""
+                if orders
+                else "Non sono presenti ordini attivi per questo componente."
+            ),
+        }
+    )
 
 
 def _row_key(id_documento: str, id_riga: str) -> str:

@@ -94,8 +94,16 @@
                         - Benvenut{{ genere }} {{ current_user.username }}</h1>
                 {% endif %}
             </div>
-            <div class="col-md-4 d-flex w-auto flex-grow-1 justify-content-end align-items-center"
+            <div class="col-md-4 d-flex w-auto flex-grow-1 justify-content-end align-items-center gap-3"
                  style="width: auto;height: auto;">
+                <button class="btn btn-outline-secondary d-flex align-items-center gap-2"
+                        type="button"
+                        data-bs-toggle="modal"
+                        data-bs-target="#modalRicercaArticolo">
+                    <i class="bi bi-image fs-4"></i>
+                    <span>Ricerca per articolo</span>
+                </button>
+
                 <img
                         class="img-fluid justify-content-end align-items-center order-first"
                         width="250"
@@ -109,8 +117,356 @@
 </header>
 
 {% include "partials/_nav_offcanvas.j2" %}
+<div class="modal fade"
+     id="modalRicercaArticolo"
+     tabindex="-1"
+     aria-labelledby="modalRicercaArticoloLabel"
+     aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"
+                    id="modalRicercaArticoloLabel">Ricerca per articolo</h5>
+                <button type="button"
+                        class="btn-close"
+                        data-bs-dismiss="modal"
+                        aria-label="Chiudi"></button>
+            </div>
+
+            <div class="modal-body">
+                <div class="row g-3 align-items-end mb-3">
+                    <div class="col-md-4">
+                        <label for="ricerca-articolo-codart"
+                               class="form-label">CodArt</label>
+                        <input type="text"
+                               id="ricerca-articolo-codart"
+                               class="form-control"
+                               autocomplete="off"
+                               required>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="ricerca-articolo-variante"
+                               class="form-label">Variante</label>
+                        <input type="text"
+                               id="ricerca-articolo-variante"
+                               class="form-control"
+                               autocomplete="off">
+                    </div>
+                    <div class="col-md-3">
+                        <label for="ricerca-articolo-revisione"
+                               class="form-label">Revisione</label>
+                        <input type="text"
+                               id="ricerca-articolo-revisione"
+                               class="form-control"
+                               autocomplete="off">
+                    </div>
+                    <div class="col-md-2 d-flex gap-2">
+                        <button type="button"
+                                class="btn btn-primary w-100"
+                                id="btn-ricerca-articolo-cerca">Cerca
+                        </button>
+                        <button type="button"
+                                class="btn btn-outline-secondary w-100"
+                                id="btn-ricerca-articolo-reset">Reset
+                        </button>
+                    </div>
+                </div>
+
+                <div id="ricerca-articolo-feedback"
+                     class="alert d-none"
+                     role="alert"></div>
+
+                <div id="ricerca-articolo-loading"
+                     class="d-none mb-3">
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="spinner-border spinner-border-sm"
+                             role="status"
+                             aria-hidden="true"></div>
+                        <span>Ricerca in corso...</span>
+                    </div>
+                </div>
+
+                <div id="ricerca-articolo-results"
+                     class="d-none">
+                    <div class="row g-3">
+                        <div class="col-lg-5">
+                            <div class="card h-100">
+                                <div class="card-header">Dettaglio componente</div>
+                                <div class="card-body">
+                                    <table class="table table-sm mb-0">
+                                        <tbody>
+                                        <tr>
+                                            <th style="width: 180px;">CodArt</th>
+                                            <td id="ricerca-articolo-out-codart"></td>
+                                        </tr>
+                                        <tr>
+                                            <th>Variante</th>
+                                            <td id="ricerca-articolo-out-variante"></td>
+                                        </tr>
+                                        <tr>
+                                            <th>Revisione</th>
+                                            <td id="ricerca-articolo-out-revisione"></td>
+                                        </tr>
+                                        <tr>
+                                            <th>Descrizione</th>
+                                            <td id="ricerca-articolo-out-descrizione"></td>
+                                        </tr>
+                                        <tr>
+                                            <th>Giacenza totale</th>
+                                            <td id="ricerca-articolo-out-giacenza"></td>
+                                        </tr>
+                                        <tr>
+                                            <th>UdM</th>
+                                            <td id="ricerca-articolo-out-um"></td>
+                                        </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-lg-7">
+                            <div class="card h-100">
+                                <div class="card-header">Immagine componente</div>
+                                <div class="card-body d-flex justify-content-center align-items-center">
+                                    <div class="w-100 text-center">
+                                        <img id="ricerca-articolo-image"
+                                             class="img-fluid d-none"
+                                             alt="Immagine componente"
+                                             style="max-height: 420px; object-fit: contain;">
+                                        <div id="ricerca-articolo-image-placeholder"
+                                             class="border rounded p-5 text-muted">
+                                            Immagine non disponibile
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <hr>
+
+                    <h5 class="mb-3">Ordini attivi in distinta base</h5>
+
+                    <div id="ricerca-articolo-orders-message"
+                         class="alert alert-warning d-none"></div>
+
+                    <div class="table-responsive">
+                        <table class="table table-sm table-striped table-hover align-middle mb-0">
+                            <thead class="table-light">
+                            <tr>
+                                <th>Ordine</th>
+                                <th>Codice prodotto finito</th>
+                                <th>Variante</th>
+                                <th>Revisione</th>
+                                <th>Descrizione</th>
+                                <th>Stato</th>
+                                <th class="text-end">Quantità</th>
+                            </tr>
+                            </thead>
+                            <tbody id="ricerca-articolo-orders-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 {% block content %}{% endblock %}
 {% block extra_js %}
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            const modalEl = document.getElementById("modalRicercaArticolo");
+            if (!modalEl) return;
+
+            const codArtEl = document.getElementById("ricerca-articolo-codart");
+            const varianteEl = document.getElementById("ricerca-articolo-variante");
+            const revisioneEl = document.getElementById("ricerca-articolo-revisione");
+            const btnCerca = document.getElementById("btn-ricerca-articolo-cerca");
+            const btnReset = document.getElementById("btn-ricerca-articolo-reset");
+
+            const feedbackEl = document.getElementById("ricerca-articolo-feedback");
+            const loadingEl = document.getElementById("ricerca-articolo-loading");
+            const resultsEl = document.getElementById("ricerca-articolo-results");
+
+            const outCodArt = document.getElementById("ricerca-articolo-out-codart");
+            const outVariante = document.getElementById("ricerca-articolo-out-variante");
+            const outRevisione = document.getElementById("ricerca-articolo-out-revisione");
+            const outDescrizione = document.getElementById("ricerca-articolo-out-descrizione");
+            const outGiacenza = document.getElementById("ricerca-articolo-out-giacenza");
+            const outUm = document.getElementById("ricerca-articolo-out-um");
+
+            const imageEl = document.getElementById("ricerca-articolo-image");
+            const imagePlaceholderEl = document.getElementById("ricerca-articolo-image-placeholder");
+
+            const ordersMessageEl = document.getElementById("ricerca-articolo-orders-message");
+            const ordersBodyEl = document.getElementById("ricerca-articolo-orders-body");
+
+            function escapeHtml(value) {
+                return String(value || "")
+                    .replaceAll("&", "&amp;")
+                    .replaceAll("<", "&lt;")
+                    .replaceAll(">", "&gt;")
+                    .replaceAll('"', "&quot;")
+                    .replaceAll("'", "&#039;");
+            }
+
+            function resetResults() {
+                feedbackEl.className = "alert d-none";
+                feedbackEl.textContent = "";
+
+                loadingEl.classList.add("d-none");
+                resultsEl.classList.add("d-none");
+
+                outCodArt.textContent = "";
+                outVariante.textContent = "";
+                outRevisione.textContent = "";
+                outDescrizione.textContent = "";
+                outGiacenza.textContent = "";
+                outUm.textContent = "";
+
+                imageEl.src = "";
+                imageEl.classList.add("d-none");
+                imagePlaceholderEl.classList.remove("d-none");
+
+                ordersMessageEl.textContent = "";
+                ordersMessageEl.classList.add("d-none");
+                ordersBodyEl.innerHTML = "";
+            }
+
+            function resetAll() {
+                codArtEl.value = "";
+                varianteEl.value = "";
+                revisioneEl.value = "";
+                resetResults();
+            }
+
+            function showFeedback(message, type = "warning") {
+                feedbackEl.className = `alert alert-${type}`;
+                feedbackEl.textContent = message || "";
+                if (!message) {
+                    feedbackEl.classList.add("d-none");
+                }
+            }
+
+            function renderOrders(rows, message) {
+                ordersBodyEl.innerHTML = "";
+
+                if (!rows || !rows.length) {
+                    ordersMessageEl.textContent = message || "Non sono presenti ordini attivi per questo componente.";
+                    ordersMessageEl.classList.remove("d-none");
+                    return;
+                }
+
+                ordersMessageEl.textContent = "";
+                ordersMessageEl.classList.add("d-none");
+
+                let html = "";
+                for (const row of rows) {
+                    html += `
+                    <tr>
+                        <td>${escapeHtml(row.Ordine)}</td>
+                        <td>${escapeHtml(row.CodArtProdotto)}</td>
+                        <td>${escapeHtml(row.VarianteProdotto)}</td>
+                        <td>${escapeHtml(row.IndiceModificaProdotto)}</td>
+                        <td>${escapeHtml(row.DescrizioneProdotto)}</td>
+                        <td>${escapeHtml(row.Stato)}</td>
+                        <td class="text-end">${escapeHtml(row.QuantitaComponente)}</td>
+                    </tr>
+                `;
+                }
+                ordersBodyEl.innerHTML = html;
+            }
+
+            async function eseguiRicerca() {
+                const codArt = (codArtEl.value || "").trim();
+                const variante = (varianteEl.value || "").trim();
+                const revisione = (revisioneEl.value || "").trim();
+
+                resetResults();
+
+                if (!codArt) {
+                    showFeedback("CodArt obbligatorio.", "warning");
+                    codArtEl.focus();
+                    return;
+                }
+
+                loadingEl.classList.remove("d-none");
+                btnCerca.disabled = true;
+                btnReset.disabled = true;
+
+                try {
+                    const resp = await fetch("/api/materiali/ricerca-articolo", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "X-Requested-With": "XMLHttpRequest"
+                        },
+                        credentials: "same-origin",
+                        body: JSON.stringify({
+                            cod_art: codArt,
+                            variante_art: variante,
+                            indice_modifica: revisione
+                        })
+                    });
+
+                    const data = await resp.json();
+
+                    loadingEl.classList.add("d-none");
+
+                    if (!resp.ok || data.ok === false) {
+                        showFeedback(data.error || "Errore durante la ricerca.", "danger");
+                        return;
+                    }
+
+                    if (!data.found_component) {
+                        showFeedback(
+                            data.message || "Il codice inserito è errato oppure non è presente a gestionale.",
+                            "warning"
+                        );
+                        return;
+                    }
+
+                    const component = data.component || {};
+                    const image = data.image || {};
+
+                    outCodArt.textContent = component.CodArt || "";
+                    outVariante.textContent = component.VarianteArt || "-";
+                    outRevisione.textContent = component.IndiceModifica || "-";
+                    outDescrizione.textContent = component.DesArt || "";
+                    outGiacenza.textContent = component.GiacenzaTotaleText || "0";
+                    outUm.textContent = component.TecniciUm || component.MagUM || "-";
+
+                    if (image.found && image.url) {
+                        imageEl.src = image.url;
+                        imageEl.classList.remove("d-none");
+                        imagePlaceholderEl.classList.add("d-none");
+                    } else {
+                        imageEl.src = "";
+                        imageEl.classList.add("d-none");
+                        imagePlaceholderEl.classList.remove("d-none");
+                    }
+
+                    renderOrders(data.orders || [], data.orders_message || "");
+                    resultsEl.classList.remove("d-none");
+                } catch (err) {
+                    loadingEl.classList.add("d-none");
+                    showFeedback("Errore di comunicazione con il server.", "danger");
+                    console.error(err);
+                } finally {
+                    btnCerca.disabled = false;
+                    btnReset.disabled = false;
+                }
+            }
+
+            btnCerca.addEventListener("click", eseguiRicerca);
+            btnReset.addEventListener("click", resetAll);
+
+            modalEl.addEventListener("hidden.bs.modal", function () {
+                resetAll();
+            });
+        });
+    </script>
     <script>
         document.addEventListener("DOMContentLoaded", () => {
             const allFilters = document.querySelectorAll(".js-table-filter");
