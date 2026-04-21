@@ -103,6 +103,9 @@ def create_app():
     app.config["MONTAGGIO_PDF_DIR"] = configurazione["Percorsi"][
         "percorso_metodi_montaggio"
     ]
+    app.config["FOTOGRAFIE_MATERIALE"] = configurazione["Percorsi"][
+        "percorso_fotografie_materiale"
+    ]
     # inizializza estensioni
     db.init_app(app)
     register_filters(app)
