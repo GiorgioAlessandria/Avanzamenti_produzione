@@ -4242,7 +4242,8 @@ def api_chiudi_ordine_montaggio_macchina():
             )
         )
     except ValueError as e:
-        return jsonify({"ok": False, "error": str(e)}), 400
+        current_app.logger.warning("Invalid registration datetime input: %s", e)
+        return jsonify({"ok": False, "error": "Invalid registration data."}), 400
 
     registration_iso = registration_dt.isoformat(timespec="seconds")
     lotto_prodotto = None
