@@ -1075,11 +1075,12 @@
 <script>
     (() => {
         const modalEl = document.getElementById("modalMetodoMontaggio");
-        const frameEl = document.getElementById("modal-metodo-montaggio-frame");
-        const codArtEl = document.getElementById("modal-metodo-montaggio-codart");
-        const fallbackEl = document.getElementById("modal-metodo-montaggio-fallback");
-        const openEl = document.getElementById("modal-metodo-montaggio-open");
+        if (!modalEl) return;
 
+        const frameEl = modalEl.querySelector("#modal-metodo-montaggio-frame");
+        const codArtEl = modalEl.querySelector("#modal-metodo-montaggio-codart");
+        const fallbackEl = modalEl.querySelector("#modal-metodo-montaggio-fallback");
+        const openEl = modalEl.querySelector("#modal-metodo-montaggio-open");
         if (!modalEl || !frameEl || !codArtEl || !fallbackEl || !openEl) return;
 
         modalEl.addEventListener("show.bs.modal", function (event) {
@@ -1113,11 +1114,6 @@
             fallbackEl.classList.add("d-none");
         });
 
-        window.setTimeout(() => {
-            if (frameEl.src && frameEl.src !== "about:blank") {
-                fallbackEl.classList.remove("d-none");
-            }
-        }, 1500);
     })();
 </script>
 <script>

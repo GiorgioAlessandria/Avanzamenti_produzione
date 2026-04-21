@@ -960,20 +960,9 @@
                         aria-label="Chiudi"></button>
             </div>
 
-            <div class="modal-body p-2">
-                <iframe id="modal-metodo-montaggio-frame"
-                        src="about:blank"
-                        title="Metodo montaggio PDF"
-                        style="width: 100%; height: 75vh; border: 0;"></iframe>
-
-                <div id="modal-metodo-montaggio-fallback"
-                     class="alert alert-warning mt-2 d-none">
-                    Anteprima PDF non disponibile in iframe.
-                    <a id="modal-metodo-montaggio-open"
-                       href="#"
-                       target="_blank"
-                       rel="noopener noreferrer">Apri il PDF in una nuova scheda</a>
-                </div>
+            <div class="modal-body"
+                 id="modal-materiali-body">
+                <div class="text-muted">Seleziona un ordine.</div>
             </div>
 
             <div class="modal-footer">
@@ -1081,10 +1070,12 @@
 <script>
     (() => {
         const modalEl = document.getElementById("modalMetodoMontaggio");
-        const frameEl = document.getElementById("modal-metodo-montaggio-frame");
-        const codArtEl = document.getElementById("modal-metodo-montaggio-codart");
-        const fallbackEl = document.getElementById("modal-metodo-montaggio-fallback");
-        const openEl = document.getElementById("modal-metodo-montaggio-open");
+        if (!modalEl) return;
+
+        const frameEl = modalEl.querySelector("#modal-metodo-montaggio-frame");
+        const codArtEl = modalEl.querySelector("#modal-metodo-montaggio-codart");
+        const fallbackEl = modalEl.querySelector("#modal-metodo-montaggio-fallback");
+        const openEl = modalEl.querySelector("#modal-metodo-montaggio-open");
 
         if (!modalEl || !frameEl || !codArtEl || !fallbackEl || !openEl) return;
 
@@ -1118,12 +1109,7 @@
             openEl.href = "#";
             fallbackEl.classList.add("d-none");
         });
-
-        window.setTimeout(() => {
-            if (frameEl.src && frameEl.src !== "about:blank") {
-                fallbackEl.classList.remove("d-none");
-            }
-        }, 1500);
+        
     })();
 </script>
 <!-- Presa in carico SL + MACCHINA (event delegation) -->
