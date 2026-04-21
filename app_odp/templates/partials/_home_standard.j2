@@ -628,6 +628,15 @@
                         src="about:blank"
                         title="Metodo montaggio PDF"
                         style="width: 100%; height: 75vh; border: 0;"></iframe>
+
+                <div id="modal-metodo-montaggio-fallback"
+                     class="alert alert-warning mt-2 d-none">
+                    Se non visualizzi il metodo di montaggio:
+                    <a id="modal-metodo-montaggio-open"
+                       href="#"
+                       target="_blank"
+                       rel="noopener noreferrer">aprilo in una nuova scheda</a>
+                </div>
             </div>
 
             <div class="modal-footer">
@@ -1068,31 +1077,47 @@
         const modalEl = document.getElementById("modalMetodoMontaggio");
         const frameEl = document.getElementById("modal-metodo-montaggio-frame");
         const codArtEl = document.getElementById("modal-metodo-montaggio-codart");
+        const fallbackEl = document.getElementById("modal-metodo-montaggio-fallback");
+        const openEl = document.getElementById("modal-metodo-montaggio-open");
 
-        if (!modalEl || !frameEl || !codArtEl) return;
+        if (!modalEl || !frameEl || !codArtEl || !fallbackEl || !openEl) return;
 
-        const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+        modalEl.addEventListener("show.bs.modal", function (event) {
+            const trigger = event.relatedTarget;
+            if (!trigger) return;
 
-        document.addEventListener("click", function (event) {
-            const btn = event.target.closest(".open-metodo-montaggio-modal");
-            if (!btn) return;
-
-            event.preventDefault();
-
-            const pdfUrl = btn.dataset.pdfUrl || "";
-            const codArt = btn.dataset.codart || "";
-
-            if (!pdfUrl) return;
+            const pdfUrl = trigger.getAttribute("data-pdf-url") || "";
+            const codArt = trigger.getAttribute("data-codart") || "";
 
             codArtEl.textContent = codArt ? `- ${codArt}` : "";
+            openEl.href = pdfUrl || "#";
+            fallbackEl.classList.add("d-none");
+
+            if (!pdfUrl) {
+                frameEl.src = "about:blank";
+                fallbackEl.classList.remove("d-none");
+                return;
+            }
+
             frameEl.src = pdfUrl;
-            modal.show();
+        });
+
+        frameEl.addEventListener("error", function () {
+            fallbackEl.classList.remove("d-none");
         });
 
         modalEl.addEventListener("hidden.bs.modal", function () {
             frameEl.src = "about:blank";
             codArtEl.textContent = "";
+            openEl.href = "#";
+            fallbackEl.classList.add("d-none");
         });
+
+        window.setTimeout(() => {
+            if (frameEl.src && frameEl.src !== "about:blank") {
+                fallbackEl.classList.remove("d-none");
+            }
+        }, 1500);
     })();
 </script>
 <script>
