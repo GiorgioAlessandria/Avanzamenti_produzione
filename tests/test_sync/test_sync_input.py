@@ -4,7 +4,7 @@ import sqlite3 as sq
 import sys
 from datetime import datetime, time
 from zoneinfo import ZoneInfo
-from types import SimpleNamespace
+
 import pandas as pd
 import pytest
 import sqlalchemy as sa
@@ -136,7 +136,7 @@ def test_init_populates_globals_and_ensure_init_calls_init(monkeypatch, mod_rese
     assert len(calls) == 1
 
 
-def test_init_force_reinitializes_all_engines(monkeypatch, mod_reset):
+def test_init_force_reinitializes_and_reuses_existing_sqlserver(monkeypatch, mod_reset):
     cfg = {
         "Percorsi": {
             "percorso_db": "forced.sqlite",
