@@ -1160,3 +1160,28 @@ class AcqRiepilogoMateriali(db.Model):
     PianTempoApprovFisso = db.Column(db.Integer)
     DataPrevistaApprovvigionamento = db.Column(db.Text)
     synced_at = db.Column(db.Text)
+
+
+class AcqArticoliLookup(db.Model):
+    __bind_key__ = "acq"
+    __tablename__ = "acq_articoli_lookup"
+
+    CodArt = db.Column(db.Text, primary_key=True)
+    VarianteArt = db.Column(db.Text, primary_key=True)
+    IndiceModifica = db.Column(db.Text, primary_key=True)
+
+    DesArt = db.Column(db.Text)
+    GestioneLotto = db.Column(db.Text)
+    GestioneMatricola = db.Column(db.Text)
+    GestioneQualita = db.Column(db.Text)
+    CodFamiglia = db.Column(db.Text)
+    CodClassifTecnica = db.Column(db.Text)
+    MagUM = db.Column(db.Text)
+    TecniciUm = db.Column(db.Text)
+    TecniciCoeffUmDen = db.Column(db.Text)
+    TecniciCoeffUmNum = db.Column(db.Text)
+    PuntoRiordino = db.Column(db.Float)
+    LottoRiordino = db.Column(db.Float)
+    PianTempoApprovFisso = db.Column(db.Integer)
+    DataPrevistaApprovvigionamento = db.Column(db.Text)
+    synced_at = db.Column(db.Text)

@@ -279,7 +279,15 @@ def unione_fasi_componenti(
     df_fasi_componenti = df_fasi_componenti.reset_index(drop=False)
 
     df_fasi_componenti = df_fasi_componenti.merge(
-        df_articoli[["CodArt", "DesArt", "TecniciUm", "GestioneLotto"]],
+        df_articoli[
+            [
+                "CodArt",
+                "DesArt",
+                "TecniciUm",
+                "GestioneLotto",
+                "IndiceModifica",
+            ]
+        ],
         on="CodArt",
         how="left",
     )
@@ -1582,6 +1590,7 @@ def elaborazione_dati(session: Session) -> None:
             "TecniciUm",
             "GestioneLotto",
             "VarianteArt",
+            "IndiceModifica",
         ],
     )
 

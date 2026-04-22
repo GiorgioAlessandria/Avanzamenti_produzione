@@ -98,7 +98,13 @@ def txt_generator(export_rows: list[dict]) -> list[str]:
 
     payload = export_rows[0]["payload"]
 
-    created_at = datetime.fromisoformat(payload["created_at"]).strftime("%d/%m/%Y")
+    registrazione_data = _text(payload.get("registrazione_data"))
+
+    if not registrazione_data:
+        created_at_raw = _text(payload.get("created_at"))
+        if not created_at_raw:
+            raise ValueError("Payload export privo di data registrazione.")
+        registrazione_data = datetime.fromisoformat(created_at_raw).strftime("%d/%m/%Y")
     id_documento = payload["id_documento"]
     id_riga = payload["id_riga"]
     rif_registraz = payload["rif_registraz"]
@@ -128,7 +134,7 @@ def txt_generator(export_rows: list[dict]) -> list[str]:
     head_line = row_writer(
         tipo_record="TES",
         tipo_documento=710,
-        registrazione_data=created_at,
+        registrazione_data=registrazione_data,
         codice_documento=id_documento,
     )
     lines.append(head_line)
@@ -142,7 +148,7 @@ def txt_generator(export_rows: list[dict]) -> list[str]:
     product_line = row_writer(
         tipo_record="RIG",
         tipo_documento=710,
-        registrazione_data=created_at,
+        registrazione_data=registrazione_data,
         codice_documento=id_documento,
         operazione_avanzamento="701",
         riferimento_ordine=riferimento_ordine,
@@ -164,7 +170,7 @@ def txt_generator(export_rows: list[dict]) -> list[str]:
     product_time_line = row_writer(
         tipo_record="RIG",
         tipo_documento=710,
-        registrazione_data=created_at,
+        registrazione_data=registrazione_data,
         codice_documento=id_documento,
         operazione_avanzamento="709",
         riferimento_ordine=riferimento_ordine_time,
@@ -206,7 +212,7 @@ def txt_generator(export_rows: list[dict]) -> list[str]:
                 component_line = row_writer(
                     tipo_record="RIG",
                     tipo_documento=710,
-                    registrazione_data=created_at,
+                    registrazione_data=registrazione_data,
                     codice_documento=id_documento,
                     operazione_avanzamento="703",
                     riferimento_ordine=riferimento_ordine,
@@ -226,7 +232,7 @@ def txt_generator(export_rows: list[dict]) -> list[str]:
             component_line = row_writer(
                 tipo_record="RIG",
                 tipo_documento=710,
-                registrazione_data=created_at,
+                registrazione_data=registrazione_data,
                 codice_documento=id_documento,
                 operazione_avanzamento="703",
                 riferimento_ordine=riferimento_ordine,

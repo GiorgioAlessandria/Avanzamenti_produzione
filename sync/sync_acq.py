@@ -24,10 +24,6 @@ import time as time_mod
 import urllib.parse
 import pathlib
 
-try:
-    from icecream import ic
-except Exception:
-    pass
 # endregion
 
 # region COSTANTI
@@ -172,6 +168,24 @@ def _norm_text(value) -> str:
     return str(value or "").strip()
 
 
+def _normalize_variante_lookup(value) -> str:
+    variante = _norm_text(value)
+    if not variante:
+        return ""
+    if variante == "-" or variante.upper() == "X":
+        return ""
+    return variante
+
+
+def _normalize_indice_lookup(value) -> str:
+    indice = _norm_text(value)
+    if not indice:
+        return ""
+    if indice == "-" or indice.upper() == "X":
+        return ""
+    return indice
+
+
 def _now_local_date() -> date:
     tz_name = TIMEZONE or "Europe/Rome"
     return datetime.now(ZoneInfo(tz_name)).date()
@@ -270,6 +284,29 @@ def ensure_schema():
                                                                PRIMARY KEY (IdDocumento, IdRiga, NumFase, CodArt, VarianteArt)
         )
         """,
+        """
+        CREATE TABLE IF NOT EXISTS acq_articoli_lookup (
+                                                           CodArt TEXT NOT NULL,
+                                                           VarianteArt TEXT NOT NULL,
+                                                           IndiceModifica TEXT NOT NULL,
+                                                           DesArt TEXT,
+                                                           GestioneLotto TEXT,
+                                                           GestioneMatricola TEXT,
+                                                           GestioneQualita TEXT,
+                                                           CodFamiglia TEXT,
+                                                           CodClassifTecnica TEXT,
+                                                           MagUM TEXT,
+                                                           TecniciUm TEXT,
+                                                           TecniciCoeffUmDen TEXT,
+                                                           TecniciCoeffUmNum TEXT,
+                                                           PuntoRiordino REAL,
+                                                           LottoRiordino REAL,
+                                                           PianTempoApprovFisso INTEGER,
+                                                           DataPrevistaApprovvigionamento TEXT,
+                                                           synced_at TEXT,
+                                                           PRIMARY KEY (CodArt, VarianteArt, IndiceModifica)
+        )
+        """,
     ]
 
     with sqlite_engine_acq.begin() as conn:
@@ -321,6 +358,90 @@ def build_acq_articoli(df_articoli: pd.DataFrame) -> pd.DataFrame:
             "MagUM",
             "LottoRiordino",
             "PuntoRiordino",
+            "PianTempoApprovFisso",
+            "DataPrevistaApprovvigionamento",
+            "synced_at",
+        ]
+    ].copy()
+
+
+def build_acq_articoli_lookup(df_articoli: pd.DataFrame) -> pd.DataFrame:
+    today = _now_local_date()
+    synced_at = datetime.now(ZoneInfo(TIMEZONE or "Europe/Rome")).isoformat(
+        timespec="seconds"
+    )
+
+    needed_cols = [
+        "CodArt",
+        "VarianteArt",
+        "IndiceModifica",
+        "DesArt",
+        "GestioneLotto",
+        "GestioneMatricola",
+        "GestioneQualità",
+        "CodFamiglia",
+        "CodClassifTecnica",
+        "MagUM",
+        "TecniciUm",
+        "TecniciCoeffUmDen",
+        "TecniciCoeffUmNum",
+        "LottoRiordino",
+        "PuntoRiordino",
+        "PianTempoApprovFisso",
+    ]
+    for col in needed_cols:
+        if col not in df_articoli.columns:
+            df_articoli[col] = None
+
+    df = df_articoli[needed_cols].copy()
+
+    df = df.dropna(subset=["CodArt"], how="any")
+    df["CodArt"] = df["CodArt"].astype(str).str.strip()
+    df = df[df["CodArt"] != ""]
+
+    df["VarianteArt"] = df["VarianteArt"].apply(_normalize_variante_lookup)
+    df["IndiceModifica"] = df["IndiceModifica"].apply(_normalize_indice_lookup)
+    df["DesArt"] = df["DesArt"].fillna("").astype(str).str.strip()
+    df["GestioneLotto"] = df["GestioneLotto"].fillna("").astype(str).str.strip()
+    df["GestioneMatricola"] = df["GestioneMatricola"].fillna("").astype(str).str.strip()
+    df["GestioneQualita"] = df["GestioneQualità"].fillna("").astype(str).str.strip()
+    df["CodFamiglia"] = df["CodFamiglia"].fillna("").astype(str).str.strip()
+    df["CodClassifTecnica"] = df["CodClassifTecnica"].fillna("").astype(str).str.strip()
+    df["MagUM"] = df["MagUM"].fillna("").astype(str).str.strip()
+    df["TecniciUm"] = df["TecniciUm"].fillna("").astype(str).str.strip()
+    df["TecniciCoeffUmDen"] = df["TecniciCoeffUmDen"].fillna("").astype(str).str.strip()
+    df["TecniciCoeffUmNum"] = df["TecniciCoeffUmNum"].fillna("").astype(str).str.strip()
+    df["LottoRiordino"] = df["LottoRiordino"].apply(_safe_float)
+    df["PuntoRiordino"] = df["PuntoRiordino"].apply(_safe_float)
+    df["PianTempoApprovFisso"] = df["PianTempoApprovFisso"].apply(_safe_int)
+
+    df["DataPrevistaApprovvigionamento"] = df["PianTempoApprovFisso"].apply(
+        lambda x: add_workdays(today, x).isoformat()
+    )
+    df["synced_at"] = synced_at
+
+    df = df.drop_duplicates(
+        subset=["CodArt", "VarianteArt", "IndiceModifica"],
+        keep="last",
+    )
+
+    return df[
+        [
+            "CodArt",
+            "VarianteArt",
+            "IndiceModifica",
+            "DesArt",
+            "GestioneLotto",
+            "GestioneMatricola",
+            "GestioneQualita",
+            "CodFamiglia",
+            "CodClassifTecnica",
+            "MagUM",
+            "TecniciUm",
+            "TecniciCoeffUmDen",
+            "TecniciCoeffUmNum",
+            "PuntoRiordino",
+            "LottoRiordino",
             "PianTempoApprovFisso",
             "DataPrevistaApprovvigionamento",
             "synced_at",
@@ -546,6 +667,7 @@ def elaborazione_dati_acq():
     df_input_odp_aperti = leggi_input_odp_aperti()
 
     df_acq_articoli = build_acq_articoli(df_articoli)
+    df_acq_articoli_lookup = build_acq_articoli_lookup(df_articoli)
     df_acq_giacenze = build_acq_giacenze(df_giacenza)
     df_acq_fabbisogno_odp = build_acq_fabbisogno_odp(df_input_odp_aperti)
     df_acq_riepilogo = build_acq_riepilogo_materiali(
@@ -555,13 +677,15 @@ def elaborazione_dati_acq():
     )
 
     _replace_table(sqlite_engine_acq, "acq_articoli", df_acq_articoli)
+    _replace_table(sqlite_engine_acq, "acq_articoli_lookup", df_acq_articoli_lookup)
     _replace_table(sqlite_engine_acq, "acq_giacenze", df_acq_giacenze)
     _replace_table(sqlite_engine_acq, "acq_fabbisogno_odp", df_acq_fabbisogno_odp)
     _replace_table(sqlite_engine_acq, "acq_riepilogo_materiali", df_acq_riepilogo)
 
     logging.info(
-        "Sync acquisti completato | articoli=%s | giacenze=%s | fabbisogno_odp=%s | riepilogo=%s",
+        "Sync acquisti completato | articoli=%s | articoli_lookup=%s | giacenze=%s | fabbisogno_odp=%s | riepilogo=%s",
         len(df_acq_articoli),
+        len(df_acq_articoli_lookup),
         len(df_acq_giacenze),
         len(df_acq_fabbisogno_odp),
         len(df_acq_riepilogo),

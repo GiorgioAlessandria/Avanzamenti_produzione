@@ -1,3 +1,4 @@
+{% set has_modifica_data_chiusura_permission = policy and policy.can('modifica_data_chiusura') %}
 <!--toast nuovo ordine in carico SL -->
 <div class="toast lh-lg hide"
      role="alert"
@@ -290,7 +291,6 @@
                 <div class="col"
                      style="width: max-content">
                     <!-- Note -->
-
                     <label for="toast-chiudi-sl-note"
                            style="font-size: 20px; width: max-content">
                         Note:<br>
@@ -298,9 +298,21 @@
                                   rows="2"
                                   cols="100"></textarea>
                     </label>
-
                 </div>
             </div>
+            {% if has_modifica_data_chiusura_permission %}
+                <div class="row mt-2">
+                    <div class="col">
+                        <label for="toast-chiudi-sl-data-registrazione"
+                               style="font-size: 20px;">
+                            Data registrazione:<br>
+                            <input type="date"
+                                   id="toast-chiudi-sl-data-registrazione"
+                                   class="form-control">
+                        </label>
+                    </div>
+                </div>
+            {% endif %}
         </div>
         <!-- Sezione Lotti (nascosta di default) -->
         <div id="lotti-section-sl"
@@ -554,10 +566,21 @@
                               rows="2"
                               cols="100"></textarea>
                 </label>
-
             </div>
         </div>
-
+        {% if has_modifica_data_chiusura_permission %}
+            <div class="row mt-2">
+                <div class="col">
+                    <label for="toast-chiudi-sl-data-registrazione"
+                           style="font-size: 20px;">
+                        Data registrazione:<br>
+                        <input type="date"
+                               id="toast-chiudi-sl-data-registrazione"
+                               class="form-control">
+                    </label>
+                </div>
+            </div>
+        {% endif %}
         <!-- Sezione Lotti (nascosta di default) -->
         <div id="lotti-section-m"
              style="display: none; width: 100%;">
@@ -614,17 +637,17 @@
     </div>
 </div>
 
-<main class="d-flex flex-column w-100 mt-1 mb-1"
+<main class="d-flex flex-column"
       data-bridge-tab="montaggio"
       style="height: fit-content;">
-    <div class="row text-center w-100 align-items-start mx-0"
+    <div class="row text-center align-items-start mx-0"
          style="width: auto;height: auto;">
-        <div class="col w-100 h-100 ms-0 me-0"
+        <div class="col ms-0 me-0"
              style="width: auto;height: auto;border-color: rgb(0,0,0);">
             <h2 class="w-100 h-100 mb-1"
                 style="width: auto;height: auto;">Ordini semilavorati da eseguire</h2>
             <div class="row mb-1">
-                <div class="col mb-1">
+                <div class="col mb-0">
                     <label><input
                             type="text"
                             class="js-table-filter form-control form-control-sm"
@@ -681,10 +704,10 @@
         </div>
         <div class="col w-100 h-100 ms-0"
              style="width: auto;height: auto;">
-            <h2 class="w-100 h-100 mb-1"
+            <h2 class="w-100 h-100 mb-0"
                 style="width: auto;height: auto;">Ordini semilavorati attivi</h2>
-            <div class="row mb-1">
-                <div class="col mb-1">
+            <div class="row mb-0">
+                <div class="col mb-0">
                     <label><input
                             type="text"
                             class="js-table-filter form-control form-control-sm"
@@ -974,7 +997,51 @@
         </div>
     </div>
 </div>
+<div class="modal fade"
+     id="modalMetodoMontaggio"
+     tabindex="-1"
+     aria-labelledby="modalMetodoMontaggioLabel"
+     aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title d-flex align-items-center gap-1"
+                    id="modalMetodoMontaggioLabel">
+                    <span>Metodo montaggio</span>
+                    <span class="text-muted"
+                          id="modal-metodo-montaggio-codart"></span>
+                </h5>
+                <button type="button"
+                        class="btn-close"
+                        data-bs-dismiss="modal"
+                        aria-label="Chiudi"></button>
+            </div>
 
+            <div class="modal-body p-2">
+                <iframe id="modal-metodo-montaggio-frame"
+                        src="about:blank"
+                        title="Metodo montaggio PDF"
+                        style="width: 100%; height: 75vh; border: 0;"></iframe>
+
+                <div id="modal-metodo-montaggio-fallback"
+                     class="alert alert-warning mt-2 d-none">
+                    Se non visualizzi il metodo di montaggio:
+                    <a id="modal-metodo-montaggio-open"
+                       href="#"
+                       target="_blank"
+                       rel="noopener noreferrer">aprilo in una nuova scheda</a>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button"
+                        class="btn btn-secondary"
+                        data-bs-dismiss="modal">Chiudi
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 <!-- ============================================================ -->
 <!-- SCRIPTS                                                       -->
 <!-- ============================================================ -->
@@ -1023,7 +1090,51 @@
         });
     }
 </script>
+<script>
+    (() => {
+        const modalEl = document.getElementById("modalMetodoMontaggio");
+        if (!modalEl) return;
 
+        const frameEl = modalEl.querySelector("#modal-metodo-montaggio-frame");
+        const codArtEl = modalEl.querySelector("#modal-metodo-montaggio-codart");
+        const fallbackEl = modalEl.querySelector("#modal-metodo-montaggio-fallback");
+        const openEl = modalEl.querySelector("#modal-metodo-montaggio-open");
+
+        if (!modalEl || !frameEl || !codArtEl || !fallbackEl || !openEl) return;
+
+        modalEl.addEventListener("show.bs.modal", function (event) {
+            const trigger = event.relatedTarget;
+            if (!trigger) return;
+
+            const pdfUrl = trigger.getAttribute("data-pdf-url") || "";
+            const codArt = trigger.getAttribute("data-codart") || "";
+
+            codArtEl.textContent = codArt ? `- ${codArt}` : "";
+            openEl.href = pdfUrl || "#";
+            fallbackEl.classList.add("d-none");
+
+            if (!pdfUrl) {
+                frameEl.src = "about:blank";
+                fallbackEl.classList.remove("d-none");
+                return;
+            }
+
+            frameEl.src = pdfUrl;
+        });
+
+        frameEl.addEventListener("error", function () {
+            fallbackEl.classList.remove("d-none");
+        });
+
+        modalEl.addEventListener("hidden.bs.modal", function () {
+            frameEl.src = "about:blank";
+            codArtEl.textContent = "";
+            openEl.href = "#";
+            fallbackEl.classList.add("d-none");
+        });
+
+    })();
+</script>
 <!-- Presa in carico SL + MACCHINA (event delegation) -->
 <script>
     document.addEventListener("click", async function (e) {
@@ -1413,6 +1524,7 @@
         const alertEl = document.getElementById("lotti-alert-m");
         const tbody = document.getElementById("tbody-lotti-m");
         const riepilogo = document.getElementById("lotti-riepilogo-m");
+        const inpDataRegistrazione = document.getElementById("toast-chiudi-m-data-registrazione");
         if (!toastEl || !section || !tbody) return;
 
         function escHtml(s) {
@@ -1422,6 +1534,19 @@
                 .replace(/>/g, "&gt;")
                 .replace(/"/g, "&quot;")
                 .replace(/'/g, "&#039;");
+        }
+
+        function todayIsoLocal() {
+            const now = new Date();
+            now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+            return now.toISOString().slice(0, 10);
+        }
+
+        function resetRegistrationDateInput() {
+            if (!inpDataRegistrazione) return;
+            const today = todayIsoLocal();
+            inpDataRegistrazione.max = today;
+            inpDataRegistrazione.value = today;
         }
 
         function showAlert(msg) {
@@ -1743,11 +1868,12 @@
             if (!btn) return;
 
             requestAnimationFrame(() => {
+                resetRegistrationDateInput();
+
                 const idDoc = document.getElementById("toast-chiudi-m-iddocumento")?.value?.trim() || "";
                 const idRiga = document.getElementById("toast-chiudi-m-idriga")?.value?.trim() || "";
                 const numProgrRiga =
                     document.getElementById("toast-chiudi-m-numprogrriga")?.value?.trim() || "";
-
 
                 if (idDoc && idRiga) {
                     fetchLottiData(idDoc, idRiga, numProgrRiga);
@@ -1803,6 +1929,7 @@
                         fase: fase,
                         note: note,
                         lotti: lottiPayload,
+                        data_registrazione: inpDataRegistrazione?.value || "",
                         num_progr_riga: numProgrRiga
                     })
                 });
@@ -1877,8 +2004,22 @@
         const inpNote = document.getElementById("toast-chiudi-sl-note");
         const chkParziale = document.getElementById("toast-chiudi-sl-parziale");
         const chkTotale = document.getElementById("toast-chiudi-sl-totale");
+        const inpDataRegistrazione = document.getElementById("toast-chiudi-sl-data-registrazione");
 
         if (!toastEl || !section || !tbody || !inpConf || !inpNonConf) return;
+
+        function todayIsoLocal() {
+            const now = new Date();
+            now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+            return now.toISOString().slice(0, 10);
+        }
+
+        function resetRegistrationDateInput() {
+            if (!inpDataRegistrazione) return;
+            const today = todayIsoLocal();
+            inpDataRegistrazione.max = today;
+            inpDataRegistrazione.value = today;
+        }
 
         function escHtml(s) {
             return String(s)
@@ -2004,6 +2145,7 @@
         }
 
         function resetQuantitaInputs() {
+            resetRegistrationDateInput();
             const qResidua = getQuantitaResiduaCorrente();
 
             if (Number.isFinite(qResidua) && qResidua > 0) {
@@ -2521,6 +2663,7 @@
                         note: note,
                         lotti: lottiPayload,
                         chiusura_parziale: chiusuraParziale,
+                        data_registrazione: inpDataRegistrazione?.value || "",
                         num_progr_riga: numProgrRiga
                     })
                 });

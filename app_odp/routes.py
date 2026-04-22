@@ -56,23 +56,30 @@ from app_odp.models import (
     roles_manageable_roles,
     AcqArticoli,
     AcqGiacenze,
-    AcqFabbisognoOdp,
-    AcqRiepilogoMateriali,
+    AcqArticoliLookup,
 )
 from app_odp.policy.decorator import require_perm
 from app_odp.policy.policy import RbacPolicy, PROTECTED_ROLE_NAMES
 from app_odp.odp_output import txt_generator
-
-
-try:
-    from icecream import ic
-finally:
-    pass
+from threading import Lock
+from time import monotonic
 
 main_bp = Blueprint("main", __name__)
 ROME_TZ = ZoneInfo("Europe/Rome")
-
-
+MONTAGGIO_PDF_INDEX_TTL_SECONDS = 60
+_montaggio_pdf_index_lock = Lock()
+_montaggio_pdf_index_cache = {
+    "directory": "",
+    "expires_at": 0.0,
+    "files": {},
+}
+MATERIALE_IMG_INDEX_TTL_SECONDS = 60
+_materiale_img_index_lock = Lock()
+_materiale_img_index_cache = {
+    "directory": "",
+    "expires_at": 0.0,
+    "files": {},
+}
 # region FUNZIONI
 ROLE_LINK_CONFIG = {
     "permissions": {
@@ -1210,6 +1217,7 @@ def _build_phase_payload(
     lotto_prodotto: dict | None,
     note: str,
     now_iso: str,
+    registrazione_data: str = "",
     chiusura_parziale: bool = False,
     tipo_documento: str = "",
     risorsa: str = "",
@@ -1233,6 +1241,7 @@ def _build_phase_payload(
         "lotto_prodotto": _normalize_lotto_prodotto_for_payload(lotto_prodotto),
         "created_at": now_iso,
         "created_by": _current_username(),
+        "registrazione_data": registrazione_data,
         "salda_riga": salda_riga,
         "tipo_documento": tipo_documento,
         "risorsa": risorsa,
@@ -1413,6 +1422,396 @@ def _build_export_distinta_base(
     return json.dumps(out, ensure_ascii=False)
 
 
+def _normalize_indice_modifica_for_pdf(value) -> str:
+    rev = _norm_text(value)
+    if not rev:
+        return ""
+    if rev == "-" or rev.upper() == "X":
+        return ""
+    return rev
+
+
+def _build_montaggio_pdf_key(cod_art: str, indice_modifica: str = "") -> str:
+    cod_art = _norm_text(cod_art)
+    if not cod_art:
+        return ""
+    rev = _normalize_indice_modifica_for_pdf(indice_modifica)
+    return f"{cod_art}.{rev}" if rev else cod_art
+
+
+def _get_montaggio_pdf_dir() -> Path | None:
+    raw = _norm_text(current_app.config.get("MONTAGGIO_PDF_DIR"))
+    if not raw:
+        return None
+
+    pdf_dir = Path(raw).expanduser()
+    try:
+        pdf_dir = pdf_dir.resolve()
+    except Exception:
+        pass
+
+    if not pdf_dir.exists() or not pdf_dir.is_dir():
+        return None
+
+    return pdf_dir
+
+
+def _scan_montaggio_pdf_directory(pdf_dir: Path) -> dict[str, Path]:
+    files = {}
+
+    try:
+        for entry in pdf_dir.iterdir():
+            if not entry.is_file():
+                continue
+            if entry.suffix.lower() != ".pdf":
+                continue
+
+            stem = entry.stem.strip()
+            if not stem:
+                continue
+
+            try:
+                resolved = entry.resolve()
+            except Exception:
+                resolved = entry
+
+            files.setdefault(stem.lower(), resolved)
+    except Exception:
+        return {}
+
+    return files
+
+
+def _get_montaggio_pdf_index(
+    *, force_refresh: bool = False
+) -> tuple[Path | None, dict[str, Path]]:
+    pdf_dir = _get_montaggio_pdf_dir()
+    if pdf_dir is None:
+        return None, {}
+
+    directory_key = str(pdf_dir).lower()
+    now_monotonic = monotonic()
+
+    with _montaggio_pdf_index_lock:
+        cache_valid = (
+            not force_refresh
+            and _montaggio_pdf_index_cache["directory"] == directory_key
+            and float(_montaggio_pdf_index_cache["expires_at"]) > now_monotonic
+        )
+
+        if cache_valid:
+            return pdf_dir, dict(_montaggio_pdf_index_cache["files"])
+
+        files = _scan_montaggio_pdf_directory(pdf_dir)
+        _montaggio_pdf_index_cache["directory"] = directory_key
+        _montaggio_pdf_index_cache["expires_at"] = (
+            now_monotonic + MONTAGGIO_PDF_INDEX_TTL_SECONDS
+        )
+        _montaggio_pdf_index_cache["files"] = files
+
+        return pdf_dir, dict(files)
+
+
+def _find_montaggio_pdf_path(
+    cod_art: str,
+    indice_modifica: str = "",
+    *,
+    force_refresh: bool = False,
+) -> Path | None:
+    lookup_key = _build_montaggio_pdf_key(cod_art, indice_modifica)
+    if not lookup_key:
+        return None
+
+    pdf_dir, pdf_index = _get_montaggio_pdf_index(force_refresh=force_refresh)
+    if pdf_dir is None:
+        return None
+
+    candidate = pdf_index.get(lookup_key.lower())
+    if candidate is not None and candidate.exists() and candidate.is_file():
+        try:
+            candidate.relative_to(pdf_dir)
+        except ValueError:
+            return None
+        return candidate
+
+    if not force_refresh:
+        return _find_montaggio_pdf_path(
+            cod_art,
+            indice_modifica,
+            force_refresh=True,
+        )
+
+    return None
+
+
+def _build_metodo_montaggio_lookup(odp_rows) -> dict[str, dict]:
+    lookup = {}
+
+    for ordine in odp_rows or []:
+        cod_art = _norm_text(getattr(ordine, "CodArt", ""))
+        indice_modifica = _normalize_indice_modifica_for_pdf(
+            getattr(ordine, "IndiceModifica", "")
+        )
+        key = _build_montaggio_pdf_key(cod_art, indice_modifica)
+
+        if not key or key in lookup:
+            continue
+
+        pdf_path = _find_montaggio_pdf_path(cod_art, indice_modifica)
+        lookup[key] = {
+            "found": pdf_path is not None,
+            "url": (
+                url_for(
+                    "main.api_metodo_montaggio_pdf",
+                    cod_art=cod_art,
+                    indice_modifica=indice_modifica,
+                )
+                if pdf_path is not None
+                else ""
+            ),
+        }
+
+    return lookup
+
+
+def _normalize_article_search_token(value) -> str:
+    return _norm_text(value)
+
+
+def _normalize_variante_articolo_search(value) -> str:
+    variante = _norm_text(value)
+    if not variante:
+        return ""
+    if variante == "-" or variante.upper() == "X":
+        return ""
+    return variante
+
+
+def _normalize_indice_articolo_search(value) -> str:
+    indice = _norm_text(value)
+    if not indice:
+        return ""
+    if indice == "-" or indice.upper() == "X":
+        return ""
+    return indice
+
+
+def _build_materiale_image_key(
+    cod_art: str,
+    variante_art: str = "",
+    indice_modifica: str = "",
+) -> str:
+    cod_art = _normalize_article_search_token(cod_art)
+    variante_art = _normalize_variante_articolo_search(variante_art)
+    indice_modifica = _normalize_indice_articolo_search(indice_modifica)
+
+    if not cod_art:
+        return ""
+
+    if variante_art and indice_modifica:
+        return f"{cod_art}.{variante_art}.{indice_modifica}"
+    if variante_art:
+        return f"{cod_art}.{variante_art}"
+    if indice_modifica:
+        return f"{cod_art}..{indice_modifica}"
+    return cod_art
+
+
+def _get_materiale_image_dir() -> Path | None:
+    raw = _norm_text(current_app.config.get("FOTOGRAFIE_MATERIALE"))
+    if not raw:
+        return None
+
+    img_dir = Path(raw).expanduser()
+    try:
+        img_dir = img_dir.resolve()
+    except Exception:
+        pass
+
+    if not img_dir.exists() or not img_dir.is_dir():
+        return None
+
+    return img_dir
+
+
+def _scan_materiale_image_directory(img_dir: Path) -> dict[str, Path]:
+    files = {}
+
+    try:
+        for entry in img_dir.iterdir():
+            if not entry.is_file():
+                continue
+            if entry.suffix.lower() != ".png":
+                continue
+
+            stem = entry.stem.strip()
+            if not stem:
+                continue
+
+            try:
+                resolved = entry.resolve()
+            except Exception:
+                resolved = entry
+
+            files.setdefault(stem.lower(), resolved)
+    except Exception:
+        return {}
+
+    return files
+
+
+def _get_materiale_image_index(
+    *,
+    force_refresh: bool = False,
+) -> tuple[Path | None, dict[str, Path]]:
+    img_dir = _get_materiale_image_dir()
+    if img_dir is None:
+        return None, {}
+
+    directory_key = str(img_dir).lower()
+    now_monotonic = monotonic()
+
+    with _materiale_img_index_lock:
+        cache_valid = (
+            not force_refresh
+            and _materiale_img_index_cache["directory"] == directory_key
+            and float(_materiale_img_index_cache["expires_at"]) > now_monotonic
+        )
+
+        if cache_valid:
+            return img_dir, dict(_materiale_img_index_cache["files"])
+
+        files = _scan_materiale_image_directory(img_dir)
+        _materiale_img_index_cache["directory"] = directory_key
+        _materiale_img_index_cache["expires_at"] = (
+            now_monotonic + MATERIALE_IMG_INDEX_TTL_SECONDS
+        )
+        _materiale_img_index_cache["files"] = files
+
+        return img_dir, dict(files)
+
+
+def _find_materiale_image_path(
+    cod_art: str,
+    variante_art: str = "",
+    indice_modifica: str = "",
+    *,
+    force_refresh: bool = False,
+) -> Path | None:
+    lookup_key = _build_materiale_image_key(
+        cod_art=cod_art,
+        variante_art=variante_art,
+        indice_modifica=indice_modifica,
+    )
+    if not lookup_key:
+        return None
+
+    img_dir, img_index = _get_materiale_image_index(force_refresh=force_refresh)
+    if img_dir is None:
+        return None
+
+    candidate = img_index.get(lookup_key.lower())
+    if candidate is not None and candidate.exists() and candidate.is_file():
+        try:
+            candidate.relative_to(img_dir)
+        except ValueError:
+            return None
+        return candidate
+
+    if not force_refresh:
+        return _find_materiale_image_path(
+            cod_art=cod_art,
+            variante_art=variante_art,
+            indice_modifica=indice_modifica,
+            force_refresh=True,
+        )
+
+    return None
+
+
+def _is_articolo_search_state(stato: str) -> bool:
+    s = _norm_text(stato).lower()
+    if s == "chiusa":
+        return False
+    return "pianificat" in s or "attiv" in s or "sospes" in s
+
+
+def _component_matches_search(
+    comp: dict,
+    *,
+    cod_art: str,
+    variante_art: str,
+    indice_modifica: str,
+) -> bool:
+    return (
+        _normalize_article_search_token(comp.get("CodArt")) == cod_art
+        and _normalize_variante_articolo_search(comp.get("VarianteArt")) == variante_art
+        and _normalize_indice_articolo_search(comp.get("IndiceModifica"))
+        == indice_modifica
+    )
+
+
+def _build_articolo_ordini_attivi_rows(
+    *,
+    cod_art: str,
+    variante_art: str,
+    indice_modifica: str,
+) -> list[dict]:
+    rows = []
+
+    for ordine in _base_odp_query().all():
+        stato = _norm_text(getattr(ordine, "StatoOrdine", ""))
+        if not _is_articolo_search_state(stato):
+            continue
+
+        distinta = _parse_distinta_materiale(ordine)
+        qty_tot = Decimal("0")
+
+        for comp in distinta:
+            if not isinstance(comp, dict):
+                continue
+
+            if not _component_matches_search(
+                comp,
+                cod_art=cod_art,
+                variante_art=variante_art,
+                indice_modifica=indice_modifica,
+            ):
+                continue
+
+            try:
+                qty_tot += _parse_qty_decimal(comp.get("Quantita"))
+            except ValueError:
+                continue
+
+        if qty_tot <= 0:
+            continue
+
+        rows.append(
+            {
+                "Ordine": _ordine_ref_label(ordine),
+                "CodArtProdotto": _norm_text(getattr(ordine, "CodArt", "")),
+                "VarianteProdotto": _norm_text(getattr(ordine, "VarianteArt", "")),
+                "IndiceModificaProdotto": _norm_text(
+                    getattr(ordine, "IndiceModifica", "")
+                ),
+                "DescrizioneProdotto": _norm_text(getattr(ordine, "DesArt", "")),
+                "Stato": stato,
+                "QuantitaComponente": _decimal_to_text(qty_tot),
+            }
+        )
+
+    rows.sort(
+        key=lambda x: (
+            (x.get("Ordine") or "").lower(),
+            (x.get("CodArtProdotto") or "").lower(),
+            (x.get("VarianteProdotto") or "").lower(),
+            (x.get("IndiceModificaProdotto") or "").lower(),
+        )
+    )
+    return rows
+
+
 @main_bp.context_processor
 def inject_policy_and_nav():
     if not current_user.is_authenticated:
@@ -1482,6 +1881,7 @@ def home():
         causali_attivita=causali,
         bridge_url=url_for("main.api_home_bridge", tab=tab),
         bridge_last_event_id=_last_log_token(),
+        metodo_montaggio_lookup=_build_metodo_montaggio_lookup(odp),
     )
 
 
@@ -1502,57 +1902,67 @@ def _json_safe(value):
 
 
 def _render_bridge_standard(odp):
+    metodo_montaggio_lookup = _build_metodo_montaggio_lookup(odp)
+
     return {
         "tbody_ordini_da_eseguire": render_template(
-            "partials/_home_standard_rows_da_eseguire.j2", odp=odp
+            "partials/_home_standard_rows_da_eseguire.j2",
+            odp=odp,
         ),
         "tbody_ordini_in_corso": render_template(
-            "partials/_home_standard_rows_in_corso.j2", odp=odp
-        ),
-    }
-
-
-def _render_bridge_carpenteria(odp):
-    return {
-        "tbody_ordini_da_eseguire": render_template(
-            "partials/_home_standard_rows_da_eseguire.j2", odp=odp
-        ),
-        "tbody_ordini_in_corso": render_template(
-            "partials/_home_standard_rows_in_corso.j2", odp=odp
+            "partials/_home_standard_rows_in_corso.j2",
+            odp=odp,
+            metodo_montaggio_lookup=metodo_montaggio_lookup,
         ),
     }
 
 
 def _render_bridge_montaggio(odp):
+    metodo_montaggio_lookup = _build_metodo_montaggio_lookup(odp)
+
     return {
         "tbody_ordini_da_eseguire_sl": render_template(
-            "partials/_home_montaggio_sl_rows_da_eseguire.j2", odp=odp
+            "partials/_home_montaggio_sl_rows_da_eseguire.j2",
+            odp=odp,
         ),
         "tbody_ordini_in_corso_sl": render_template(
-            "partials/_home_montaggio_sl_rows_in_corso.j2", odp=odp
+            "partials/_home_montaggio_sl_rows_in_corso.j2",
+            odp=odp,
+            metodo_montaggio_lookup=metodo_montaggio_lookup,
         ),
         "tbody_ordini_da_eseguire_m": render_template(
-            "partials/_home_montaggio_m_rows_da_eseguire.j2", odp=odp
+            "partials/_home_montaggio_m_rows_da_eseguire.j2",
+            odp=odp,
         ),
         "tbody_ordini_in_corso_m": render_template(
-            "partials/_home_montaggio_m_rows_in_corso.j2", odp=odp
+            "partials/_home_montaggio_m_rows_in_corso.j2",
+            odp=odp,
+            metodo_montaggio_lookup=metodo_montaggio_lookup,
         ),
     }
 
 
 def _render_bridge_collaudo(odp):
+    metodo_montaggio_lookup = _build_metodo_montaggio_lookup(odp)
+
     return {
         "tbody_tbl_da_eseguire_sl": render_template(
-            "partials/_home_montaggio_sl_rows_da_eseguire.j2", odp=odp
+            "partials/_home_montaggio_sl_rows_da_eseguire.j2",
+            odp=odp,
         ),
         "tbody_ordini_in_corso_sl": render_template(
-            "partials/_home_montaggio_sl_rows_in_corso.j2", odp=odp
+            "partials/_home_montaggio_sl_rows_in_corso.j2",
+            odp=odp,
+            metodo_montaggio_lookup=metodo_montaggio_lookup,
         ),
         "tbody_tbl_da_eseguire_m": render_template(
-            "partials/_home_montaggio_m_rows_da_eseguire.j2", odp=odp
+            "partials/_home_montaggio_m_rows_da_eseguire.j2",
+            odp=odp,
         ),
         "tbody_ordini_in_corso_m": render_template(
-            "partials/_home_montaggio_m_rows_in_corso.j2", odp=odp
+            "partials/_home_montaggio_m_rows_in_corso.j2",
+            odp=odp,
+            metodo_montaggio_lookup=metodo_montaggio_lookup,
         ),
     }
 
@@ -1601,6 +2011,193 @@ def api_home_bridge(tab):
         "last_event_id": last_event_id,
         "fragments": fragments,
     }
+
+
+@main_bp.get("/api/documenti/metodo-montaggio")
+@login_required
+@require_perm("home")
+def api_metodo_montaggio_pdf():
+    cod_art = _norm_text(request.args.get("cod_art"))
+    indice_modifica = _normalize_indice_modifica_for_pdf(
+        request.args.get("indice_modifica")
+    )
+
+    pdf_dir = _get_montaggio_pdf_dir()
+    if pdf_dir is None:
+        current_app.logger.error("MONTAGGIO_PDF_DIR non configurata o non valida")
+        abort(404)
+
+    pdf_path = _find_montaggio_pdf_path(
+        cod_art=cod_art,
+        indice_modifica=indice_modifica,
+        force_refresh=True,
+    )
+
+    if pdf_path is None:
+        current_app.logger.warning(
+            "PDF metodo montaggio non trovato per cod_art=%s indice_modifica=%s",
+            cod_art,
+            indice_modifica,
+        )
+        abort(404)
+
+    try:
+        pdf_path = pdf_path.resolve()
+        pdf_dir = pdf_dir.resolve()
+        pdf_path.relative_to(pdf_dir)
+    except Exception:
+        current_app.logger.exception("Percorso PDF non valido")
+        abort(403)
+
+    if not pdf_path.exists() or not pdf_path.is_file():
+        current_app.logger.warning("PDF non accessibile: %s", pdf_path)
+        abort(404)
+
+    current_app.logger.info("Invio PDF metodo montaggio: %s", pdf_path)
+
+    response = send_file(
+        pdf_path,
+        mimetype="application/pdf",
+        as_attachment=False,
+        download_name=pdf_path.name,
+        conditional=False,
+    )
+    response.headers["Content-Disposition"] = f'inline; filename="{pdf_path.name}"'
+    return response
+
+
+@main_bp.get("/api/materiali/foto")
+@login_required
+def api_materiale_foto():
+    cod_art = _normalize_article_search_token(request.args.get("cod_art"))
+    variante_art = _normalize_variante_articolo_search(request.args.get("variante_art"))
+    indice_modifica = _normalize_indice_articolo_search(
+        request.args.get("indice_modifica")
+    )
+
+    img_dir = _get_materiale_image_dir()
+    if img_dir is None:
+        abort(404)
+
+    img_path = _find_materiale_image_path(
+        cod_art=cod_art,
+        variante_art=variante_art,
+        indice_modifica=indice_modifica,
+        force_refresh=True,
+    )
+    if img_path is None:
+        abort(404)
+
+    try:
+        img_path = img_path.resolve()
+        img_dir = img_dir.resolve()
+        img_path.relative_to(img_dir)
+    except Exception:
+        abort(403)
+
+    if not img_path.exists() or not img_path.is_file():
+        abort(404)
+
+    return send_file(
+        img_path,
+        mimetype="image/png",
+        as_attachment=False,
+        download_name=img_path.name,
+    )
+
+
+@main_bp.post("/api/materiali/ricerca-articolo")
+@login_required
+def api_ricerca_articolo():
+    data = request.get_json(silent=True) or {}
+
+    cod_art = _normalize_article_search_token(data.get("cod_art"))
+    variante_art = _normalize_variante_articolo_search(data.get("variante_art"))
+    indice_modifica = _normalize_indice_articolo_search(data.get("indice_modifica"))
+
+    if not cod_art:
+        return jsonify({"ok": False, "error": "CodArt obbligatorio."}), 400
+
+    articolo = AcqArticoliLookup.query.filter_by(
+        CodArt=cod_art,
+        VarianteArt=variante_art,
+        IndiceModifica=indice_modifica,
+    ).first()
+
+    if articolo is None:
+        return jsonify(
+            {
+                "ok": True,
+                "found_component": False,
+                "message": "Il codice inserito è errato oppure non è presente a gestionale.",
+                "component": None,
+                "image": {"found": False, "url": "", "file_name": ""},
+                "orders": [],
+                "orders_message": "",
+            }
+        )
+
+    giacenza_totale = (
+        db.session.execute(
+            select(func.coalesce(func.sum(AcqGiacenze.Giacenza), 0.0)).where(
+                AcqGiacenze.CodArt == cod_art
+            )
+        ).scalar()
+        or 0.0
+    )
+
+    image_path = _find_materiale_image_path(
+        cod_art=cod_art,
+        variante_art=variante_art,
+        indice_modifica=indice_modifica,
+    )
+    image_url = (
+        url_for(
+            "main.api_materiale_foto",
+            cod_art=cod_art,
+            variante_art=variante_art,
+            indice_modifica=indice_modifica,
+        )
+        if image_path is not None
+        else ""
+    )
+
+    orders = _build_articolo_ordini_attivi_rows(
+        cod_art=cod_art,
+        variante_art=variante_art,
+        indice_modifica=indice_modifica,
+    )
+
+    return jsonify(
+        {
+            "ok": True,
+            "found_component": True,
+            "message": "",
+            "component": {
+                "CodArt": cod_art,
+                "VarianteArt": variante_art,
+                "IndiceModifica": indice_modifica,
+                "DesArt": _norm_text(getattr(articolo, "DesArt", "")),
+                "MagUM": _norm_text(getattr(articolo, "MagUM", "")),
+                "TecniciUm": _norm_text(getattr(articolo, "TecniciUm", "")),
+                "GiacenzaTotale": float(giacenza_totale or 0.0),
+                "GiacenzaTotaleText": _decimal_to_text(
+                    Decimal(str(float(giacenza_totale or 0.0)))
+                ),
+            },
+            "image": {
+                "found": image_path is not None,
+                "url": image_url,
+                "file_name": image_path.name if image_path is not None else "",
+            },
+            "orders": orders,
+            "orders_message": (
+                ""
+                if orders
+                else "Non sono presenti ordini attivi per questo componente."
+            ),
+        }
+    )
 
 
 def _row_key(id_documento: str, id_riga: str) -> str:
@@ -1715,6 +2312,47 @@ def _parse_iso_dt(value) -> datetime | None:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=ROME_TZ)
     return dt
+
+
+def _today_rome_date() -> date:
+    return _now_rome_dt().date()
+
+
+def _parse_registration_date_input(value) -> date | None:
+    raw = _norm_text(value)
+    if not raw:
+        return None
+
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(raw, fmt).date()
+        except ValueError:
+            continue
+
+    raise ValueError("Data registrazione non valida.")
+
+
+def _resolve_registration_datetime(
+    raw_value,
+    *,
+    allow_override: bool,
+    fallback_dt: datetime,
+) -> tuple[date, datetime, str]:
+    registration_day = fallback_dt.date()
+
+    if allow_override:
+        parsed_day = _parse_registration_date_input(raw_value)
+        if parsed_day is not None:
+            if parsed_day > fallback_dt.date():
+                raise ValueError("La data registrazione non può essere futura.")
+            registration_day = parsed_day
+
+    registration_dt = datetime.combine(
+        registration_day,
+        fallback_dt.timetz().replace(microsecond=0),
+    )
+    registration_date_text = registration_day.strftime("%d/%m/%Y")
+    return registration_day, registration_dt, registration_date_text
 
 
 def _tempo_to_seconds(value) -> int:
@@ -2919,6 +3557,7 @@ def api_chiudi_ordine():
 
     policy = RbacPolicy(current_user)
     ordine = _get_visible_odp_by_key(policy, id_documento, id_riga)
+    can_override_registration_date = policy.can("modifica_data_chiusura")
 
     fase_corrente = _fase_corrente_for_export(ordine)
     blocking_outbox = _get_blocking_outbox_for_phase(
@@ -3102,6 +3741,31 @@ def api_chiudi_ordine():
 
     now_dt = _now_rome_dt()
     now_iso = now_dt.isoformat(timespec="seconds")
+
+    try:
+        _registration_day, registration_dt, registration_date_text = (
+            _resolve_registration_datetime(
+                data.get("data_registrazione"),
+                allow_override=can_override_registration_date,
+                fallback_dt=now_dt,
+            )
+        )
+    except ValueError as e:
+        current_app.logger.warning(
+            "Invalid registration date during order closure.",
+            exc_info=True,
+        )
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": "Data registrazione non valida.",
+                }
+            ),
+            400,
+        )
+
+    registration_iso = registration_dt.isoformat(timespec="seconds")
     lotto_prodotto = None
     action_name = "chiusura_parziale" if chiusura_parziale else "chiusura_finale"
     operation_group_id = _build_operation_group_id(
@@ -3113,7 +3777,7 @@ def api_chiudi_ordine():
     fase_corrente = _fase_corrente_for_export(ordine, stato=stato)
 
     if _norm_text(ordine.GestioneLotto).lower() == "si" and q_ok > 0:
-        rif_lotto_prodotto = generazione_lotti(now_dt)
+        rif_lotto_prodotto = generazione_lotti(registration_dt)
 
         for row in lotti_input:
             esito_row = _norm_text(row.get("Esito", "ok")).lower()
@@ -3172,7 +3836,8 @@ def api_chiudi_ordine():
             lotti_input=lotti_input,
             lotto_prodotto=lotto_prodotto,
             note=note,
-            now_iso=now_iso,
+            now_iso=registration_iso,
+            registrazione_data=registration_date_text,
             chiusura_parziale=True,
             tipo_documento=ordine.CodTipoDoc,
             risorsa=ordine.RisorsaAttiva,
@@ -3195,7 +3860,8 @@ def api_chiudi_ordine():
             lotti_input=lotti_input,
             lotto_prodotto=lotto_prodotto,
             note=note,
-            now_iso=now_iso,
+            now_iso=registration_iso,
+            registrazione_data=registration_date_text,
             chiusura_parziale=False,
             tipo_documento=ordine.CodTipoDoc,
             risorsa=ordine.RisorsaAttiva,
@@ -3420,6 +4086,7 @@ def api_chiudi_ordine_montaggio_macchina():
 
     policy = RbacPolicy(current_user)
     ordine = _get_visible_odp_by_key(policy, id_documento, id_riga)
+    can_override_registration_date = policy.can("modifica_data_chiusura")
 
     if _tab_from_ordine(ordine) != "montaggio":
         return (
@@ -3565,6 +4232,20 @@ def api_chiudi_ordine_montaggio_macchina():
 
     now_dt = _now_rome_dt()
     now_iso = now_dt.isoformat(timespec="seconds")
+
+    try:
+        _registration_day, registration_dt, registration_date_text = (
+            _resolve_registration_datetime(
+                data.get("data_registrazione"),
+                allow_override=can_override_registration_date,
+                fallback_dt=now_dt,
+            )
+        )
+    except ValueError as e:
+        current_app.logger.warning("Invalid registration datetime input: %s", e)
+        return jsonify({"ok": False, "error": "Invalid registration data."}), 400
+
+    registration_iso = registration_dt.isoformat(timespec="seconds")
     lotto_prodotto = None
     action_name = "chiusura_macchina"
     elapsed_seconds = 0
@@ -3602,7 +4283,8 @@ def api_chiudi_ordine_montaggio_macchina():
         lotti_input=lotti_input,
         lotto_prodotto=None,
         note=note,
-        now_iso=now_iso,
+        now_iso=registration_iso,
+        registrazione_data=registration_date_text,
         tipo_documento=ordine.CodTipoDoc,
         risorsa=ordine.RisorsaAttiva,
         magazzino=ordine.CodMagPrincipale,

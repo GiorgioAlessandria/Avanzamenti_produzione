@@ -1,4 +1,5 @@
 {% set has_disegno_permission = policy and policy.can('controllo_codice_disegno') %}
+{% set has_modifica_data_chiusura_permission = policy and policy.can('modifica_data_chiusura') %}
 {% set lavorazioni_richiesta_disegni = config.get('LAVORAZIONI_RICHIESTA_DISEGNI', []) %}
 <!--toast nuovo ordine in carico -->
 <div class="toast lh-lg hide"
@@ -310,6 +311,19 @@
 
                 </div>
             </div>
+            {% if has_modifica_data_chiusura_permission %}
+                <div class="row mt-2">
+                    <div class="col">
+                        <label for="toast-chiudi-sl-data-registrazione"
+                               style="font-size: 20px;">
+                            Data registrazione:<br>
+                            <input type="date"
+                                   id="toast-chiudi-sl-data-registrazione"
+                                   class="form-control">
+                        </label>
+                    </div>
+                </div>
+            {% endif %}
         </div>
 
         <!-- Sezione Lotti (nascosta di default) -->
@@ -420,7 +434,6 @@
                 <div class="row mb-1">
                     <div class="col">
                         <label><input
-
                                 type="text"
                                 class="js-table-filter form-control form-control-sm"
                                 placeholder="Filtra per ordine..."
@@ -450,8 +463,8 @@
                         <tr>
                             <th data-sort="text">Ordine</th>
                             <th data-sort="text">Codice</th>
-                            <th data-sort="text">Var.</th>
                             <th data-sort="text">Rev.</th>
+                            <th data-sort="text">Var.</th>
                             <th data-sort="text">Descrizione</th>
                             <th data-sort="num">Quantità</th>
                             <th data-sort="date"
@@ -513,8 +526,8 @@
                         <tr>
                             <th data-sort="text">Ordine</th>
                             <th data-sort="text">Codice</th>
-                            <th data-sort="text">Var.</th>
                             <th data-sort="text">Rev.</th>
+                            <th data-sort="text">Var.</th>
                             <th data-sort="text">Descrizione</th>
                             <th data-sort="text">Quantità</th>
                             <th data-sort="text">Data</th>
@@ -593,6 +606,51 @@
             <div class="modal-body"
                  id="modal-materiali-body">
                 <div class="text-muted">Seleziona un ordine.</div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button"
+                        class="btn btn-secondary"
+                        data-bs-dismiss="modal">Chiudi
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="modal fade"
+     id="modalMetodoMontaggio"
+     tabindex="-1"
+     aria-labelledby="modalMetodoMontaggioLabel"
+     aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title d-flex align-items-center gap-2"
+                    id="modalMetodoMontaggioLabel">
+                    <span>Metodo montaggio</span>
+                    <span class="text-muted"
+                          id="modal-metodo-montaggio-codart"></span>
+                </h5>
+                <button type="button"
+                        class="btn-close"
+                        data-bs-dismiss="modal"
+                        aria-label="Chiudi"></button>
+            </div>
+
+            <div class="modal-body p-2">
+                <iframe id="modal-metodo-montaggio-frame"
+                        src="about:blank"
+                        title="Metodo montaggio PDF"
+                        style="width: 100%; height: 75vh; border: 0;"></iframe>
+
+                <div id="modal-metodo-montaggio-fallback"
+                     class="alert alert-warning mt-2 d-none">
+                    Se non visualizzi il metodo di montaggio:
+                    <a id="modal-metodo-montaggio-open"
+                       href="#"
+                       target="_blank"
+                       rel="noopener noreferrer">aprilo in una nuova scheda</a>
+                </div>
             </div>
 
             <div class="modal-footer">
@@ -1028,7 +1086,50 @@
         }
     });
 </script>
+<script>
+    (() => {
+        const modalEl = document.getElementById("modalMetodoMontaggio");
+        if (!modalEl) return;
 
+        const frameEl = modalEl.querySelector("#modal-metodo-montaggio-frame");
+        const codArtEl = modalEl.querySelector("#modal-metodo-montaggio-codart");
+        const fallbackEl = modalEl.querySelector("#modal-metodo-montaggio-fallback");
+        const openEl = modalEl.querySelector("#modal-metodo-montaggio-open");
+        if (!modalEl || !frameEl || !codArtEl || !fallbackEl || !openEl) return;
+
+        modalEl.addEventListener("show.bs.modal", function (event) {
+            const trigger = event.relatedTarget;
+            if (!trigger) return;
+
+            const pdfUrl = trigger.getAttribute("data-pdf-url") || "";
+            const codArt = trigger.getAttribute("data-codart") || "";
+
+            codArtEl.textContent = codArt ? `- ${codArt}` : "";
+            openEl.href = pdfUrl || "#";
+            fallbackEl.classList.add("d-none");
+
+            if (!pdfUrl) {
+                frameEl.src = "about:blank";
+                fallbackEl.classList.remove("d-none");
+                return;
+            }
+
+            frameEl.src = pdfUrl;
+        });
+
+        frameEl.addEventListener("error", function () {
+            fallbackEl.classList.remove("d-none");
+        });
+
+        modalEl.addEventListener("hidden.bs.modal", function () {
+            frameEl.src = "about:blank";
+            codArtEl.textContent = "";
+            openEl.href = "#";
+            fallbackEl.classList.add("d-none");
+        });
+
+    })();
+</script>
 <script>
     (() => {
         // ---- Stato lotti SL ----
@@ -1050,6 +1151,7 @@
         const inpNonConf = document.getElementById("toast-chiudi-sl-quantita-non-conforme");
         const chkParziale = document.getElementById("toast-chiudi-sl-parziale");
         const chkTotale = document.getElementById("toast-chiudi-sl-totale");
+        const inpDataRegistrazione = document.getElementById("toast-chiudi-sl-data-registrazione");
 
         if (!toastEl || !section || !tbody) return;
 
@@ -1057,6 +1159,19 @@
         function escHtml(s) {
             return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
                 .replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+        }
+
+        function todayIsoLocal() {
+            const now = new Date();
+            now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+            return now.toISOString().slice(0, 10);
+        }
+
+        function resetRegistrationDateInput() {
+            if (!inpDataRegistrazione) return;
+            const today = todayIsoLocal();
+            inpDataRegistrazione.max = today;
+            inpDataRegistrazione.value = today;
         }
 
         function showAlert(msg) {
@@ -1181,6 +1296,7 @@
 
         function resetQuantitaInputs() {
             const qResidua = getQuantitaResiduaCorrente();
+            resetRegistrationDateInput();
 
             if (Number.isFinite(qResidua) && qResidua > 0) {
                 inpConf.value = String(Math.round(qResidua));
@@ -1696,7 +1812,8 @@
                         lotti: lottiPayload,
                         chiusura_parziale: chiusuraParziale,
                         tempo_non_funzionamento_minuti: tempoNonFunzionamentoMinuti,
-                        num_progr_riga: numProgrRiga
+                        data_registrazione: inpDataRegistrazione?.value || "",
+                        num_progr_riga: numProgrRiga,
                     })
                 });
 
