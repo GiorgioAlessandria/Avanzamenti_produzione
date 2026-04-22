@@ -1,6 +1,12 @@
 {% for singolo_odp in odp %}
     {% if singolo_odp.GestioneMatricola == 'si' and singolo_odp.StatoOrdine != "Pianificata" and singolo_odp.StatoOrdine != "Chiusa" %}
         {% set operatore = singolo_odp.runtime_row.Utente_operazione if singolo_odp.runtime_row else "" %}
+        {% set rev = singolo_odp.IndiceModifica %}
+        {% set rev_pdf = rev|string|trim if rev is not none else "" %}
+        {% set rev_pdf = "" if rev_pdf == "-" or rev_pdf|upper == "X" else rev_pdf %}
+        {% set metodo_key = singolo_odp.CodArt ~ ('.' ~ rev_pdf if rev_pdf else '') %}
+        {% set metodo_doc = metodo_montaggio_lookup.get(metodo_key) if metodo_montaggio_lookup is defined and metodo_key else none %}
+
         <tr data-row-key="{{ singolo_odp.IdDocumento }}|{{ singolo_odp.NumProgrRiga }}"
             data-tipodocumento="{{ singolo_odp.CodTipoDoc }}"
             data-iddocumento="{{ singolo_odp.IdDocumento }}"
@@ -9,13 +15,13 @@
             data-idriga="{{ singolo_odp.IdRiga }}"
             data-ordine="{{ singolo_odp.RifRegistraz }}.{{ singolo_odp.NumProgrRiga }}"
             data-codice="{{ singolo_odp.CodArt }}"
+            data-indicemodifica="{{ singolo_odp.IndiceModifica }}"
             data-descrizione="{{ singolo_odp.DesArt }}"
             data-matricola="{{ singolo_odp.CodMatricola }}"
             data-datacons="{{ singolo_odp.DataFineSched }}"
             data-fase="{{ singolo_odp.FaseAttiva }}"
             data-stato="{{ singolo_odp.StatoOrdine }}"
             data-operatore="{{ operatore }}">
-            <td>{{ singolo_odp.RifRegistraz }}.{{ singolo_odp.NumProgrRiga }}</td>
             <td>
                 <button
                         type="button"
@@ -24,8 +30,28 @@
                         data-variante="{{ singolo_odp.VarianteArt|e }}"
                         data-fase-attiva="{{ singolo_odp.FaseAttiva }}"
                         data-distinta='{{ singolo_odp.DistintaMateriale|tojson }}'>
-                    {{ singolo_odp.CodArt }}
+                    {{ singolo_odp.RifRegistraz }}.{{ singolo_odp.NumProgrRiga }}
                 </button>
+            </td>
+            {% set rev = singolo_odp.IndiceModifica %}
+            {% set rev_pdf = rev|string|trim if rev is not none else "" %}
+            {% set rev_pdf = "" if rev_pdf == "-" or rev_pdf|upper == "X" else rev_pdf %}
+            {% set metodo_key = singolo_odp.CodArt ~ ('.' ~ rev_pdf if rev_pdf else '') %}
+            {% set metodo_doc = metodo_montaggio_lookup.get(metodo_key) if metodo_montaggio_lookup is defined and metodo_key else none %}
+
+            <td>
+                {% if metodo_doc and metodo_doc.found %}
+                    <button type="button"
+                            class="btn btn-link p-0 text-decoration-none"
+                            data-bs-toggle="modal"
+                            data-bs-target="#modalMetodoMontaggio"
+                            data-codart="{{ singolo_odp.CodArt|e }}"
+                            data-pdf-url="{{ metodo_doc.url }}">
+                        {{ singolo_odp.CodArt }}
+                    </button>
+                {% else %}
+                    <span class="text-danger">{{ singolo_odp.CodArt }}</span>
+                {% endif %}
             </td>
             <td>{{ singolo_odp.DesArt }}</td>
             <td>{{ singolo_odp.CodMatricola }}</td>

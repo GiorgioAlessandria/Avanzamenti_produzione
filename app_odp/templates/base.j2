@@ -15,12 +15,50 @@
               href="{{ url_for('static', filename='assets/css/table.css') }}">
         <link rel="stylesheet"
               href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+        <style>
+            .ricerca-articolo-image-card-body {
+                min-height: 180px;
+                max-height: 240px;
+                overflow: hidden;
+            }
+
+            .ricerca-articolo-image {
+                max-height: 180px;
+                max-width: 100%;
+                object-fit: contain;
+                cursor: zoom-in;
+            }
+
+            .ricerca-articolo-modal-body {
+                max-height: 85vh;
+                overflow: hidden;
+            }
+
+            .ricerca-articolo-results {
+                display: flex;
+                flex-direction: column;
+                min-height: 0;
+            }
+
+            .ricerca-articolo-table-wrap {
+                max-height: 320px;
+                overflow-y: auto;
+                min-height: 0;
+            }
+
+            .ricerca-articolo-table-wrap thead th {
+                position: sticky;
+                top: 0;
+                z-index: 1;
+                background: var(--bs-table-bg, #fff);
+            }
+        </style>
     {% endblock %}
 {% endblock head %}
 
 
 <body>
-<header class="text-center w-100 mh-100 m-auto mx-0"
+<header class="text-center w-auto m-auto"
         style="width: auto;height: auto;">
     <div class="container-fluid text-center d-flex w-100 h-100 flex-shrink-0 flex-fill justify-content-center align-items-center"
          style="width: auto;height: auto;">
@@ -94,10 +132,28 @@
                         - Benvenut{{ genere }} {{ current_user.username }}</h1>
                 {% endif %}
             </div>
-            <div class="col-md-4 d-flex w-auto flex-grow-1 justify-content-end align-items-center"
-                 style="width: auto;height: auto;">
+            <div class="col-md-1 d-flex w-auto flex-grow-1 justify-content-end align-items-center"
+                 style="width: auto; height: auto;">
+                <div class="d-flex align-items-center me-1">
+                    <button class="btn btn-outline-secondary d-flex align-items-center gap-2"
+                            type="button"
+                            data-bs-toggle="modal"
+                            data-bs-target="#modalRicercaArticolo">
+                        <svg xmlns="http://www.w3.org/2000/svg"
+                             width="20"
+                             height="20"
+                             fill="currentColor"
+                             viewBox="0 0 16 16"
+                             aria-hidden="true">
+                            <path d="M11.742 10.344a6.5 6.5 0 1 0-1.398 1.398h-.001l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.866-3.834zm-5.242.656a5 5 0 1 1 0-10 5 5 0 0 1 0 10z"/>
+                        </svg>
+                        <span>Ricerca per articolo</span>
+                    </button>
+                    </button>
+                </div>
+
                 <img
-                        class="img-fluid justify-content-end align-items-center order-first"
+                        class="img-fluid justify-content-end align-items-center"
                         width="250"
                         height="89"
                         src="{{ url_for('static', filename='assets/img/logo_completo.jpg') }}"
@@ -109,8 +165,421 @@
 </header>
 
 {% include "partials/_nav_offcanvas.j2" %}
+<div class="modal fade"
+     id="modalRicercaArticolo"
+     tabindex="-1"
+     aria-labelledby="modalRicercaArticoloLabel"
+     aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"
+                    id="modalRicercaArticoloLabel">Ricerca per articolo</h5>
+                <button type="button"
+                        class="btn-close"
+                        data-bs-dismiss="modal"
+                        aria-label="Chiudi"></button>
+            </div>
+            <div class="modal-body ricerca-articolo-modal-body">
+                <div class="row g-1 align-items-end mb-3">
+                    <div class="col-md-4">
+                        <label for="ricerca-articolo-codart"
+                               class="form-label">Codice articolo</label>
+                        <input type="text"
+                               id="ricerca-articolo-codart"
+                               class="form-control"
+                               autocomplete="off"
+                               required>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="ricerca-articolo-variante"
+                               class="form-label">Variante</label>
+                        <input type="text"
+                               id="ricerca-articolo-variante"
+                               class="form-control"
+                               autocomplete="off">
+                    </div>
+                    <div class="col-md-3">
+                        <label for="ricerca-articolo-revisione"
+                               class="form-label">Revisione</label>
+                        <input type="text"
+                               id="ricerca-articolo-revisione"
+                               class="form-control"
+                               autocomplete="off">
+                    </div>
+                    <div class="col-md-2 d-flex gap-2">
+                        <button type="button"
+                                class="btn btn-primary w-100"
+                                id="btn-ricerca-articolo-cerca">Cerca
+                        </button>
+                        <button type="button"
+                                class="btn btn-outline-secondary w-100"
+                                id="btn-ricerca-articolo-reset">Reset
+                        </button>
+                    </div>
+                </div>
+
+                <div id="ricerca-articolo-feedback"
+                     class="alert d-none"
+                     role="alert"></div>
+
+                <div id="ricerca-articolo-loading"
+                     class="d-none mb-3">
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="spinner-border spinner-border-sm"
+                             role="status"
+                             aria-hidden="true"></div>
+                        <span>Ricerca in corso...</span>
+                    </div>
+                </div>
+
+                <div id="ricerca-articolo-results"
+                     class="d-none ricerca-articolo-results">
+                    <div class="row g-3">
+                        <div class="col-lg-5">
+                            <div class="card h-100">
+                                <div class="card-header">Dettaglio componente</div>
+                                <div class="card-body">
+                                    <table class="table table-sm mb-0">
+                                        <tbody>
+                                        <tr>
+                                            <th style="width: 180px;">CodArt</th>
+                                            <td id="ricerca-articolo-out-codart"></td>
+                                        </tr>
+                                        <tr>
+                                            <th>Variante</th>
+                                            <td id="ricerca-articolo-out-variante"></td>
+                                        </tr>
+                                        <tr>
+                                            <th>Revisione</th>
+                                            <td id="ricerca-articolo-out-revisione"></td>
+                                        </tr>
+                                        <tr>
+                                            <th>Descrizione</th>
+                                            <td id="ricerca-articolo-out-descrizione"></td>
+                                        </tr>
+                                        <tr>
+                                            <th>Giacenza totale</th>
+                                            <td id="ricerca-articolo-out-giacenza"></td>
+                                        </tr>
+                                        <tr>
+                                            <th>UdM</th>
+                                            <td id="ricerca-articolo-out-um"></td>
+                                        </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-lg-7">
+                            <div class="card h-100">
+                                <div class="card-header">Immagine componente</div>
+                                <div class="card-body ricerca-articolo-image-card-body d-flex justify-content-center align-items-center">
+                                    <div class="w-100 text-center">
+                                        <button type="button"
+                                                id="ricerca-articolo-image-open"
+                                                class="btn p-0 border-0 bg-transparent d-none"
+                                                title="Apri immagine a schermo intero"
+                                                aria-label="Apri immagine a schermo intero">
+                                            <img id="ricerca-articolo-image"
+                                                 class="img-fluid ricerca-articolo-image"
+                                                 alt="Immagine componente">
+                                        </button>
+
+                                        <div id="ricerca-articolo-image-placeholder"
+                                             class="border rounded p-5 text-muted">
+                                            Immagine non disponibile
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <hr>
+
+                    <h5 class="mb-3">Ordini attivi in distinta base</h5>
+
+                    <div id="ricerca-articolo-orders-message"
+                         class="alert alert-warning d-none"></div>
+
+                    <div class="table-responsive ricerca-articolo-table-wrap">
+                        <table class="table table-sm table-striped table-hover align-middle mb-0">
+                            <thead class="table-light">
+                            <tr>
+                                <th>Ordine</th>
+                                <th>Codice prodotto finito</th>
+                                <th>Variante</th>
+                                <th>Revisione</th>
+                                <th>Descrizione</th>
+                                <th>Stato</th>
+                                <th class="text-end">Quantità</th>
+                            </tr>
+                            </thead>
+                            <tbody id="ricerca-articolo-orders-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="modal fade"
+     id="modalRicercaArticoloImageFullscreen"
+     tabindex="-1"
+     aria-labelledby="modalRicercaArticoloImageFullscreenLabel"
+     aria-hidden="true">
+    <div class="modal-dialog modal-fullscreen">
+        <div class="modal-content bg-dark border-0">
+            <div class="modal-header bg-dark border-0">
+                <h5 class="modal-title text-white"
+                    id="modalRicercaArticoloImageFullscreenLabel">
+                    Immagine componente
+                </h5>
+                <button type="button"
+                        class="btn-close btn-close-white"
+                        data-bs-dismiss="modal"
+                        aria-label="Chiudi"></button>
+            </div>
+
+            <div class="modal-body d-flex justify-content-center align-items-center p-3">
+                <img id="ricerca-articolo-image-fullscreen"
+                     class="img-fluid"
+                     alt="Immagine componente a schermo intero"
+                     style="max-width: 100%; max-height: 100%; object-fit: contain;">
+            </div>
+        </div>
+    </div>
+</div>
 {% block content %}{% endblock %}
 {% block extra_js %}
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            const modalEl = document.getElementById("modalRicercaArticolo");
+            if (!modalEl) return;
+
+            const codArtEl = document.getElementById("ricerca-articolo-codart");
+            const varianteEl = document.getElementById("ricerca-articolo-variante");
+            const revisioneEl = document.getElementById("ricerca-articolo-revisione");
+            const btnCerca = document.getElementById("btn-ricerca-articolo-cerca");
+            const btnReset = document.getElementById("btn-ricerca-articolo-reset");
+
+            const feedbackEl = document.getElementById("ricerca-articolo-feedback");
+            const loadingEl = document.getElementById("ricerca-articolo-loading");
+            const resultsEl = document.getElementById("ricerca-articolo-results");
+
+            const outCodArt = document.getElementById("ricerca-articolo-out-codart");
+            const outVariante = document.getElementById("ricerca-articolo-out-variante");
+            const outRevisione = document.getElementById("ricerca-articolo-out-revisione");
+            const outDescrizione = document.getElementById("ricerca-articolo-out-descrizione");
+            const outGiacenza = document.getElementById("ricerca-articolo-out-giacenza");
+            const outUm = document.getElementById("ricerca-articolo-out-um");
+
+            const imageEl = document.getElementById("ricerca-articolo-image");
+            const imagePlaceholderEl = document.getElementById("ricerca-articolo-image-placeholder");
+            const imageOpenEl = document.getElementById("ricerca-articolo-image-open");
+            const fullscreenModalEl = document.getElementById("modalRicercaArticoloImageFullscreen");
+            const fullscreenImageEl = document.getElementById("ricerca-articolo-image-fullscreen");
+            const fullscreenModal = fullscreenModalEl
+                ? bootstrap.Modal.getOrCreateInstance(fullscreenModalEl)
+                : null;
+
+            const ordersMessageEl = document.getElementById("ricerca-articolo-orders-message");
+            const ordersBodyEl = document.getElementById("ricerca-articolo-orders-body");
+
+            function escapeHtml(value) {
+                return String(value || "")
+                    .replaceAll("&", "&amp;")
+                    .replaceAll("<", "&lt;")
+                    .replaceAll(">", "&gt;")
+                    .replaceAll('"', "&quot;")
+                    .replaceAll("'", "&#039;");
+            }
+
+            function resetResults() {
+                feedbackEl.className = "alert d-none";
+                feedbackEl.textContent = "";
+
+                loadingEl.classList.add("d-none");
+                resultsEl.classList.add("d-none");
+
+                outCodArt.textContent = "";
+                outVariante.textContent = "";
+                outRevisione.textContent = "";
+                outDescrizione.textContent = "";
+                outGiacenza.textContent = "";
+                outUm.textContent = "";
+
+                imageEl.src = "";
+                imageEl.classList.add("d-none");
+                imagePlaceholderEl.classList.remove("d-none");
+
+                if (imageOpenEl) {
+                    imageOpenEl.classList.add("d-none");
+                }
+                if (fullscreenImageEl) {
+                    fullscreenImageEl.src = "";
+                }
+
+                ordersMessageEl.textContent = "";
+                ordersMessageEl.classList.add("d-none");
+                ordersBodyEl.innerHTML = "";
+            }
+
+            function resetAll() {
+                codArtEl.value = "";
+                varianteEl.value = "";
+                revisioneEl.value = "";
+                resetResults();
+            }
+
+            function showFeedback(message, type = "warning") {
+                feedbackEl.className = `alert alert-${type}`;
+                feedbackEl.textContent = message || "";
+                if (!message) {
+                    feedbackEl.classList.add("d-none");
+                }
+            }
+
+            function renderOrders(rows, message) {
+                ordersBodyEl.innerHTML = "";
+
+                if (!rows || !rows.length) {
+                    ordersMessageEl.textContent = message || "Non sono presenti ordini attivi per questo componente.";
+                    ordersMessageEl.classList.remove("d-none");
+                    return;
+                }
+
+                ordersMessageEl.textContent = "";
+                ordersMessageEl.classList.add("d-none");
+
+                let html = "";
+                for (const row of rows) {
+                    html += `
+                    <tr>
+                        <td>${escapeHtml(row.Ordine)}</td>
+                        <td>${escapeHtml(row.CodArtProdotto)}</td>
+                        <td>${escapeHtml(row.VarianteProdotto)}</td>
+                        <td>${escapeHtml(row.IndiceModificaProdotto)}</td>
+                        <td>${escapeHtml(row.DescrizioneProdotto)}</td>
+                        <td>${escapeHtml(row.Stato)}</td>
+                        <td class="text-end">${escapeHtml(row.QuantitaComponente)}</td>
+                    </tr>
+                `;
+                }
+                ordersBodyEl.innerHTML = html;
+            }
+
+            async function eseguiRicerca() {
+                const codArt = (codArtEl.value || "").trim();
+                const variante = (varianteEl.value || "").trim();
+                const revisione = (revisioneEl.value || "").trim();
+
+                resetResults();
+
+                if (!codArt) {
+                    showFeedback("Codice articolo obbligatorio.", "warning");
+                    codArtEl.focus();
+                    return;
+                }
+
+                loadingEl.classList.remove("d-none");
+                btnCerca.disabled = true;
+                btnReset.disabled = true;
+
+                try {
+                    const resp = await fetch("/api/materiali/ricerca-articolo", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "X-Requested-With": "XMLHttpRequest"
+                        },
+                        credentials: "same-origin",
+                        body: JSON.stringify({
+                            cod_art: codArt,
+                            variante_art: variante,
+                            indice_modifica: revisione
+                        })
+                    });
+
+                    const data = await resp.json();
+
+                    loadingEl.classList.add("d-none");
+
+                    if (!resp.ok || data.ok === false) {
+                        showFeedback(data.error || "Errore durante la ricerca.", "danger");
+                        return;
+                    }
+
+                    if (!data.found_component) {
+                        showFeedback(
+                            data.message || "Il codice inserito è errato oppure non è presente a gestionale.",
+                            "warning"
+                        );
+                        return;
+                    }
+
+                    const component = data.component || {};
+                    const image = data.image || {};
+
+                    outCodArt.textContent = component.CodArt || "";
+                    outVariante.textContent = component.VarianteArt || "-";
+                    outRevisione.textContent = component.IndiceModifica || "-";
+                    outDescrizione.textContent = component.DesArt || "";
+                    outGiacenza.textContent = component.GiacenzaTotaleText || "0";
+                    outUm.textContent = component.TecniciUm || component.MagUM || "-";
+
+                    if (image.found && image.url) {
+                        imageEl.src = image.url;
+                        imageEl.classList.remove("d-none");
+                        imagePlaceholderEl.classList.add("d-none");
+
+                        if (imageOpenEl) {
+                            imageOpenEl.classList.remove("d-none");
+                        }
+                        if (fullscreenImageEl) {
+                            fullscreenImageEl.src = image.url;
+                        }
+                    } else {
+                        imageEl.src = "";
+                        imageEl.classList.add("d-none");
+                        imagePlaceholderEl.classList.remove("d-none");
+
+                        if (imageOpenEl) {
+                            imageOpenEl.classList.add("d-none");
+                        }
+                        if (fullscreenImageEl) {
+                            fullscreenImageEl.src = "";
+                        }
+                    }
+
+                    renderOrders(data.orders || [], data.orders_message || "");
+                    resultsEl.classList.remove("d-none");
+                } catch (err) {
+                    loadingEl.classList.add("d-none");
+                    showFeedback("Errore di comunicazione con il server.", "danger");
+                    console.error(err);
+                } finally {
+                    btnCerca.disabled = false;
+                    btnReset.disabled = false;
+                }
+            }
+
+            btnCerca.addEventListener("click", eseguiRicerca);
+            btnReset.addEventListener("click", resetAll);
+            if (imageOpenEl && fullscreenModal && fullscreenImageEl) {
+                imageOpenEl.addEventListener("click", function () {
+                    if (!fullscreenImageEl.src) return;
+                    fullscreenModal.show();
+                });
+            }
+
+            modalEl.addEventListener("hidden.bs.modal", function () {
+                resetAll();
+            });
+        });
+    </script>
     <script>
         document.addEventListener("DOMContentLoaded", () => {
             const allFilters = document.querySelectorAll(".js-table-filter");

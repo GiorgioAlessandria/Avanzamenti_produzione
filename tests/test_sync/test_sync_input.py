@@ -75,7 +75,10 @@ StatoOrdine = "APERTO"
 
 def test_init_populates_globals_and_ensure_init_calls_init(monkeypatch, mod_reset):
     cfg = {
-        "Percorsi": {"percorso_db": "test.sqlite"},
+        "Percorsi": {
+            "percorso_db": "test.sqlite",
+            "percorso_db_log": "log.sqlite",
+        },
         "sync_config": {
             "giorni_settimanali": [0, 1, 2, 3, 4],
             "ora_inizio": 8,
@@ -88,34 +91,57 @@ def test_init_populates_globals_and_ensure_init_calls_init(monkeypatch, mod_rese
         "Elementi_selezionati": {"StatoOrdine": "A"},
     }
     created = []
+    fk_enabled = []
 
     def fake_create_engine(url):
         created.append(url)
-        return f"ENGINE::{url}"
+        return SimpleNamespace(url=url)
 
-    monkeypatch.setattr(mod, "load_config", lambda path: cfg)
-    monkeypatch.setattr(mod, "create_engine", fake_create_engine)
+    monkeypatch.setattr(mod_reset, "load_config", lambda path: cfg)
+    monkeypatch.setattr(mod_reset, "create_engine", fake_create_engine)
+    monkeypatch.setattr(
+        mod_reset,
+        "_enable_sqlite_foreign_keys",
+        lambda engine: fk_enabled.append(engine),
+    )
 
-    mod.init("dummy.toml")
+    mod_reset.init("dummy.toml")
 
-    assert mod._INITIALIZED is True
-    assert mod.ALLOWED_WEEKDAYS == {0, 1, 2, 3, 4}
-    assert mod.START_H == 8
-    assert mod.END_H == 17
-    assert mod.POLL_SECONDS_DEFAULT == 7.0
-    assert mod.sqlite_engine_app == "ENGINE::sqlite:///test.sqlite"
+    assert mod_reset._INITIALIZED is True
+    assert mod_reset.ALLOWED_WEEKDAYS == {0, 1, 2, 3, 4}
+    assert mod_reset.START_H == 8
+    assert mod_reset.END_H == 17
+    assert mod_reset.TIMEZONE == "Europe/Rome"
+    assert mod_reset.POLL_SECONDS_DEFAULT == 7.0
+    assert mod_reset.ELEMENTI_ESCLUSI == {"CodArt": ["A"], "CodRisorsaProd": ["R9"]}
+    assert mod_reset.ELEMENTI_SELEZIONATI == {"StatoOrdine": "A"}
+
+    assert mod_reset.sqlite_engine_app.url == "sqlite:///test.sqlite"
+    assert mod_reset.sqlserver_engine_app.url.startswith(
+        "mssql+pyodbc:///?odbc_connect="
+    )
+    assert mod_reset.sqlite_engine_log.url == "sqlite:///log.sqlite"
+
+    assert [engine.url for engine in fk_enabled] == [
+        "sqlite:///test.sqlite",
+        "sqlite:///log.sqlite",
+    ]
     assert created[1].startswith("mssql+pyodbc:///?odbc_connect=")
 
     calls = []
-    mod._INITIALIZED = False
-    monkeypatch.setattr(mod, "init", lambda *a, **k: calls.append((a, k)))
-    mod.ensure_init()
+    mod_reset._INITIALIZED = False
+    monkeypatch.setattr(mod_reset, "init", lambda *a, **k: calls.append((a, k)))
+    mod_reset.ensure_init()
+
     assert len(calls) == 1
 
 
 def test_init_force_reinitializes_and_reuses_existing_sqlserver(monkeypatch, mod_reset):
     cfg = {
-        "Percorsi": {"percorso_db": "forced.sqlite"},
+        "Percorsi": {
+            "percorso_db": "forced.sqlite",
+            "percorso_db_log": "forced_log.sqlite",
+        },
         "sync_config": {
             "giorni_settimanali": [0, 1, 2, 3, 4],
             "ora_inizio": 6,
@@ -128,21 +154,38 @@ def test_init_force_reinitializes_and_reuses_existing_sqlserver(monkeypatch, mod
         "Elementi_selezionati": {"StatoOrdine": "APERTO"},
     }
     created = []
+    fk_enabled = []
 
     def fake_create_engine(url):
         created.append(url)
-        return f"ENGINE::{url}"
+        return SimpleNamespace(url=url)
 
-    mod._INITIALIZED = True
-    mod.sqlserver_engine_app = "EXISTING_SQLSERVER"
-    monkeypatch.setattr(mod, "load_config", lambda path: cfg)
-    monkeypatch.setattr(mod, "create_engine", fake_create_engine)
+    mod_reset._INITIALIZED = True
+    mod_reset.sqlite_engine_app = "OLD_SQLITE_APP"
+    mod_reset.sqlserver_engine_app = "OLD_SQLSERVER"
+    mod_reset.sqlite_engine_log = "OLD_SQLITE_LOG"
 
-    mod.init("dummy.toml", force=True)
+    monkeypatch.setattr(mod_reset, "load_config", lambda path: cfg)
+    monkeypatch.setattr(mod_reset, "create_engine", fake_create_engine)
+    monkeypatch.setattr(
+        mod_reset,
+        "_enable_sqlite_foreign_keys",
+        lambda engine: fk_enabled.append(engine),
+    )
 
-    assert mod.sqlite_engine_app == "ENGINE::sqlite:///forced.sqlite"
-    assert mod.sqlserver_engine_app == "EXISTING_SQLSERVER"
-    assert created == ["sqlite:///forced.sqlite"]
+    mod_reset.init("dummy.toml", force=True)
+
+    assert mod_reset._INITIALIZED is True
+    assert mod_reset.sqlite_engine_app.url == "sqlite:///forced.sqlite"
+    assert mod_reset.sqlserver_engine_app.url.startswith(
+        "mssql+pyodbc:///?odbc_connect="
+    )
+    assert mod_reset.sqlite_engine_log.url == "sqlite:///forced_log.sqlite"
+
+    assert [engine.url for engine in fk_enabled] == [
+        "sqlite:///forced.sqlite",
+        "sqlite:///forced_log.sqlite",
+    ]
 
 
 # ==================
@@ -257,13 +300,14 @@ def test_unione_fasi_componenti_adds_component_description(mod):
             "NumFase": [1],
             "CodArt": ["AA00-111-2222"],
             "Quantita": [3],
+            "VarianteArt": ["V1"],
         }
     )
     df_articoli = pd.DataFrame(
         {
             "CodArt": ["AA00-111-2222"],
             "DesArt": ["Componente"],
-            "MagUM": ["PZ"],
+            "TecniciUm": ["PZ"],
             "GestioneLotto": ["S"],
         }
     )
@@ -273,7 +317,9 @@ def test_unione_fasi_componenti_adds_component_description(mod):
     row = result.iloc[0].to_dict()
     assert row["IdRigacomponente"] == 99
     assert row["DesArt"] == "Componente"
-    assert row["MagUM"] == "PZ"
+    assert row["TecniciUm"] == "PZ"
+    assert row["GestioneLotto"] == "S"
+    assert row["VarianteArt"] == "V1"
 
 
 def test_generazione_lista_supports_single_and_multi_column(mod):
@@ -322,8 +368,9 @@ def test_generazione_dizionario_filters_fake_distinta_rows_and_sanitizes_nan(mod
             "DesArt": ["Comp", "Da scartare"],
             "Quantita": [2, 3],
             "NumFase": [1, 1],
-            "MagUM": ["PZ", "PZ"],
+            "TecniciUm": ["PZ", "PZ"],
             "GestioneLotto": [pd.NA, pd.NA],
+            "VarianteArt": ["V1", None],
         }
     )
 
@@ -336,8 +383,9 @@ def test_generazione_dizionario_filters_fake_distinta_rows_and_sanitizes_nan(mod
             "DesArt",
             "Quantita",
             "NumFase",
-            "MagUM",
+            "TecniciUm",
             "GestioneLotto",
+            "VarianteArt",
         ],
     )
 
@@ -348,8 +396,9 @@ def test_generazione_dizionario_filters_fake_distinta_rows_and_sanitizes_nan(mod
             "DesArt": "Comp",
             "Quantita": 2,
             "NumFase": 1,
-            "MagUM": "PZ",
+            "TecniciUm": "PZ",
             "GestioneLotto": None,
+            "VarianteArt": "V1",
         }
     ]
 
@@ -416,6 +465,7 @@ def test_inserimento_dati_fasi_in_odp_groups_phase_columns(mod):
             "DataInizioSched": ["2024-01-01", "2024-01-02"],
             "DataFineSched": ["2024-01-03", "2024-01-04"],
             "TempoPrevistoLavoraz": [10, 20],
+            "TempoAttrezzaggio": [5, 6],
         }
     )
 
@@ -426,6 +476,7 @@ def test_inserimento_dati_fasi_in_odp_groups_phase_columns(mod):
     assert json.loads(result.loc[0, "NumFase"]) == [1, 2]
     assert json.loads(result.loc[0, "CodLavorazione"]) == ["L1", "L2"]
     assert json.loads(result.loc[0, "TempoPrevistoLavoraz"]) == [10, 20]
+    assert json.loads(result.loc[0, "TempoAttrezzaggio"]) == [5, 6]
 
 
 def test_gestione_lotto_matricola_famiglia_and_macrofamiglia(mod):
@@ -438,6 +489,7 @@ def test_gestione_lotto_matricola_famiglia_and_macrofamiglia(mod):
             "CodFamiglia": ["F1"],
             "CodClassifTecnica": ["CT1"],
             "DesArt": ["Finito"],
+            "IndiceModifica": ["A"],
         }
     )
     df_famiglia = pd.DataFrame({"CodFamiglia": ["F1"], "CodMacrofamiglia": ["MF1"]})
@@ -453,6 +505,7 @@ def test_gestione_lotto_matricola_famiglia_and_macrofamiglia(mod):
             "CodFamiglia": "F1",
             "CodClassifTecnica": "CT1",
             "DesArt": "Finito",
+            "IndiceModifica": "A",
             "CodMacrofamiglia": "MF1",
         }
     ]
@@ -586,9 +639,12 @@ def test_build_runtime_seed_and_helpers(mod):
         {
             "IdDocumento": [1],
             "IdRiga": [10],
+            "RifRegistraz": ["RIF1"],
             "Quantita": [7],
             "CodLavorazione": ['["L1", "L2"]'],
             "CodRisorsaProd": ['["R1", "R2"]'],
+            "TempoAttrezzaggio": ["[15, 20]"],
+            "VarianteArt": ["V1"],
         }
     )
 
@@ -598,17 +654,24 @@ def test_build_runtime_seed_and_helpers(mod):
         {
             "IdDocumento": 1,
             "IdRiga": 10,
+            "RifRegistraz": "RIF1",
+            "Stato_odp": "Pianificata",
+            "Utente_operazione": "sync_input",
             "FaseAttiva": "1",
             "Note": None,
             "QtyDaLavorare": 7,
             "RisorsaAttiva": "R1",
             "LavorazioneAttiva": "L1",
+            "AttrezzaggioAttivo": 15,
+            "VarianteArt": "V1",
         }
     ]
+
     assert list(mod._chunked([1, 2, 3, 4, 5], 2)) == [[1, 2], [3, 4], [5]]
     assert mod.int_format("8") == 8
     assert mod.int_format("abc") == 0
     assert mod.estrai_lavorazione_attiva('["J1", "J2"]') == "J1"
+    assert mod.estrai_lavorazione_attiva("[15, 20]") == 15
     assert mod.estrai_lavorazione_attiva("[]") is None
     assert mod.estrai_lavorazione_attiva(3) is None
     assert mod.estrai_lavorazione_attiva(None) is None
@@ -639,187 +702,208 @@ def test_filtri_giacenza_lotti_keeps_positive_valid_rows(mod):
     ]
 
 
-def _make_minimal_view_mapping():
-    return {
-        "vwESOdP": pd.DataFrame(
-            {
-                "IdDocumento": ["1"],
-                "IdRiga": ["10"],
-                "RifRegistraz": ["RIF1"],
-                "CodArt": ["FG"],
-                "DesArt": ["Prodotto finito"],
-                "Quantita": [5],
-                "NumRegistraz": [1],
-                "DataRegistrazione": ["2024-01-01"],
-                "UnitaMisura": ["PZ"],
-                "QtaResidua": [5],
-                "CodMatricola": [None],
-                "StatoRiga": ["A"],
-                "CodMagPrincipale": ["MAG1"],
-                "StatoOrdine": ["APERTO"],
-                "CodTipoDoc": ["ODP"],
-                "DataInizioProduzione": ["2024-01-10"],
-            }
-        ),
-        "vwESOdPFasi": pd.DataFrame(
-            {
-                "IdDocumento": ["1"],
-                "IdRiga": ["10"],
-                "NumFase": [1],
-                "CodLavorazione": ["LAV1"],
-                "CodRisorsaProd": ["RIS1"],
-                "DataInizioSched": ["2024-01-01"],
-                "DataFineSched": ["2024-01-02"],
-                "TempoPrevistoLavoraz": [60],
-            }
-        ),
-        "vwESRisorse": pd.DataFrame(
-            {"CodRisorsaProd": ["RIS1"], "CodReparto": ["REP1"]}
-        ),
-        "vwESOdPComponenti": pd.DataFrame(
-            {
-                "IdDocumento": ["1"],
-                "IdRigaPadre": ["10"],
-                "IdRiga": ["99"],
-                "NumFase": [1],
-                "CodArt": ["BE00-037-0000"],
-                "Quantita": [2],
-            }
-        ),
-        "vwESArticoli": pd.DataFrame(
-            {
-                "CodArt": ["FG", "BE00-037-0000"],
-                "GestioneLotto": ["S", "N"],
-                "GestioneMatricola": ["N", "N"],
-                "CodFamiglia": ["F1", "F2"],
-                "CodClassifTecnica": ["CT1", "CT2"],
-                "DesArt": ["Prodotto finito", "Componente"],
-                "MagUM": ["PZ", "PZ"],
-            }
-        ),
-        "vwESFamiglia": pd.DataFrame(
-            {"CodFamiglia": ["F1"], "CodMacrofamiglia": ["MF1"]}
-        ),
-        "vwESGiacenzaLotti": pd.DataFrame(
-            {
-                "Giacenza": [4],
-                "RifLottoAlfa": ["12345678"],
-                "CodArt": ["BE00-037-0000"],
-            }
-        ),
-    }
+def test_elaborazione_dati_inserts_new_erp_runtime_lots_and_writes_logs(
+    monkeypatch, mod_reset, tmp_path
+):
+    mod_reset._INITIALIZED = True
+    mod_reset.sqlite_engine_app = _prepare_sync_sqlite_db(mod_reset, tmp_path)
+    mod_reset.sqlite_engine_log = object()
 
+    views = _make_base_views(lot_rows=True)
+    support_calls = []
+    log_calls = []
 
-def test_elaborazione_dati_inserts_runtime_lots_and_emits_events(monkeypatch, mod):
-    mod._INITIALIZED = True
-    mod.sqlite_engine_app = object()
+    monkeypatch.setattr(
+        mod_reset,
+        "_sync_rbac_support_tables",
+        lambda: support_calls.append(True) or {},
+    )
+    monkeypatch.setattr(
+        mod_reset,
+        "leggi_view",
+        lambda table, colonna_filtro_esclusi="", colonna_filtro_stato="": views[
+            table
+        ].copy(),
+    )
+    monkeypatch.setattr(mod_reset, "_fetch_blocked_outbox_pks", lambda engine: set())
+    monkeypatch.setattr(
+        mod_reset,
+        "_write_sync_logs",
+        lambda **kwargs: log_calls.append(kwargs),
+    )
 
-    def fake_leggi_view(table, colonna_filtro_esclusi="", colonna_filtro_stato=""):
-        return _make_minimal_view_mapping()[table].copy()
+    mod_reset.elaborazione_dati(session=object())
 
-    writes = []
+    count_odp = pd.read_sql(
+        "SELECT COUNT(*) AS n FROM input_odp", mod_reset.sqlite_engine_app
+    )
+    count_runtime = pd.read_sql(
+        "SELECT COUNT(*) AS n FROM input_odp_runtime", mod_reset.sqlite_engine_app
+    )
+    count_lotti = pd.read_sql(
+        "SELECT COUNT(*) AS n FROM giacenza_lotti", mod_reset.sqlite_engine_app
+    )
 
-    def fake_to_sql(self, name, con, if_exists, index, method):
-        writes.append((name, self.copy()))
-        return len(self)
-
-    fetch_calls = []
-
-    def fake_fetch_existing(
-        engine, pk_tuples, pk_cols=("IdDocumento", "IdRiga"), table_name="input_odp"
-    ):
-        fetch_calls.append(table_name)
-        return set()
-
-    events = []
-    monkeypatch.setattr(mod, "leggi_view", fake_leggi_view)
-    monkeypatch.setattr(pd.DataFrame, "to_sql", fake_to_sql, raising=False)
-    monkeypatch.setattr(mod, "_fetch_existing_pks", fake_fetch_existing)
-    monkeypatch.setattr(mod, "_update_rows_by_pk", lambda *a, **k: 0)
-    monkeypatch.setattr(mod, "emit_event", lambda **kwargs: events.append(kwargs))
-
-    mod.elaborazione_dati(session=object())
-
-    written_names = [name for name, _ in writes]
-    assert written_names == ["input_odp", "input_odp_runtime", "giacenza_lotti"]
-    assert fetch_calls == ["input_odp", "input_odp_runtime"]
-    assert events[0]["topic"] == "nuovo_ciclo"
-    assert events[1]["topic"] == "nuovo_ordine"
-    assert json.loads(events[1]["payload_json"]) == ["1,10"]
-    assert json.loads(events[1]["scope"]) == ['["REP1"]']
-    assert events[2]["topic"] == "nuovo_ordine"
-    assert mod.nuovo_ciclo == 1
-
-
-def test_elaborazione_dati_updates_existing_rows_without_new_events(monkeypatch, mod):
-    mod._INITIALIZED = True
-    mod.sqlite_engine_app = object()
-    mod.nuovo_ciclo = 1
-
-    def fake_leggi_view(table, colonna_filtro_esclusi="", colonna_filtro_stato=""):
-        mapping = _make_minimal_view_mapping()
-        mapping["vwESGiacenzaLotti"] = pd.DataFrame(
-            {"Giacenza": [0], "RifLottoAlfa": ["BAD"], "CodArt": ["BAD"]}
+    runtime_row = (
+        pd.read_sql(
+            "SELECT * FROM input_odp_runtime",
+            mod_reset.sqlite_engine_app,
         )
-        return mapping[table].copy()
-
-    writes = []
-    updates = []
-    events = []
-
-    monkeypatch.setattr(mod, "leggi_view", fake_leggi_view)
-    monkeypatch.setattr(
-        pd.DataFrame,
-        "to_sql",
-        lambda self, *a, **k: writes.append(k.get("name") or a[0]),
-        raising=False,
+        .iloc[0]
+        .to_dict()
     )
 
-    def fake_fetch_existing(
-        engine, pk_tuples, pk_cols=("IdDocumento", "IdRiga"), table_name="input_odp"
-    ):
-        return {("1", "10")}
+    assert support_calls == [True]
+    assert int(count_odp.iloc[0]["n"]) == 1
+    assert int(count_runtime.iloc[0]["n"]) == 1
+    assert int(count_lotti.iloc[0]["n"]) == 1
 
-    monkeypatch.setattr(mod, "_fetch_existing_pks", fake_fetch_existing)
-    monkeypatch.setattr(
-        mod, "_update_rows_by_pk", lambda *a, **k: updates.append(k) or 1
+    assert runtime_row["IdDocumento"] == "1"
+    assert runtime_row["IdRiga"] == "10"
+    assert runtime_row["RifRegistraz"] == "RIF1"
+    assert runtime_row["Stato_odp"] == "Pianificata"
+    assert runtime_row["FaseAttiva"] == "1"
+    assert runtime_row["RisorsaAttiva"] == "RIS1"
+    assert runtime_row["LavorazioneAttiva"] == "LAV1"
+    assert int(runtime_row["AttrezzaggioAttivo"]) == 15
+    assert runtime_row["VarianteArt"] == "VFG"
+
+    assert len(log_calls) == 1
+    assert len(log_calls[0]["df_new_erp"]) == 1
+    assert len(log_calls[0]["df_new_runtime"]) == 1
+
+
+def test_elaborazione_dati_updates_existing_erp_inserts_missing_runtime_without_logs(
+    monkeypatch, mod_reset, tmp_path
+):
+    mod_reset._INITIALIZED = True
+    mod_reset.sqlite_engine_app = _prepare_sync_sqlite_db(mod_reset, tmp_path)
+    mod_reset.sqlite_engine_log = object()
+
+    existing_odp = pd.DataFrame(
+        [
+            _blank_row(
+                mod_reset.INPUT_ODP_ERP_COLS,
+                IdDocumento="1",
+                IdRiga="10",
+                RifRegistraz="OLD",
+                CodArt="OLD_ART",
+            )
+        ]
     )
-    monkeypatch.setattr(mod, "emit_event", lambda **kwargs: events.append(kwargs))
+    existing_odp.to_sql(
+        "input_odp",
+        mod_reset.sqlite_engine_app,
+        index=False,
+        if_exists="append",
+    )
 
-    mod.elaborazione_dati(session=object())
+    views = _make_base_views(lot_rows=True)
+    update_calls = []
+    log_calls = []
 
-    assert writes == []
-    assert len(updates) == 1
-    assert updates[0]["table_name"] == "input_odp"
-    assert events == []
+    real_update = mod_reset._update_rows_by_pk
+
+    def spy_update(*args, **kwargs):
+        update_calls.append(kwargs)
+        return real_update(*args, **kwargs)
+
+    monkeypatch.setattr(mod_reset, "_sync_rbac_support_tables", lambda: {})
+    monkeypatch.setattr(
+        mod_reset,
+        "leggi_view",
+        lambda table, colonna_filtro_esclusi="", colonna_filtro_stato="": views[
+            table
+        ].copy(),
+    )
+    monkeypatch.setattr(mod_reset, "_fetch_blocked_outbox_pks", lambda engine: set())
+    monkeypatch.setattr(
+        mod_reset, "_write_sync_logs", lambda **kwargs: log_calls.append(kwargs)
+    )
+    monkeypatch.setattr(mod_reset, "_update_rows_by_pk", spy_update)
+
+    mod_reset.elaborazione_dati(session=object())
+
+    count_odp = pd.read_sql(
+        "SELECT COUNT(*) AS n FROM input_odp", mod_reset.sqlite_engine_app
+    )
+    count_runtime = pd.read_sql(
+        "SELECT COUNT(*) AS n FROM input_odp_runtime", mod_reset.sqlite_engine_app
+    )
+
+    odp_row = (
+        pd.read_sql(
+            "SELECT * FROM input_odp",
+            mod_reset.sqlite_engine_app,
+        )
+        .iloc[0]
+        .to_dict()
+    )
+
+    runtime_row = (
+        pd.read_sql(
+            "SELECT * FROM input_odp_runtime",
+            mod_reset.sqlite_engine_app,
+        )
+        .iloc[0]
+        .to_dict()
+    )
+
+    assert int(count_odp.iloc[0]["n"]) == 1
+    assert int(count_runtime.iloc[0]["n"]) == 1
+
+    assert any(call["table_name"] == "input_odp" for call in update_calls)
+    assert log_calls == []
+
+    assert odp_row["RifRegistraz"] == "RIF1"
+    assert odp_row["CodArt"] == "FG"
+    assert runtime_row["RifRegistraz"] == "RIF1"
+    assert runtime_row["Stato_odp"] == "Pianificata"
 
 
-def test_elaborazione_dati_integrity_error_skips_new_order_event(monkeypatch, mod):
-    mod._INITIALIZED = True
-    mod.sqlite_engine_app = object()
-    mod.nuovo_ciclo = 0
+def test_elaborazione_dati_skips_blocked_outbox_pks_but_still_syncs_lots(
+    monkeypatch, mod_reset, tmp_path
+):
+    mod_reset._INITIALIZED = True
+    mod_reset.sqlite_engine_app = _prepare_sync_sqlite_db(mod_reset, tmp_path)
+    mod_reset.sqlite_engine_log = object()
 
-    def fake_leggi_view(table, colonna_filtro_esclusi="", colonna_filtro_stato=""):
-        return _make_minimal_view_mapping()[table].copy()
+    views = _make_base_views(lot_rows=True)
+    log_calls = []
 
-    events = []
+    monkeypatch.setattr(mod_reset, "_sync_rbac_support_tables", lambda: {})
+    monkeypatch.setattr(
+        mod_reset,
+        "leggi_view",
+        lambda table, colonna_filtro_esclusi="", colonna_filtro_stato="": views[
+            table
+        ].copy(),
+    )
+    monkeypatch.setattr(
+        mod_reset,
+        "_fetch_blocked_outbox_pks",
+        lambda engine: {("1", "10")},
+    )
+    monkeypatch.setattr(
+        mod_reset, "_write_sync_logs", lambda **kwargs: log_calls.append(kwargs)
+    )
 
-    def fake_to_sql(self, name, con, if_exists, index, method):
-        if name == "input_odp":
-            raise sq.IntegrityError("insert failed")
-        return len(self)
+    mod_reset.elaborazione_dati(session=object())
 
-    monkeypatch.setattr(mod, "leggi_view", fake_leggi_view)
-    monkeypatch.setattr(pd.DataFrame, "to_sql", fake_to_sql, raising=False)
-    monkeypatch.setattr(mod, "_fetch_existing_pks", lambda *a, **k: set())
-    monkeypatch.setattr(mod, "_update_rows_by_pk", lambda *a, **k: 0)
-    monkeypatch.setattr(mod, "emit_event", lambda **kwargs: events.append(kwargs))
+    count_odp = pd.read_sql(
+        "SELECT COUNT(*) AS n FROM input_odp", mod_reset.sqlite_engine_app
+    )
+    count_runtime = pd.read_sql(
+        "SELECT COUNT(*) AS n FROM input_odp_runtime", mod_reset.sqlite_engine_app
+    )
+    count_lotti = pd.read_sql(
+        "SELECT COUNT(*) AS n FROM giacenza_lotti", mod_reset.sqlite_engine_app
+    )
 
-    mod.elaborazione_dati(session=object())
-
-    assert len(events) == 1
-    assert events[0]["topic"] == "nuovo_ciclo"
-    assert not any(e["topic"] == "nuovo_ordine" for e in events)
+    assert int(count_odp.iloc[0]["n"]) == 0
+    assert int(count_runtime.iloc[0]["n"]) == 0
+    assert int(count_lotti.iloc[0]["n"]) == 1
+    assert log_calls == []
 
 
 # ==================
@@ -883,36 +967,6 @@ def test_wait_if_not_allowed_sleeps_only_when_needed(monkeypatch, mod):
     assert slept == []
 
 
-def test_emit_event_commit_and_rollback(mod):
-    class FakeSession:
-        def __init__(self, fail=False):
-            self.fail = fail
-            self.added = []
-            self.committed = 0
-            self.rolled_back = 0
-
-        def add(self, obj):
-            self.added.append(obj)
-            if self.fail:
-                raise RuntimeError("boom")
-
-        def commit(self):
-            self.committed += 1
-
-        def rollback(self):
-            self.rolled_back += 1
-
-    ok = FakeSession()
-    mod.emit_event(ok, topic="nuovo_ordine", scope="REP1", payload_json="[]")
-    assert ok.committed == 1
-    assert ok.added[0].topic == "nuovo_ordine"
-
-    ko = FakeSession(fail=True)
-    with pytest.raises(RuntimeError):
-        mod.emit_event(ko, topic="errore")
-    assert ko.rolled_back == 1
-
-
 def test_read_cycle_runs_two_iterations(monkeypatch, mod):
     mod._INITIALIZED = True
     mod.sqlite_engine_app = object()
@@ -920,7 +974,6 @@ def test_read_cycle_runs_two_iterations(monkeypatch, mod):
     mod.END_H = 17
     mod.ALLOWED_WEEKDAYS = {0, 1, 2, 3, 4}
     mod.POLL_SECONDS_DEFAULT = 5
-
     events = []
 
     class FakeSessionCtx:
@@ -940,8 +993,14 @@ def test_read_cycle_runs_two_iterations(monkeypatch, mod):
 
     sleep_calls = []
     times = iter([0.0, 1.0, 10.0, 12.0])
+
+    def fake_sleep(seconds):
+        sleep_calls.append(seconds)
+        if len(sleep_calls) >= 2:
+            raise KeyboardInterrupt()
+
     monkeypatch.setattr(mod.time_mod, "time", lambda: next(times))
-    monkeypatch.setattr(mod.time_mod, "sleep", lambda s: sleep_calls.append(s))
+    monkeypatch.setattr(mod.time_mod, "sleep", fake_sleep)
 
     mod.read_cycle()
 
@@ -976,8 +1035,14 @@ def test_read_cycle_continues_when_elaborazione_raises(monkeypatch, mod):
 
     sleep_calls = []
     times = iter([0.0, 0.5, 10.0, 10.5])
+
+    def fake_sleep(seconds):
+        sleep_calls.append(seconds)
+        if len(sleep_calls) >= 2:
+            raise KeyboardInterrupt()
+
     monkeypatch.setattr(mod.time_mod, "time", lambda: next(times))
-    monkeypatch.setattr(mod.time_mod, "sleep", lambda s: sleep_calls.append(s))
+    monkeypatch.setattr(mod.time_mod, "sleep", fake_sleep)
 
     mod.read_cycle()
 
@@ -990,20 +1055,22 @@ def test_read_cycle_continues_when_elaborazione_raises(monkeypatch, mod):
 # -----------------------------------------------------------------------------
 
 
-def _make_base_views(*, lot_rows: bool = True) -> dict[str, pd.DataFrame]:
+def _make_sync_views(*, lot_rows: bool = True) -> dict[str, pd.DataFrame]:
     lots = pd.DataFrame(
         {
-            "Giacenza": [4],
-            "RifLottoAlfa": ["12345678"],
             "CodArt": ["BE00-037-0000"],
+            "RifLottoAlfa": ["12345678"],
+            "CodMag": ["MAG1"],
+            "Giacenza": [4],
         }
     )
     if not lot_rows:
         lots = pd.DataFrame(
             {
-                "Giacenza": [],
-                "RifLottoAlfa": [],
                 "CodArt": [],
+                "RifLottoAlfa": [],
+                "CodMag": [],
+                "Giacenza": [],
             }
         )
 
@@ -1013,6 +1080,7 @@ def _make_base_views(*, lot_rows: bool = True) -> dict[str, pd.DataFrame]:
                 "IdDocumento": ["1"],
                 "IdRiga": ["10"],
                 "RifRegistraz": ["RIF1"],
+                "NumProgrRiga": [1],
                 "CodArt": ["FG"],
                 "DesArt": ["Prodotto finito"],
                 "Quantita": [5],
@@ -1026,6 +1094,7 @@ def _make_base_views(*, lot_rows: bool = True) -> dict[str, pd.DataFrame]:
                 "StatoOrdine": ["APERTO"],
                 "CodTipoDoc": ["ODP"],
                 "DataInizioProduzione": ["2024-01-10"],
+                "VarianteArt": ["VFG"],
             }
         ),
         "vwESOdPFasi": pd.DataFrame(
@@ -1035,13 +1104,18 @@ def _make_base_views(*, lot_rows: bool = True) -> dict[str, pd.DataFrame]:
                 "NumFase": [1],
                 "CodLavorazione": ["LAV1"],
                 "CodRisorsaProd": ["RIS1"],
-                "DataInizioSched": ["2024-01-01"],
-                "DataFineSched": ["2024-01-02"],
+                "DataInizioSched": ["2024-01-01 08:00:00"],
+                "DataFineSched": ["2024-01-01 09:00:00"],
                 "TempoPrevistoLavoraz": [60],
+                "TempoAttrezzaggio": [15],
             }
         ),
         "vwESRisorse": pd.DataFrame(
-            {"CodRisorsaProd": ["RIS1"], "CodReparto": ["REP1"]}
+            {
+                "CodRisorsaProd": ["RIS1"],
+                "CodReparto": ["REP1"],
+                "DesRisorsaProd": ["Risorsa 1"],
+            }
         ),
         "vwESOdPComponenti": pd.DataFrame(
             {
@@ -1051,6 +1125,7 @@ def _make_base_views(*, lot_rows: bool = True) -> dict[str, pd.DataFrame]:
                 "NumFase": [1],
                 "CodArt": ["BE00-037-0000"],
                 "Quantita": [2],
+                "VarianteArt": ["VC1"],
             }
         ),
         "vwESArticoli": pd.DataFrame(
@@ -1061,14 +1136,86 @@ def _make_base_views(*, lot_rows: bool = True) -> dict[str, pd.DataFrame]:
                 "CodFamiglia": ["F1", "F2"],
                 "CodClassifTecnica": ["CT1", "CT2"],
                 "DesArt": ["Prodotto finito", "Componente"],
-                "MagUM": ["PZ", "PZ"],
+                "TecniciUm": ["PZ", "PZ"],
+                "IndiceModifica": ["A", "B"],
             }
         ),
         "vwESFamiglia": pd.DataFrame(
-            {"CodFamiglia": ["F1"], "CodMacrofamiglia": ["MF1"]}
+            {
+                "CodFamiglia": ["F1"],
+                "CodMacrofamiglia": ["MF1"],
+                "Des": ["Famiglia 1"],
+            }
+        ),
+        "vwESCausaliAttivita": pd.DataFrame(
+            {
+                "CausaleAttivita": ["CA1"],
+                "DesCausaleAttivita": ["Causale 1"],
+                "CodCategoriaAttivita": ["CAT1"],
+                "TipoCausale": ["STD"],
+            }
+        ),
+        "vwESLavorazioni": pd.DataFrame(
+            {
+                "CodLavorazione": ["LAV1"],
+                "DesLavorazione": ["Lavorazione 1"],
+            }
+        ),
+        "vwESMacroFamiglia": pd.DataFrame(
+            {
+                "CodMacrofamiglia": ["MF1"],
+                "Des": ["Macrofamiglia 1"],
+            }
+        ),
+        "vwESMagazzini": pd.DataFrame(
+            {
+                "CodMag": ["MAG1"],
+                "DesMagazzino": ["Magazzino 1"],
+            }
+        ),
+        "vwESReparti": pd.DataFrame(
+            {
+                "CodReparto": ["REP1"],
+                "Des": ["Reparto 1"],
+            }
         ),
         "vwESGiacenzaLotti": lots,
     }
+
+
+def _make_base_views(*, lot_rows: bool = True) -> dict[str, pd.DataFrame]:
+    return _make_sync_views(lot_rows=lot_rows)
+
+
+def _prepare_sync_sqlite_db(mod, tmp_path):
+    engine = sa.create_engine(f"sqlite:///{tmp_path / 'sync_input_test.sqlite'}")
+
+    pd.DataFrame(columns=mod.INPUT_ODP_ERP_COLS).to_sql(
+        "input_odp",
+        engine,
+        index=False,
+        if_exists="replace",
+    )
+    pd.DataFrame(columns=mod.INPUT_ODP_RUNTIME_COLS).to_sql(
+        "input_odp_runtime",
+        engine,
+        index=False,
+        if_exists="replace",
+    )
+    pd.DataFrame(columns=[*mod.LOTTI_PK_COLS, "Giacenza"]).to_sql(
+        "giacenza_lotti",
+        engine,
+        index=False,
+        if_exists="replace",
+    )
+
+    return engine
+
+
+def _blank_row(columns, **values):
+    row = {col: None for col in columns}
+    row.update(values)
+    return row
 
 
 # -----------------------------------------------------------------------------
@@ -1086,9 +1233,12 @@ def test_build_runtime_seed_handles_null_phase_values(mod):
         {
             "IdDocumento": [1],
             "IdRiga": [10],
+            "RifRegistraz": ["RIF1"],
             "Quantita": [7],
             "CodLavorazione": [None],
             "CodRisorsaProd": [None],
+            "TempoAttrezzaggio": [None],
+            "VarianteArt": [None],
         }
     )
 
@@ -1098,11 +1248,16 @@ def test_build_runtime_seed_handles_null_phase_values(mod):
         {
             "IdDocumento": 1,
             "IdRiga": 10,
+            "RifRegistraz": "RIF1",
+            "Stato_odp": "Pianificata",
+            "Utente_operazione": "sync_input",
             "FaseAttiva": "1",
             "Note": None,
             "QtyDaLavorare": 7,
             "RisorsaAttiva": None,
             "LavorazioneAttiva": None,
+            "AttrezzaggioAttivo": None,
+            "VarianteArt": None,
         }
     ]
 
@@ -1112,132 +1267,17 @@ def test_build_runtime_seed_raises_on_non_json_phase_strings(mod):
         {
             "IdDocumento": [1],
             "IdRiga": [10],
+            "RifRegistraz": ["RIF1"],
             "Quantita": [7],
             "CodLavorazione": ["LAV1"],
-            "CodRisorsaProd": ["RIS1"],
+            "CodRisorsaProd": ['["RIS1"]'],
+            "TempoAttrezzaggio": ["[10]"],
+            "VarianteArt": ["V1"],
         }
     )
 
     with pytest.raises(json.JSONDecodeError):
         mod._build_runtime_seed(df_input)
-
-
-def test_elaborazione_dati_with_empty_lots_does_not_write_giacenza_table(
-    monkeypatch, mod
-):
-    mod._INITIALIZED = True
-    mod.sqlite_engine_app = object()
-    mod.nuovo_ciclo = 1
-
-    views = _make_base_views(lot_rows=False)
-
-    def fake_leggi_view(table, colonna_filtro_esclusi="", colonna_filtro_stato=""):
-        return views[table].copy()
-
-    writes = []
-    events = []
-
-    def fake_to_sql(self, name, con, if_exists, index, method):
-        writes.append((name, self.copy()))
-        return len(self)
-
-    monkeypatch.setattr(mod, "leggi_view", fake_leggi_view)
-    monkeypatch.setattr(pd.DataFrame, "to_sql", fake_to_sql, raising=False)
-    monkeypatch.setattr(mod, "_fetch_existing_pks", lambda *a, **k: set())
-    monkeypatch.setattr(mod, "_update_rows_by_pk", lambda *a, **k: 0)
-    monkeypatch.setattr(mod, "emit_event", lambda **kwargs: events.append(kwargs))
-
-    mod.elaborazione_dati(session=object())
-
-    written_names = [name for name, _ in writes]
-    assert written_names == ["input_odp", "input_odp_runtime"]
-    assert "giacenza_lotti" not in written_names
-    assert [e["topic"] for e in events] == ["nuovo_ordine", "nuovo_ordine"]
-
-
-def test_elaborazione_dati_existing_erp_missing_runtime_inserts_runtime_and_updates_erp(
-    monkeypatch, mod
-):
-    mod._INITIALIZED = True
-    mod.sqlite_engine_app = object()
-    mod.nuovo_ciclo = 1
-
-    views = _make_base_views(lot_rows=False)
-
-    def fake_leggi_view(table, colonna_filtro_esclusi="", colonna_filtro_stato=""):
-        return views[table].copy()
-
-    writes = []
-    update_calls = []
-    events = []
-
-    def fake_to_sql(self, name, con, if_exists, index, method):
-        writes.append((name, self.copy()))
-        return len(self)
-
-    def fake_fetch_existing(
-        engine, pk_tuples, pk_cols=("IdDocumento", "IdRiga"), table_name="input_odp"
-    ):
-        if table_name == "input_odp":
-            return {("1", "10")}
-        if table_name == "input_odp_runtime":
-            return set()
-        return set()
-
-    def fake_update_rows_by_pk(*args, **kwargs):
-        update_calls.append(kwargs)
-        return 1
-
-    monkeypatch.setattr(mod, "leggi_view", fake_leggi_view)
-    monkeypatch.setattr(pd.DataFrame, "to_sql", fake_to_sql, raising=False)
-    monkeypatch.setattr(mod, "_fetch_existing_pks", fake_fetch_existing)
-    monkeypatch.setattr(mod, "_update_rows_by_pk", fake_update_rows_by_pk)
-    monkeypatch.setattr(mod, "emit_event", lambda **kwargs: events.append(kwargs))
-
-    mod.elaborazione_dati(session=object())
-
-    written_names = [name for name, _ in writes]
-    assert written_names == ["input_odp_runtime"]
-    assert len(update_calls) == 1
-    assert update_calls[0]["table_name"] == "input_odp"
-    assert [e["topic"] for e in events] == []
-
-
-def test_elaborazione_dati_emits_two_new_order_events_with_expected_payloads(
-    monkeypatch, mod
-):
-    mod._INITIALIZED = True
-    mod.sqlite_engine_app = object()
-    mod.nuovo_ciclo = 1
-
-    views = _make_base_views(lot_rows=False)
-
-    def fake_leggi_view(table, colonna_filtro_esclusi="", colonna_filtro_stato=""):
-        return views[table].copy()
-
-    events = []
-
-    monkeypatch.setattr(mod, "leggi_view", fake_leggi_view)
-    monkeypatch.setattr(
-        pd.DataFrame,
-        "to_sql",
-        lambda self, name, con, if_exists, index, method: len(self),
-        raising=False,
-    )
-    monkeypatch.setattr(mod, "_fetch_existing_pks", lambda *a, **k: set())
-    monkeypatch.setattr(mod, "_update_rows_by_pk", lambda *a, **k: 0)
-    monkeypatch.setattr(mod, "emit_event", lambda **kwargs: events.append(kwargs))
-
-    mod.elaborazione_dati(session=object())
-
-    nuovo_ordine_events = [e for e in events if e["topic"] == "nuovo_ordine"]
-    assert len(nuovo_ordine_events) == 2
-    assert json.loads(nuovo_ordine_events[0]["payload_json"]) == ["1,10"]
-    assert json.loads(nuovo_ordine_events[0]["scope"]) == ['["REP1"]']
-
-    # Il secondo evento non espone scope/payload_json: le chiavi mancano proprio.
-    assert "scope" not in nuovo_ordine_events[1]
-    assert "payload_json" not in nuovo_ordine_events[1]
 
 
 def test_seconds_until_next_allowed_normalizes_non_positive_step(monkeypatch, mod):
@@ -1351,6 +1391,7 @@ def test_inserimento_dati_fasi_in_odp_leaves_nan_for_orders_without_phases(mod):
             "DataInizioSched": ["2024-01-01 08:00:00"],
             "DataFineSched": ["2024-01-01 09:00:00"],
             "TempoPrevistoLavoraz": [60],
+            "TempoAttrezzaggio": [15],
         }
     )
 
@@ -1365,6 +1406,78 @@ def test_inserimento_dati_fasi_in_odp_leaves_nan_for_orders_without_phases(mod):
 
     assert json.loads(row_with_phase["NumFase"]) == [1]
     assert json.loads(row_with_phase["CodLavorazione"]) == ["LAV1"]
+    assert json.loads(row_with_phase["TempoAttrezzaggio"]) == [15]
     assert pd.isna(row_without_phase["NumFase"])
     assert pd.isna(row_without_phase["CodLavorazione"])
     assert pd.isna(row_without_phase["CodReparto"])
+    assert pd.isna(row_without_phase["TempoAttrezzaggio"])
+
+
+def test_elaborazione_dati_with_empty_lots_inserts_erp_runtime_but_not_giacenza(
+    monkeypatch, mod_reset, tmp_path
+):
+    mod_reset._INITIALIZED = True
+    mod_reset.sqlite_engine_app = _prepare_sync_sqlite_db(mod_reset, tmp_path)
+    mod_reset.sqlite_engine_log = object()
+
+    views = _make_base_views(lot_rows=False)
+    support_calls = []
+    log_calls = []
+
+    monkeypatch.setattr(
+        mod_reset,
+        "_sync_rbac_support_tables",
+        lambda: support_calls.append(True) or {},
+    )
+    monkeypatch.setattr(
+        mod_reset,
+        "leggi_view",
+        lambda table, colonna_filtro_esclusi="", colonna_filtro_stato="": views[
+            table
+        ].copy(),
+    )
+    monkeypatch.setattr(mod_reset, "_fetch_blocked_outbox_pks", lambda engine: set())
+    monkeypatch.setattr(
+        mod_reset,
+        "_write_sync_logs",
+        lambda **kwargs: log_calls.append(kwargs),
+    )
+
+    mod_reset.elaborazione_dati(session=object())
+
+    count_odp = pd.read_sql(
+        "SELECT COUNT(*) AS n FROM input_odp",
+        mod_reset.sqlite_engine_app,
+    )
+    count_runtime = pd.read_sql(
+        "SELECT COUNT(*) AS n FROM input_odp_runtime",
+        mod_reset.sqlite_engine_app,
+    )
+    count_lotti = pd.read_sql(
+        "SELECT COUNT(*) AS n FROM giacenza_lotti",
+        mod_reset.sqlite_engine_app,
+    )
+
+    runtime_row = (
+        pd.read_sql(
+            "SELECT * FROM input_odp_runtime",
+            mod_reset.sqlite_engine_app,
+        )
+        .iloc[0]
+        .to_dict()
+    )
+
+    assert support_calls == [True]
+    assert int(count_odp.iloc[0]["n"]) == 1
+    assert int(count_runtime.iloc[0]["n"]) == 1
+    assert int(count_lotti.iloc[0]["n"]) == 0
+
+    assert runtime_row["IdDocumento"] == "1"
+    assert runtime_row["IdRiga"] == "10"
+    assert runtime_row["RifRegistraz"] == "RIF1"
+    assert runtime_row["Stato_odp"] == "Pianificata"
+    assert int(runtime_row["QtyDaLavorare"]) == 5
+
+    assert len(log_calls) == 1
+    assert len(log_calls[0]["df_new_erp"]) == 1
+    assert len(log_calls[0]["df_new_runtime"]) == 1
