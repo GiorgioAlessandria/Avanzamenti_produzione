@@ -120,7 +120,6 @@ def txt_generator(export_rows: list[dict]) -> list[str]:
 
     q_ok = _to_decimal(payload["quantita_ok"])
     q_ko = _to_decimal(payload["quantita_ko"])
-    q_lavorata = q_ok + q_ko
     tempo_funzionamento = _to_decimal(payload["tempo_funzionamento"])
 
     distinta_base = _load_distinta_base(payload.get("distinta_base"))
@@ -139,12 +138,6 @@ def txt_generator(export_rows: list[dict]) -> list[str]:
     )
     lines.append(head_line)
 
-    ore_per_pezzo = Decimal("0")
-    if q_lavorata > 0:
-        ore_per_pezzo = (tempo_funzionamento / q_lavorata).quantize(
-            Decimal("0.01"),
-            rounding=ROUND_HALF_UP,
-        )
     product_line = row_writer(
         tipo_record="RIG",
         tipo_documento=710,
