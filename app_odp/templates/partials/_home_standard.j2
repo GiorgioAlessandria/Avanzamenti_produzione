@@ -763,7 +763,7 @@
         function normalizeRevision(rev) {
             const value = normalizeCode(rev);
 
-            if (!value || value === "X" || value === "-") {
+            if (!value || value === "X" || value === "-" || value === "NONE" || value === "NULL") {
                 return "";
             }
 
