@@ -782,22 +782,6 @@
             return parsed.filter(item => item && typeof item === "object");
         }
 
-        function validateDistintaToast1() {
-            const raw = document.getElementById("toast1-distinta")?.value || "";
-            const distinta = parseDistintaToast1(raw);
-
-            if (distinta.length > 0) {
-                return true;
-            }
-
-            alert(
-                "Ordine bloccato: distinta materiale assente. " +
-                "Impossibile prendere in carico l'ordine perché il materiale " +
-                "non verrebbe scaricato a stock."
-            );
-            return false;
-        }
-
         function normalizeValue(value) {
             return String(value ?? "")
                 .trim()
@@ -1025,12 +1009,12 @@
         const idDocumentoPrincipale = document.getElementById("toast-ordine-mascherato-iddocumento-principale")?.value?.trim() || "";
         const idRigaPrincipale = document.getElementById("toast-ordine-mascherato-idriga-principale")?.value?.trim() || "";
         const numProgrRiga =
-            document.getElementById("toast-chiudi-sl-numprogrriga")?.value?.trim() || "";
+            document.getElementById("toast1-numprogrriga")?.value?.trim() || "";
         const distintaRaw =
-            document.getElementById("toast-presa-distinta")?.value || "";
+            document.getElementById("toast1-distinta")?.value || "";
         const warningEl = document.getElementById("toast-presa-warning");
-        const ordine = document.getElementById("toast-presa-ordine")?.value?.trim() || "";
-        const codice = document.getElementById("toast-presa-codice")?.value?.trim() || "";
+        const ordine = document.getElementById("toast1-ordine")?.value?.trim() || "";
+        const codice = document.getElementById("toast1-codice")?.value?.trim() || "";
 
         if (!validateActivationDistinta(distintaRaw, {
             ordine,
@@ -1039,10 +1023,6 @@
         })) {
             return;
         }
-        if (!validateDistintaToast1()) {
-            return;
-        }
-
         if (!window.validateDrawingScanToast1()) {
             return;
         }

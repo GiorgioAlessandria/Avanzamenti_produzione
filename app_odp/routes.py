@@ -2824,7 +2824,7 @@ def api_prendi_ordine():
     stato_norm = stato_attuale.lower()
     changed = False
     message = None
-    if _norm_text(getattr(ordine, "CodReparto", "")) in {"20", "30"}:
+    if _norm_text(getattr(ordine, "CodReparto", "")) in {"10", "20", "30", "70"}:
         if not _ordine_has_distinta_materiale(ordine):
             return (
                 jsonify(
