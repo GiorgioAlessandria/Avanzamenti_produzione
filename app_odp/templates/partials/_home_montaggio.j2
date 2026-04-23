@@ -38,6 +38,14 @@
         <input type="hidden"
                data-bind="numprogrriga"
                id="toast-presa-numprogrriga">
+        <input type="hidden"
+               data-bind="distinta"
+               id="toast-presa-distinta">
+        <div id="toast-presa-warning"
+             class="alert alert-danger w-100 mt-3 mb-2 d-none"
+             role="alert"
+             style="font-size: 18px; white-space: pre-line;">
+        </div>
 
         <button class="btn btn-lg btn-primary"
                 type="button"
@@ -87,6 +95,9 @@
         <input type="hidden"
                data-bind="numprogrriga"
                id="toast-presa-m-numprogrriga">
+        <input type="hidden"
+               data-bind="distinta"
+               id="toast-presa-m-distinta">
 
         <table class="table table-sm table-borderless mb-2"
                style="font-size: 18px; max-width: 400px;">
@@ -99,6 +110,11 @@
                 <td><span data-bind-text="fase"></span></td>
             </tr>
         </table>
+        <div id="toast-presa-m-warning"
+             class="alert alert-danger w-100 mt-3 mb-2 d-none"
+             role="alert"
+             style="font-size: 18px; white-space: pre-line;">
+        </div>
 
         <button class="btn btn-lg btn-primary"
                 type="button"
@@ -1137,6 +1153,79 @@
 </script>
 <!-- Presa in carico SL + MACCHINA (event delegation) -->
 <script>
+    function parseDistintaForActivation(raw) {
+        if (!String(raw ?? "").trim()) {
+            return [];
+        }
+
+        let parsed = raw;
+
+        try {
+            parsed = JSON.parse(parsed);
+        } catch (_) {
+            return [];
+        }
+
+        if (typeof parsed === "string") {
+            try {
+                parsed = JSON.parse(parsed);
+            } catch (_) {
+                return [];
+            }
+        }
+
+        if (!Array.isArray(parsed)) {
+            return [];
+        }
+
+        return parsed.filter(item => item && typeof item === "object");
+    }
+
+    function setActivationWarning(targetEl, message) {
+        if (!targetEl) return;
+        targetEl.textContent = message || "";
+        targetEl.classList.toggle("d-none", !message);
+    }
+
+    function clearActivationWarning(targetEl) {
+        if (!targetEl) return;
+        targetEl.textContent = "";
+        targetEl.classList.add("d-none");
+    }
+
+    function buildMissingDistintaMessage({ordine = "", codice = "", matricola = ""} = {}) {
+        let msg =
+            "Ordine bloccato: Distinta base dell'ordine mancante.\n" +
+            "Segnalare il problema al responsabile indicando i riferimenti dell'ordine.";
+
+        if (ordine) {
+            msg += `\nOrdine: ${ordine}`;
+        }
+        if (codice) {
+            msg += `\nCodice articolo: ${codice}`;
+        }
+        if (matricola) {
+            msg += `\nMatricola: ${matricola}`;
+        }
+
+        return msg;
+    }
+
+    function validateActivationDistinta(rawValue, options = {}) {
+        const distinta = parseDistintaForActivation(rawValue);
+
+        if (distinta.length > 0) {
+            clearActivationWarning(options.warningEl);
+            return true;
+        }
+
+        const message = buildMissingDistintaMessage(options);
+        setActivationWarning(options.warningEl, message);
+        alert(message);
+        return false;
+    }
+</script>
+<script>
     document.addEventListener("click", async function (e) {
         // --- SL: btn-prendi-ordine ---
         const btnSl = e.target.closest("#btn-prendi-ordine");
@@ -1146,6 +1235,18 @@
             const idRiga = document.getElementById("toast-presa-idriga")?.value?.trim() || "";
             const numProgrRiga =
                 document.getElementById("toast-presa-numprogrriga")?.value?.trim() || "";
+            const distintaRaw =
+                document.getElementById("toast-presa-distinta")?.value || "";
+            const warningEl = document.getElementById("toast-presa-warning");
+            const ordine = document.getElementById("toast-presa-ordine")?.value?.trim() || "";
+            const codice = document.getElementById("toast-presa-codice")?.value?.trim() || "";
+            if (!validateActivationDistinta(distintaRaw, {
+                ordine,
+                codice,
+                warningEl
+            })) {
+                return;
+            }
 
 
             if (!idDocumento || !idRiga) {
@@ -1208,6 +1309,21 @@
             const idRiga = document.getElementById("toast-presa-m-idriga")?.value?.trim() || "";
             const numProgrRiga =
                 document.getElementById("toast-presa-m-numprogrriga")?.value?.trim() || "";
+            const distintaRaw =
+                document.getElementById("toast-presa-m-distinta")?.value || "";
+            const warningEl = document.getElementById("toast-presa-m-warning");
+            const ordine = document.getElementById("toast-presa-m-ordine")?.value?.trim() || "";
+            const codice = document.getElementById("toast-presa-m-codice")?.value?.trim() || "";
+            const matricola = document.getElementById("toast-presa-m-matricola")?.value?.trim() || "";
+
+            if (!validateActivationDistinta(distintaRaw, {
+                ordine,
+                codice,
+                matricola,
+                warningEl
+            })) {
+                return;
+            }
 
 
             if (!idDocumento || !idRiga) {
@@ -1259,6 +1375,23 @@
                 btnM.disabled = false;
             }
             return;
+        }
+    });
+</script>
+<script>
+    document.addEventListener("click", function (e) {
+        const btnSl = e.target.closest('[data-bs-target="#toast-1"]');
+        if (btnSl) {
+            requestAnimationFrame(() => {
+                clearActivationWarning(document.getElementById("toast-presa-warning"));
+            });
+        }
+
+        const btnM = e.target.closest('[data-bs-target="#toast-1-m"]');
+        if (btnM) {
+            requestAnimationFrame(() => {
+                clearActivationWarning(document.getElementById("toast-presa-m-warning"));
+            });
         }
     });
 </script>

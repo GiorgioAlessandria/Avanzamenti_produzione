@@ -47,6 +47,9 @@
         <input type="hidden"
                data-bind="numprogrriga"
                id="toast1-numprogrriga">
+        <input type="hidden"
+               data-bind="distinta"
+               id="toast1-distinta">
 
         <div class="row"
              style="font-size: 20px;  border-radius: 4px;">
@@ -101,6 +104,11 @@
                 </div>
             </div>
         {% endif %}
+        <div id="toast-presa-warning"
+             class="alert alert-danger w-100 mt-3 mb-2 d-none"
+             role="alert"
+             style="font-size: 18px; white-space: pre-line;">
+        </div>
 
         <button class="btn btn-primary mt-3"
                 id="btn-prendi-ordine"
@@ -746,6 +754,50 @@
             )
         );
 
+        function parseDistintaToast1(raw) {
+            if (!String(raw ?? "").trim()) {
+                return [];
+            }
+
+            let parsed = raw;
+
+            try {
+                parsed = JSON.parse(parsed);
+            } catch (_) {
+                return [];
+            }
+
+            if (typeof parsed === "string") {
+                try {
+                    parsed = JSON.parse(parsed);
+                } catch (_) {
+                    return [];
+                }
+            }
+
+            if (!Array.isArray(parsed)) {
+                return [];
+            }
+
+            return parsed.filter(item => item && typeof item === "object");
+        }
+
+        function validateDistintaToast1() {
+            const raw = document.getElementById("toast1-distinta")?.value || "";
+            const distinta = parseDistintaToast1(raw);
+
+            if (distinta.length > 0) {
+                return true;
+            }
+
+            alert(
+                "Ordine bloccato: distinta materiale assente. " +
+                "Impossibile prendere in carico l'ordine perché il materiale " +
+                "non verrebbe scaricato a stock."
+            );
+            return false;
+        }
+
         function normalizeValue(value) {
             return String(value ?? "")
                 .trim()
@@ -891,6 +943,79 @@
     })();
 </script>
 <script>
+    function parseDistintaForActivation(raw) {
+        if (!String(raw ?? "").trim()) {
+            return [];
+        }
+
+        let parsed = raw;
+
+        try {
+            parsed = JSON.parse(parsed);
+        } catch (_) {
+            return [];
+        }
+
+        if (typeof parsed === "string") {
+            try {
+                parsed = JSON.parse(parsed);
+            } catch (_) {
+                return [];
+            }
+        }
+
+        if (!Array.isArray(parsed)) {
+            return [];
+        }
+
+        return parsed.filter(item => item && typeof item === "object");
+    }
+
+    function setActivationWarning(targetEl, message) {
+        if (!targetEl) return;
+        targetEl.textContent = message || "";
+        targetEl.classList.toggle("d-none", !message);
+    }
+
+    function clearActivationWarning(targetEl) {
+        if (!targetEl) return;
+        targetEl.textContent = "";
+        targetEl.classList.add("d-none");
+    }
+
+    function buildMissingDistintaMessage({ordine = "", codice = "", matricola = ""} = {}) {
+        let msg =
+            "Ordine bloccato: manca la distinta base.\n" +
+            "Segnalare il problema al responsabile indicando i riferimenti dell'ordine.";
+
+        if (ordine) {
+            msg += `\nOrdine: ${ordine}`;
+        }
+        if (codice) {
+            msg += `\nCodice articolo: ${codice}`;
+        }
+        if (matricola) {
+            msg += `\nMatricola: ${matricola}`;
+        }
+
+        return msg;
+    }
+
+    function validateActivationDistinta(rawValue, options = {}) {
+        const distinta = parseDistintaForActivation(rawValue);
+
+        if (distinta.length > 0) {
+            clearActivationWarning(options.warningEl);
+            return true;
+        }
+
+        const message = buildMissingDistintaMessage(options);
+        setActivationWarning(options.warningEl, message);
+        alert(message);
+        return false;
+    }
+</script>
+<script>
     document.getElementById("btn-prendi-ordine")?.addEventListener("click", async function () {
         const btn = this;
         const idDocumento = document.getElementById("toast1-iddocumento")?.value?.trim() || "";
@@ -901,6 +1026,22 @@
         const idRigaPrincipale = document.getElementById("toast-ordine-mascherato-idriga-principale")?.value?.trim() || "";
         const numProgrRiga =
             document.getElementById("toast-chiudi-sl-numprogrriga")?.value?.trim() || "";
+        const distintaRaw =
+            document.getElementById("toast-presa-distinta")?.value || "";
+        const warningEl = document.getElementById("toast-presa-warning");
+        const ordine = document.getElementById("toast-presa-ordine")?.value?.trim() || "";
+        const codice = document.getElementById("toast-presa-codice")?.value?.trim() || "";
+
+        if (!validateActivationDistinta(distintaRaw, {
+            ordine,
+            codice,
+            warningEl
+        })) {
+            return;
+        }
+        if (!validateDistintaToast1()) {
+            return;
+        }
 
         if (!window.validateDrawingScanToast1()) {
             return;
@@ -971,6 +1112,23 @@
             alert("Errore di comunicazione con il server.");
         } finally {
             btn.disabled = false;
+        }
+    });
+</script>
+<script>
+    document.addEventListener("click", function (e) {
+        const btnSl = e.target.closest('[data-bs-target="#toast-1"]');
+        if (btnSl) {
+            requestAnimationFrame(() => {
+                clearActivationWarning(document.getElementById("toast-presa-warning"));
+            });
+        }
+
+        const btnM = e.target.closest('[data-bs-target="#toast-1-m"]');
+        if (btnM) {
+            requestAnimationFrame(() => {
+                clearActivationWarning(document.getElementById("toast-presa-m-warning"));
+            });
         }
     });
 </script>

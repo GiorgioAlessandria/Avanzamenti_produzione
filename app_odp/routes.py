@@ -431,6 +431,11 @@ def _parse_distinta_materiale(ordine) -> list[dict]:
     return distinta if isinstance(distinta, list) else []
 
 
+def _ordine_has_distinta_materiale(ordine) -> bool:
+    distinta = _parse_distinta_materiale(ordine)
+    return any(isinstance(comp, dict) for comp in distinta)
+
+
 def _fase_attiva_int(ordine) -> int | None:
     try:
         return int(float(_norm_text(ordine.FaseAttiva)))
@@ -2819,6 +2824,19 @@ def api_prendi_ordine():
     stato_norm = stato_attuale.lower()
     changed = False
     message = None
+    if _norm_text(getattr(ordine, "CodReparto", "")) in {"20", "30"}:
+        if not _ordine_has_distinta_materiale(ordine):
+            return (
+                jsonify(
+                    ok=False,
+                    error=(
+                        "Ordine bloccato: distinta materiale assente. "
+                        "Impossibile prendere in carico l'ordine perché il materiale "
+                        "non verrebbe scaricato a magazzino. Contattare l'ufficio competente."
+                    ),
+                ),
+                409,
+            )
 
     if stato_norm == "pianificata":
         now_dt = _now_rome_dt()
