@@ -2826,6 +2826,180 @@ def api_prendi_ordine():
     message = None
     if _norm_text(getattr(ordine, "CodReparto", "")) in {"10", "20", "30", "70"}:
         if not _ordine_has_distinta_materiale(ordine):
+            event_at = datetime.now(ROME_TZ).isoformat(timespec="seconds")
+            action_code = "blocco_distinta_materiale_assente"
+            action_note = (
+                "Presa in carico bloccata: distinta materiale assente. "
+                "Ordine non attivabile perché il materiale non verrebbe scaricato a magazzino."
+            )
+            operation_group_id = (
+                f"{action_code}:{ordine.IdDocumento}:{ordine.IdRiga}:{event_at}"
+            )
+
+            rt = ordine.runtime_row
+
+            stato_odp_pre = _norm_text(getattr(rt, "Stato_odp", "")) or stato_attuale
+            stato_ordine_pre = stato_attuale
+            fase_pre = _norm_text(getattr(rt, "FaseAttiva", "")) or _norm_text(
+                getattr(ordine, "FaseAttiva", "")
+            )
+            qty_pre = (
+                _norm_text(getattr(rt, "QtyDaLavorare", ""))
+                or _norm_text(getattr(ordine, "QtyDaLavorare", ""))
+                or _norm_text(getattr(ordine, "Quantita", ""))
+            )
+            data_in_carico_pre = _norm_text(getattr(rt, "Data_in_carico", ""))
+            data_ultima_attivazione_pre = _norm_text(
+                getattr(rt, "data_ultima_attivazione", "")
+            )
+            tempo_funzionamento_pre = _norm_text(getattr(rt, "Tempo_funzionamento", ""))
+            rif_ordine_princ = _norm_text(getattr(rt, "RifOrdinePrinc", ""))
+
+            payload = {
+                "evento": action_code,
+                "motivo": action_note,
+                "ordine": {
+                    "IdDocumento": _norm_text(ordine.IdDocumento),
+                    "IdRiga": _norm_text(ordine.IdRiga),
+                    "NumProgrRiga": _norm_text(getattr(ordine, "NumProgrRiga", "")),
+                    "RifRegistraz": _norm_text(getattr(ordine, "RifRegistraz", "")),
+                    "CodArt": _norm_text(getattr(ordine, "CodArt", "")),
+                    "DesArt": _norm_text(getattr(ordine, "DesArt", "")),
+                    "CodReparto": _norm_text(getattr(ordine, "CodReparto", "")),
+                    "FaseAttiva": fase_pre,
+                    "GestioneLotto": _norm_text(getattr(ordine, "GestioneLotto", "")),
+                    "GestioneMatricola": _norm_text(
+                        getattr(ordine, "GestioneMatricola", "")
+                    ),
+                },
+                "runtime_pre": {
+                    "StatoOdp": stato_odp_pre,
+                    "StatoOrdine": stato_ordine_pre,
+                    "QtyDaLavorare": qty_pre,
+                    "DataInCarico": data_in_carico_pre,
+                    "DataUltimaAttivazione": data_ultima_attivazione_pre,
+                    "TempoFunzionamento": tempo_funzionamento_pre,
+                    "RifOrdinePrinc": rif_ordine_princ,
+                },
+                "utente": _norm_text(getattr(current_user, "username", "")),
+            }
+
+            try:
+                db.session.add(
+                    InputOdpLog(
+                        OperationGroupId=operation_group_id,
+                        IdDocumento=_norm_text(ordine.IdDocumento),
+                        IdRiga=_norm_text(ordine.IdRiga),
+                        RifRegistraz=_norm_text(getattr(ordine, "RifRegistraz", "")),
+                        CodArt=_norm_text(getattr(ordine, "CodArt", "")),
+                        DesArt=_norm_text(getattr(ordine, "DesArt", "")),
+                        Quantita=_norm_text(getattr(ordine, "Quantita", "")),
+                        NumFase=_norm_text(getattr(ordine, "NumFase", "")),
+                        CodLavorazione=_norm_text(
+                            getattr(ordine, "CodLavorazione", "")
+                        ),
+                        CodRisorsaProd=_norm_text(
+                            getattr(ordine, "CodRisorsaProd", "")
+                        ),
+                        DataInizioSched=_norm_text(
+                            getattr(ordine, "DataInizioSched", "")
+                        ),
+                        DataFineSched=_norm_text(getattr(ordine, "DataFineSched", "")),
+                        GestioneLotto=_norm_text(getattr(ordine, "GestioneLotto", "")),
+                        GestioneMatricola=_norm_text(
+                            getattr(ordine, "GestioneMatricola", "")
+                        ),
+                        DistintaMateriale=_norm_text(
+                            getattr(ordine, "DistintaMateriale", "")
+                        ),
+                        CodMatricola=_norm_text(getattr(ordine, "CodMatricola", "")),
+                        StatoRiga=_norm_text(getattr(ordine, "StatoRiga", "")),
+                        CodFamiglia=_norm_text(getattr(ordine, "CodFamiglia", "")),
+                        CodMacrofamiglia=_norm_text(
+                            getattr(ordine, "CodMacrofamiglia", "")
+                        ),
+                        CodMagPrincipale=_norm_text(
+                            getattr(ordine, "CodMagPrincipale", "")
+                        ),
+                        CodReparto=_norm_text(getattr(ordine, "CodReparto", "")),
+                        TempoPrevistoLavoraz=_norm_text(
+                            getattr(ordine, "TempoPrevistoLavoraz", "")
+                        ),
+                        CodClassifTecnica=_norm_text(
+                            getattr(ordine, "CodClassifTecnica", "")
+                        ),
+                        CodTipoDoc=_norm_text(getattr(ordine, "CodTipoDoc", "")),
+                        FaseAttiva=fase_pre,
+                        QtyDaLavorare=qty_pre,
+                        RisorsaAttiva=_norm_text(getattr(ordine, "RisorsaAttiva", "")),
+                        LavorazioneAttiva=_norm_text(
+                            getattr(ordine, "LavorazioneAttiva", "")
+                        ),
+                        AttrezzaggioAttivo=_norm_text(
+                            getattr(ordine, "AttrezzaggioAttivo", "")
+                        ),
+                        RifOrdinePrinc=rif_ordine_princ,
+                        Note=action_note,
+                        StatoOrdinePre=stato_ordine_pre,
+                        StatoOrdinePost=stato_ordine_pre,
+                        QtyDaLavorarePre=qty_pre,
+                        QtyDaLavorarePost=qty_pre,
+                        ClosedBy=_norm_text(getattr(current_user, "username", "")),
+                        ClosedAt=event_at,
+                        VarianteArt=_norm_text(getattr(ordine, "VarianteArt", "")),
+                        NoteChiusura=action_note,
+                    )
+                )
+
+                db.session.add(
+                    OdpRuntimeLog(
+                        OperationGroupId=operation_group_id,
+                        EventSequence=1,
+                        Topic="ordine",
+                        Scope="presa_in_carico",
+                        CodArt=_norm_text(getattr(ordine, "CodArt", "")),
+                        CodReparto=_norm_text(getattr(ordine, "CodReparto", "")),
+                        PayloadJson=json.dumps(payload, ensure_ascii=False),
+                        IdDocumento=_norm_text(ordine.IdDocumento),
+                        IdRiga=_norm_text(ordine.IdRiga),
+                        RifRegistraz=_norm_text(getattr(ordine, "RifRegistraz", "")),
+                        Azione=action_code,
+                        Motivo=action_note,
+                        UtenteOperazione=_norm_text(
+                            getattr(current_user, "username", "")
+                        ),
+                        EventAt=event_at,
+                        StatoOdpPre=stato_odp_pre,
+                        StatoOdpPost=stato_odp_pre,
+                        StatoOrdinePre=stato_ordine_pre,
+                        StatoOrdinePost=stato_ordine_pre,
+                        FasePre=fase_pre,
+                        FasePost=fase_pre,
+                        DataInCaricoPre=data_in_carico_pre,
+                        DataInCaricoPost=data_in_carico_pre,
+                        DataUltimaAttivazionePre=data_ultima_attivazione_pre,
+                        DataUltimaAttivazionePost=data_ultima_attivazione_pre,
+                        TempoFunzionamentoPre=tempo_funzionamento_pre,
+                        TempoFunzionamentoPost=tempo_funzionamento_pre,
+                        QtyDaLavorarePre=qty_pre,
+                        QtyDaLavorarePost=qty_pre,
+                        Note=action_note,
+                        RifOrdinePrinc=rif_ordine_princ,
+                        VarianteArt=_norm_text(getattr(ordine, "VarianteArt", "")),
+                        NumProgrRiga=_norm_text(getattr(ordine, "NumProgrRiga", "")),
+                    )
+                )
+
+                db.session.commit()
+
+            except Exception:
+                db.session.rollback()
+                current_app.logger.exception(
+                    "Errore scrittura log per blocco distinta mancante su ordine %s/%s",
+                    _norm_text(ordine.IdDocumento),
+                    _norm_text(ordine.IdRiga),
+                )
+
             return (
                 jsonify(
                     ok=False,

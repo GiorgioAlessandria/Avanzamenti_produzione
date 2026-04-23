@@ -355,6 +355,29 @@
 {% block content %}{% endblock %}
 {% block extra_js %}
     <script>
+        document.addEventListener("click", function (event) {
+            const trigger = event.target.closest(
+                '[data-use-selected][data-fill-target][data-bs-target][data-bs-toggle="toast"]'
+            );
+            if (!trigger) return;
+
+            const tableSelector = trigger.getAttribute("data-use-selected");
+            if (!tableSelector) return;
+
+            const table = document.querySelector(tableSelector);
+            if (!table) return;
+
+            const selectedRow = table.querySelector("tbody tr.row-selected");
+            if (selectedRow) return;
+
+            event.preventDefault();
+            event.stopPropagation();
+            event.stopImmediatePropagation();
+
+            alert("Seleziona prima una riga ordine.");
+        }, true);
+    </script>
+    <script>
         document.addEventListener("DOMContentLoaded", function () {
             const modalEl = document.getElementById("modalRicercaArticolo");
             if (!modalEl) return;
