@@ -6247,6 +6247,34 @@ def _material_key(cod_art: str, variante_art: str) -> tuple[str, str]:
     return (_norm_text(cod_art), _norm_text(variante_art))
 
 
+ACQUISTI_MAGAZZINI_GIACENZA = ("0", "6", "10", "11", "12", "13")
+ACQUISTI_MAGAZZINI_MATERIALE = ACQUISTI_MAGAZZINI_GIACENZA
+
+
+def _build_acquisti_giacenze_map(
+    magazzini_codes: tuple[str, ...],
+) -> dict[str, dict[str, float]]:
+    grouped: dict[str, dict[str, float]] = {}
+
+    rows = AcqGiacenze.query.filter(AcqGiacenze.CodMag.in_(list(magazzini_codes))).all()
+
+    for giacenza in rows:
+        cod_art = _norm_text(giacenza.CodArt)
+        cod_mag = _norm_text(giacenza.CodMag)
+
+        if not cod_art or cod_mag not in magazzini_codes:
+            continue
+
+        article_bucket = grouped.setdefault(
+            cod_art,
+            {mag: 0.0 for mag in magazzini_codes},
+        )
+
+        article_bucket[cod_mag] += float(giacenza.Giacenza or 0)
+
+    return grouped
+
+
 def _new_acq_material_row(cod_art: str, variante_art: str) -> dict:
     return {
         "CodArt": _norm_text(cod_art),
@@ -6276,10 +6304,11 @@ def _build_acquisti_materiale_rows() -> list[dict]:
         if _norm_text(row.CodArt)
     }
 
-    giacenze_mag0 = {
-        _norm_text(row.CodArt): float(row.Giacenza or 0)
-        for row in AcqGiacenze.query.filter(AcqGiacenze.CodMag == "0").all()
-        if _norm_text(row.CodArt)
+    giacenze_materiale_map = _build_acquisti_giacenze_map(ACQUISTI_MAGAZZINI_MATERIALE)
+
+    giacenze_materiale_totali = {
+        cod_art: sum(mag_map.values())
+        for cod_art, mag_map in giacenze_materiale_map.items()
     }
 
     grouped: dict[tuple[str, str], dict] = {}
@@ -6404,31 +6433,35 @@ def _build_acquisti_materiale_rows() -> list[dict]:
 
     for _, row in grouped.items():
         articolo = articoli_map.get(row["CodArt"])
-        giacenza_mag0 = giacenze_mag0.get(row["CodArt"])
+        giacenza_totale = giacenze_materiale_totali.get(row["CodArt"])
+
         if not row["MagUM"]:
             row["MagUM"] = _first_not_blank_text(
                 getattr(articolo, "MagUM", "") if articolo else "",
             )
 
-            row["LottoRiordino"] = float(getattr(articolo, "LottoRiordino", 0) or 0)
-            row["PuntoRiordino"] = float(getattr(articolo, "PuntoRiordino", 0) or 0)
-            row["PianTempoApprovFisso"] = int(
-                getattr(articolo, "PianTempoApprovFisso", 0) or 0
-            )
+        row["LottoRiordino"] = float(getattr(articolo, "LottoRiordino", 0) or 0)
+        row["PuntoRiordino"] = float(getattr(articolo, "PuntoRiordino", 0) or 0)
+        row["PianTempoApprovFisso"] = int(
+            getattr(articolo, "PianTempoApprovFisso", 0) or 0
+        )
 
-        if giacenza_mag0 is not None:
-            row["QtyMag0"] = float(giacenza_mag0)
+        if giacenza_totale is not None:
+            row["QtyMag0"] = float(giacenza_totale)
             row["Mag0Missing"] = False
         else:
             row["QtyMag0"] = None
             row["Mag0Missing"] = True
-        qty_mag0_for_balance = float(row["QtyMag0"] or 0)
+
+        qty_mag_for_balance = float(row["QtyMag0"] or 0)
+
         row["RimanenzaMateriale"] = (
-            qty_mag0_for_balance
+            qty_mag_for_balance
             + float(row["MaterialeProdotto"] or 0)
             - float(row["MaterialeDaConsumare"] or 0)
             - float(row["MaterialeImpegnato"] or 0)
         )
+
         row["QtyMag0Text"] = (
             ""
             if row["QtyMag0"] is None
@@ -6501,7 +6534,7 @@ def _extract_comp_udm(comp: dict, articolo=None) -> str:
 
 
 def _build_acquisti_giacenze_rows() -> list[dict]:
-    magazzini_default = ["0", "10", "13"]
+    magazzini_default = list(ACQUISTI_MAGAZZINI_GIACENZA)
 
     q = db.session.query(AcqGiacenze, AcqArticoli).outerjoin(
         AcqArticoli,
@@ -6532,7 +6565,10 @@ def _build_acquisti_giacenze_rows() -> list[dict]:
                 "DesArt": (articolo.DesArt if articolo else "") or "",
                 "MagUM": _norm_text(getattr(articolo, "MagUM", "")) if articolo else "",
                 "Mag_0": 0.0,
+                "Mag_6": 0.0,
                 "Mag_10": 0.0,
+                "Mag_11": 0.0,
+                "Mag_12": 0.0,
                 "Mag_13": 0.0,
                 "PuntoRiordino": float(
                     (articolo.PuntoRiordino if articolo else 0) or 0
@@ -6549,12 +6585,8 @@ def _build_acquisti_giacenze_rows() -> list[dict]:
         cod_mag = _norm_text(giacenza.CodMag)
         qty = float(giacenza.Giacenza or 0)
 
-        if cod_mag == "0":
-            row["Mag_0"] = qty
-        elif cod_mag == "10":
-            row["Mag_10"] = qty
-        elif cod_mag == "13":
-            row["Mag_13"] = qty
+        if cod_mag in ACQUISTI_MAGAZZINI_GIACENZA:
+            row[f"Mag_{cod_mag}"] += qty
 
         if qty < 0:
             row["is_negative_any"] = True
@@ -6806,16 +6838,17 @@ def _filter_acquisti_materiale_rows(
 def _build_acquisti_excel_workbook(section: str, rows: list[dict]) -> Workbook:
     wb = Workbook()
     ws = wb.active
-
     if section == "giacenza":
-        ws.title = "Giacenza"
         headers = [
             "CodArt",
             "Descrizione",
             "UdM",
-            "Mag 0",
-            "Mag 10",
-            "Mag 13",
+            "0 Principale",
+            "6 Accettazione",
+            "10 Scarti",
+            "11 Obsoleto",
+            "12 DEMO",
+            "13 Rottamare",
             "Punto riordino",
             "Lotto riordino",
             "Lead time",
@@ -6827,7 +6860,10 @@ def _build_acquisti_excel_workbook(section: str, rows: list[dict]) -> Workbook:
                 row.get("DesArt", ""),
                 row.get("MagUM", ""),
                 row.get("Mag_0", 0),
+                row.get("Mag_6", 0),
                 row.get("Mag_10", 0),
+                row.get("Mag_11", 0),
+                row.get("Mag_12", 0),
                 row.get("Mag_13", 0),
                 row.get("PuntoRiordino", 0),
                 row.get("LottoRiordino", 0),

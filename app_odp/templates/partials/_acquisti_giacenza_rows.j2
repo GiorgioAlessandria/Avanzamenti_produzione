@@ -13,12 +13,20 @@
             <td>{{ row.CodArt or '' }}</td>
             <td>{{ row.DesArt or '' }}</td>
             <td>{{ row.MagUM or '' }}</td>
+            <td class="{% if row.Mag_6 < 0 %}text-danger fw-bold{% endif %}">
+                {{ row.Mag_6 }}
+            </td>
             <td class="{% if is_negative_mag0 %}fw-bold{% endif %}">
                 {{ row.Mag_0 }}
             </td>
-
-            <td class="{% if row.Mag_10 < 0 %}text-danger fw-bold{% endif %}">
+            <td class="{% if row.Mag_0 < 0 %}text-danger fw-bold{% endif %}">
                 {{ row.Mag_10 }}
+            </td>
+            <td class="{% if row.Mag_11 < 0 %}text-danger fw-bold{% endif %}">
+                {{ row.Mag_11 }}
+            </td>
+            <td class="{% if row.Mag_12 < 0 %}text-danger fw-bold{% endif %}">
+                {{ row.Mag_12 }}
             </td>
 
             <td class="{% if row.Mag_13 < 0 %}text-danger fw-bold{% endif %}">
