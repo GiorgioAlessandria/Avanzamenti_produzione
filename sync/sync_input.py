@@ -1832,6 +1832,406 @@ def estrai_lavorazione_attiva(x):
     return None
 
 
+ERP_TERMINATED_STATES = {"terminata", "terminato"}
+
+
+def _is_stato_ordine_terminato(value) -> bool:
+    return _norm_text(value).lower() in ERP_TERMINATED_STATES
+
+
+def _pk_set_from_df(df: pd.DataFrame) -> set[tuple[str, str]]:
+    if df.empty:
+        return set()
+
+    missing = [col for col in PK_COLS if col not in df.columns]
+    if missing:
+        raise KeyError(f"Colonne PK mancanti nel dataframe vwESOdP: {missing}")
+
+    return {
+        _pk_key(row["IdDocumento"], row["IdRiga"])
+        for _, row in df[list(PK_COLS)].iterrows()
+    }
+
+
+def _filtra_odp_importabili(df_odp_raw: pd.DataFrame) -> pd.DataFrame:
+    """
+    Applica gli stessi filtri che prima venivano applicati da leggi_view()
+    per costruire il batch importabile, ma partendo dalla vwESOdP non filtrata.
+    """
+    df = df_odp_raw.copy()
+
+    if "CodArt" in ELEMENTI_ESCLUSI:
+        df = df[~df["CodArt"].isin(ELEMENTI_ESCLUSI["CodArt"])]
+        df = df.dropna(subset=["CodArt"], how="any")
+
+    if "StatoOrdine" in ELEMENTI_SELEZIONATI:
+        df = df[df["StatoOrdine"] == ELEMENTI_SELEZIONATI["StatoOrdine"]]
+        df = df.dropna(subset=["StatoOrdine"], how="any")
+
+    return df.reset_index(drop=True)
+
+
+def _build_delete_reasons_from_gestionale(
+    *,
+    existing_keys: set[tuple[str, str]],
+    df_odp_raw: pd.DataFrame,
+) -> dict[tuple[str, str], dict[str, str]]:
+    """
+    Determina quali righe locali devono essere eliminate perché il gestionale comanda:
+    1. riga non più presente in vwESOdP;
+    2. riga presente in vwESOdP ma con StatoOrdine Terminata/Terminato.
+    """
+    erp_keys = _pk_set_from_df(df_odp_raw)
+
+    terminated_keys = {
+        _pk_key(row["IdDocumento"], row["IdRiga"])
+        for _, row in df_odp_raw.iterrows()
+        if _is_stato_ordine_terminato(row.get("StatoOrdine"))
+    }
+
+    delete_reasons: dict[tuple[str, str], dict[str, str]] = {}
+
+    for key in sorted(existing_keys - erp_keys):
+        delete_reasons[key] = {
+            "reason_code": "assente_vwESOdP",
+            "reason_text": "Eliminato dal gestionale: ordine non più presente in vwESOdP",
+            "stato_ordine_post": "Eliminato dal gestionale",
+        }
+
+    for key in sorted(existing_keys & terminated_keys):
+        delete_reasons[key] = {
+            "reason_code": "stato_erp_terminata",
+            "reason_text": "Eliminato dal gestionale: StatoOrdine ERP Terminata",
+            "stato_ordine_post": "Terminata",
+        }
+
+    return delete_reasons
+
+
+def _table_columns(engine, table_name: str) -> list[str]:
+    md = sa.MetaData()
+    table = sa.Table(table_name, md, autoload_with=engine)
+    return [col.name for col in table.columns]
+
+
+def _append_matching_table_columns(
+    *,
+    engine,
+    table_name: str,
+    df: pd.DataFrame,
+) -> int:
+    """
+    Scrive solo le colonne realmente presenti nella tabella.
+    Evita errori se il modello/log DB non contiene ancora qualche colonna opzionale.
+    """
+    if df.empty:
+        return 0
+
+    table_cols = _table_columns(engine, table_name)
+    cols = [col for col in table_cols if col in df.columns]
+
+    if not cols:
+        return 0
+
+    return int(
+        df[cols]
+        .where(pd.notna(df[cols]), None)
+        .to_sql(
+            name=table_name,
+            con=engine,
+            if_exists="append",
+            index=False,
+            method=inserisci_o_ignora,
+        )
+        or 0
+    )
+
+
+def _read_local_orders_snapshot_for_delete(
+    engine,
+    keys: set[tuple[str, str]],
+) -> pd.DataFrame:
+    if not keys:
+        return pd.DataFrame()
+
+    md = sa.MetaData()
+    input_t = sa.Table("input_odp", md, autoload_with=engine)
+    runtime_t = sa.Table("input_odp_runtime", md, autoload_with=engine)
+
+    input_cols = [input_t.c[col] for col in input_t.columns.keys()]
+    runtime_cols = [
+        runtime_t.c[col].label(f"runtime_{col}")
+        for col in runtime_t.columns.keys()
+        if col not in PK_COLS
+    ]
+
+    stmt = (
+        sa.select(*input_cols, *runtime_cols)
+        .select_from(
+            input_t.outerjoin(
+                runtime_t,
+                sa.and_(
+                    input_t.c.IdDocumento == runtime_t.c.IdDocumento,
+                    input_t.c.IdRiga == runtime_t.c.IdRiga,
+                ),
+            )
+        )
+        .where(sa.tuple_(input_t.c.IdDocumento, input_t.c.IdRiga).in_(list(keys)))
+    )
+
+    with engine.connect() as conn:
+        rows = conn.execute(stmt).mappings().all()
+
+    return pd.DataFrame([dict(row) for row in rows])
+
+
+def _build_deleted_from_gestionale_input_logs(
+    *,
+    df_snapshot: pd.DataFrame,
+    delete_reasons: dict[tuple[str, str], dict[str, str]],
+    when_iso: str,
+) -> pd.DataFrame:
+    if df_snapshot.empty:
+        return pd.DataFrame()
+
+    rows = []
+
+    for _, row in df_snapshot.iterrows():
+        key = _pk_key(row["IdDocumento"], row["IdRiga"])
+        reason = delete_reasons[key]
+        operation_group = _build_sync_operation_group_id(
+            id_documento=key[0],
+            id_riga=key[1],
+            action="eliminato_gestionale",
+            when_iso=when_iso,
+        )
+
+        out = row.to_dict()
+        out.update(
+            {
+                "logged_at": when_iso,
+                "OperationGroupId": operation_group,
+                "FaseAttiva": row.get("runtime_FaseAttiva"),
+                "QtyDaLavorare": row.get("runtime_QtyDaLavorare"),
+                "RisorsaAttiva": row.get("runtime_RisorsaAttiva"),
+                "LavorazioneAttiva": row.get("runtime_LavorazioneAttiva"),
+                "AttrezzaggioAttivo": row.get("runtime_AttrezzaggioAttivo"),
+                "Note": row.get("runtime_Note"),
+                "FaseConsuntivata": None,
+                "QuantitaConforme": None,
+                "QuantitaNonConforme": None,
+                "TempoFunzionamentoFinale": row.get("runtime_Tempo_funzionamento"),
+                "TempoNonFunzionamentoMinuti": None,
+                "TempoNonFunzionamentoSecondi": None,
+                "ChiusuraParziale": None,
+                "NoteChiusura": reason["reason_text"],
+                "StatoOrdinePre": row.get("StatoOrdine"),
+                "StatoOrdinePost": reason["stato_ordine_post"],
+                "QtyDaLavorarePre": row.get("runtime_QtyDaLavorare"),
+                "QtyDaLavorarePost": "",
+                "ClosedBy": "sync_input",
+                "ClosedAt": when_iso,
+            }
+        )
+        rows.append(out)
+
+    return pd.DataFrame(rows)
+
+
+def _build_deleted_from_gestionale_runtime_logs(
+    *,
+    df_snapshot: pd.DataFrame,
+    delete_reasons: dict[tuple[str, str], dict[str, str]],
+    when_iso: str,
+) -> pd.DataFrame:
+    if df_snapshot.empty:
+        return pd.DataFrame()
+
+    rows = []
+
+    for _, row in df_snapshot.iterrows():
+        key = _pk_key(row["IdDocumento"], row["IdRiga"])
+        reason = delete_reasons[key]
+        operation_group = _build_sync_operation_group_id(
+            id_documento=key[0],
+            id_riga=key[1],
+            action="eliminato_gestionale",
+            when_iso=when_iso,
+        )
+
+        stato_odp_pre = row.get("runtime_Stato_odp")
+
+        rows.append(
+            {
+                "logged_at": when_iso,
+                "OperationGroupId": operation_group,
+                "EventSequence": 1,
+                "Topic": "eliminato_gestionale",
+                "Scope": row.get("CodReparto"),
+                "CodArt": row.get("CodArt"),
+                "CodReparto": row.get("CodReparto"),
+                "PayloadJson": json.dumps(
+                    {
+                        "azione": "eliminato_gestionale",
+                        "motivo": reason["reason_text"],
+                        "reason_code": reason["reason_code"],
+                        "utente": "sync_input",
+                    },
+                    ensure_ascii=False,
+                ),
+                "IdDocumento": row.get("IdDocumento"),
+                "IdRiga": row.get("IdRiga"),
+                "RifRegistraz": row.get("RifRegistraz"),
+                "Azione": "eliminato_gestionale",
+                "Motivo": reason["reason_text"],
+                "UtenteOperazione": "sync_input",
+                "EventAt": when_iso,
+                "StatoOdpPre": stato_odp_pre,
+                "StatoOdpPost": "Eliminato dal gestionale",
+                "StatoOrdinePre": row.get("StatoOrdine"),
+                "StatoOrdinePost": reason["stato_ordine_post"],
+                "FasePre": row.get("runtime_FaseAttiva"),
+                "FasePost": "",
+                "DataInCaricoPre": row.get("runtime_Data_in_carico"),
+                "DataInCaricoPost": "",
+                "DataUltimaAttivazionePre": row.get("runtime_data_ultima_attivazione"),
+                "DataUltimaAttivazionePost": "",
+                "TempoFunzionamentoPre": row.get("runtime_Tempo_funzionamento"),
+                "TempoFunzionamentoPost": "",
+                "ElapsedSeconds": None,
+                "TempoNonFunzionamentoMinuti": None,
+                "TempoNonFunzionamentoSecondi": None,
+                "QtyDaLavorarePre": row.get("runtime_QtyDaLavorare"),
+                "QtyDaLavorarePost": "",
+                "QuantitaConforme": None,
+                "QuantitaNonConforme": None,
+                "Causale": None,
+                "Note": reason["reason_text"],
+                "RifOrdinePrinc": row.get("runtime_RifOrdinePrinc"),
+                "VarianteArt": row.get("VarianteArt"),
+                "NumProgrRiga": row.get("NumProgrRiga"),
+            }
+        )
+
+    return pd.DataFrame(rows)
+
+
+def _delete_local_orders_from_rbac(
+    *,
+    engine,
+    keys: set[tuple[str, str]],
+) -> int:
+    if not keys:
+        return 0
+
+    md = sa.MetaData()
+    input_t = sa.Table("input_odp", md, autoload_with=engine)
+    runtime_t = sa.Table("input_odp_runtime", md, autoload_with=engine)
+
+    deleted_input = 0
+
+    with engine.begin() as conn:
+        for chunk in _chunked(list(keys), 400):
+            runtime_cond = sa.tuple_(
+                runtime_t.c.IdDocumento,
+                runtime_t.c.IdRiga,
+            ).in_(chunk)
+
+            input_cond = sa.tuple_(
+                input_t.c.IdDocumento,
+                input_t.c.IdRiga,
+            ).in_(chunk)
+
+            conn.execute(sa.delete(runtime_t).where(runtime_cond))
+            res = conn.execute(sa.delete(input_t).where(input_cond))
+
+            if getattr(res, "rowcount", None) is not None and res.rowcount >= 0:
+                deleted_input += int(res.rowcount)
+            else:
+                deleted_input += len(chunk)
+
+    return deleted_input
+
+
+def _sync_delete_orders_closed_or_removed_by_gestionale(
+    *,
+    df_odp_raw: pd.DataFrame,
+) -> int:
+    """
+    Cancella da RBAC.db gli ordini comandati dal gestionale:
+    - non più presenti in vwESOdP;
+    - presenti in vwESOdP ma con StatoOrdine Terminata/Terminato.
+
+    Scrive prima il log minimale, poi elimina da input_odp_runtime e input_odp.
+    """
+    existing_keys = _fetch_all_keys(
+        sqlite_engine_app,
+        table_name="input_odp",
+        key_cols=PK_COLS,
+    )
+
+    if not existing_keys:
+        return 0
+
+    delete_reasons = _build_delete_reasons_from_gestionale(
+        existing_keys=existing_keys,
+        df_odp_raw=df_odp_raw,
+    )
+
+    keys_to_delete = set(delete_reasons.keys())
+
+    if not keys_to_delete:
+        return 0
+
+    df_snapshot = _read_local_orders_snapshot_for_delete(
+        sqlite_engine_app,
+        keys_to_delete,
+    )
+
+    if df_snapshot.empty:
+        return 0
+
+    when_iso = _now_sync_iso()
+
+    df_input_logs = _build_deleted_from_gestionale_input_logs(
+        df_snapshot=df_snapshot,
+        delete_reasons=delete_reasons,
+        when_iso=when_iso,
+    )
+
+    df_runtime_logs = _build_deleted_from_gestionale_runtime_logs(
+        df_snapshot=df_snapshot,
+        delete_reasons=delete_reasons,
+        when_iso=when_iso,
+    )
+
+    righe_input_log = _append_matching_table_columns(
+        engine=sqlite_engine_log,
+        table_name="input_odp_log",
+        df=df_input_logs,
+    )
+
+    righe_runtime_log = _append_matching_table_columns(
+        engine=sqlite_engine_log,
+        table_name="odp_runtime_log",
+        df=df_runtime_logs,
+    )
+
+    righe_cancellate = _delete_local_orders_from_rbac(
+        engine=sqlite_engine_app,
+        keys=keys_to_delete,
+    )
+
+    logging.info(
+        "Pulizia ordini eliminati/terminati da gestionale | cancellati=%s | input_odp_log=%s | odp_runtime_log=%s",
+        righe_cancellate,
+        righe_input_log,
+        righe_runtime_log,
+    )
+
+    return righe_cancellate
+
+
 def elaborazione_dati(session: Session) -> None:
     """
     Funzione per l'inserimento dei dati nella tabella input_odp da inserire a db
@@ -1843,11 +2243,13 @@ def elaborazione_dati(session: Session) -> None:
     ensure_init()
     _sync_rbac_support_tables()
     global nuovo_ciclo
-    df_odp = leggi_view(
-        table="vwESOdP",
-        colonna_filtro_esclusi="CodArt",
-        colonna_filtro_stato="StatoOrdine",
+    df_odp_raw = leggi_view(table="vwESOdP")
+
+    _sync_delete_orders_closed_or_removed_by_gestionale(
+        df_odp_raw=df_odp_raw,
     )
+
+    df_odp = _filtra_odp_importabili(df_odp_raw)
     df_odpfasi = (
         pd.DataFrame(
             leggi_view(table="vwESOdPFasi", colonna_filtro_esclusi="CodRisorsaProd")
