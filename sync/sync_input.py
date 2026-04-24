@@ -1052,6 +1052,296 @@ def _delete_rows_by_pk(
     return deleted
 
 
+def _pk_set_from_df(df: pd.DataFrame, pk_cols: tuple[str, ...]) -> set[tuple[str, ...]]:
+    if df.empty:
+        return set()
+
+    return {
+        tuple(_norm_text(value) for value in row)
+        for row in df[list(pk_cols)].itertuples(index=False, name=None)
+    }
+
+
+def _fetch_rows_by_pk(
+    engine,
+    *,
+    table_name: str,
+    pk_cols: tuple[str, ...],
+    pk_tuples: list[tuple],
+    columns: list[str] | None = None,
+    chunk_size: int = 400,
+) -> pd.DataFrame:
+    """
+    Legge righe complete da una tabella tramite PK composta.
+    Serve per salvare uno snapshot minimale prima della cancellazione.
+    """
+    output_columns = list(columns or [])
+
+    if not pk_tuples:
+        return pd.DataFrame(columns=output_columns)
+
+    md = sa.MetaData()
+    t = sa.Table(table_name, md, autoload_with=engine)
+
+    pk_tuples = [tuple(_norm_text(value) for value in pk) for pk in pk_tuples]
+
+    if columns is None:
+        selected_col_names = [col.name for col in t.columns]
+    else:
+        selected_col_names = [col for col in columns if col in t.c]
+
+    if not selected_col_names:
+        return pd.DataFrame(columns=output_columns)
+
+    selected_cols = [t.c[col] for col in selected_col_names]
+    pk_columns = [t.c[col] for col in pk_cols]
+
+    rows_out = []
+
+    with engine.connect() as conn:
+        for chunk in _chunked(pk_tuples, chunk_size):
+            if len(pk_columns) == 1:
+                values = [row[0] for row in chunk]
+                where_clause = pk_columns[0].in_(values)
+            else:
+                where_clause = sa.tuple_(*pk_columns).in_(chunk)
+
+            stmt = sa.select(*selected_cols).where(where_clause)
+            rows_out.extend(conn.execute(stmt).fetchall())
+
+    df = pd.DataFrame(rows_out, columns=selected_col_names)
+
+    if columns is not None:
+        for col in columns:
+            if col not in df.columns:
+                df[col] = None
+        df = df[columns]
+
+    return df.where(pd.notna(df), None)
+
+
+def _append_dataframe_existing_columns(
+    *,
+    engine,
+    table_name: str,
+    df: pd.DataFrame,
+) -> int:
+    """
+    Inserisce un DataFrame solo sulle colonne realmente presenti nella tabella.
+    Evita errori se il DB non ha ancora qualche colonna opzionale.
+    """
+    if df.empty:
+        return 0
+
+    md = sa.MetaData()
+    t = sa.Table(table_name, md, autoload_with=engine)
+
+    existing_cols = [col for col in df.columns if col in t.c]
+    if not existing_cols:
+        return 0
+
+    return int(
+        df[existing_cols].to_sql(
+            name=table_name,
+            con=engine,
+            if_exists="append",
+            index=False,
+            method=inserisci_o_ignora,
+        )
+        or 0
+    )
+
+
+def _write_sync_deleted_from_gestionale_logs(
+    *,
+    df_deleted_erp: pd.DataFrame,
+    df_deleted_runtime: pd.DataFrame,
+    when_iso: str,
+) -> dict[str, int]:
+    """
+    Scrive log minimale per ordini rimossi da input_odp perché non più validi da gestionale.
+
+    Non cancella input_odp_runtime.
+    """
+    if sqlite_engine_log is None:
+        raise RuntimeError("sqlite_engine_log non inizializzato")
+
+    if df_deleted_erp.empty:
+        return {
+            "input_log": 0,
+            "runtime_log": 0,
+        }
+
+    runtime_map = {}
+
+    if not df_deleted_runtime.empty:
+        for _, rt in df_deleted_runtime.iterrows():
+            key = _pk_key(rt.get("IdDocumento"), rt.get("IdRiga"))
+            runtime_map[key] = rt.to_dict()
+
+    input_log_rows = []
+    runtime_log_rows = []
+
+    for _, erp_row in df_deleted_erp.iterrows():
+        id_documento = _norm_text(erp_row.get("IdDocumento"))
+        id_riga = _norm_text(erp_row.get("IdRiga"))
+        key = _pk_key(id_documento, id_riga)
+        runtime_row = runtime_map.get(key, {})
+
+        operation_group_id = _build_sync_operation_group_id(
+            id_documento=id_documento,
+            id_riga=id_riga,
+            action="sync_eliminato_gestionale",
+            when_iso=when_iso,
+        )
+
+        motivo = "Eliminato dal gestionale"
+        stato_runtime_pre = _norm_text(runtime_row.get("Stato_odp"))
+        stato_erp_pre = _norm_text(erp_row.get("StatoOrdine"))
+        stato_pre = stato_runtime_pre or stato_erp_pre
+
+        fase_pre = _norm_text(runtime_row.get("FaseAttiva")) or "1"
+        qty_pre = _norm_text(runtime_row.get("QtyDaLavorare")) or _norm_text(
+            erp_row.get("Quantita")
+        )
+
+        input_log_rows.append(
+            {
+                "logged_at": when_iso,
+                "OperationGroupId": operation_group_id,
+                "IdDocumento": id_documento,
+                "IdRiga": id_riga,
+                "RifRegistraz": _norm_text(erp_row.get("RifRegistraz")),
+                "CodArt": _norm_text(erp_row.get("CodArt")),
+                "DesArt": _norm_text(erp_row.get("DesArt")),
+                "Quantita": _norm_text(erp_row.get("Quantita")),
+                "NumFase": _norm_text(erp_row.get("NumFase")),
+                "CodLavorazione": _norm_text(erp_row.get("CodLavorazione")),
+                "CodRisorsaProd": _norm_text(erp_row.get("CodRisorsaProd")),
+                "DataInizioSched": _norm_text(erp_row.get("DataInizioSched")),
+                "DataFineSched": _norm_text(erp_row.get("DataFineSched")),
+                "GestioneLotto": _norm_text(erp_row.get("GestioneLotto")),
+                "GestioneMatricola": _norm_text(erp_row.get("GestioneMatricola")),
+                "DistintaMateriale": _norm_text(erp_row.get("DistintaMateriale")),
+                "CodMatricola": _norm_text(erp_row.get("CodMatricola")),
+                "StatoRiga": _norm_text(erp_row.get("StatoRiga")),
+                "CodFamiglia": _norm_text(erp_row.get("CodFamiglia")),
+                "CodMacrofamiglia": _norm_text(erp_row.get("CodMacrofamiglia")),
+                "CodMagPrincipale": _norm_text(erp_row.get("CodMagPrincipale")),
+                "CodReparto": _norm_text(erp_row.get("CodReparto")),
+                "TempoPrevistoLavoraz": _norm_text(erp_row.get("TempoPrevistoLavoraz")),
+                "CodClassifTecnica": _norm_text(erp_row.get("CodClassifTecnica")),
+                "CodTipoDoc": _norm_text(erp_row.get("CodTipoDoc")),
+                "FaseAttiva": fase_pre,
+                "QtyDaLavorare": qty_pre,
+                "RisorsaAttiva": _norm_text(runtime_row.get("RisorsaAttiva")),
+                "LavorazioneAttiva": _norm_text(runtime_row.get("LavorazioneAttiva")),
+                "AttrezzaggioAttivo": _norm_text(runtime_row.get("AttrezzaggioAttivo")),
+                "RifOrdinePrinc": _norm_text(runtime_row.get("RifOrdinePrinc")),
+                "Note": motivo,
+                "FaseConsuntivata": None,
+                "QuantitaConforme": None,
+                "QuantitaNonConforme": None,
+                "TempoFunzionamentoFinale": None,
+                "TempoNonFunzionamentoMinuti": None,
+                "TempoNonFunzionamentoSecondi": None,
+                "ChiusuraParziale": None,
+                "NoteChiusura": motivo,
+                "StatoOrdinePre": stato_pre,
+                "StatoOrdinePost": motivo,
+                "QtyDaLavorarePre": qty_pre,
+                "QtyDaLavorarePost": "",
+                "ClosedBy": "sync_input",
+                "ClosedAt": when_iso,
+                "VarianteArt": _norm_text(erp_row.get("VarianteArt")),
+                "NumProgrRiga": _norm_text(erp_row.get("NumProgrRiga")),
+            }
+        )
+
+        runtime_log_rows.append(
+            {
+                "logged_at": when_iso,
+                "OperationGroupId": operation_group_id,
+                "EventSequence": 1,
+                "Topic": "ordine_eliminato_gestionale",
+                "Scope": _norm_text(erp_row.get("CodReparto")),
+                "CodArt": _norm_text(erp_row.get("CodArt")),
+                "CodReparto": _norm_text(erp_row.get("CodReparto")),
+                "PayloadJson": json.dumps(
+                    {
+                        "azione": "sync_eliminato_gestionale",
+                        "motivo": motivo,
+                        "utente": "sync_input",
+                        "id_documento": id_documento,
+                        "id_riga": id_riga,
+                        "rif_registraz": _norm_text(erp_row.get("RifRegistraz")),
+                        "cod_art": _norm_text(erp_row.get("CodArt")),
+                        "stato_pre": stato_pre,
+                    },
+                    ensure_ascii=False,
+                ),
+                "IdDocumento": id_documento,
+                "IdRiga": id_riga,
+                "RifRegistraz": _norm_text(erp_row.get("RifRegistraz")),
+                "Azione": "sync_eliminato_gestionale",
+                "Motivo": motivo,
+                "UtenteOperazione": "sync_input",
+                "EventAt": when_iso,
+                "StatoOdpPre": stato_runtime_pre,
+                "StatoOdpPost": motivo,
+                "StatoOrdinePre": stato_pre,
+                "StatoOrdinePost": motivo,
+                "FasePre": fase_pre,
+                "FasePost": "",
+                "DataInCaricoPre": _norm_text(runtime_row.get("Data_in_carico")),
+                "DataInCaricoPost": "",
+                "DataUltimaAttivazionePre": _norm_text(
+                    runtime_row.get("data_ultima_attivazione")
+                ),
+                "DataUltimaAttivazionePost": "",
+                "TempoFunzionamentoPre": _norm_text(
+                    runtime_row.get("Tempo_funzionamento")
+                ),
+                "TempoFunzionamentoPost": "",
+                "ElapsedSeconds": None,
+                "TempoNonFunzionamentoMinuti": None,
+                "TempoNonFunzionamentoSecondi": None,
+                "QtyDaLavorarePre": qty_pre,
+                "QtyDaLavorarePost": "",
+                "QuantitaConforme": None,
+                "QuantitaNonConforme": None,
+                "Causale": None,
+                "Note": motivo,
+                "RifOrdinePrinc": _norm_text(runtime_row.get("RifOrdinePrinc")),
+                "VarianteArt": _norm_text(erp_row.get("VarianteArt")),
+                "NumProgrRiga": _norm_text(erp_row.get("NumProgrRiga")),
+            }
+        )
+
+    input_log_count = _append_dataframe_existing_columns(
+        engine=sqlite_engine_log,
+        table_name="input_odp_log",
+        df=pd.DataFrame(input_log_rows),
+    )
+
+    runtime_log_count = _append_dataframe_existing_columns(
+        engine=sqlite_engine_log,
+        table_name="odp_runtime_log",
+        df=pd.DataFrame(runtime_log_rows),
+    )
+
+    logging.info(
+        "Log sync eliminati da gestionale | input_odp_log=%s | odp_runtime_log=%s",
+        input_log_count,
+        runtime_log_count,
+    )
+
+    return {
+        "input_log": input_log_count,
+        "runtime_log": runtime_log_count,
+    }
+
+
 def _build_runtime_seed(df_input_odp: pd.DataFrame) -> pd.DataFrame:
     """
     Costruisce il seed iniziale per input_odp_runtime a partire dallo snapshot ERP.
@@ -1692,6 +1982,9 @@ def elaborazione_dati(session: Session) -> None:
 
     righe_inserite_odp = 0
     righe_aggiornate_odp = 0
+    righe_eliminate_odp_gestionale = 0
+    righe_log_eliminati_input = 0
+    righe_log_eliminati_runtime = 0
     righe_inserite_runtime = 0
     righe_inserite_lotti = 0
     righe_aggiornate_lotti = 0
@@ -1730,6 +2023,57 @@ def elaborazione_dati(session: Session) -> None:
                 )
                 or 0
             )
+            # mirror ordini: elimina da input_odp gli ordini non più validi da gestionale
+            # Non elimina input_odp_runtime per scelta funzionale.
+            incoming_erp_keys = _pk_set_from_df(df_input_odp, PK_COLS)
+
+            local_input_odp_keys = _fetch_all_keys(
+                sqlite_engine_app,
+                table_name="input_odp",
+                key_cols=PK_COLS,
+            )
+
+            keys_to_delete_gestionale = sorted(
+                (local_input_odp_keys - incoming_erp_keys) - blocked_outbox_pks
+            )
+
+            if keys_to_delete_gestionale:
+                df_deleted_erp = _fetch_rows_by_pk(
+                    sqlite_engine_app,
+                    table_name="input_odp",
+                    pk_cols=PK_COLS,
+                    pk_tuples=keys_to_delete_gestionale,
+                    columns=INPUT_ODP_ERP_COLS,
+                )
+
+                df_deleted_runtime = _fetch_rows_by_pk(
+                    sqlite_engine_app,
+                    table_name="input_odp_runtime",
+                    pk_cols=PK_COLS,
+                    pk_tuples=keys_to_delete_gestionale,
+                    columns=INPUT_ODP_RUNTIME_COLS,
+                )
+
+                log_stats = _write_sync_deleted_from_gestionale_logs(
+                    df_deleted_erp=df_deleted_erp,
+                    df_deleted_runtime=df_deleted_runtime,
+                    when_iso=_now_sync_iso(),
+                )
+
+                righe_log_eliminati_input = log_stats["input_log"]
+                righe_log_eliminati_runtime = log_stats["runtime_log"]
+
+                righe_eliminate_odp_gestionale = _delete_rows_by_pk(
+                    sqlite_engine_app,
+                    table_name="input_odp",
+                    pk_cols=PK_COLS,
+                    pk_tuples=keys_to_delete_gestionale,
+                )
+
+                logging.info(
+                    "Ordini eliminati da input_odp perché non più validi da gestionale: %s",
+                    righe_eliminate_odp_gestionale,
+                )
 
         incoming_lotti_keys = set(
             map(tuple, df_giacenza_lotti[list(LOTTI_PK_COLS)].astype(str).to_numpy())
@@ -1828,15 +2172,25 @@ def elaborazione_dati(session: Session) -> None:
         )
         righe_inserite_odp = 0
         righe_aggiornate_odp = 0
+        righe_eliminate_odp_gestionale = 0
+        righe_log_eliminati_input = 0
+        righe_log_eliminati_runtime = 0
         righe_inserite_runtime = 0
         righe_inserite_lotti = 0
         righe_aggiornate_lotti = 0
         righe_eliminate_lotti = 0
 
     logging.info(
-        "Sync input_odp completato | nuovi ERP=%s | aggiornati ERP=%s | nuovi runtime=%s | nuovi lotti=%s | lotti aggiornati=%s | lotti eliminati=%s",
+        (
+            "Sync input_odp completato | nuovi ERP=%s | aggiornati ERP=%s | "
+            "eliminati gestionale=%s | log eliminati input=%s | log eliminati runtime=%s | "
+            "nuovi runtime=%s | nuovi lotti=%s | lotti aggiornati=%s | lotti eliminati=%s"
+        ),
         righe_inserite_odp,
         righe_aggiornate_odp,
+        righe_eliminate_odp_gestionale,
+        righe_log_eliminati_input,
+        righe_log_eliminati_runtime,
         righe_inserite_runtime,
         righe_inserite_lotti,
         righe_aggiornate_lotti,
