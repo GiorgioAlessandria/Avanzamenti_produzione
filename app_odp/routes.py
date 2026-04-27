@@ -26,6 +26,7 @@ from app_odp.models import (
     InputOdp,
     InputOdpRuntime,
     db,
+    OdpPriorita,
     Causaliattivita,
     GiacenzaLotti,
     LottiUsatiLog,
@@ -2220,6 +2221,217 @@ def _norm_text(value) -> str:
     return str(value or "").strip()
 
 
+PRIORITA_2_MAX_DEFAULT = 5
+
+
+def _priorita_2_max() -> int:
+    try:
+        return int(current_app.config.get("PRIORITA_2_MAX", PRIORITA_2_MAX_DEFAULT))
+    except (TypeError, ValueError):
+        return PRIORITA_2_MAX_DEFAULT
+
+
+def _priority_now_iso() -> str:
+    return datetime.now(ROME_TZ).isoformat(timespec="seconds")
+
+
+def _ordine_fase_key(ordine) -> tuple[str, str, str]:
+    return (
+        _norm_text(ordine.IdDocumento),
+        _norm_text(ordine.IdRiga),
+        _norm_text(ordine.FaseAttiva) or "1",
+    )
+
+
+def _make_ordine_fase_key(id_documento, id_riga, fase) -> tuple[str, str, str]:
+    return (
+        _norm_text(id_documento),
+        _norm_text(id_riga),
+        _norm_text(fase) or "1",
+    )
+
+
+def _is_ordine_pianificata(ordine) -> bool:
+    return _norm_text(getattr(ordine, "StatoOrdine", "")).lower() == "pianificata"
+
+
+def _priority_sort_key(ordine):
+    pr = getattr(ordine, "PrioritaNumero", None)
+    pos = getattr(ordine, "PrioritaPosizione", None)
+
+    if pr in (1, 2, 3):
+        return (
+            0,
+            pr,
+            pos or 999999,
+            _norm_text(ordine.DataFineSched),
+            _norm_text(ordine.RifRegistraz),
+        )
+
+    return (
+        1,
+        99,
+        999999,
+        _norm_text(ordine.DataFineSched),
+        _norm_text(ordine.RifRegistraz),
+    )
+
+
+def _priorita_rows_for_operatore(operatore_id: int) -> list[OdpPriorita]:
+    return (
+        OdpPriorita.query.filter_by(operatore_id=int(operatore_id))
+        .order_by(
+            OdpPriorita.Priorita.asc(),
+            OdpPriorita.Posizione.asc(),
+            OdpPriorita.id.asc(),
+        )
+        .all()
+    )
+
+
+def _ordini_pianificata_visibili_per_operatore(operatore: User) -> list[InputOdp]:
+    """
+    Ritorna gli ordini Pianificata che l'operatore può vedere/lavorare
+    secondo RBAC/ABAC.
+    """
+    policy_operatore = RbacPolicy(operatore)
+
+    q = _base_odp_query()
+    q = policy_operatore.filter_input_odp(q)
+
+    ordini = q.all()
+
+    return [ordine for ordine in ordini if _is_ordine_pianificata(ordine)]
+
+
+def _priorita_valid_keys_for_operatore(
+    operatore: User,
+) -> dict[tuple[str, str, str], InputOdp]:
+    return {
+        _ordine_fase_key(ordine): ordine
+        for ordine in _ordini_pianificata_visibili_per_operatore(operatore)
+    }
+
+
+def _cleanup_priorita_operatore(operatore: User) -> None:
+    """
+    Elimina priorità non più valide:
+    - ordine non più visibile all'operatore;
+    - ordine non più Pianificata;
+    - fase cambiata.
+    """
+    valid_keys = _priorita_valid_keys_for_operatore(operatore)
+
+    for row in _priorita_rows_for_operatore(operatore.id):
+        key = _make_ordine_fase_key(row.IdDocumento, row.IdRiga, row.Fase)
+        if key not in valid_keys:
+            db.session.delete(row)
+
+
+def _compact_priorita_operatore(operatore_id: int) -> None:
+    """
+    Ricompatta la coda:
+    - 1 solo ordine in priorità 1;
+    - massimo N ordini in priorità 2;
+    - resto in priorità 3.
+    """
+    rows = _priorita_rows_for_operatore(operatore_id)
+    max_p2 = _priorita_2_max()
+
+    for index, row in enumerate(rows):
+        if index == 0:
+            row.Priorita = 1
+            row.Posizione = 1
+        elif index <= max_p2:
+            row.Priorita = 2
+            row.Posizione = index
+        else:
+            row.Priorita = 3
+            row.Posizione = index - max_p2
+
+        row.updated_at = _priority_now_iso()
+
+
+def _priorita_map_for_operatore(
+    operatore_id: int,
+) -> dict[tuple[str, str, str], OdpPriorita]:
+    return {
+        _make_ordine_fase_key(row.IdDocumento, row.IdRiga, row.Fase): row
+        for row in _priorita_rows_for_operatore(operatore_id)
+    }
+
+
+def _apply_priorita_to_ordini(
+    ordini: list[InputOdp],
+    operatore_id: int,
+    *,
+    sort_result: bool = True,
+) -> list[InputOdp]:
+    priorita_map = _priorita_map_for_operatore(operatore_id)
+
+    for ordine in ordini:
+        row = priorita_map.get(_ordine_fase_key(ordine))
+
+        if row is None:
+            ordine.PrioritaNumero = None
+            ordine.PrioritaPosizione = None
+        else:
+            ordine.PrioritaNumero = row.Priorita
+            ordine.PrioritaPosizione = row.Posizione
+
+    if sort_result:
+        return sorted(ordini, key=_priority_sort_key)
+
+    return ordini
+
+
+def _ordine_priorita_payload(ordine, priorita_row: OdpPriorita | None = None) -> dict:
+    fase = _norm_text(ordine.FaseAttiva) or "1"
+
+    return {
+        "key": f"{ordine.IdDocumento}|{ordine.IdRiga}|{fase}",
+        "id_documento": _norm_text(ordine.IdDocumento),
+        "id_riga": _norm_text(ordine.IdRiga),
+        "fase": fase,
+        "ordine": f"{_norm_text(ordine.RifRegistraz)}.{_norm_text(ordine.NumProgrRiga)}",
+        "codice": _norm_text(ordine.CodArt),
+        "variante": _norm_text(ordine.VarianteArt),
+        "revisione": _norm_text(ordine.IndiceModifica),
+        "descrizione": _norm_text(ordine.DesArt),
+        "quantita": _norm_text(getattr(ordine, "QtyDaLavorare", ""))
+        or _norm_text(ordine.Quantita),
+        "risorsa": _norm_text(getattr(ordine, "RisorsaAttiva", "")),
+        "lavorazione": _norm_text(getattr(ordine, "LavorazioneAttiva", "")),
+        "priorita": priorita_row.Priorita if priorita_row else None,
+        "posizione": priorita_row.Posizione if priorita_row else None,
+    }
+
+
+def _consume_priorita_ordine(id_documento: str, id_riga: str, fase: str) -> None:
+    """
+    Da chiamare quando un ordine viene preso in carico.
+    Rimuove quell'ordine da tutte le code operatore in cui compare,
+    poi ricompatta le code coinvolte.
+    """
+    key = _make_ordine_fase_key(id_documento, id_riga, fase)
+
+    rows = OdpPriorita.query.filter_by(
+        IdDocumento=key[0],
+        IdRiga=key[1],
+        Fase=key[2],
+    ).all()
+
+    operatori_coinvolti = {row.operatore_id for row in rows}
+
+    for row in rows:
+        db.session.delete(row)
+
+    db.session.flush()
+
+    for operatore_id in operatori_coinvolti:
+        _compact_priorita_operatore(operatore_id)
+
+
 def _now_rome_dt() -> datetime:
     return datetime.now(ROME_TZ)
 
@@ -3050,6 +3262,12 @@ def api_prendi_ordine():
             taken_by=_current_username(),
             taken_at=now_iso,
             note_evento="Presa in carico ordine",
+        )
+
+        _consume_priorita_ordine(
+            ordine.IdDocumento,
+            ordine.IdRiga,
+            ordine.FaseAttiva,
         )
 
         db.session.commit()
@@ -6980,3 +7198,172 @@ def api_export_acquisti_excel(section):
         as_attachment=True,
         download_name=file_name,
     )
+
+
+@main_bp.get("/priorita")
+@login_required
+@require_perm("priorita_view")
+def priorita():
+    policy = RbacPolicy(current_user)
+
+    return render_template(
+        "priorita.j2",
+        policy=policy,
+        can_edit_priorita=policy.can("priorita_edit"),
+        priorita_2_max=_priorita_2_max(),
+    )
+
+
+@main_bp.get("/api/priorita/operatori")
+@login_required
+@require_perm("priorita_view")
+def api_priorita_operatori():
+    operatori = (
+        User.query.filter(User.active.is_(True))
+        .order_by(func.lower(User.username))
+        .all()
+    )
+
+    return jsonify(
+        {
+            "operatori": [
+                {
+                    "id": user.id,
+                    "username": user.username,
+                }
+                for user in operatori
+            ]
+        }
+    )
+
+
+@main_bp.get("/api/priorita/operatori/<int:operatore_id>/ordini")
+@login_required
+@require_perm("priorita_view")
+def api_priorita_ordini_operatore(operatore_id: int):
+    operatore = User.query.get_or_404(operatore_id)
+
+    _cleanup_priorita_operatore(operatore)
+    _compact_priorita_operatore(operatore.id)
+    db.session.commit()
+
+    ordini = _ordini_pianificata_visibili_per_operatore(operatore)
+    priorita_map = _priorita_map_for_operatore(operatore.id)
+
+    payload = {
+        "available": [],
+        "p1": [],
+        "p2": [],
+        "p3": [],
+        "max_p2": _priorita_2_max(),
+        "can_edit": RbacPolicy(current_user).can("priorita_edit"),
+    }
+
+    for ordine in ordini:
+        key = _ordine_fase_key(ordine)
+        priorita_row = priorita_map.get(key)
+        item = _ordine_priorita_payload(ordine, priorita_row)
+
+        if priorita_row is None:
+            payload["available"].append(item)
+        elif priorita_row.Priorita == 1:
+            payload["p1"].append(item)
+        elif priorita_row.Priorita == 2:
+            payload["p2"].append(item)
+        elif priorita_row.Priorita == 3:
+            payload["p3"].append(item)
+
+    payload["available"].sort(key=lambda x: (x["ordine"], x["fase"]))
+    payload["p1"].sort(key=lambda x: x["posizione"] or 0)
+    payload["p2"].sort(key=lambda x: x["posizione"] or 0)
+    payload["p3"].sort(key=lambda x: x["posizione"] or 0)
+
+    return jsonify(payload)
+
+
+@main_bp.post("/api/priorita/operatori/<int:operatore_id>/salva")
+@login_required
+@require_perm("priorita_edit")
+def api_priorita_salva_operatore(operatore_id: int):
+    operatore = User.query.get_or_404(operatore_id)
+    payload = request.get_json(silent=True) or {}
+
+    items = payload.get("items", [])
+
+    if not isinstance(items, list):
+        return jsonify({"ok": False, "error": "Payload items non valido."}), 400
+
+    valid_orders = _priorita_valid_keys_for_operatore(operatore)
+    seen = set()
+    staged = []
+
+    for item in items:
+        try:
+            priorita = int(item.get("priorita"))
+            posizione = int(item.get("posizione"))
+        except (TypeError, ValueError):
+            return jsonify(
+                {"ok": False, "error": "Priorità o posizione non valida."}
+            ), 400
+
+        if priorita not in (1, 2, 3):
+            return jsonify({"ok": False, "error": "Priorità ammessa: 1, 2, 3."}), 400
+
+        key = _make_ordine_fase_key(
+            item.get("id_documento"),
+            item.get("id_riga"),
+            item.get("fase"),
+        )
+
+        if key in seen:
+            return jsonify({"ok": False, "error": "Ordine duplicato nella coda."}), 400
+
+        if key not in valid_orders:
+            return jsonify(
+                {
+                    "ok": False,
+                    "error": (
+                        "Uno degli ordini non è più Pianificata oppure "
+                        "non è più visibile per l'operatore selezionato."
+                    ),
+                }
+            ), 409
+
+        seen.add(key)
+        staged.append(
+            {
+                "key": key,
+                "priorita": priorita,
+                "posizione": posizione,
+            }
+        )
+
+    now_iso = _priority_now_iso()
+    username = _current_username("sync_priorita")
+
+    OdpPriorita.query.filter_by(operatore_id=operatore.id).delete(
+        synchronize_session=False
+    )
+
+    for row in staged:
+        id_documento, id_riga, fase = row["key"]
+
+        db.session.add(
+            OdpPriorita(
+                operatore_id=operatore.id,
+                IdDocumento=id_documento,
+                IdRiga=id_riga,
+                Fase=fase,
+                Priorita=row["priorita"],
+                Posizione=row["posizione"],
+                created_at=now_iso,
+                updated_at=now_iso,
+                updated_by=username,
+            )
+        )
+
+    db.session.flush()
+    _compact_priorita_operatore(operatore.id)
+    db.session.commit()
+
+    return jsonify({"ok": True})

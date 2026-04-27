@@ -1185,3 +1185,41 @@ class AcqArticoliLookup(db.Model):
     PianTempoApprovFisso = db.Column(db.Integer)
     DataPrevistaApprovvigionamento = db.Column(db.Text)
     synced_at = db.Column(db.Text)
+
+
+class OdpPriorita(db.Model):
+    __tablename__ = "odp_priorita"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+
+    operatore_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    IdDocumento = db.Column(db.Text, nullable=False, index=True)
+    IdRiga = db.Column(db.Text, nullable=False, index=True)
+    Fase = db.Column(db.Text, nullable=False, index=True)
+
+    Priorita = db.Column(db.Integer, nullable=False, index=True)
+    Posizione = db.Column(db.Integer, nullable=False, default=0)
+
+    created_at = db.Column(db.Text, nullable=False)
+    updated_at = db.Column(db.Text, nullable=False)
+    updated_by = db.Column(db.Text)
+
+    operatore = db.relationship("User", lazy="selectin")
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "operatore_id",
+            "IdDocumento",
+            "IdRiga",
+            "Fase",
+            name="uq_odp_priorita_operatore_ordine_fase",
+        ),
+        db.CheckConstraint("Priorita IN (1, 2, 3)", name="ck_odp_priorita_valore"),
+        db.CheckConstraint("Posizione >= 0", name="ck_odp_priorita_posizione"),
+    )
