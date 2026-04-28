@@ -56,6 +56,7 @@
                             <tr>
                                 <th>Ordine</th>
                                 <th>Codice</th>
+                                <th>Descrizione</th>
                                 <th>Fase</th>
                                 <th>Risorsa</th>
                             </tr>
@@ -146,11 +147,12 @@
                 const tr = document.createElement("tr");
 
                 tr.innerHTML = `
-                    <td>${escapeHtml(item.ordine)}</td>
-                    <td>${escapeHtml(item.codice)}</td>
-                    <td>${escapeHtml(item.fase)}</td>
-                    <td>${escapeHtml(item.risorsa)}</td>
-                `;
+                                <td>${escapeHtml(item.ordine)}</td>
+                                <td>${escapeHtml(item.codice)}</td>
+                                <td>${escapeHtml(item.descrizione)}</td>
+                                <td>${escapeHtml(item.fase)}</td>
+                                <td>${escapeHtml(item.risorsa)}</td>
+                            `;
 
                 return tr;
             }
