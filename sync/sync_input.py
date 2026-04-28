@@ -43,35 +43,25 @@ _INITIALIZED = False
 # endregion
 # region DB E CONFIG
 logging.basicConfig(
-        level = logging.INFO, format = "%(asctime)s | %(levelname)s | %(message)s"
-        )
+    level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s"
+)
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CONFIG_PATH = PROJECT_ROOT / "app_odp" / "static" / "config.toml"
 nuovo_ciclo = 0
 
 
-def _enable_sqlite_foreign_keys(
-        engine
-        ) -> None:
+def _enable_sqlite_foreign_keys(engine) -> None:
     if engine is None or engine.dialect.name != "sqlite":
         return
 
-
     @event.listens_for(engine, "connect")
-    def _set_sqlite_pragma(
-            dbapi_connection,
-            connection_record
-            ):
+    def _set_sqlite_pragma(dbapi_connection, connection_record):
         cursor = dbapi_connection.cursor()
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.close()
 
 
-def init(
-        config_path: str | pathlib.Path = None,
-        *,
-        force: bool = False
-        ):
+def init(config_path: str | pathlib.Path = None, *, force: bool = False):
     global CONFIG, config, sqlite_engine_app, sqlserver_engine_app, sqlite_engine_log
     global ALLOWED_WEEKDAYS, START_H, END_H, TIMEZONE, POLL_SECONDS_DEFAULT
     global ELEMENTI_ESCLUSI, ELEMENTI_SELEZIONATI
@@ -129,9 +119,7 @@ def ensure_init():
         init()
 
 
-def load_config(
-        config: Path
-        ) -> dict:
+def load_config(config: Path) -> dict:
     """
     Caricamento e lettura file configurazioni
 
@@ -147,25 +135,25 @@ def load_config(
 
 
 def leggi_view(
-        table: Literal[
-            "vwESRisorse",
-            "vwESOdP",
-            "vwESOdPFasi",
-            "vwESLavorazioni",
-            "vwESOdPComponenti",
-            "vwESRisorse",
-            "vwESReparti",
-            "vwESCausaliAttivita",
-            "vwESGiacenza",
-            "vwESGiacenzaLotti",
-            "vwESArticoli",
-            "vwESMagazzini",
-            "vwESFamiglia",
-            "vwESMacroFamiglia",
-        ],
-        colonna_filtro_esclusi: Optional[str] = "",
-        colonna_filtro_stato: Optional[str] = "",
-        ) -> pd.DataFrame:
+    table: Literal[
+        "vwESRisorse",
+        "vwESOdP",
+        "vwESOdPFasi",
+        "vwESLavorazioni",
+        "vwESOdPComponenti",
+        "vwESRisorse",
+        "vwESReparti",
+        "vwESCausaliAttivita",
+        "vwESGiacenza",
+        "vwESGiacenzaLotti",
+        "vwESArticoli",
+        "vwESMagazzini",
+        "vwESFamiglia",
+        "vwESMacroFamiglia",
+    ],
+    colonna_filtro_esclusi: Optional[str] = "",
+    colonna_filtro_stato: Optional[str] = "",
+) -> pd.DataFrame:
     """
     Lettura della view
 
@@ -187,18 +175,17 @@ def leggi_view(
         df = df[
             ~df[colonna_filtro_esclusi].isin(ELEMENTI_ESCLUSI[colonna_filtro_esclusi])
         ]
-        df = df.dropna(subset = [colonna_filtro_esclusi], how = "any")
+        df = df.dropna(subset=[colonna_filtro_esclusi], how="any")
     if colonna_filtro_stato != "":
         df = df[df[colonna_filtro_stato] == ELEMENTI_SELEZIONATI[colonna_filtro_stato]]
-        df = df.dropna(subset = [colonna_filtro_stato], how = "any")
-    df = df.reset_index(drop = True)
+        df = df.dropna(subset=[colonna_filtro_stato], how="any")
+    df = df.reset_index(drop=True)
     return df
 
 
 def filtra_odpfasi_con_odp(
-        df_odpfasi: pd.DataFrame,
-        df_odp: pd.DataFrame
-        ) -> pd.DataFrame:
+    df_odpfasi: pd.DataFrame, df_odp: pd.DataFrame
+) -> pd.DataFrame:
     """
     Incrocio dei dati per mantenere le linee di df_odpfasi che corrispondono a [IdDocumento, IdRiga] di df_odp
 
@@ -210,15 +197,14 @@ def filtra_odpfasi_con_odp(
     :rtype: pd.DataFrame
     """
     df_odpfasi_filtered = df_odpfasi.merge(
-            df_odp[["IdDocumento", "IdRiga"]], on = ["IdDocumento", "IdRiga"], how = "right"
-            )
+        df_odp[["IdDocumento", "IdRiga"]], on=["IdDocumento", "IdRiga"], how="right"
+    )
     return df_odpfasi_filtered
 
 
 def filtra_odp_componenti_con_odp(
-        df_odp_componenti: pd.DataFrame,
-        df_odp: pd.DataFrame
-        ) -> pd.DataFrame:
+    df_odp_componenti: pd.DataFrame, df_odp: pd.DataFrame
+) -> pd.DataFrame:
     """
     Incrocio dei dati per mantenere le linee di df_odp_componenti che si trovano in IdDocumento e IdRiga di df_odp.
     Il filtro su df_odp_componenti è ["IdDocumento", "IdRigaPadre"]
@@ -232,23 +218,22 @@ def filtra_odp_componenti_con_odp(
     :rtype: pd.DataFrame
     """
     df_odp_componenti_filtered = df_odp_componenti.merge(
-            df_odp[["IdDocumento", "IdRiga"]],
-            left_on = ["IdDocumento", "IdRigaPadre"],
-            how = "right",
-            right_on = ["IdDocumento", "IdRiga"],
-            suffixes = ["", "_y"],
-            )
+        df_odp[["IdDocumento", "IdRiga"]],
+        left_on=["IdDocumento", "IdRigaPadre"],
+        how="right",
+        right_on=["IdDocumento", "IdRiga"],
+        suffixes=["", "_y"],
+    )
     colonne_con_y = df_odp_componenti_filtered.columns.tolist()
     colonne_con_y = [colonna for colonna in colonne_con_y if colonna.endswith("_y")]
 
-    df_odp_componenti_filtered = df_odp_componenti_filtered.drop(columns = colonne_con_y)
+    df_odp_componenti_filtered = df_odp_componenti_filtered.drop(columns=colonne_con_y)
     return df_odp_componenti_filtered
 
 
 def inserimento_reparto_da_risorsa(
-        df_odp_fasi: pd.DataFrame,
-        df_risorse: pd.DataFrame
-        ) -> pd.DataFrame:
+    df_odp_fasi: pd.DataFrame, df_risorse: pd.DataFrame
+) -> pd.DataFrame:
     """
     Inserimento del reparto in base alla risorsa richiamata
 
@@ -260,17 +245,15 @@ def inserimento_reparto_da_risorsa(
     :rtype: pd.DataFrame
     """
     df_odp_fasi_reparti = df_odp_fasi.merge(
-            df_risorse[["CodRisorsaProd", "CodReparto"]], on = ["CodRisorsaProd"], how = "left"
-            )
-    df_odp_fasi_reparti = df_odp_fasi_reparti.dropna(subset = "CodReparto", how = "any")
+        df_risorse[["CodRisorsaProd", "CodReparto"]], on=["CodRisorsaProd"], how="left"
+    )
+    df_odp_fasi_reparti = df_odp_fasi_reparti.dropna(subset="CodReparto", how="any")
     return df_odp_fasi_reparti
 
 
 def unione_fasi_componenti(
-        df_fasi: pd.DataFrame,
-        df_componenti: pd.DataFrame,
-        df_articoli: pd.DataFrame
-        ) -> pd.DataFrame:
+    df_fasi: pd.DataFrame, df_componenti: pd.DataFrame, df_articoli: pd.DataFrame
+) -> pd.DataFrame:
     """
     Join tra il df delle fasi e quello dei componenti per fase.
     Al df_componenti vengono rinominate le righe IdRigaPadre e IdRiga
@@ -279,83 +262,78 @@ def unione_fasi_componenti(
     VarianteArt dei componenti resta quella proveniente da vwESOdPComponenti.
     """
     df_componenti = df_componenti.rename(
-            columns = {"IdRiga": "IdRigacomponente", "IdRigaPadre": "IdRiga"}
-            )
+        columns={"IdRiga": "IdRigacomponente", "IdRigaPadre": "IdRiga"}
+    )
 
-    fasi_indexed = df_fasi.set_index(["IdDocumento", "IdRiga", "NumFase"], drop = True)
+    fasi_indexed = df_fasi.set_index(["IdDocumento", "IdRiga", "NumFase"], drop=True)
     comp_indexed = df_componenti.set_index(
-            ["IdDocumento", "IdRiga", "NumFase"], drop = True
-            )
+        ["IdDocumento", "IdRiga", "NumFase"], drop=True
+    )
 
     df_fasi_componenti = fasi_indexed.join(
-            comp_indexed,
-            on = ["IdDocumento", "IdRiga", "NumFase"],
-            validate = "1:m",
-            how = "left",
-            )
+        comp_indexed,
+        on=["IdDocumento", "IdRiga", "NumFase"],
+        validate="1:m",
+        how="left",
+    )
 
-    df_fasi_componenti = df_fasi_componenti.reset_index(drop = False)
+    df_fasi_componenti = df_fasi_componenti.reset_index(drop=False)
 
     df_fasi_componenti = df_fasi_componenti.merge(
-            df_articoli[
-                [
-                    "CodArt",
-                    "DesArt",
-                    "TecniciUm",
-                    "GestioneLotto",
-                    "IndiceModifica",
-                    ]
-            ],
-            on = "CodArt",
-            how = "left",
-            )
+        df_articoli[
+            [
+                "CodArt",
+                "DesArt",
+                "TecniciUm",
+                "GestioneLotto",
+                "IndiceModifica",
+            ]
+        ],
+        on="CodArt",
+        how="left",
+    )
 
     return df_fasi_componenti
 
 
 def generazione_lista(
-        df: pd.DataFrame,
-        chiavi: list[str],
-        rename_col: str,
-        list_columns: list[str],
-        dumps_json: bool = True,
-        ) -> pd.DataFrame:
+    df: pd.DataFrame,
+    chiavi: list[str],
+    rename_col: str,
+    list_columns: list[str],
+    dumps_json: bool = True,
+) -> pd.DataFrame:
     tmp = df.copy()
 
     if len(list_columns) == 1:
         col = list_columns[0]
         componenti_per_odp = (
-            tmp.groupby(chiavi, dropna = False)[col]
-            .apply(lambda
-                       s: pd.unique(s.dropna()).tolist())
+            tmp.groupby(chiavi, dropna=False)[col]
+            .apply(lambda s: pd.unique(s.dropna()).tolist())
             .rename(rename_col)
             .reset_index()
         )
     else:
         componenti_per_odp = (
-            tmp.groupby(chiavi, dropna = False)[list_columns]
-            .apply(lambda
-                       g: [tuple(r) for r in g.to_numpy()])
+            tmp.groupby(chiavi, dropna=False)[list_columns]
+            .apply(lambda g: [tuple(r) for r in g.to_numpy()])
             .rename(rename_col)
             .reset_index()
         )
 
     if dumps_json:
         componenti_per_odp[rename_col] = componenti_per_odp[rename_col].apply(
-                lambda
-                    x: (
-                    json.dumps(x, ensure_ascii = False, default = str)
-                    if isinstance(x, list)
-                    else None
-                )
-                )
+            lambda x: (
+                json.dumps(x, ensure_ascii=False, default=str)
+                if isinstance(x, list)
+                else None
+            )
+        )
 
     return componenti_per_odp
 
 
-def _sanitize_json_scalar(
-        value
-        ):
+def _sanitize_json_scalar(value):
     """
     Converte i valori pandas/numpy non JSON-validi in None.
     Evita che json.dumps serializzi NaN come token non valido per il frontend.
@@ -365,22 +343,20 @@ def _sanitize_json_scalar(
     return value
 
 
-def _sanitize_records_for_json(
-        records: list[dict]
-        ) -> list[dict]:
+def _sanitize_records_for_json(records: list[dict]) -> list[dict]:
     return [
         {key: _sanitize_json_scalar(value) for key, value in record.items()}
         for record in records
-        ]
+    ]
 
 
 def generazione_dizionario(
-        df: pd.DataFrame,
-        chiavi: list[str],
-        rename_col: str,
-        list_columns: list[str],
-        data_in: Optional[str] = "normale",
-        ) -> pd.DataFrame:
+    df: pd.DataFrame,
+    chiavi: list[str],
+    rename_col: str,
+    list_columns: list[str],
+    data_in: Optional[str] = "normale",
+) -> pd.DataFrame:
     """
     Genera un dizionario raggruppando le chiavi
 
@@ -414,27 +390,23 @@ def generazione_dizionario(
 
     componenti_per_odp = (
         df.groupby(chiavi)
-        .apply(lambda
-                   g: _sanitize_records_for_json(g[list_columns].to_dict("records")))
+        .apply(lambda g: _sanitize_records_for_json(g[list_columns].to_dict("records")))
         .rename(rename_col)
         .reset_index()
     )
     componenti_per_odp[rename_col] = componenti_per_odp[rename_col].apply(
-            lambda
-                x: (
-                json.dumps(x, ensure_ascii = False, allow_nan = False)
-                if isinstance(x, (list, tuple))
-                else None
-            )
-            )
+        lambda x: (
+            json.dumps(x, ensure_ascii=False, allow_nan=False)
+            if isinstance(x, (list, tuple))
+            else None
+        )
+    )
     return componenti_per_odp
 
 
 def inserimento_distinta_in_odp(
-        df_odp: pd.DataFrame,
-        componenti_per_odp: pd.DataFrame,
-        chiavi: list[str]
-        ) -> pd.DataFrame:
+    df_odp: pd.DataFrame, componenti_per_odp: pd.DataFrame, chiavi: list[str]
+) -> pd.DataFrame:
     """
     Inserimento della distinta nella linea d'ordine
 
@@ -449,19 +421,17 @@ def inserimento_distinta_in_odp(
     :return: dataframe con gli ordini e la distinta
     :rtype: pd.DataFrame
     """
-    df_odp = df_odp.merge(componenti_per_odp, on = chiavi, how = "left")
+    df_odp = df_odp.merge(componenti_per_odp, on=chiavi, how="left")
     df_odp = df_odp.drop(
-            columns = ["NumRegistraz", "DataRegistrazione", "UnitaMisura", "QtaResidua"],
-            errors = "ignore",
-            )
+        columns=["NumRegistraz", "DataRegistrazione", "UnitaMisura", "QtaResidua"],
+        errors="ignore",
+    )
     return df_odp
 
 
 def inserimento_dati_fasi_in_odp(
-        df_odp: pd.DataFrame,
-        df_odpfasi: pd.DataFrame,
-        chiavi: list[str]
-        ) -> pd.DataFrame:
+    df_odp: pd.DataFrame, df_odpfasi: pd.DataFrame, chiavi: list[str]
+) -> pd.DataFrame:
     """
     Inserimento dei dati divisi per fase
 
@@ -479,57 +449,57 @@ def inserimento_dati_fasi_in_odp(
     """
 
     num_fase_per_odp = generazione_lista(
-            df = df_odpfasi, chiavi = chiavi, rename_col = "NumFase", list_columns = ["NumFase"]
-            ).set_index(["IdDocumento", "IdRiga"])
+        df=df_odpfasi, chiavi=chiavi, rename_col="NumFase", list_columns=["NumFase"]
+    ).set_index(["IdDocumento", "IdRiga"])
 
     cod_lavorazione_per_odp = generazione_lista(
-            df = df_odpfasi,
-            chiavi = chiavi,
-            rename_col = "CodLavorazione",
-            list_columns = ["CodLavorazione"],
-            ).set_index(["IdDocumento", "IdRiga"])
+        df=df_odpfasi,
+        chiavi=chiavi,
+        rename_col="CodLavorazione",
+        list_columns=["CodLavorazione"],
+    ).set_index(["IdDocumento", "IdRiga"])
 
     cod_risorsa_prod_per_odp = generazione_lista(
-            df = df_odpfasi,
-            chiavi = chiavi,
-            rename_col = "CodRisorsaProd",
-            list_columns = ["CodRisorsaProd"],
-            ).set_index(["IdDocumento", "IdRiga"])
+        df=df_odpfasi,
+        chiavi=chiavi,
+        rename_col="CodRisorsaProd",
+        list_columns=["CodRisorsaProd"],
+    ).set_index(["IdDocumento", "IdRiga"])
 
     cod_reparto_per_odp = generazione_lista(
-            df = df_odpfasi,
-            chiavi = chiavi,
-            rename_col = "CodReparto",
-            list_columns = ["CodReparto"],
-            ).set_index(["IdDocumento", "IdRiga"])
+        df=df_odpfasi,
+        chiavi=chiavi,
+        rename_col="CodReparto",
+        list_columns=["CodReparto"],
+    ).set_index(["IdDocumento", "IdRiga"])
 
     data_inizio_sched_per_odp = generazione_lista(
-            df = df_odpfasi,
-            chiavi = chiavi,
-            rename_col = "DataInizioSched",
-            list_columns = ["DataInizioSched"],
-            ).set_index(["IdDocumento", "IdRiga"])
+        df=df_odpfasi,
+        chiavi=chiavi,
+        rename_col="DataInizioSched",
+        list_columns=["DataInizioSched"],
+    ).set_index(["IdDocumento", "IdRiga"])
 
     data_fine_sched_per_odp = generazione_lista(
-            df = df_odpfasi,
-            chiavi = chiavi,
-            rename_col = "DataFineSched",
-            list_columns = ["DataFineSched"],
-            ).set_index(["IdDocumento", "IdRiga"])
+        df=df_odpfasi,
+        chiavi=chiavi,
+        rename_col="DataFineSched",
+        list_columns=["DataFineSched"],
+    ).set_index(["IdDocumento", "IdRiga"])
 
     tempo_previsto_lavoraz_per_odp = generazione_lista(
-            df = df_odpfasi,
-            chiavi = chiavi,
-            rename_col = "TempoPrevistoLavoraz",
-            list_columns = ["TempoPrevistoLavoraz"],
-            ).set_index(["IdDocumento", "IdRiga"])
+        df=df_odpfasi,
+        chiavi=chiavi,
+        rename_col="TempoPrevistoLavoraz",
+        list_columns=["TempoPrevistoLavoraz"],
+    ).set_index(["IdDocumento", "IdRiga"])
 
     tempo_attrezzaggio_odp = generazione_lista(
-            df = df_odpfasi,
-            chiavi = chiavi,
-            rename_col = "TempoAttrezzaggio",
-            list_columns = ["TempoAttrezzaggio"],
-            ).set_index(["IdDocumento", "IdRiga"])
+        df=df_odpfasi,
+        chiavi=chiavi,
+        rename_col="TempoAttrezzaggio",
+        list_columns=["TempoAttrezzaggio"],
+    ).set_index(["IdDocumento", "IdRiga"])
 
     df_dizionari = [
         num_fase_per_odp,
@@ -540,23 +510,20 @@ def inserimento_dati_fasi_in_odp(
         data_fine_sched_per_odp,
         tempo_previsto_lavoraz_per_odp,
         tempo_attrezzaggio_odp,
-        ]
+    ]
     df_fasi_raggruppate = ft.reduce(
-            lambda
-                left,
-                right: pd.merge(left, right, on = chiavi), df_dizionari
-            )
+        lambda left, right: pd.merge(left, right, on=chiavi), df_dizionari
+    )
 
     df_odp = df_odp.set_index(["IdDocumento", "IdRiga"])
-    df_odp = df_odp.join(df_fasi_raggruppate, how = "left")
-    df_odp = df_odp.reset_index(drop = False)
+    df_odp = df_odp.join(df_fasi_raggruppate, how="left")
+    df_odp = df_odp.reset_index(drop=False)
     return df_odp
 
 
 def gestione_lotto_matricola_famiglia(
-        df_odp: pd.DataFrame,
-        df_articoli: pd.DataFrame
-        ) -> pd.DataFrame:
+    df_odp: pd.DataFrame, df_articoli: pd.DataFrame
+) -> pd.DataFrame:
     """
     Inserimento nel dataframe la gestione per lotto, matricola e la famiglia
 
@@ -570,28 +537,27 @@ def gestione_lotto_matricola_famiglia(
     :rtype: DataFrame
     """
     df_odp = df_odp.merge(
-            df_articoli[
-                [
-                    "CodArt",
-                    "GestioneLotto",
-                    "GestioneMatricola",
-                    "CodFamiglia",
-                    "CodClassifTecnica",
-                    "DesArt",
-                    "IndiceModifica",
-                    ]
-            ],
-            on = "CodArt",
-            how = "left",
-            )
-    df_odp = df_odp.dropna(subset = ["GestioneLotto", "GestioneMatricola", "CodFamiglia"])
+        df_articoli[
+            [
+                "CodArt",
+                "GestioneLotto",
+                "GestioneMatricola",
+                "CodFamiglia",
+                "CodClassifTecnica",
+                "DesArt",
+                "IndiceModifica",
+            ]
+        ],
+        on="CodArt",
+        how="left",
+    )
+    df_odp = df_odp.dropna(subset=["GestioneLotto", "GestioneMatricola", "CodFamiglia"])
     return df_odp
 
 
 def inserimento_macrofamiglia(
-        df_odp: pd.DataFrame,
-        df_famiglia: pd.DataFrame
-        ) -> pd.DataFrame:
+    df_odp: pd.DataFrame, df_famiglia: pd.DataFrame
+) -> pd.DataFrame:
     """
     Inserimento nel dataframe la macrofamiglia di appartenenza
 
@@ -605,18 +571,13 @@ def inserimento_macrofamiglia(
     :rtype: DataFrame
     """
     df_odp = df_odp.merge(
-            df_famiglia[["CodFamiglia", "CodMacrofamiglia"]], on = ["CodFamiglia"], how = "left"
-            )
-    df_odp = df_odp.dropna(subset = ["CodMacrofamiglia"])
+        df_famiglia[["CodFamiglia", "CodMacrofamiglia"]], on=["CodFamiglia"], how="left"
+    )
+    df_odp = df_odp.dropna(subset=["CodMacrofamiglia"])
     return df_odp
 
 
-def inserisci_o_ignora(
-        sqltable,
-        conn,
-        keys,
-        data_iter
-        ) -> int:
+def inserisci_o_ignora(sqltable, conn, keys, data_iter) -> int:
     """
     Inserimento delle righe a db se non già presenti altrimenti ignora.
     Ritorna il numero di righe realmente inserite quando possibile.
@@ -677,7 +638,7 @@ INPUT_ODP_ERP_COLS = [
     "IndiceModifica",
     "TempoAttrezzaggio",
     "VarianteArt",
-    ]
+]
 
 INPUT_ODP_RUNTIME_COLS = [
     "IdDocumento",
@@ -692,84 +653,84 @@ INPUT_ODP_RUNTIME_COLS = [
     "LavorazioneAttiva",
     "AttrezzaggioAttivo",
     "VarianteArt",
-    ]
+]
 
 INPUT_ODP_ERP_UPDATE_COLS = [c for c in INPUT_ODP_ERP_COLS if c not in PK_COLS]
 RBAC_SUPPORT_SYNC_CONFIG = (
     {
-        "view":       "vwESCausaliAttivita",
-        "table":      "causaliattivita",
+        "view": "vwESCausaliAttivita",
+        "table": "causaliattivita",
         "rename_map": {
-            "CausaleAttivita":      "CausaleAttivita",
-            "DesCausaleAttivita":   "DesCausaleAttivita",
+            "CausaleAttivita": "CausaleAttivita",
+            "DesCausaleAttivita": "DesCausaleAttivita",
             "CodCategoriaAttivita": "CodCategoriaAttivita",
-            "TipoCausale":          "TipoCausale",
-            },
-        "key_cols":   ("CausaleAttivita",),
+            "TipoCausale": "TipoCausale",
         },
+        "key_cols": ("CausaleAttivita",),
+    },
     {
-        "view":       "vwESFamiglia",
-        "table":      "famiglia",
+        "view": "vwESFamiglia",
+        "table": "famiglia",
         "rename_map": {
             "CodFamiglia": "Codice",
-            "Des":         "Descrizione",
-            },
-        "key_cols":   ("Codice",),
+            "Des": "Descrizione",
         },
+        "key_cols": ("Codice",),
+    },
     {
-        "view":       "vwESLavorazioni",
-        "table":      "lavorazioni",
+        "view": "vwESLavorazioni",
+        "table": "lavorazioni",
         "rename_map": {
             "CodLavorazione": "Codice",
             "DesLavorazione": "Descrizione",
-            },
-        "key_cols":   ("Codice",),
         },
+        "key_cols": ("Codice",),
+    },
     {
-        "view":       "vwESMacroFamiglia",
-        "table":      "macrofamiglia",
+        "view": "vwESMacroFamiglia",
+        "table": "macrofamiglia",
         "rename_map": {
             "CodMacrofamiglia": "Codice",
-            "Des":              "Descrizione",
-            },
-        "key_cols":   ("Codice",),
+            "Des": "Descrizione",
         },
+        "key_cols": ("Codice",),
+    },
     {
-        "view":       "vwESMagazzini",
-        "table":      "magazzini",
+        "view": "vwESMagazzini",
+        "table": "magazzini",
         "rename_map": {
-            "CodMag":       "Codice",
+            "CodMag": "Codice",
             "DesMagazzino": "Descrizione",
-            },
-        "key_cols":   ("Codice",),
         },
+        "key_cols": ("Codice",),
+    },
     {
-        "view":       "vwESReparti",
-        "table":      "reparti",
+        "view": "vwESReparti",
+        "table": "reparti",
         "rename_map": {
             "CodReparto": "Codice",
-            "Des":        "Descrizione",
-            },
-        "key_cols":   ("Codice",),
+            "Des": "Descrizione",
         },
+        "key_cols": ("Codice",),
+    },
     {
-        "view":       "vwESRisorse",
-        "table":      "risorse",
+        "view": "vwESRisorse",
+        "table": "risorse",
         "rename_map": {
             "CodRisorsaProd": "Codice",
             "DesRisorsaProd": "Descrizione",
-            },
-        "key_cols":   ("Codice",),
         },
-    )
+        "key_cols": ("Codice",),
+    },
+)
 
 
 def _fetch_existing_pks(
-        engine,
-        pk_tuples,
-        pk_cols = ("IdDocumento", "IdRiga"),
-        table_name = "input_odp",
-        ) -> set[tuple]:
+    engine,
+    pk_tuples,
+    pk_cols=("IdDocumento", "IdRiga"),
+    table_name="input_odp",
+) -> set[tuple]:
     """
     Ritorna un set di PK già presenti nella tabella indicata.
     Supporta PK composte di lunghezza variabile.
@@ -778,7 +739,7 @@ def _fetch_existing_pks(
         return set()
 
     md = sa.MetaData()
-    t = sa.Table(table_name, md, autoload_with = engine)
+    t = sa.Table(table_name, md, autoload_with=engine)
     pk_columns = [t.c[col] for col in pk_cols]
 
     existing = set()
@@ -799,13 +760,13 @@ def _fetch_existing_pks(
 
 
 def _fetch_all_keys(
-        engine,
-        *,
-        table_name: str,
-        key_cols: tuple[str, ...],
-        ) -> set[tuple]:
+    engine,
+    *,
+    table_name: str,
+    key_cols: tuple[str, ...],
+) -> set[tuple]:
     md = sa.MetaData()
-    t = sa.Table(table_name, md, autoload_with = engine)
+    t = sa.Table(table_name, md, autoload_with=engine)
     cols = [t.c[col] for col in key_cols]
 
     stmt = sa.select(*cols)
@@ -816,30 +777,28 @@ def _fetch_all_keys(
     return {tuple(_norm_text(value) for value in row) for row in rows}
 
 
-def _clean_support_value(
-        value
-        ):
+def _clean_support_value(value):
     if pd.isna(value):
         return None
     return _norm_text(value)
 
 
 def _prepare_support_df(
-        df_source: pd.DataFrame,
-        *,
-        rename_map: dict[str, str],
-        key_cols: tuple[str, ...],
-        ) -> pd.DataFrame:
+    df_source: pd.DataFrame,
+    *,
+    rename_map: dict[str, str],
+    key_cols: tuple[str, ...],
+) -> pd.DataFrame:
     missing_cols = [col for col in rename_map if col not in df_source.columns]
     if missing_cols:
         raise KeyError(
-                f"Colonne mancanti nella view per sync support table: {missing_cols}"
-                )
+            f"Colonne mancanti nella view per sync support table: {missing_cols}"
+        )
 
     source_cols = list(rename_map.keys())
     target_cols = list(rename_map.values())
 
-    df = df_source[source_cols].rename(columns = rename_map).copy()
+    df = df_source[source_cols].rename(columns=rename_map).copy()
 
     for col in target_cols:
         df[col] = df[col].apply(_clean_support_value)
@@ -848,7 +807,7 @@ def _prepare_support_df(
         df = df[df[col].notna()]
         df = df[df[col].astype("string").str.strip().ne("")]
 
-    df = df.drop_duplicates(subset = list(key_cols), keep = "last")
+    df = df.drop_duplicates(subset=list(key_cols), keep="last")
     df = df[target_cols].copy()
     df = df.where(pd.notna(df), None)
 
@@ -856,36 +815,36 @@ def _prepare_support_df(
 
 
 def _sync_support_table(
-        engine,
-        *,
-        table_name: str,
-        df_source: pd.DataFrame,
-        key_cols: tuple[str, ...],
-        ) -> dict[str, int]:
+    engine,
+    *,
+    table_name: str,
+    df_source: pd.DataFrame,
+    key_cols: tuple[str, ...],
+) -> dict[str, int]:
     incoming_keys = [
         tuple(_norm_text(value) for value in row)
-        for row in df_source[list(key_cols)].itertuples(index = False, name = None)
-        ]
+        for row in df_source[list(key_cols)].itertuples(index=False, name=None)
+    ]
 
     existing_keys = (
         _fetch_existing_pks(
-                engine,
-                incoming_keys,
-                pk_cols = key_cols,
-                table_name = table_name,
-                )
+            engine,
+            incoming_keys,
+            pk_cols=key_cols,
+            table_name=table_name,
+        )
         if incoming_keys
         else set()
     )
 
     mask_new = [
         tuple(_norm_text(value) for value in row) not in existing_keys
-        for row in df_source[list(key_cols)].itertuples(index = False, name = None)
-        ]
+        for row in df_source[list(key_cols)].itertuples(index=False, name=None)
+    ]
     mask_existing = [
         tuple(_norm_text(value) for value in row) in existing_keys
-        for row in df_source[list(key_cols)].itertuples(index = False, name = None)
-        ]
+        for row in df_source[list(key_cols)].itertuples(index=False, name=None)
+    ]
 
     df_new = df_source.loc[mask_new].copy()
     df_existing = df_source.loc[mask_existing].copy()
@@ -898,47 +857,47 @@ def _sync_support_table(
 
     if not df_new.empty:
         inserted = int(
-                df_new.to_sql(
-                        name = table_name,
-                        con = engine,
-                        if_exists = "append",
-                        index = False,
-                        method = inserisci_o_ignora,
-                        )
-                or 0
-                )
+            df_new.to_sql(
+                name=table_name,
+                con=engine,
+                if_exists="append",
+                index=False,
+                method=inserisci_o_ignora,
+            )
+            or 0
+        )
 
     if not df_existing.empty and update_cols:
         updated = _update_rows_by_pk(
-                engine,
-                df_existing,
-                table_name = table_name,
-                pk_cols = key_cols,
-                update_cols = update_cols,
-                )
+            engine,
+            df_existing,
+            table_name=table_name,
+            pk_cols=key_cols,
+            update_cols=update_cols,
+        )
 
     local_keys = _fetch_all_keys(
-            engine,
-            table_name = table_name,
-            key_cols = key_cols,
-            )
+        engine,
+        table_name=table_name,
+        key_cols=key_cols,
+    )
     incoming_keys_set = set(incoming_keys)
 
     keys_to_delete = sorted(local_keys - incoming_keys_set)
 
     if keys_to_delete:
         deleted = _delete_rows_by_pk(
-                engine,
-                table_name = table_name,
-                pk_cols = key_cols,
-                pk_tuples = keys_to_delete,
-                )
+            engine,
+            table_name=table_name,
+            pk_cols=key_cols,
+            pk_tuples=keys_to_delete,
+        )
 
     return {
         "inserted": inserted,
-        "updated":  updated,
-        "deleted":  deleted,
-        }
+        "updated": updated,
+        "deleted": deleted,
+    }
 
 
 def _sync_rbac_support_tables() -> dict[str, dict[str, int]]:
@@ -947,48 +906,46 @@ def _sync_rbac_support_tables() -> dict[str, dict[str, int]]:
     results = {}
 
     for cfg in RBAC_SUPPORT_SYNC_CONFIG:
-        df_view = leggi_view(table = cfg["view"])
+        df_view = leggi_view(table=cfg["view"])
         df_prepared = _prepare_support_df(
-                df_view,
-                rename_map = cfg["rename_map"],
-                key_cols = cfg["key_cols"],
-                )
+            df_view,
+            rename_map=cfg["rename_map"],
+            key_cols=cfg["key_cols"],
+        )
 
         stats = _sync_support_table(
-                sqlite_engine_app,
-                table_name = cfg["table"],
-                df_source = df_prepared,
-                key_cols = cfg["key_cols"],
-                )
+            sqlite_engine_app,
+            table_name=cfg["table"],
+            df_source=df_prepared,
+            key_cols=cfg["key_cols"],
+        )
 
         results[cfg["table"]] = stats
 
         logging.info(
-                "Sync %s completato | nuovi=%s | aggiornati=%s | eliminati=%s",
-                cfg["table"],
-                stats["inserted"],
-                stats["updated"],
-                stats["deleted"],
-                )
+            "Sync %s completato | nuovi=%s | aggiornati=%s | eliminati=%s",
+            cfg["table"],
+            stats["inserted"],
+            stats["updated"],
+            stats["deleted"],
+        )
 
     return results
 
 
-def _fetch_blocked_outbox_pks(
-        log_engine
-        ) -> set[tuple[str, str]]:
+def _fetch_blocked_outbox_pks(log_engine) -> set[tuple[str, str]]:
     """
     Restituisce le PK (IdDocumento, IdRiga) presenti in erp_outbox
     nel db di log. Qualsiasi PK presente qui non deve più essere
     reinserita da sync_input.
     """
     md = sa.MetaData()
-    erp_outbox = sa.Table("erp_outbox", md, autoload_with = log_engine)
+    erp_outbox = sa.Table("erp_outbox", md, autoload_with=log_engine)
 
     stmt = sa.select(
-            erp_outbox.c.IdDocumento,
-            erp_outbox.c.IdRiga,
-            ).distinct()
+        erp_outbox.c.IdDocumento,
+        erp_outbox.c.IdRiga,
+    ).distinct()
 
     with log_engine.connect() as conn:
         rows = conn.execute(stmt).fetchall()
@@ -1004,14 +961,14 @@ def _fetch_blocked_outbox_pks(
 
 
 def _update_rows_by_pk(
-        engine,
-        df: pd.DataFrame,
-        *,
-        table_name: str,
-        pk_cols: tuple[str, ...] = ("IdDocumento", "IdRiga"),
-        update_cols: list[str],
-        chunk_size: int = 500,
-        ) -> int:
+    engine,
+    df: pd.DataFrame,
+    *,
+    table_name: str,
+    pk_cols: tuple[str, ...] = ("IdDocumento", "IdRiga"),
+    update_cols: list[str],
+    chunk_size: int = 500,
+) -> int:
     """
     UPDATE batch (executemany) su SQLite.
     Aggiorna solo le colonne indicate in update_cols.
@@ -1021,13 +978,13 @@ def _update_rows_by_pk(
         return 0
 
     md = sa.MetaData()
-    t = sa.Table(table_name, md, autoload_with = engine)
+    t = sa.Table(table_name, md, autoload_with=engine)
 
     pk_bind_names = {col: f"b_pk_{col}" for col in pk_cols}
 
     where_clause = sa.and_(
-            *(t.c[col] == sa.bindparam(pk_bind_names[col]) for col in pk_cols)
-            )
+        *(t.c[col] == sa.bindparam(pk_bind_names[col]) for col in pk_cols)
+    )
 
     stmt = (
         sa.update(t)
@@ -1059,13 +1016,13 @@ def _update_rows_by_pk(
 
 
 def _delete_rows_by_pk(
-        engine,
-        *,
-        table_name: str,
-        pk_cols: tuple[str, ...],
-        pk_tuples: list[tuple],
-        chunk_size: int = 400,
-        ) -> int:
+    engine,
+    *,
+    table_name: str,
+    pk_cols: tuple[str, ...],
+    pk_tuples: list[tuple],
+    chunk_size: int = 400,
+) -> int:
     """
     DELETE batch su SQLite per PK composte di lunghezza variabile.
     """
@@ -1073,7 +1030,7 @@ def _delete_rows_by_pk(
         return 0
 
     md = sa.MetaData()
-    t = sa.Table(table_name, md, autoload_with = engine)
+    t = sa.Table(table_name, md, autoload_with=engine)
     pk_columns = [t.c[col] for col in pk_cols]
 
     deleted = 0
@@ -1096,28 +1053,25 @@ def _delete_rows_by_pk(
     return deleted
 
 
-def _pk_set_from_df(
-        df: pd.DataFrame,
-        pk_cols: tuple[str, ...]
-        ) -> set[tuple[str, ...]]:
+def _pk_set_from_df(df: pd.DataFrame, pk_cols: tuple[str, ...]) -> set[tuple[str, ...]]:
     if df.empty:
         return set()
 
     return {
         tuple(_norm_text(value) for value in row)
-        for row in df[list(pk_cols)].itertuples(index = False, name = None)
-        }
+        for row in df[list(pk_cols)].itertuples(index=False, name=None)
+    }
 
 
 def _fetch_rows_by_pk(
-        engine,
-        *,
-        table_name: str,
-        pk_cols: tuple[str, ...],
-        pk_tuples: list[tuple],
-        columns: list[str] | None = None,
-        chunk_size: int = 400,
-        ) -> pd.DataFrame:
+    engine,
+    *,
+    table_name: str,
+    pk_cols: tuple[str, ...],
+    pk_tuples: list[tuple],
+    columns: list[str] | None = None,
+    chunk_size: int = 400,
+) -> pd.DataFrame:
     """
     Legge righe complete da una tabella tramite PK composta.
     Serve per salvare uno snapshot minimale prima della cancellazione.
@@ -1125,10 +1079,10 @@ def _fetch_rows_by_pk(
     output_columns = list(columns or [])
 
     if not pk_tuples:
-        return pd.DataFrame(columns = output_columns)
+        return pd.DataFrame(columns=output_columns)
 
     md = sa.MetaData()
-    t = sa.Table(table_name, md, autoload_with = engine)
+    t = sa.Table(table_name, md, autoload_with=engine)
 
     pk_tuples = [tuple(_norm_text(value) for value in pk) for pk in pk_tuples]
 
@@ -1138,7 +1092,7 @@ def _fetch_rows_by_pk(
         selected_col_names = [col for col in columns if col in t.c]
 
     if not selected_col_names:
-        return pd.DataFrame(columns = output_columns)
+        return pd.DataFrame(columns=output_columns)
 
     selected_cols = [t.c[col] for col in selected_col_names]
     pk_columns = [t.c[col] for col in pk_cols]
@@ -1156,7 +1110,7 @@ def _fetch_rows_by_pk(
             stmt = sa.select(*selected_cols).where(where_clause)
             rows_out.extend(conn.execute(stmt).fetchall())
 
-    df = pd.DataFrame(rows_out, columns = selected_col_names)
+    df = pd.DataFrame(rows_out, columns=selected_col_names)
 
     if columns is not None:
         for col in columns:
@@ -1168,11 +1122,11 @@ def _fetch_rows_by_pk(
 
 
 def _append_dataframe_existing_columns(
-        *,
-        engine,
-        table_name: str,
-        df: pd.DataFrame,
-        ) -> int:
+    *,
+    engine,
+    table_name: str,
+    df: pd.DataFrame,
+) -> int:
     """
     Inserisce un DataFrame solo sulle colonne realmente presenti nella tabella.
     Evita errori se il DB non ha ancora qualche colonna opzionale.
@@ -1181,30 +1135,30 @@ def _append_dataframe_existing_columns(
         return 0
 
     md = sa.MetaData()
-    t = sa.Table(table_name, md, autoload_with = engine)
+    t = sa.Table(table_name, md, autoload_with=engine)
 
     existing_cols = [col for col in df.columns if col in t.c]
     if not existing_cols:
         return 0
 
     return int(
-            df[existing_cols].to_sql(
-                    name = table_name,
-                    con = engine,
-                    if_exists = "append",
-                    index = False,
-                    method = inserisci_o_ignora,
-                    )
-            or 0
-            )
+        df[existing_cols].to_sql(
+            name=table_name,
+            con=engine,
+            if_exists="append",
+            index=False,
+            method=inserisci_o_ignora,
+        )
+        or 0
+    )
 
 
 def _write_sync_deleted_from_gestionale_logs(
-        *,
-        df_deleted_erp: pd.DataFrame,
-        df_deleted_runtime: pd.DataFrame,
-        when_iso: str,
-        ) -> dict[str, int]:
+    *,
+    df_deleted_erp: pd.DataFrame,
+    df_deleted_runtime: pd.DataFrame,
+    when_iso: str,
+) -> dict[str, int]:
     """
     Scrive log minimale per ordini rimossi da input_odp perché non più validi da gestionale.
 
@@ -1215,9 +1169,9 @@ def _write_sync_deleted_from_gestionale_logs(
 
     if df_deleted_erp.empty:
         return {
-            "input_log":   0,
+            "input_log": 0,
             "runtime_log": 0,
-            }
+        }
 
     runtime_map = {}
 
@@ -1236,11 +1190,11 @@ def _write_sync_deleted_from_gestionale_logs(
         runtime_row = runtime_map.get(key, {})
 
         operation_group_id = _build_sync_operation_group_id(
-                id_documento = id_documento,
-                id_riga = id_riga,
-                action = "sync_eliminato_gestionale",
-                when_iso = when_iso,
-                )
+            id_documento=id_documento,
+            id_riga=id_riga,
+            action="sync_eliminato_gestionale",
+            when_iso=when_iso,
+        )
 
         motivo = "Eliminato dal gestionale"
         stato_runtime_pre = _norm_text(runtime_row.get("Stato_odp"))
@@ -1249,149 +1203,147 @@ def _write_sync_deleted_from_gestionale_logs(
 
         fase_pre = _norm_text(runtime_row.get("FaseAttiva")) or "1"
         qty_pre = _norm_text(runtime_row.get("QtyDaLavorare")) or _norm_text(
-                erp_row.get("Quantita")
-                )
+            erp_row.get("Quantita")
+        )
 
         input_log_rows.append(
-                {
-                    "logged_at":                    when_iso,
-                    "OperationGroupId":             operation_group_id,
-                    "IdDocumento":                  id_documento,
-                    "IdRiga":                       id_riga,
-                    "RifRegistraz":                 _norm_text(erp_row.get("RifRegistraz")),
-                    "CodArt":                       _norm_text(erp_row.get("CodArt")),
-                    "DesArt":                       _norm_text(erp_row.get("DesArt")),
-                    "Quantita":                     _norm_text(erp_row.get("Quantita")),
-                    "NumFase":                      _norm_text(erp_row.get("NumFase")),
-                    "CodLavorazione":               _norm_text(erp_row.get("CodLavorazione")),
-                    "CodRisorsaProd":               _norm_text(erp_row.get("CodRisorsaProd")),
-                    "DataInizioSched":              _norm_text(erp_row.get("DataInizioSched")),
-                    "DataFineSched":                _norm_text(erp_row.get("DataFineSched")),
-                    "GestioneLotto":                _norm_text(erp_row.get("GestioneLotto")),
-                    "GestioneMatricola":            _norm_text(erp_row.get("GestioneMatricola")),
-                    "DistintaMateriale":            _norm_text(erp_row.get("DistintaMateriale")),
-                    "CodMatricola":                 _norm_text(erp_row.get("CodMatricola")),
-                    "StatoRiga":                    _norm_text(erp_row.get("StatoRiga")),
-                    "CodFamiglia":                  _norm_text(erp_row.get("CodFamiglia")),
-                    "CodMacrofamiglia":             _norm_text(erp_row.get("CodMacrofamiglia")),
-                    "CodMagPrincipale":             _norm_text(erp_row.get("CodMagPrincipale")),
-                    "CodReparto":                   _norm_text(erp_row.get("CodReparto")),
-                    "TempoPrevistoLavoraz":         _norm_text(erp_row.get("TempoPrevistoLavoraz")),
-                    "CodClassifTecnica":            _norm_text(erp_row.get("CodClassifTecnica")),
-                    "CodTipoDoc":                   _norm_text(erp_row.get("CodTipoDoc")),
-                    "FaseAttiva":                   fase_pre,
-                    "QtyDaLavorare":                qty_pre,
-                    "RisorsaAttiva":                _norm_text(runtime_row.get("RisorsaAttiva")),
-                    "LavorazioneAttiva":            _norm_text(runtime_row.get("LavorazioneAttiva")),
-                    "AttrezzaggioAttivo":           _norm_text(runtime_row.get("AttrezzaggioAttivo")),
-                    "RifOrdinePrinc":               _norm_text(runtime_row.get("RifOrdinePrinc")),
-                    "Note":                         motivo,
-                    "FaseConsuntivata":             None,
-                    "QuantitaConforme":             None,
-                    "QuantitaNonConforme":          None,
-                    "TempoFunzionamentoFinale":     None,
-                    "TempoNonFunzionamentoMinuti":  None,
-                    "TempoNonFunzionamentoSecondi": None,
-                    "ChiusuraParziale":             None,
-                    "NoteChiusura":                 motivo,
-                    "StatoOrdinePre":               stato_pre,
-                    "StatoOrdinePost":              motivo,
-                    "QtyDaLavorarePre":             qty_pre,
-                    "QtyDaLavorarePost":            "",
-                    "ClosedBy":                     "sync_input",
-                    "ClosedAt":                     when_iso,
-                    "VarianteArt":                  _norm_text(erp_row.get("VarianteArt")),
-                    "NumProgrRiga":                 _norm_text(erp_row.get("NumProgrRiga")),
-                    }
-                )
+            {
+                "logged_at": when_iso,
+                "OperationGroupId": operation_group_id,
+                "IdDocumento": id_documento,
+                "IdRiga": id_riga,
+                "RifRegistraz": _norm_text(erp_row.get("RifRegistraz")),
+                "CodArt": _norm_text(erp_row.get("CodArt")),
+                "DesArt": _norm_text(erp_row.get("DesArt")),
+                "Quantita": _norm_text(erp_row.get("Quantita")),
+                "NumFase": _norm_text(erp_row.get("NumFase")),
+                "CodLavorazione": _norm_text(erp_row.get("CodLavorazione")),
+                "CodRisorsaProd": _norm_text(erp_row.get("CodRisorsaProd")),
+                "DataInizioSched": _norm_text(erp_row.get("DataInizioSched")),
+                "DataFineSched": _norm_text(erp_row.get("DataFineSched")),
+                "GestioneLotto": _norm_text(erp_row.get("GestioneLotto")),
+                "GestioneMatricola": _norm_text(erp_row.get("GestioneMatricola")),
+                "DistintaMateriale": _norm_text(erp_row.get("DistintaMateriale")),
+                "CodMatricola": _norm_text(erp_row.get("CodMatricola")),
+                "StatoRiga": _norm_text(erp_row.get("StatoRiga")),
+                "CodFamiglia": _norm_text(erp_row.get("CodFamiglia")),
+                "CodMacrofamiglia": _norm_text(erp_row.get("CodMacrofamiglia")),
+                "CodMagPrincipale": _norm_text(erp_row.get("CodMagPrincipale")),
+                "CodReparto": _norm_text(erp_row.get("CodReparto")),
+                "TempoPrevistoLavoraz": _norm_text(erp_row.get("TempoPrevistoLavoraz")),
+                "CodClassifTecnica": _norm_text(erp_row.get("CodClassifTecnica")),
+                "CodTipoDoc": _norm_text(erp_row.get("CodTipoDoc")),
+                "FaseAttiva": fase_pre,
+                "QtyDaLavorare": qty_pre,
+                "RisorsaAttiva": _norm_text(runtime_row.get("RisorsaAttiva")),
+                "LavorazioneAttiva": _norm_text(runtime_row.get("LavorazioneAttiva")),
+                "AttrezzaggioAttivo": _norm_text(runtime_row.get("AttrezzaggioAttivo")),
+                "RifOrdinePrinc": _norm_text(runtime_row.get("RifOrdinePrinc")),
+                "Note": motivo,
+                "FaseConsuntivata": None,
+                "QuantitaConforme": None,
+                "QuantitaNonConforme": None,
+                "TempoFunzionamentoFinale": None,
+                "TempoNonFunzionamentoMinuti": None,
+                "TempoNonFunzionamentoSecondi": None,
+                "ChiusuraParziale": None,
+                "NoteChiusura": motivo,
+                "StatoOrdinePre": stato_pre,
+                "StatoOrdinePost": motivo,
+                "QtyDaLavorarePre": qty_pre,
+                "QtyDaLavorarePost": "",
+                "ClosedBy": "sync_input",
+                "ClosedAt": when_iso,
+                "VarianteArt": _norm_text(erp_row.get("VarianteArt")),
+                "NumProgrRiga": _norm_text(erp_row.get("NumProgrRiga")),
+            }
+        )
 
         runtime_log_rows.append(
-                {
-                    "logged_at":                    when_iso,
-                    "OperationGroupId":             operation_group_id,
-                    "EventSequence":                1,
-                    "Topic":                        "ordine_eliminato_gestionale",
-                    "Scope":                        _norm_text(erp_row.get("CodReparto")),
-                    "CodArt":                       _norm_text(erp_row.get("CodArt")),
-                    "CodReparto":                   _norm_text(erp_row.get("CodReparto")),
-                    "PayloadJson":                  json.dumps(
-                            {
-                                "azione":        "sync_eliminato_gestionale",
-                                "motivo":        motivo,
-                                "utente":        "sync_input",
-                                "id_documento":  id_documento,
-                                "id_riga":       id_riga,
-                                "rif_registraz": _norm_text(erp_row.get("RifRegistraz")),
-                                "cod_art":       _norm_text(erp_row.get("CodArt")),
-                                "stato_pre":     stato_pre,
-                                },
-                            ensure_ascii = False,
-                            ),
-                    "IdDocumento":                  id_documento,
-                    "IdRiga":                       id_riga,
-                    "RifRegistraz":                 _norm_text(erp_row.get("RifRegistraz")),
-                    "Azione":                       "sync_eliminato_gestionale",
-                    "Motivo":                       motivo,
-                    "UtenteOperazione":             "sync_input",
-                    "EventAt":                      when_iso,
-                    "StatoOdpPre":                  stato_runtime_pre,
-                    "StatoOdpPost":                 motivo,
-                    "StatoOrdinePre":               stato_pre,
-                    "StatoOrdinePost":              motivo,
-                    "FasePre":                      fase_pre,
-                    "FasePost":                     "",
-                    "DataInCaricoPre":              _norm_text(runtime_row.get("Data_in_carico")),
-                    "DataInCaricoPost":             "",
-                    "DataUltimaAttivazionePre":     _norm_text(
-                            runtime_row.get("data_ultima_attivazione")
-                            ),
-                    "DataUltimaAttivazionePost":    "",
-                    "TempoFunzionamentoPre":        _norm_text(
-                            runtime_row.get("Tempo_funzionamento")
-                            ),
-                    "TempoFunzionamentoPost":       "",
-                    "ElapsedSeconds":               None,
-                    "TempoNonFunzionamentoMinuti":  None,
-                    "TempoNonFunzionamentoSecondi": None,
-                    "QtyDaLavorarePre":             qty_pre,
-                    "QtyDaLavorarePost":            "",
-                    "QuantitaConforme":             None,
-                    "QuantitaNonConforme":          None,
-                    "Causale":                      None,
-                    "Note":                         motivo,
-                    "RifOrdinePrinc":               _norm_text(runtime_row.get("RifOrdinePrinc")),
-                    "VarianteArt":                  _norm_text(erp_row.get("VarianteArt")),
-                    "NumProgrRiga":                 _norm_text(erp_row.get("NumProgrRiga")),
-                    }
-                )
+            {
+                "logged_at": when_iso,
+                "OperationGroupId": operation_group_id,
+                "EventSequence": 1,
+                "Topic": "ordine_eliminato_gestionale",
+                "Scope": _norm_text(erp_row.get("CodReparto")),
+                "CodArt": _norm_text(erp_row.get("CodArt")),
+                "CodReparto": _norm_text(erp_row.get("CodReparto")),
+                "PayloadJson": json.dumps(
+                    {
+                        "azione": "sync_eliminato_gestionale",
+                        "motivo": motivo,
+                        "utente": "sync_input",
+                        "id_documento": id_documento,
+                        "id_riga": id_riga,
+                        "rif_registraz": _norm_text(erp_row.get("RifRegistraz")),
+                        "cod_art": _norm_text(erp_row.get("CodArt")),
+                        "stato_pre": stato_pre,
+                    },
+                    ensure_ascii=False,
+                ),
+                "IdDocumento": id_documento,
+                "IdRiga": id_riga,
+                "RifRegistraz": _norm_text(erp_row.get("RifRegistraz")),
+                "Azione": "sync_eliminato_gestionale",
+                "Motivo": motivo,
+                "UtenteOperazione": "sync_input",
+                "EventAt": when_iso,
+                "StatoOdpPre": stato_runtime_pre,
+                "StatoOdpPost": motivo,
+                "StatoOrdinePre": stato_pre,
+                "StatoOrdinePost": motivo,
+                "FasePre": fase_pre,
+                "FasePost": "",
+                "DataInCaricoPre": _norm_text(runtime_row.get("Data_in_carico")),
+                "DataInCaricoPost": "",
+                "DataUltimaAttivazionePre": _norm_text(
+                    runtime_row.get("data_ultima_attivazione")
+                ),
+                "DataUltimaAttivazionePost": "",
+                "TempoFunzionamentoPre": _norm_text(
+                    runtime_row.get("Tempo_funzionamento")
+                ),
+                "TempoFunzionamentoPost": "",
+                "ElapsedSeconds": None,
+                "TempoNonFunzionamentoMinuti": None,
+                "TempoNonFunzionamentoSecondi": None,
+                "QtyDaLavorarePre": qty_pre,
+                "QtyDaLavorarePost": "",
+                "QuantitaConforme": None,
+                "QuantitaNonConforme": None,
+                "Causale": None,
+                "Note": motivo,
+                "RifOrdinePrinc": _norm_text(runtime_row.get("RifOrdinePrinc")),
+                "VarianteArt": _norm_text(erp_row.get("VarianteArt")),
+                "NumProgrRiga": _norm_text(erp_row.get("NumProgrRiga")),
+            }
+        )
 
     input_log_count = _append_dataframe_existing_columns(
-            engine = sqlite_engine_log,
-            table_name = "input_odp_log",
-            df = pd.DataFrame(input_log_rows),
-            )
+        engine=sqlite_engine_log,
+        table_name="input_odp_log",
+        df=pd.DataFrame(input_log_rows),
+    )
 
     runtime_log_count = _append_dataframe_existing_columns(
-            engine = sqlite_engine_log,
-            table_name = "odp_runtime_log",
-            df = pd.DataFrame(runtime_log_rows),
-            )
+        engine=sqlite_engine_log,
+        table_name="odp_runtime_log",
+        df=pd.DataFrame(runtime_log_rows),
+    )
 
     logging.info(
-            "Log sync eliminati da gestionale | input_odp_log=%s | odp_runtime_log=%s",
-            input_log_count,
-            runtime_log_count,
-            )
+        "Log sync eliminati da gestionale | input_odp_log=%s | odp_runtime_log=%s",
+        input_log_count,
+        runtime_log_count,
+    )
 
     return {
-        "input_log":   input_log_count,
+        "input_log": input_log_count,
         "runtime_log": runtime_log_count,
-        }
+    }
 
 
-def _build_runtime_seed(
-        df_input_odp: pd.DataFrame
-        ) -> pd.DataFrame:
+def _build_runtime_seed(df_input_odp: pd.DataFrame) -> pd.DataFrame:
     """
     Costruisce il seed iniziale per input_odp_runtime a partire dallo snapshot ERP.
     Va usato solo per le PK mancanti nella tabella runtime.
@@ -1406,7 +1358,7 @@ def _build_runtime_seed(
             "CodRisorsaProd",
             "TempoAttrezzaggio",
             "VarianteArt",
-            ]
+        ]
     ].copy()
 
     df_runtime["Stato_odp"] = "Pianificata"
@@ -1415,33 +1367,28 @@ def _build_runtime_seed(
     df_runtime["Note"] = None
     df_runtime["QtyDaLavorare"] = df_runtime["Quantita"]
     df_runtime["RisorsaAttiva"] = df_runtime["CodRisorsaProd"].apply(
-            estrai_lavorazione_attiva
-            )
+        estrai_lavorazione_attiva
+    )
     df_runtime["LavorazioneAttiva"] = df_runtime["CodLavorazione"].apply(
-            estrai_lavorazione_attiva
-            )
+        estrai_lavorazione_attiva
+    )
     df_runtime["AttrezzaggioAttivo"] = df_runtime["TempoAttrezzaggio"].apply(
-            estrai_lavorazione_attiva
-            )
+        estrai_lavorazione_attiva
+    )
 
     return df_runtime[INPUT_ODP_RUNTIME_COLS].copy()
 
 
-def _norm_text(
-        value
-        ) -> str:
+def _norm_text(value) -> str:
     return str(value or "").strip()
 
 
 def _now_sync_iso() -> str:
     tz_name = TIMEZONE or "Europe/Rome"
-    return datetime.now(ZoneInfo(tz_name)).isoformat(timespec = "seconds")
+    return datetime.now(ZoneInfo(tz_name)).isoformat(timespec="seconds")
 
 
-def _safe_token(
-        value,
-        default = "x"
-        ) -> str:
+def _safe_token(value, default="x") -> str:
     raw = _norm_text(value)
     if not raw:
         return default
@@ -1450,17 +1397,17 @@ def _safe_token(
 
 
 def _build_sync_operation_group_id(
-        *,
-        id_documento: str,
-        id_riga: str,
-        action: str,
-        when_iso: str,
-        ) -> str:
+    *,
+    id_documento: str,
+    id_riga: str,
+    action: str,
+    when_iso: str,
+) -> str:
     stamp = re.sub(r"\D+", "", _norm_text(when_iso))[:14]
     if not stamp:
         stamp = datetime.now(ZoneInfo(TIMEZONE or "Europe/Rome")).strftime(
-                "%Y%m%d%H%M%S"
-                )
+            "%Y%m%d%H%M%S"
+        )
 
     return (
         f"{stamp}_"
@@ -1470,17 +1417,14 @@ def _build_sync_operation_group_id(
     )
 
 
-def _pk_key(
-        id_documento,
-        id_riga
-        ) -> tuple[str, str]:
+def _pk_key(id_documento, id_riga) -> tuple[str, str]:
     return (_norm_text(id_documento), _norm_text(id_riga))
 
 
 def _build_sync_operation_group_map(
-        df_new_erp: pd.DataFrame,
-        when_iso: str,
-        ) -> dict[tuple[str, str], str]:
+    df_new_erp: pd.DataFrame,
+    when_iso: str,
+) -> dict[tuple[str, str], str]:
     if df_new_erp.empty:
         return {}
 
@@ -1488,42 +1432,42 @@ def _build_sync_operation_group_map(
         df_new_erp[["IdDocumento", "IdRiga"]]
         .astype(str)
         .drop_duplicates()
-        .itertuples(index = False, name = None)
+        .itertuples(index=False, name=None)
     )
 
     return {
         _pk_key(id_documento, id_riga): _build_sync_operation_group_id(
-                id_documento = id_documento,
-                id_riga = id_riga,
-                action = "sync_nuovo_ordine",
-                when_iso = when_iso,
-                )
+            id_documento=id_documento,
+            id_riga=id_riga,
+            action="sync_nuovo_ordine",
+            when_iso=when_iso,
+        )
         for id_documento, id_riga in keys
-        }
+    }
 
 
 def _get_sync_operation_group_id(
-        operation_groups: dict[tuple[str, str], str],
-        *,
-        id_documento,
-        id_riga,
-        when_iso: str,
-        ) -> str:
+    operation_groups: dict[tuple[str, str], str],
+    *,
+    id_documento,
+    id_riga,
+    when_iso: str,
+) -> str:
     key = _pk_key(id_documento, id_riga)
     return operation_groups.get(key) or _build_sync_operation_group_id(
-            id_documento = key[0],
-            id_riga = key[1],
-            action = "sync_nuovo_ordine",
-            when_iso = when_iso,
-            )
+        id_documento=key[0],
+        id_riga=key[1],
+        action="sync_nuovo_ordine",
+        when_iso=when_iso,
+    )
 
 
 def _build_input_odp_log_rows(
-        df_new_erp: pd.DataFrame,
-        df_new_runtime: pd.DataFrame,
-        when_iso: str,
-        operation_groups: dict[tuple[str, str], str],
-        ) -> pd.DataFrame:
+    df_new_erp: pd.DataFrame,
+    df_new_runtime: pd.DataFrame,
+    when_iso: str,
+    operation_groups: dict[tuple[str, str], str],
+) -> pd.DataFrame:
     if df_new_erp.empty:
         return pd.DataFrame()
 
@@ -1539,44 +1483,43 @@ def _build_input_odp_log_rows(
                 "AttrezzaggioAttivo",
                 "Note",
                 "VarianteArt",
-                ]
+            ]
         ].copy()
         if not df_new_runtime.empty
         else pd.DataFrame(
-                columns = [
-                    "IdDocumento",
-                    "IdRiga",
-                    "FaseAttiva",
-                    "QtyDaLavorare",
-                    "RisorsaAttiva",
-                    "LavorazioneAttiva",
-                    "AttrezzaggioAttivo",
-                    "Note",
-                    ]
-                )
+            columns=[
+                "IdDocumento",
+                "IdRiga",
+                "FaseAttiva",
+                "QtyDaLavorare",
+                "RisorsaAttiva",
+                "LavorazioneAttiva",
+                "AttrezzaggioAttivo",
+                "Note",
+            ]
+        )
     )
 
     df_log = df_new_erp.merge(
-            runtime_subset,
-            on = ["IdDocumento", "IdRiga"],
-            how = "left",
-            ).copy()
+        runtime_subset,
+        on=["IdDocumento", "IdRiga"],
+        how="left",
+    ).copy()
 
     df_log["logged_at"] = when_iso
     df_log["OperationGroupId"] = df_log.apply(
-            lambda
-                r: _get_sync_operation_group_id(
-                    operation_groups,
-                    id_documento = r["IdDocumento"],
-                    id_riga = r["IdRiga"],
-                    when_iso = when_iso,
-                    ),
-            axis = 1,
-            )
+        lambda r: _get_sync_operation_group_id(
+            operation_groups,
+            id_documento=r["IdDocumento"],
+            id_riga=r["IdRiga"],
+            when_iso=when_iso,
+        ),
+        axis=1,
+    )
 
     df_log["QtyDaLavorare"] = df_log["QtyDaLavorare"].where(
-            df_log["QtyDaLavorare"].notna(), df_log["Quantita"]
-            )
+        df_log["QtyDaLavorare"].notna(), df_log["Quantita"]
+    )
     df_log["FaseAttiva"] = df_log["FaseAttiva"].where(df_log["FaseAttiva"].notna(), "1")
 
     df_log["FaseConsuntivata"] = None
@@ -1642,59 +1585,57 @@ def _build_input_odp_log_rows(
         "QtyDaLavorarePost",
         "ClosedBy",
         "ClosedAt",
-        ]
+    ]
 
     return df_log[cols].where(pd.notna(df_log), None)
 
 
 def _build_runtime_log_rows(
-        df_new_erp: pd.DataFrame,
-        df_new_runtime: pd.DataFrame,
-        when_iso: str,
-        operation_groups: dict[tuple[str, str], str],
-        ) -> pd.DataFrame:
+    df_new_erp: pd.DataFrame,
+    df_new_runtime: pd.DataFrame,
+    when_iso: str,
+    operation_groups: dict[tuple[str, str], str],
+) -> pd.DataFrame:
     if df_new_erp.empty or df_new_runtime.empty:
         return pd.DataFrame()
 
     df_runtime_for_new = df_new_runtime.merge(
-            df_new_erp[["IdDocumento", "IdRiga", "RifRegistraz", "CodArt", "CodReparto"]],
-            on = ["IdDocumento", "IdRiga", "RifRegistraz"],
-            how = "inner",
-            ).copy()
+        df_new_erp[["IdDocumento", "IdRiga", "RifRegistraz", "CodArt", "CodReparto"]],
+        on=["IdDocumento", "IdRiga", "RifRegistraz"],
+        how="inner",
+    ).copy()
 
     if df_runtime_for_new.empty:
         return pd.DataFrame()
 
     df_runtime_for_new["logged_at"] = when_iso
     df_runtime_for_new["OperationGroupId"] = df_runtime_for_new.apply(
-            lambda
-                r: _get_sync_operation_group_id(
-                    operation_groups,
-                    id_documento = r["IdDocumento"],
-                    id_riga = r["IdRiga"],
-                    when_iso = when_iso,
-                    ),
-            axis = 1,
-            )
+        lambda r: _get_sync_operation_group_id(
+            operation_groups,
+            id_documento=r["IdDocumento"],
+            id_riga=r["IdRiga"],
+            when_iso=when_iso,
+        ),
+        axis=1,
+    )
     df_runtime_for_new["EventSequence"] = 1
     df_runtime_for_new["Topic"] = "nuovo_ordine_sync"
     df_runtime_for_new["Scope"] = df_runtime_for_new["CodReparto"]
     df_runtime_for_new["PayloadJson"] = df_runtime_for_new.apply(
-            lambda
-                r: json.dumps(
-                    {
-                        "azione":              "sync_seed_runtime",
-                        "utente":              "sync_input",
-                        "fase":                _norm_text(r["FaseAttiva"]),
-                        "qty_da_lavorare":     _norm_text(r["QtyDaLavorare"]),
-                        "risorsa_attiva":      _norm_text(r["RisorsaAttiva"]),
-                        "lavorazione_attiva":  _norm_text(r["LavorazioneAttiva"]),
-                        "attrezzaggio_attivo": _norm_text(r["AttrezzaggioAttivo"]),
-                        },
-                    ensure_ascii = False,
-                    ),
-            axis = 1,
-            )
+        lambda r: json.dumps(
+            {
+                "azione": "sync_seed_runtime",
+                "utente": "sync_input",
+                "fase": _norm_text(r["FaseAttiva"]),
+                "qty_da_lavorare": _norm_text(r["QtyDaLavorare"]),
+                "risorsa_attiva": _norm_text(r["RisorsaAttiva"]),
+                "lavorazione_attiva": _norm_text(r["LavorazioneAttiva"]),
+                "attrezzaggio_attivo": _norm_text(r["AttrezzaggioAttivo"]),
+            },
+            ensure_ascii=False,
+        ),
+        axis=1,
+    )
     df_runtime_for_new["Azione"] = "sync_seed_runtime"
     df_runtime_for_new["Motivo"] = "Creazione riga input_odp_runtime da sync_input"
     df_runtime_for_new["UtenteOperazione"] = "sync_input"
@@ -1760,16 +1701,16 @@ def _build_runtime_log_rows(
         "Causale",
         "Note",
         "RifOrdinePrinc",
-        ]
+    ]
 
     return df_runtime_for_new[cols].where(pd.notna(df_runtime_for_new), None)
 
 
 def _write_sync_logs(
-        *,
-        df_new_erp: pd.DataFrame,
-        df_new_runtime: pd.DataFrame,
-        ) -> None:
+    *,
+    df_new_erp: pd.DataFrame,
+    df_new_runtime: pd.DataFrame,
+) -> None:
     if sqlite_engine_log is None:
         raise RuntimeError("sqlite_engine_log non inizializzato")
 
@@ -1779,86 +1720,79 @@ def _write_sync_logs(
     erp_keys = {
         _pk_key(r["IdDocumento"], r["IdRiga"])
         for _, r in df_new_erp[["IdDocumento", "IdRiga"]].iterrows()
-        }
+    }
     runtime_keys = {
         _pk_key(r["IdDocumento"], r["IdRiga"])
         for _, r in df_new_runtime[["IdDocumento", "IdRiga"]].iterrows()
-        }
+    }
 
     missing_runtime = sorted(erp_keys - runtime_keys)
     if missing_runtime:
         raise RuntimeError(
-                f"Nuovi ordini senza seed runtime coerente: {missing_runtime}"
-                )
+            f"Nuovi ordini senza seed runtime coerente: {missing_runtime}"
+        )
 
     when_iso = _now_sync_iso()
     operation_groups = _build_sync_operation_group_map(df_new_erp, when_iso)
 
     righe_input_log = 0
     df_input_log = _build_input_odp_log_rows(
-            df_new_erp = df_new_erp,
-            df_new_runtime = df_new_runtime,
-            when_iso = when_iso,
-            operation_groups = operation_groups,
-            )
+        df_new_erp=df_new_erp,
+        df_new_runtime=df_new_runtime,
+        when_iso=when_iso,
+        operation_groups=operation_groups,
+    )
     if not df_input_log.empty:
         righe_input_log = int(
-                df_input_log.to_sql(
-                        name = "input_odp_log",
-                        con = sqlite_engine_log,
-                        if_exists = "append",
-                        index = False,
-                        method = inserisci_o_ignora,
-                        )
-                or 0
-                )
+            df_input_log.to_sql(
+                name="input_odp_log",
+                con=sqlite_engine_log,
+                if_exists="append",
+                index=False,
+                method=inserisci_o_ignora,
+            )
+            or 0
+        )
 
     righe_runtime_log = 0
     df_runtime_log = _build_runtime_log_rows(
-            df_new_erp = df_new_erp,
-            df_new_runtime = df_new_runtime,
-            when_iso = when_iso,
-            operation_groups = operation_groups,
-            )
+        df_new_erp=df_new_erp,
+        df_new_runtime=df_new_runtime,
+        when_iso=when_iso,
+        operation_groups=operation_groups,
+    )
     if not df_runtime_log.empty:
         righe_runtime_log = int(
-                df_runtime_log.to_sql(
-                        name = "odp_runtime_log",
-                        con = sqlite_engine_log,
-                        if_exists = "append",
-                        index = False,
-                        method = inserisci_o_ignora,
-                        )
-                or 0
-                )
+            df_runtime_log.to_sql(
+                name="odp_runtime_log",
+                con=sqlite_engine_log,
+                if_exists="append",
+                index=False,
+                method=inserisci_o_ignora,
+            )
+            or 0
+        )
 
     logging.info(
-            "Log sync nuovi ordini | input_odp_log=%s | odp_runtime_log=%s",
-            righe_input_log,
-            righe_runtime_log,
-            )
+        "Log sync nuovi ordini | input_odp_log=%s | odp_runtime_log=%s",
+        righe_input_log,
+        righe_runtime_log,
+    )
 
 
-def _chunked(
-        seq,
-        size: int
-        ):
+def _chunked(seq, size: int):
     for i in range(0, len(seq), size):
-        yield seq[i: i + size]
+        yield seq[i : i + size]
 
 
-def int_format(
-        x
-        ):
+def int_format(x):
     try:
         return int(x)
     except (ValueError, TypeError):
         return 0
 
 
-def filtri_giacenza_lotti(
-        df_giacenza_lotti: pd.DataFrame
-        ) -> pd.DataFrame:
+def filtri_giacenza_lotti(df_giacenza_lotti: pd.DataFrame) -> pd.DataFrame:
     """
     Filtra il dataframe della giacenza lotti per mantenere solo le righe con giacenza maggiore di 0
 
@@ -1870,7 +1804,7 @@ def filtri_giacenza_lotti(
     df_giacenza_lotti["Giacenza"] = df_giacenza_lotti["Giacenza"].apply(int_format)
     df_giacenza_lotti_filtered = df_giacenza_lotti.loc[
         df_giacenza_lotti["Giacenza"] > 0
-        ]
+    ]
     df_giacenza_lotti_filtered_regexLotto = df_giacenza_lotti_filtered[
         df_giacenza_lotti_filtered["RifLottoAlfa"]
         .astype("string")
@@ -1886,9 +1820,7 @@ def filtri_giacenza_lotti(
     return df_giacenza_lotti_filtered_regexLotto_Articolo
 
 
-def estrai_lavorazione_attiva(
-        x
-        ):
+def estrai_lavorazione_attiva(x):
     if pd.isna(x):
         return None
 
@@ -1904,15 +1836,11 @@ def estrai_lavorazione_attiva(
 ERP_TERMINATED_STATES = {"terminata", "terminato"}
 
 
-def _is_stato_ordine_terminato(
-        value
-        ) -> bool:
+def _is_stato_ordine_terminato(value) -> bool:
     return _norm_text(value).lower() in ERP_TERMINATED_STATES
 
 
-def _pk_set_from_df(
-        df: pd.DataFrame
-        ) -> set[tuple[str, str]]:
+def _pk_set_from_df(df: pd.DataFrame) -> set[tuple[str, str]]:
     if df.empty:
         return set()
 
@@ -1923,12 +1851,10 @@ def _pk_set_from_df(
     return {
         _pk_key(row["IdDocumento"], row["IdRiga"])
         for _, row in df[list(PK_COLS)].iterrows()
-        }
+    }
 
 
-def _filtra_odp_importabili(
-        df_odp_raw: pd.DataFrame
-        ) -> pd.DataFrame:
+def _filtra_odp_importabili(df_odp_raw: pd.DataFrame) -> pd.DataFrame:
     """
     Applica gli stessi filtri che prima venivano applicati da leggi_view()
     per costruire il batch importabile, ma partendo dalla vwESOdP non filtrata.
@@ -1937,20 +1863,20 @@ def _filtra_odp_importabili(
 
     if "CodArt" in ELEMENTI_ESCLUSI:
         df = df[~df["CodArt"].isin(ELEMENTI_ESCLUSI["CodArt"])]
-        df = df.dropna(subset = ["CodArt"], how = "any")
+        df = df.dropna(subset=["CodArt"], how="any")
 
     if "StatoOrdine" in ELEMENTI_SELEZIONATI:
         df = df[df["StatoOrdine"] == ELEMENTI_SELEZIONATI["StatoOrdine"]]
-        df = df.dropna(subset = ["StatoOrdine"], how = "any")
+        df = df.dropna(subset=["StatoOrdine"], how="any")
 
-    return df.reset_index(drop = True)
+    return df.reset_index(drop=True)
 
 
 def _build_delete_reasons_from_gestionale(
-        *,
-        existing_keys: set[tuple[str, str]],
-        df_odp_raw: pd.DataFrame,
-        ) -> dict[tuple[str, str], dict[str, str]]:
+    *,
+    existing_keys: set[tuple[str, str]],
+    df_odp_raw: pd.DataFrame,
+) -> dict[tuple[str, str], dict[str, str]]:
     """
     Determina quali righe locali devono essere eliminate perché il gestionale comanda:
     1. riga non più presente in vwESOdP;
@@ -1962,42 +1888,39 @@ def _build_delete_reasons_from_gestionale(
         _pk_key(row["IdDocumento"], row["IdRiga"])
         for _, row in df_odp_raw.iterrows()
         if _is_stato_ordine_terminato(row.get("StatoOrdine"))
-        }
+    }
 
     delete_reasons: dict[tuple[str, str], dict[str, str]] = {}
 
     for key in sorted(existing_keys - erp_keys):
         delete_reasons[key] = {
-            "reason_code":       "assente_vwESOdP",
-            "reason_text":       "Eliminato dal gestionale: ordine non più presente in vwESOdP",
+            "reason_code": "assente_vwESOdP",
+            "reason_text": "Eliminato dal gestionale: ordine non più presente in vwESOdP",
             "stato_ordine_post": "Eliminato dal gestionale",
-            }
+        }
 
     for key in sorted(existing_keys & terminated_keys):
         delete_reasons[key] = {
-            "reason_code":       "stato_erp_terminata",
-            "reason_text":       "Eliminato dal gestionale: StatoOrdine ERP Terminata",
+            "reason_code": "stato_erp_terminata",
+            "reason_text": "Eliminato dal gestionale: StatoOrdine ERP Terminata",
             "stato_ordine_post": "Terminata",
-            }
+        }
 
     return delete_reasons
 
 
-def _table_columns(
-        engine,
-        table_name: str
-        ) -> list[str]:
+def _table_columns(engine, table_name: str) -> list[str]:
     md = sa.MetaData()
-    table = sa.Table(table_name, md, autoload_with = engine)
+    table = sa.Table(table_name, md, autoload_with=engine)
     return [col.name for col in table.columns]
 
 
 def _append_matching_table_columns(
-        *,
-        engine,
-        table_name: str,
-        df: pd.DataFrame,
-        ) -> int:
+    *,
+    engine,
+    table_name: str,
+    df: pd.DataFrame,
+) -> int:
     """
     Scrive solo le colonne realmente presenti nella tabella.
     Evita errori se il modello/log DB non contiene ancora qualche colonna opzionale.
@@ -2012,48 +1935,48 @@ def _append_matching_table_columns(
         return 0
 
     return int(
-            df[cols]
-            .where(pd.notna(df[cols]), None)
-            .to_sql(
-                    name = table_name,
-                    con = engine,
-                    if_exists = "append",
-                    index = False,
-                    method = inserisci_o_ignora,
-                    )
-            or 0
-            )
+        df[cols]
+        .where(pd.notna(df[cols]), None)
+        .to_sql(
+            name=table_name,
+            con=engine,
+            if_exists="append",
+            index=False,
+            method=inserisci_o_ignora,
+        )
+        or 0
+    )
 
 
 def _read_local_orders_snapshot_for_delete(
-        engine,
-        keys: set[tuple[str, str]],
-        ) -> pd.DataFrame:
+    engine,
+    keys: set[tuple[str, str]],
+) -> pd.DataFrame:
     if not keys:
         return pd.DataFrame()
 
     md = sa.MetaData()
-    input_t = sa.Table("input_odp", md, autoload_with = engine)
-    runtime_t = sa.Table("input_odp_runtime", md, autoload_with = engine)
+    input_t = sa.Table("input_odp", md, autoload_with=engine)
+    runtime_t = sa.Table("input_odp_runtime", md, autoload_with=engine)
 
     input_cols = [input_t.c[col] for col in input_t.columns.keys()]
     runtime_cols = [
         runtime_t.c[col].label(f"runtime_{col}")
         for col in runtime_t.columns.keys()
         if col not in PK_COLS
-        ]
+    ]
 
     stmt = (
         sa.select(*input_cols, *runtime_cols)
         .select_from(
-                input_t.outerjoin(
-                        runtime_t,
-                        sa.and_(
-                                input_t.c.IdDocumento == runtime_t.c.IdDocumento,
-                                input_t.c.IdRiga == runtime_t.c.IdRiga,
-                                ),
-                        )
-                )
+            input_t.outerjoin(
+                runtime_t,
+                sa.and_(
+                    input_t.c.IdDocumento == runtime_t.c.IdDocumento,
+                    input_t.c.IdRiga == runtime_t.c.IdRiga,
+                ),
+            )
+        )
         .where(sa.tuple_(input_t.c.IdDocumento, input_t.c.IdRiga).in_(list(keys)))
     )
 
@@ -2064,11 +1987,11 @@ def _read_local_orders_snapshot_for_delete(
 
 
 def _build_deleted_from_gestionale_input_logs(
-        *,
-        df_snapshot: pd.DataFrame,
-        delete_reasons: dict[tuple[str, str], dict[str, str]],
-        when_iso: str,
-        ) -> pd.DataFrame:
+    *,
+    df_snapshot: pd.DataFrame,
+    delete_reasons: dict[tuple[str, str], dict[str, str]],
+    when_iso: str,
+) -> pd.DataFrame:
     if df_snapshot.empty:
         return pd.DataFrame()
 
@@ -2078,50 +2001,50 @@ def _build_deleted_from_gestionale_input_logs(
         key = _pk_key(row["IdDocumento"], row["IdRiga"])
         reason = delete_reasons[key]
         operation_group = _build_sync_operation_group_id(
-                id_documento = key[0],
-                id_riga = key[1],
-                action = "eliminato_gestionale",
-                when_iso = when_iso,
-                )
+            id_documento=key[0],
+            id_riga=key[1],
+            action="eliminato_gestionale",
+            when_iso=when_iso,
+        )
 
         out = row.to_dict()
         out.update(
-                {
-                    "logged_at":                    when_iso,
-                    "OperationGroupId":             operation_group,
-                    "FaseAttiva":                   row.get("runtime_FaseAttiva"),
-                    "QtyDaLavorare":                row.get("runtime_QtyDaLavorare"),
-                    "RisorsaAttiva":                row.get("runtime_RisorsaAttiva"),
-                    "LavorazioneAttiva":            row.get("runtime_LavorazioneAttiva"),
-                    "AttrezzaggioAttivo":           row.get("runtime_AttrezzaggioAttivo"),
-                    "Note":                         row.get("runtime_Note"),
-                    "FaseConsuntivata":             None,
-                    "QuantitaConforme":             None,
-                    "QuantitaNonConforme":          None,
-                    "TempoFunzionamentoFinale":     row.get("runtime_Tempo_funzionamento"),
-                    "TempoNonFunzionamentoMinuti":  None,
-                    "TempoNonFunzionamentoSecondi": None,
-                    "ChiusuraParziale":             None,
-                    "NoteChiusura":                 reason["reason_text"],
-                    "StatoOrdinePre":               row.get("StatoOrdine"),
-                    "StatoOrdinePost":              reason["stato_ordine_post"],
-                    "QtyDaLavorarePre":             row.get("runtime_QtyDaLavorare"),
-                    "QtyDaLavorarePost":            "",
-                    "ClosedBy":                     "sync_input",
-                    "ClosedAt":                     when_iso,
-                    }
-                )
+            {
+                "logged_at": when_iso,
+                "OperationGroupId": operation_group,
+                "FaseAttiva": row.get("runtime_FaseAttiva"),
+                "QtyDaLavorare": row.get("runtime_QtyDaLavorare"),
+                "RisorsaAttiva": row.get("runtime_RisorsaAttiva"),
+                "LavorazioneAttiva": row.get("runtime_LavorazioneAttiva"),
+                "AttrezzaggioAttivo": row.get("runtime_AttrezzaggioAttivo"),
+                "Note": row.get("runtime_Note"),
+                "FaseConsuntivata": None,
+                "QuantitaConforme": None,
+                "QuantitaNonConforme": None,
+                "TempoFunzionamentoFinale": row.get("runtime_Tempo_funzionamento"),
+                "TempoNonFunzionamentoMinuti": None,
+                "TempoNonFunzionamentoSecondi": None,
+                "ChiusuraParziale": None,
+                "NoteChiusura": reason["reason_text"],
+                "StatoOrdinePre": row.get("StatoOrdine"),
+                "StatoOrdinePost": reason["stato_ordine_post"],
+                "QtyDaLavorarePre": row.get("runtime_QtyDaLavorare"),
+                "QtyDaLavorarePost": "",
+                "ClosedBy": "sync_input",
+                "ClosedAt": when_iso,
+            }
+        )
         rows.append(out)
 
     return pd.DataFrame(rows)
 
 
 def _build_deleted_from_gestionale_runtime_logs(
-        *,
-        df_snapshot: pd.DataFrame,
-        delete_reasons: dict[tuple[str, str], dict[str, str]],
-        when_iso: str,
-        ) -> pd.DataFrame:
+    *,
+    df_snapshot: pd.DataFrame,
+    delete_reasons: dict[tuple[str, str], dict[str, str]],
+    when_iso: str,
+) -> pd.DataFrame:
     if df_snapshot.empty:
         return pd.DataFrame()
 
@@ -2131,95 +2054,101 @@ def _build_deleted_from_gestionale_runtime_logs(
         key = _pk_key(row["IdDocumento"], row["IdRiga"])
         reason = delete_reasons[key]
         operation_group = _build_sync_operation_group_id(
-                id_documento = key[0],
-                id_riga = key[1],
-                action = "eliminato_gestionale",
-                when_iso = when_iso,
-                )
+            id_documento=key[0],
+            id_riga=key[1],
+            action="eliminato_gestionale",
+            when_iso=when_iso,
+        )
 
         stato_odp_pre = row.get("runtime_Stato_odp")
 
         rows.append(
-                {
-                    "logged_at":                    when_iso,
-                    "OperationGroupId":             operation_group,
-                    "EventSequence":                1,
-                    "Topic":                        "eliminato_gestionale",
-                    "Scope":                        row.get("CodReparto"),
-                    "CodArt":                       row.get("CodArt"),
-                    "CodReparto":                   row.get("CodReparto"),
-                    "PayloadJson":                  json.dumps(
-                            {
-                                "azione":      "eliminato_gestionale",
-                                "motivo":      reason["reason_text"],
-                                "reason_code": reason["reason_code"],
-                                "utente":      "sync_input",
-                                },
-                            ensure_ascii = False,
-                            ),
-                    "IdDocumento":                  row.get("IdDocumento"),
-                    "IdRiga":                       row.get("IdRiga"),
-                    "RifRegistraz":                 row.get("RifRegistraz"),
-                    "Azione":                       "eliminato_gestionale",
-                    "Motivo":                       reason["reason_text"],
-                    "UtenteOperazione":             "sync_input",
-                    "EventAt":                      when_iso,
-                    "StatoOdpPre":                  stato_odp_pre,
-                    "StatoOdpPost":                 "Eliminato dal gestionale",
-                    "StatoOrdinePre":               row.get("StatoOrdine"),
-                    "StatoOrdinePost":              reason["stato_ordine_post"],
-                    "FasePre":                      row.get("runtime_FaseAttiva"),
-                    "FasePost":                     "",
-                    "DataInCaricoPre":              row.get("runtime_Data_in_carico"),
-                    "DataInCaricoPost":             "",
-                    "DataUltimaAttivazionePre":     row.get("runtime_data_ultima_attivazione"),
-                    "DataUltimaAttivazionePost":    "",
-                    "TempoFunzionamentoPre":        row.get("runtime_Tempo_funzionamento"),
-                    "TempoFunzionamentoPost":       "",
-                    "ElapsedSeconds":               None,
-                    "TempoNonFunzionamentoMinuti":  None,
-                    "TempoNonFunzionamentoSecondi": None,
-                    "QtyDaLavorarePre":             row.get("runtime_QtyDaLavorare"),
-                    "QtyDaLavorarePost":            "",
-                    "QuantitaConforme":             None,
-                    "QuantitaNonConforme":          None,
-                    "Causale":                      None,
-                    "Note":                         reason["reason_text"],
-                    "RifOrdinePrinc":               row.get("runtime_RifOrdinePrinc"),
-                    "VarianteArt":                  row.get("VarianteArt"),
-                    "NumProgrRiga":                 row.get("NumProgrRiga"),
-                    }
-                )
+            {
+                "logged_at": when_iso,
+                "OperationGroupId": operation_group,
+                "EventSequence": 1,
+                "Topic": "eliminato_gestionale",
+                "Scope": row.get("CodReparto"),
+                "CodArt": row.get("CodArt"),
+                "CodReparto": row.get("CodReparto"),
+                "PayloadJson": json.dumps(
+                    {
+                        "azione": "eliminato_gestionale",
+                        "motivo": reason["reason_text"],
+                        "reason_code": reason["reason_code"],
+                        "utente": "sync_input",
+                    },
+                    ensure_ascii=False,
+                ),
+                "IdDocumento": row.get("IdDocumento"),
+                "IdRiga": row.get("IdRiga"),
+                "RifRegistraz": row.get("RifRegistraz"),
+                "Azione": "eliminato_gestionale",
+                "Motivo": reason["reason_text"],
+                "UtenteOperazione": "sync_input",
+                "EventAt": when_iso,
+                "StatoOdpPre": stato_odp_pre,
+                "StatoOdpPost": "Eliminato dal gestionale",
+                "StatoOrdinePre": row.get("StatoOrdine"),
+                "StatoOrdinePost": reason["stato_ordine_post"],
+                "FasePre": row.get("runtime_FaseAttiva"),
+                "FasePost": "",
+                "DataInCaricoPre": row.get("runtime_Data_in_carico"),
+                "DataInCaricoPost": "",
+                "DataUltimaAttivazionePre": row.get("runtime_data_ultima_attivazione"),
+                "DataUltimaAttivazionePost": "",
+                "TempoFunzionamentoPre": row.get("runtime_Tempo_funzionamento"),
+                "TempoFunzionamentoPost": "",
+                "ElapsedSeconds": None,
+                "TempoNonFunzionamentoMinuti": None,
+                "TempoNonFunzionamentoSecondi": None,
+                "QtyDaLavorarePre": row.get("runtime_QtyDaLavorare"),
+                "QtyDaLavorarePost": "",
+                "QuantitaConforme": None,
+                "QuantitaNonConforme": None,
+                "Causale": None,
+                "Note": reason["reason_text"],
+                "RifOrdinePrinc": row.get("runtime_RifOrdinePrinc"),
+                "VarianteArt": row.get("VarianteArt"),
+                "NumProgrRiga": row.get("NumProgrRiga"),
+            }
+        )
 
     return pd.DataFrame(rows)
 
 
 def _delete_local_orders_from_rbac(
-        *,
-        engine,
-        keys: set[tuple[str, str]],
-        ) -> int:
+    *,
+    engine,
+    keys: set[tuple[str, str]],
+) -> int:
     if not keys:
         return 0
 
     md = sa.MetaData()
-    input_t = sa.Table("input_odp", md, autoload_with = engine)
-    runtime_t = sa.Table("input_odp_runtime", md, autoload_with = engine)
+    input_t = sa.Table("input_odp", md, autoload_with=engine)
+    runtime_t = sa.Table("input_odp_runtime", md, autoload_with=engine)
+    priorita_t = sa.Table("odp_priorita", md, autoload_with=engine)
 
     deleted_input = 0
 
     with engine.begin() as conn:
         for chunk in _chunked(list(keys), 400):
             runtime_cond = sa.tuple_(
-                    runtime_t.c.IdDocumento,
-                    runtime_t.c.IdRiga,
-                    ).in_(chunk)
+                runtime_t.c.IdDocumento,
+                runtime_t.c.IdRiga,
+            ).in_(chunk)
 
             input_cond = sa.tuple_(
-                    input_t.c.IdDocumento,
-                    input_t.c.IdRiga,
-                    ).in_(chunk)
+                input_t.c.IdDocumento,
+                input_t.c.IdRiga,
+            ).in_(chunk)
+            priorita_cond = sa.tuple_(
+                priorita_t.c.IdDocumento,
+                priorita_t.c.IdRiga,
+            ).in_(chunk)
 
+            conn.execute(sa.delete(priorita_t).where(priorita_cond))
             conn.execute(sa.delete(runtime_t).where(runtime_cond))
             res = conn.execute(sa.delete(input_t).where(input_cond))
 
@@ -2232,9 +2161,9 @@ def _delete_local_orders_from_rbac(
 
 
 def _sync_delete_orders_closed_or_removed_by_gestionale(
-        *,
-        df_odp_raw: pd.DataFrame,
-        ) -> int:
+    *,
+    df_odp_raw: pd.DataFrame,
+) -> int:
     """
     Cancella da RBAC.db gli ordini comandati dal gestionale:
     - non più presenti in vwESOdP;
@@ -2243,18 +2172,18 @@ def _sync_delete_orders_closed_or_removed_by_gestionale(
     Scrive prima il log minimale, poi elimina da input_odp_runtime e input_odp.
     """
     existing_keys = _fetch_all_keys(
-            sqlite_engine_app,
-            table_name = "input_odp",
-            key_cols = PK_COLS,
-            )
+        sqlite_engine_app,
+        table_name="input_odp",
+        key_cols=PK_COLS,
+    )
 
     if not existing_keys:
         return 0
 
     delete_reasons = _build_delete_reasons_from_gestionale(
-            existing_keys = existing_keys,
-            df_odp_raw = df_odp_raw,
-            )
+        existing_keys=existing_keys,
+        df_odp_raw=df_odp_raw,
+    )
 
     keys_to_delete = set(delete_reasons.keys())
 
@@ -2262,9 +2191,9 @@ def _sync_delete_orders_closed_or_removed_by_gestionale(
         return 0
 
     df_snapshot = _read_local_orders_snapshot_for_delete(
-            sqlite_engine_app,
-            keys_to_delete,
-            )
+        sqlite_engine_app,
+        keys_to_delete,
+    )
 
     if df_snapshot.empty:
         return 0
@@ -2272,47 +2201,45 @@ def _sync_delete_orders_closed_or_removed_by_gestionale(
     when_iso = _now_sync_iso()
 
     df_input_logs = _build_deleted_from_gestionale_input_logs(
-            df_snapshot = df_snapshot,
-            delete_reasons = delete_reasons,
-            when_iso = when_iso,
-            )
+        df_snapshot=df_snapshot,
+        delete_reasons=delete_reasons,
+        when_iso=when_iso,
+    )
 
     df_runtime_logs = _build_deleted_from_gestionale_runtime_logs(
-            df_snapshot = df_snapshot,
-            delete_reasons = delete_reasons,
-            when_iso = when_iso,
-            )
+        df_snapshot=df_snapshot,
+        delete_reasons=delete_reasons,
+        when_iso=when_iso,
+    )
 
     righe_input_log = _append_matching_table_columns(
-            engine = sqlite_engine_log,
-            table_name = "input_odp_log",
-            df = df_input_logs,
-            )
+        engine=sqlite_engine_log,
+        table_name="input_odp_log",
+        df=df_input_logs,
+    )
 
     righe_runtime_log = _append_matching_table_columns(
-            engine = sqlite_engine_log,
-            table_name = "odp_runtime_log",
-            df = df_runtime_logs,
-            )
+        engine=sqlite_engine_log,
+        table_name="odp_runtime_log",
+        df=df_runtime_logs,
+    )
 
     righe_cancellate = _delete_local_orders_from_rbac(
-            engine = sqlite_engine_app,
-            keys = keys_to_delete,
-            )
+        engine=sqlite_engine_app,
+        keys=keys_to_delete,
+    )
 
     logging.info(
-            "Pulizia ordini eliminati/terminati da gestionale | cancellati=%s | input_odp_log=%s | odp_runtime_log=%s",
-            righe_cancellate,
-            righe_input_log,
-            righe_runtime_log,
-            )
+        "Pulizia ordini eliminati/terminati da gestionale | cancellati=%s | input_odp_log=%s | odp_runtime_log=%s",
+        righe_cancellate,
+        righe_input_log,
+        righe_runtime_log,
+    )
 
     return righe_cancellate
 
 
-def elaborazione_dati(
-        session: Session
-        ) -> None:
+def elaborazione_dati(session: Session) -> None:
     """
     Funzione per l'inserimento dei dati nella tabella input_odp da inserire a db
 
@@ -2323,62 +2250,62 @@ def elaborazione_dati(
     ensure_init()
     _sync_rbac_support_tables()
     global nuovo_ciclo
-    df_odp_raw = leggi_view(table = "vwESOdP")
+    df_odp_raw = leggi_view(table="vwESOdP")
 
     _sync_delete_orders_closed_or_removed_by_gestionale(
-            df_odp_raw = df_odp_raw,
-            )
+        df_odp_raw=df_odp_raw,
+    )
 
     df_odp = _filtra_odp_importabili(df_odp_raw)
     df_odpfasi = (
         pd.DataFrame(
-                leggi_view(table = "vwESOdPFasi", colonna_filtro_esclusi = "CodRisorsaProd")
-                )
-        .pipe(filtra_odpfasi_con_odp, df_odp = df_odp)
+            leggi_view(table="vwESOdPFasi", colonna_filtro_esclusi="CodRisorsaProd")
+        )
+        .pipe(filtra_odpfasi_con_odp, df_odp=df_odp)
         .pipe(
-                inserimento_reparto_da_risorsa,
-                df_risorse = leggi_view(
-                        "vwESRisorse", colonna_filtro_esclusi = "CodRisorsaProd"
-                        ),
-                )
+            inserimento_reparto_da_risorsa,
+            df_risorse=leggi_view(
+                "vwESRisorse", colonna_filtro_esclusi="CodRisorsaProd"
+            ),
+        )
     )
     chiavi = ["IdDocumento", "IdRiga"]
     df_odpcomponenti = leggi_view("vwESOdPComponenti").pipe(
-            filtra_odp_componenti_con_odp, df_odp = df_odp
-            )
+        filtra_odp_componenti_con_odp, df_odp=df_odp
+    )
     df_articoli = leggi_view("vwESArticoli")
     df_fasi_componenti = unione_fasi_componenti(
-            df_odpfasi, df_odpcomponenti, df_articoli
-            )
+        df_odpfasi, df_odpcomponenti, df_articoli
+    )
     distinta_componenti = generazione_dizionario(
-            df = df_fasi_componenti,
-            chiavi = chiavi,
-            rename_col = "DistintaMateriale",
-            list_columns = [
-                "CodArt",
-                "DesArt",
-                "Quantita",
-                "NumFase",
-                "TecniciUm",
-                "GestioneLotto",
-                "VarianteArt",
-                "IndiceModifica",
-                ],
-            )
+        df=df_fasi_componenti,
+        chiavi=chiavi,
+        rename_col="DistintaMateriale",
+        list_columns=[
+            "CodArt",
+            "DesArt",
+            "Quantita",
+            "NumFase",
+            "TecniciUm",
+            "GestioneLotto",
+            "VarianteArt",
+            "IndiceModifica",
+        ],
+    )
 
     df_input_odp = (
         inserimento_distinta_in_odp(
-                df_odp = df_odp, componenti_per_odp = distinta_componenti, chiavi = chiavi
-                )
-        .pipe(inserimento_dati_fasi_in_odp, df_odpfasi = df_odpfasi, chiavi = chiavi)
-        .pipe(gestione_lotto_matricola_famiglia, df_articoli = df_articoli)
+            df_odp=df_odp, componenti_per_odp=distinta_componenti, chiavi=chiavi
+        )
+        .pipe(inserimento_dati_fasi_in_odp, df_odpfasi=df_odpfasi, chiavi=chiavi)
+        .pipe(gestione_lotto_matricola_famiglia, df_articoli=df_articoli)
         .pipe(
-                inserimento_macrofamiglia,
-                df_famiglia = leggi_view(
-                        "vwESFamiglia", colonna_filtro_esclusi = "CodFamiglia"
-                        ),
-                )
-        .drop(columns = ["DataInizioProduzione"])
+            inserimento_macrofamiglia,
+            df_famiglia=leggi_view(
+                "vwESFamiglia", colonna_filtro_esclusi="CodFamiglia"
+            ),
+        )
+        .drop(columns=["DataInizioProduzione"])
     )
     # --- payload ERP puro ---
     for col in INPUT_ODP_ERP_COLS:
@@ -2387,27 +2314,26 @@ def elaborazione_dati(
 
     df_input_odp = df_input_odp[INPUT_ODP_ERP_COLS].copy()
     df_input_odp = df_input_odp.where(pd.notna(df_input_odp), None)
-    df_input_odp = df_input_odp.drop_duplicates(subset = list(PK_COLS))
+    df_input_odp = df_input_odp.drop_duplicates(subset=list(PK_COLS))
     blocked_outbox_pks = _fetch_blocked_outbox_pks(sqlite_engine_log)
 
     if blocked_outbox_pks and not df_input_odp.empty:
         pk_series = df_input_odp.apply(
-                lambda
-                    row: (
-                    _norm_text(row.get("IdDocumento")),
-                    _norm_text(row.get("IdRiga")),
-                    ),
-                axis = 1,
-                )
+            lambda row: (
+                _norm_text(row.get("IdDocumento")),
+                _norm_text(row.get("IdRiga")),
+            ),
+            axis=1,
+        )
 
         mask_blocked = pk_series.isin(blocked_outbox_pks)
         righe_escluse = int(mask_blocked.sum())
 
         if righe_escluse:
             logging.info(
-                    "Escluse %s righe da sync_input per presenza in erp_outbox.",
-                    righe_escluse,
-                    )
+                "Escluse %s righe da sync_input per presenza in erp_outbox.",
+                righe_escluse,
+            )
             df_input_odp = df_input_odp.loc[~mask_blocked].copy()
 
     # --- seed runtime iniziale ---
@@ -2418,27 +2344,27 @@ def elaborazione_dati(
     pk_tuples = list(map(tuple, df_pk.to_numpy()))
     # PK già presenti nelle due tabelle
     existing_erp = _fetch_existing_pks(
-            sqlite_engine_app,
-            pk_tuples,
-            pk_cols = PK_COLS,
-            table_name = "input_odp",
-            )
+        sqlite_engine_app,
+        pk_tuples,
+        pk_cols=PK_COLS,
+        table_name="input_odp",
+    )
     existing_runtime = _fetch_existing_pks(
-            sqlite_engine_app,
-            pk_tuples,
-            pk_cols = PK_COLS,
-            table_name = "input_odp_runtime",
-            )
+        sqlite_engine_app,
+        pk_tuples,
+        pk_cols=PK_COLS,
+        table_name="input_odp_runtime",
+    )
 
     # split ERP: nuove righe vs righe già esistenti da aggiornare
     mask_new_erp = [
         tuple(x) not in existing_erp
         for x in df_input_odp[list(PK_COLS)].astype(str).to_numpy()
-        ]
+    ]
     mask_existing_erp = [
         tuple(x) in existing_erp
         for x in df_input_odp[list(PK_COLS)].astype(str).to_numpy()
-        ]
+    ]
 
     df_new_erp = df_input_odp.loc[mask_new_erp].copy()
     df_existing_erp = df_input_odp.loc[mask_existing_erp].copy()
@@ -2447,11 +2373,11 @@ def elaborazione_dati(
     mask_new_runtime = [
         tuple(x) not in existing_runtime
         for x in df_runtime_seed[list(PK_COLS)].astype(str).to_numpy()
-        ]
+    ]
     df_new_runtime = df_runtime_seed.loc[mask_new_runtime].copy()
 
     df_giacenza_lotti = (
-        leggi_view(table = "vwESGiacenzaLotti")
+        leggi_view(table="vwESGiacenzaLotti")
         .pipe(filtri_giacenza_lotti)[["CodArt", "RifLottoAlfa", "CodMag", "Giacenza"]]
         .copy()
     )
@@ -2459,9 +2385,9 @@ def elaborazione_dati(
     df_giacenza_lotti = df_giacenza_lotti.where(pd.notna(df_giacenza_lotti), None)
 
     df_giacenza_lotti = df_giacenza_lotti.drop_duplicates(
-            subset = list(LOTTI_PK_COLS),
-            keep = "last",
-            )
+        subset=list(LOTTI_PK_COLS),
+        keep="last",
+    )
 
     righe_inserite_odp = 0
     righe_aggiornate_odp = 0
@@ -2476,183 +2402,183 @@ def elaborazione_dati(
     try:
         if not df_new_erp.empty:
             righe_inserite_odp = int(
-                    df_new_erp.to_sql(
-                            name = "input_odp",
-                            con = sqlite_engine_app,
-                            if_exists = "append",
-                            index = False,
-                            method = inserisci_o_ignora,
-                            )
-                    or 0
-                    )
+                df_new_erp.to_sql(
+                    name="input_odp",
+                    con=sqlite_engine_app,
+                    if_exists="append",
+                    index=False,
+                    method=inserisci_o_ignora,
+                )
+                or 0
+            )
 
         if not df_existing_erp.empty:
             righe_aggiornate_odp = _update_rows_by_pk(
-                    sqlite_engine_app,
-                    df_existing_erp,
-                    table_name = "input_odp",
-                    pk_cols = PK_COLS,
-                    update_cols = INPUT_ODP_ERP_UPDATE_COLS,
-                    )
+                sqlite_engine_app,
+                df_existing_erp,
+                table_name="input_odp",
+                pk_cols=PK_COLS,
+                update_cols=INPUT_ODP_ERP_UPDATE_COLS,
+            )
 
         if not df_new_runtime.empty:
             righe_inserite_runtime = int(
-                    df_new_runtime.to_sql(
-                            name = "input_odp_runtime",
-                            con = sqlite_engine_app,
-                            if_exists = "append",
-                            index = False,
-                            method = inserisci_o_ignora,
-                            )
-                    or 0
-                    )
+                df_new_runtime.to_sql(
+                    name="input_odp_runtime",
+                    con=sqlite_engine_app,
+                    if_exists="append",
+                    index=False,
+                    method=inserisci_o_ignora,
+                )
+                or 0
+            )
             # mirror ordini: elimina da input_odp gli ordini non più validi da gestionale
             # Non elimina input_odp_runtime per scelta funzionale.
             incoming_erp_keys = _pk_set_from_df(df_input_odp, PK_COLS)
 
             local_input_odp_keys = _fetch_all_keys(
-                    sqlite_engine_app,
-                    table_name = "input_odp",
-                    key_cols = PK_COLS,
-                    )
+                sqlite_engine_app,
+                table_name="input_odp",
+                key_cols=PK_COLS,
+            )
 
             keys_to_delete_gestionale = sorted(
-                    (local_input_odp_keys - incoming_erp_keys) - blocked_outbox_pks
-                    )
+                (local_input_odp_keys - incoming_erp_keys) - blocked_outbox_pks
+            )
 
             if keys_to_delete_gestionale:
                 df_deleted_erp = _fetch_rows_by_pk(
-                        sqlite_engine_app,
-                        table_name = "input_odp",
-                        pk_cols = PK_COLS,
-                        pk_tuples = keys_to_delete_gestionale,
-                        columns = INPUT_ODP_ERP_COLS,
-                        )
+                    sqlite_engine_app,
+                    table_name="input_odp",
+                    pk_cols=PK_COLS,
+                    pk_tuples=keys_to_delete_gestionale,
+                    columns=INPUT_ODP_ERP_COLS,
+                )
 
                 df_deleted_runtime = _fetch_rows_by_pk(
-                        sqlite_engine_app,
-                        table_name = "input_odp_runtime",
-                        pk_cols = PK_COLS,
-                        pk_tuples = keys_to_delete_gestionale,
-                        columns = INPUT_ODP_RUNTIME_COLS,
-                        )
+                    sqlite_engine_app,
+                    table_name="input_odp_runtime",
+                    pk_cols=PK_COLS,
+                    pk_tuples=keys_to_delete_gestionale,
+                    columns=INPUT_ODP_RUNTIME_COLS,
+                )
 
                 log_stats = _write_sync_deleted_from_gestionale_logs(
-                        df_deleted_erp = df_deleted_erp,
-                        df_deleted_runtime = df_deleted_runtime,
-                        when_iso = _now_sync_iso(),
-                        )
+                    df_deleted_erp=df_deleted_erp,
+                    df_deleted_runtime=df_deleted_runtime,
+                    when_iso=_now_sync_iso(),
+                )
 
                 righe_log_eliminati_input = log_stats["input_log"]
                 righe_log_eliminati_runtime = log_stats["runtime_log"]
 
                 righe_eliminate_odp_gestionale = _delete_rows_by_pk(
-                        sqlite_engine_app,
-                        table_name = "input_odp",
-                        pk_cols = PK_COLS,
-                        pk_tuples = keys_to_delete_gestionale,
-                        )
+                    sqlite_engine_app,
+                    table_name="input_odp",
+                    pk_cols=PK_COLS,
+                    pk_tuples=keys_to_delete_gestionale,
+                )
 
                 logging.info(
-                        "Ordini eliminati da input_odp perché non più validi da gestionale: %s",
-                        righe_eliminate_odp_gestionale,
-                        )
+                    "Ordini eliminati da input_odp perché non più validi da gestionale: %s",
+                    righe_eliminate_odp_gestionale,
+                )
 
         incoming_lotti_keys = set(
-                map(tuple, df_giacenza_lotti[list(LOTTI_PK_COLS)].astype(str).to_numpy())
-                )
+            map(tuple, df_giacenza_lotti[list(LOTTI_PK_COLS)].astype(str).to_numpy())
+        )
 
         existing_lotti = _fetch_existing_pks(
-                sqlite_engine_app,
-                list(incoming_lotti_keys) if incoming_lotti_keys else [],
-                pk_cols = LOTTI_PK_COLS,
-                table_name = "giacenza_lotti",
-                )
+            sqlite_engine_app,
+            list(incoming_lotti_keys) if incoming_lotti_keys else [],
+            pk_cols=LOTTI_PK_COLS,
+            table_name="giacenza_lotti",
+        )
 
         mask_new_lotti = [
             tuple(x) not in existing_lotti
             for x in df_giacenza_lotti[list(LOTTI_PK_COLS)].astype(str).to_numpy()
-            ]
+        ]
         mask_existing_lotti = [
             tuple(x) in existing_lotti
             for x in df_giacenza_lotti[list(LOTTI_PK_COLS)].astype(str).to_numpy()
-            ]
+        ]
 
         df_new_lotti = df_giacenza_lotti.loc[mask_new_lotti].copy()
         df_existing_lotti = df_giacenza_lotti.loc[mask_existing_lotti].copy()
 
         if not df_new_lotti.empty:
             righe_inserite_lotti = int(
-                    df_new_lotti.to_sql(
-                            name = "giacenza_lotti",
-                            con = sqlite_engine_app,
-                            if_exists = "append",
-                            index = False,
-                            method = inserisci_o_ignora,
-                            )
-                    or 0
-                    )
+                df_new_lotti.to_sql(
+                    name="giacenza_lotti",
+                    con=sqlite_engine_app,
+                    if_exists="append",
+                    index=False,
+                    method=inserisci_o_ignora,
+                )
+                or 0
+            )
 
         if not df_existing_lotti.empty:
             righe_aggiornate_lotti = _update_rows_by_pk(
-                    sqlite_engine_app,
-                    df_existing_lotti,
-                    table_name = "giacenza_lotti",
-                    pk_cols = LOTTI_PK_COLS,
-                    update_cols = ["Giacenza"],
-                    )
+                sqlite_engine_app,
+                df_existing_lotti,
+                table_name="giacenza_lotti",
+                pk_cols=LOTTI_PK_COLS,
+                update_cols=["Giacenza"],
+            )
 
         # mirror completo: elimina ciò che non esiste più nella view filtrata
         current_local_lotti = _fetch_existing_pks(
-                sqlite_engine_app,
-                list(
-                        map(
-                                tuple,
-                                df_giacenza_lotti[list(LOTTI_PK_COLS)].astype(str).to_numpy(),
-                                )
-                        )
-                if not df_giacenza_lotti.empty
-                else [],
-                pk_cols = LOTTI_PK_COLS,
-                table_name = "giacenza_lotti",
+            sqlite_engine_app,
+            list(
+                map(
+                    tuple,
+                    df_giacenza_lotti[list(LOTTI_PK_COLS)].astype(str).to_numpy(),
                 )
+            )
+            if not df_giacenza_lotti.empty
+            else [],
+            pk_cols=LOTTI_PK_COLS,
+            table_name="giacenza_lotti",
+        )
 
         # recupero completo chiavi locali reali
         md = sa.MetaData()
-        t_lotti = sa.Table("giacenza_lotti", md, autoload_with = sqlite_engine_app)
+        t_lotti = sa.Table("giacenza_lotti", md, autoload_with=sqlite_engine_app)
         with sqlite_engine_app.connect() as conn:
             all_local_lotti = {
                 tuple(row)
                 for row in conn.execute(
-                        sa.select(
-                                t_lotti.c["CodArt"],
-                                t_lotti.c["RifLottoAlfa"],
-                                t_lotti.c["CodMag"],
-                                )
-                        ).fetchall()
-                }
+                    sa.select(
+                        t_lotti.c["CodArt"],
+                        t_lotti.c["RifLottoAlfa"],
+                        t_lotti.c["CodMag"],
+                    )
+                ).fetchall()
+            }
 
         keys_to_delete = sorted(all_local_lotti - incoming_lotti_keys)
 
         if keys_to_delete:
             righe_eliminate_lotti = _delete_rows_by_pk(
-                    sqlite_engine_app,
-                    table_name = "giacenza_lotti",
-                    pk_cols = LOTTI_PK_COLS,
-                    pk_tuples = keys_to_delete,
-                    )
+                sqlite_engine_app,
+                table_name="giacenza_lotti",
+                pk_cols=LOTTI_PK_COLS,
+                pk_tuples=keys_to_delete,
+            )
 
         # log punto 1: solo nuovi ordini
         if not df_new_erp.empty:
             _write_sync_logs(
-                    df_new_erp = df_new_erp,
-                    df_new_runtime = df_new_runtime,
-                    )
+                df_new_erp=df_new_erp,
+                df_new_runtime=df_new_runtime,
+            )
 
     except (sa.exc.SQLAlchemyError, sq.Error, RuntimeError, ValueError):
         logging.exception(
-                "Errore durante sync input_odp/input_odp_runtime e scrittura log"
-                )
+            "Errore durante sync input_odp/input_odp_runtime e scrittura log"
+        )
         righe_inserite_odp = 0
         righe_aggiornate_odp = 0
         righe_eliminate_odp_gestionale = 0
@@ -2664,32 +2590,28 @@ def elaborazione_dati(
         righe_eliminate_lotti = 0
 
     logging.info(
-            (
-                "Sync input_odp completato | nuovi ERP=%s | aggiornati ERP=%s | "
-                "eliminati gestionale=%s | log eliminati input=%s | log eliminati runtime=%s | "
-                "nuovi runtime=%s | nuovi lotti=%s | lotti aggiornati=%s | lotti eliminati=%s"
-            ),
-            righe_inserite_odp,
-            righe_aggiornate_odp,
-            righe_eliminate_odp_gestionale,
-            righe_log_eliminati_input,
-            righe_log_eliminati_runtime,
-            righe_inserite_runtime,
-            righe_inserite_lotti,
-            righe_aggiornate_lotti,
-            righe_eliminate_lotti,
-            )
+        (
+            "Sync input_odp completato | nuovi ERP=%s | aggiornati ERP=%s | "
+            "eliminati gestionale=%s | log eliminati input=%s | log eliminati runtime=%s | "
+            "nuovi runtime=%s | nuovi lotti=%s | lotti aggiornati=%s | lotti eliminati=%s"
+        ),
+        righe_inserite_odp,
+        righe_aggiornate_odp,
+        righe_eliminate_odp_gestionale,
+        righe_log_eliminati_input,
+        righe_log_eliminati_runtime,
+        righe_inserite_runtime,
+        righe_inserite_lotti,
+        righe_aggiornate_lotti,
+        righe_eliminate_lotti,
+    )
 
 
 # endregion
 # region SCHEDULAZIONE
 
 
-def _in_time_window(
-        now_t: time,
-        start: time,
-        end: time
-        ) -> bool:
+def _in_time_window(now_t: time, start: time, end: time) -> bool:
     """
     Calcola se il tempo attuale è in finestra lavorativa
 
@@ -2711,11 +2633,8 @@ def _in_time_window(
 
 
 def _is_allowed_datetime(
-        now: datetime,
-        start: time,
-        end: time,
-        allowed_weekdays: set[int]
-        ) -> bool:
+    now: datetime, start: time, end: time, allowed_weekdays: set[int]
+) -> bool:
     """
     Calcola se il giorno attuale è in finestra lavorativa
 
@@ -2732,10 +2651,10 @@ def _is_allowed_datetime(
     """
     if start < end or start == end:
         return (now.weekday() in allowed_weekdays) and _in_time_window(
-                now.timetz().replace(tzinfo = None), start, end
-                )
+            now.timetz().replace(tzinfo=None), start, end
+        )
 
-    now_t = now.timetz().replace(tzinfo = None)
+    now_t = now.timetz().replace(tzinfo=None)
     if now_t >= start:
         start_day = now.weekday()
     else:
@@ -2745,12 +2664,12 @@ def _is_allowed_datetime(
 
 
 def seconds_until_next_allowed(
-        start_h: int,
-        end_h: int,
-        allowed_weekdays: set[int],
-        tz: ZoneInfo = ZoneInfo("Europe/Rome"),
-        step_minutes: int = 1,
-        ) -> int:
+    start_h: int,
+    end_h: int,
+    allowed_weekdays: set[int],
+    tz: ZoneInfo = ZoneInfo("Europe/Rome"),
+    step_minutes: int = 1,
+) -> int:
     """
     Ritorna 0 se siamo dentro la schedulazione.
     Altrimenti ritorna i secondi fino al prossimo istante consentito.
@@ -2780,9 +2699,9 @@ def seconds_until_next_allowed(
     if _is_allowed_datetime(now, start, end, allowed_weekdays):
         return 0
 
-    probe = now.replace(second = 0, microsecond = 0)
-    limit = probe + timedelta(days = 8)
-    step = timedelta(minutes = step_minutes)
+    probe = now.replace(second=0, microsecond=0)
+    limit = probe + timedelta(days=8)
+    step = timedelta(minutes=step_minutes)
 
     while probe < limit:
         probe += step
@@ -2790,15 +2709,11 @@ def seconds_until_next_allowed(
             return int((probe - now).total_seconds())
 
     raise RuntimeError(
-            "Impossibile trovare una prossima finestra: controlla parametri schedule."
-            )
+        "Impossibile trovare una prossima finestra: controlla parametri schedule."
+    )
 
 
-def wait_if_not_allowed(
-        start_h: int,
-        end_h: int,
-        allowed_weekdays: set[int]
-        ) -> None:
+def wait_if_not_allowed(start_h: int, end_h: int, allowed_weekdays: set[int]) -> None:
     """
     Logger per l'output
 
@@ -2812,8 +2727,8 @@ def wait_if_not_allowed(
     s = seconds_until_next_allowed(start_h, end_h, allowed_weekdays)
     if s > 0:
         logging.info(
-                "Fuori schedule. Sleep ~%d min (fino a prossima finestra).", s // 60
-                )
+            "Fuori schedule. Sleep ~%d min (fino a prossima finestra).", s // 60
+        )
         time_mod.sleep(s)
 
 
@@ -2833,20 +2748,20 @@ def read_cycle() -> None:
                 start = time_mod.time()
 
                 try:
-                    elaborazione_dati(session = session)
+                    elaborazione_dati(session=session)
                 except Exception:
                     logging.exception("Errore generico")
 
                 elapsed = time_mod.time() - start
                 sleep_for = max(
-                        0.0, float(POLL_SECONDS_DEFAULT) - elapsed
-                        )  # meglio senza int()
+                    0.0, float(POLL_SECONDS_DEFAULT) - elapsed
+                )  # meglio senza int()
                 logging.info(
-                        "Ciclo %i completato in %.2f s. Sleep %.2fs",
-                        counter,
-                        elapsed,
-                        sleep_for,
-                        )
+                    "Ciclo %i completato in %.2f s. Sleep %.2fs",
+                    counter,
+                    elapsed,
+                    sleep_for,
+                )
 
                 list_elapsed.append(elapsed)
                 list_sleep.append(sleep_for)
@@ -2855,30 +2770,30 @@ def read_cycle() -> None:
 
             if counter % 1000 == 0:
                 media_tempo_ciclo = statistics.mean(
-                        list_elapsed[-1000: len(list_elapsed)]
-                        )
+                    list_elapsed[-1000 : len(list_elapsed)]
+                )
                 logging.info(
-                        "Media tempo ciclo ultimi 1000 cicli %.3f", media_tempo_ciclo
-                        )
-                media_riposo = statistics.mean(list_sleep[-1000: len(list_sleep)])
+                    "Media tempo ciclo ultimi 1000 cicli %.3f", media_tempo_ciclo
+                )
+                media_riposo = statistics.mean(list_sleep[-1000 : len(list_sleep)])
                 logging.info("Media tempo riposo 1000 cicli %.3f", media_riposo)
             elif counter % 500 == 0:
                 media_tempo_ciclo = statistics.mean(
-                        list_elapsed[-500: len(list_elapsed)]
-                        )
+                    list_elapsed[-500 : len(list_elapsed)]
+                )
                 logging.info(
-                        "Media tempo ciclo ultimi 500 cicli %.3f", media_tempo_ciclo
-                        )
-                media_riposo = statistics.mean(list_sleep[-500: len(list_sleep)])
+                    "Media tempo ciclo ultimi 500 cicli %.3f", media_tempo_ciclo
+                )
+                media_riposo = statistics.mean(list_sleep[-500 : len(list_sleep)])
                 logging.info("Media tempo riposo 500 cicli %.3f", media_riposo)
             elif counter % 100 == 0:
                 media_tempo_ciclo = statistics.mean(
-                        list_elapsed[-100: len(list_elapsed)]
-                        )
+                    list_elapsed[-100 : len(list_elapsed)]
+                )
                 logging.info(
-                        "Media tempo ciclo ultimi 100 cicli %.3f", media_tempo_ciclo
-                        )
-                media_riposo = statistics.mean(list_sleep[-100: len(list_sleep)])
+                    "Media tempo ciclo ultimi 100 cicli %.3f", media_tempo_ciclo
+                )
+                media_riposo = statistics.mean(list_sleep[-100 : len(list_sleep)])
                 logging.info("Media tempo riposo 100 cicli %.3f", media_riposo)
 
     except KeyboardInterrupt:

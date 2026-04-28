@@ -1878,6 +1878,11 @@ def home():
         .scalars()
         .all()
     )
+    odp = _apply_priorita_to_ordini(
+        list(odp),
+        current_user.id,
+        sort_result=True,
+    )
     return render_template(
         "home.j2",
         active_partial=template,

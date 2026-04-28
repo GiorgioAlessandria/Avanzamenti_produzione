@@ -20,8 +20,7 @@
             data-fase="{{ singolo_odp.FaseAttiva }}"
             data-datacons="{{ singolo_odp.DataFineSched }}"
             data-distinta='{{ singolo_odp.DistintaMateriale|tojson }}'
-            data-distinta-missing="{{ '1' if distinta_missing else '0' }}"
-            class="{{ 'table-danger' if distinta_missing else '' }}">
+            data-distinta-missing="{{ '1' if distinta_missing else '0' }}">
             <td>{{ pr or '' }}</td>
             <td>
                 {% if distinta_missing %}
