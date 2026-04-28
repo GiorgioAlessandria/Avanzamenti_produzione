@@ -4,15 +4,39 @@
 
 {% block content %}
     <style>
-        #priorita-page .priorita-table-scroll {
-            overflow-y: auto;
-            overflow-x: auto;
+        #priorita-page .priorita-main-row {
+            height: calc(100vh - 180px);
             min-height: 0;
         }
 
-        #priorita-page .priorita-table {
-            width: 100%;
-            margin-bottom: 0;
+        #priorita-page .priorita-left-col {
+            height: 100%;
+            min-height: 0;
+            display: grid !important;
+            grid-template-rows: auto minmax(0, 1fr);
+            row-gap: 1rem;
+        }
+
+        #priorita-page .priorita-available-card {
+            min-height: 0;
+            display: grid !important;
+            grid-template-rows: auto auto minmax(0, 1fr);
+        }
+
+        #priorita-page .priorita-table-scroll {
+            min-height: 0;
+            overflow: auto !important;
+            display: block !important;
+            padding: 0 !important;
+            margin: 0 !important;
+        }
+
+        #priorita-page .priorita-table-scroll > table {
+            display: table !important;
+            width: 100% !important;
+            margin: 0 !important;
+            position: static !important;
+            transform: none !important;
         }
 
         #priorita-page .priorita-table thead th {
@@ -25,6 +49,11 @@
 
         #priorita-page .priorita-table tbody td {
             vertical-align: top;
+        }
+
+        #priorita-page .priorita-right-col {
+            height: 100%;
+            min-height: 0;
         }
     </style>
     <main class="container-fluid mt-3"
@@ -45,12 +74,11 @@
         <div id="priorita-alert"
              class="alert d-none"
              role="alert"></div>
-        <div class="row g-3">
+        <div class="row g-3 priorita-main-row">
             <!-- COLONNA SINISTRA -->
-            <div class="col-5 d-flex flex-column"
-                 style="height: calc(100vh - 180px); min-height: 0;">
+            <div class="col-5 priorita-left-col">
 
-                <div class="card shadow-sm mb-3">
+                <div class="card shadow-sm">
                     <div class="card-body">
                         <label for="priorita-operatore-select"
                                class="form-label fw-semibold">
@@ -63,8 +91,7 @@
                     </div>
                 </div>
 
-                <div class="card shadow-sm flex-grow-1 d-flex flex-column"
-                     style="min-height: 0;">
+                <div class="card shadow-sm priorita-available-card">
                     <div class="card-header fw-semibold flex-shrink-0">
                         Ordini operatore non prioritizzati
                     </div>
@@ -98,8 +125,7 @@
                         </div>
                     </div>
 
-                    <div class="card-body p-0 flex-grow-1 priorita-table-scroll"
-                         style="margin-top: 0; padding-top: 0;">
+                    <div class="card-body priorita-table-scroll">
                         <table class="table table-sm table-hover priorita-table mb-0">
                             <thead class="table-light">
                             <tr>
@@ -116,82 +142,79 @@
                         </table>
                     </div>
                 </div>
+            </div>
 
-                <!-- COLONNA DESTRA -->
-                <div class="col-7 d-flex flex-column gap-3"
-                     style="height: calc(100vh - 180px); min-height: 0;">
-
-                    <div class="card shadow-sm d-flex flex-column"
-                         style="height: 22%; min-height: 0;">
-                        <div class="card-header bg-danger-subtle fw-semibold flex-shrink-0">
-                            Priorità 1
-                        </div>
-                        <div class="card-body p-0 flex-grow-1"
-                             style="overflow: auto; min-height: 0;">
-                            <table class="table table-sm table-hover align-middle mb-0">
-                                <thead class="table-light sticky-top">
-                                <tr>
-                                    <th>Ordine</th>
-                                    <th>Codice</th>
-                                    <th>Descrizione</th>
-                                    <th>Fase</th>
-                                    <th>Risorsa</th>
-                                </tr>
-                                </thead>
-                                <tbody id="priorita-p1-body"
-                                       class="js-priorita-list"
-                                       data-priorita="1"></tbody>
-                            </table>
-                        </div>
+            <!-- COLONNA DESTRA -->
+            <div class="col-7 d-flex flex-column gap-3">
+                <div class="card shadow-sm d-flex flex-column"
+                     style="height: 22%; min-height: 0;">
+                    <div class="card-header bg-danger-subtle fw-semibold flex-shrink-0">
+                        Priorità 1
                     </div>
-
-                    <div class="card shadow-sm d-flex flex-column"
-                         style="height: 35%; min-height: 0;">
-                        <div class="card-header bg-warning-subtle fw-semibold flex-shrink-0">
-                            Priorità 2
-                            <span class="text-muted">(max {{ priorita_2_max }})</span>
-                        </div>
-                        <div class="card-body p-0 flex-grow-1"
-                             style="overflow: auto; min-height: 0;">
-                            <table class="table table-sm table-hover align-middle mb-0">
-                                <thead class="table-light sticky-top">
-                                <tr>
-                                    <th>Ordine</th>
-                                    <th>Codice</th>
-                                    <th>Descrizione</th>
-                                    <th>Fase</th>
-                                    <th>Risorsa</th>
-                                </tr>
-                                </thead>
-                                <tbody id="priorita-p2-body"
-                                       class="js-priorita-list"
-                                       data-priorita="2"></tbody>
-                            </table>
-                        </div>
+                    <div class="card-body p-0 flex-grow-1"
+                         style="overflow: auto; min-height: 0;">
+                        <table class="table table-sm table-hover align-middle mb-0">
+                            <thead class="table-light sticky-top">
+                            <tr>
+                                <th>Ordine</th>
+                                <th>Codice</th>
+                                <th>Descrizione</th>
+                                <th>Fase</th>
+                                <th>Risorsa</th>
+                            </tr>
+                            </thead>
+                            <tbody id="priorita-p1-body"
+                                   class="js-priorita-list"
+                                   data-priorita="1"></tbody>
+                        </table>
                     </div>
+                </div>
 
-                    <div class="card shadow-sm flex-grow-1 d-flex flex-column"
-                         style="min-height: 0;">
-                        <div class="card-header bg-success-subtle fw-semibold flex-shrink-0">
-                            Priorità 3
-                        </div>
-                        <div class="card-body p-0 flex-grow-1"
-                             style="overflow: auto; min-height: 0;">
-                            <table class="table table-sm table-hover align-middle mb-0">
-                                <thead class="table-light sticky-top">
-                                <tr>
-                                    <th>Ordine</th>
-                                    <th>Codice</th>
-                                    <th>Descrizione</th>
-                                    <th>Fase</th>
-                                    <th>Risorsa</th>
-                                </tr>
-                                </thead>
-                                <tbody id="priorita-p3-body"
-                                       class="js-priorita-list"
-                                       data-priorita="3"></tbody>
-                            </table>
-                        </div>
+                <div class="card shadow-sm d-flex flex-column"
+                     style="height: 35%; min-height: 0;">
+                    <div class="card-header bg-warning-subtle fw-semibold flex-shrink-0">
+                        Priorità 2
+                    </div>
+                    <div class="card-body p-0 flex-grow-1"
+                         style="overflow: auto; min-height: 0;">
+                        <table class="table table-sm table-hover align-middle mb-0">
+                            <thead class="table-light sticky-top">
+                            <tr>
+                                <th>Ordine</th>
+                                <th>Codice</th>
+                                <th>Descrizione</th>
+                                <th>Fase</th>
+                                <th>Risorsa</th>
+                            </tr>
+                            </thead>
+                            <tbody id="priorita-p2-body"
+                                   class="js-priorita-list"
+                                   data-priorita="2"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="card shadow-sm flex-grow-1 d-flex flex-column"
+                     style="min-height: 0;">
+                    <div class="card-header bg-success-subtle fw-semibold flex-shrink-0">
+                        Priorità 3
+                    </div>
+                    <div class="card-body p-0 flex-grow-1"
+                         style="overflow: auto; min-height: 0;">
+                        <table class="table table-sm table-hover align-middle mb-0">
+                            <thead class="table-light sticky-top">
+                            <tr>
+                                <th>Ordine</th>
+                                <th>Codice</th>
+                                <th>Descrizione</th>
+                                <th>Fase</th>
+                                <th>Risorsa</th>
+                            </tr>
+                            </thead>
+                            <tbody id="priorita-p3-body"
+                                   class="js-priorita-list"
+                                   data-priorita="3"></tbody>
+                        </table>
                     </div>
                 </div>
             </div>

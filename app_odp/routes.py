@@ -7236,6 +7236,29 @@ def priorita_view():
     )
 
 
+PRIORITA_HIDDEN_ROLE_NAMES = {
+    "admin",
+}
+
+
+def _priorita_hidden_user_ids() -> set[int]:
+    """
+    Utenti da non mostrare nella gestione priorità.
+    Esempio: admin.
+    """
+    hidden_role_names = {name.lower() for name in PRIORITA_HIDDEN_ROLE_NAMES}
+
+    rows = (
+        db.session.query(User.id)
+        .join(user_roles, user_roles.c.user_id == User.id)
+        .join(Roles, Roles.id == user_roles.c.role_id)
+        .filter(func.lower(Roles.name).in_(hidden_role_names))
+        .all()
+    )
+
+    return {int(row[0]) for row in rows}
+
+
 @main_bp.get("/priorita/edit")
 @login_required
 @require_perm("priorita_edit")
@@ -7251,10 +7274,12 @@ def priorita_edit():
 
 @main_bp.get("/api/priorita/operatori")
 @login_required
-@require_perm("priorita_view")
 def api_priorita_operatori():
+    visible_ids = _priorita_visible_operator_ids_for_current_user()
+
     operatori = (
         User.query.filter(User.active.is_(True))
+        .filter(User.id.in_(visible_ids))
         .order_by(func.lower(User.username))
         .all()
     )
@@ -7263,10 +7288,10 @@ def api_priorita_operatori():
         {
             "operatori": [
                 {
-                    "id": user.id,
-                    "username": user.username,
+                    "id": operatore.id,
+                    "username": operatore.username,
                 }
-                for user in operatori
+                for operatore in operatori
             ]
         }
     )
@@ -7277,6 +7302,8 @@ def api_priorita_operatori():
 @require_perm("priorita_view")
 def api_priorita_ordini_operatore(operatore_id: int):
     operatore = User.query.get_or_404(operatore_id)
+    operatore = _get_priorita_visible_operatore_or_403(operatore_id)
+    operatore_id = operatore.id
 
     _cleanup_priorita_operatore(operatore)
     _compact_priorita_operatore(operatore.id)
@@ -7320,6 +7347,8 @@ def api_priorita_ordini_operatore(operatore_id: int):
 @login_required
 @require_perm("priorita_edit")
 def api_priorita_salva_operatore(operatore_id: int):
+    operatore = _get_priorita_visible_operatore_or_403(operatore_id)
+    operatore_id = operatore.id
     operatore = User.query.get_or_404(operatore_id)
     payload = request.get_json(silent=True) or {}
 
@@ -7402,3 +7431,109 @@ def api_priorita_salva_operatore(operatore_id: int):
     db.session.commit()
 
     return jsonify({"ok": True})
+
+
+def _priorita_manageable_role_ids_for_user(user: User) -> set[int]:
+    """
+    Restituisce tutti i ruoli sottostanti gestibili dall'utente,
+    usando la gerarchia roles_manageable_roles.
+
+    Non include i ruoli dell'utente stesso.
+    """
+    out: set[int] = set()
+
+    for role in getattr(user, "roles", None) or []:
+        for managed_role in getattr(role, "iter_manageable_roles", lambda: [])():
+            if managed_role is not None and managed_role.id is not None:
+                out.add(int(managed_role.id))
+
+    return out
+
+
+def _priorita_visible_operator_ids_for_current_user() -> set[int]:
+    """
+    Operatori visibili nella pagina modifica priorità.
+
+    Regole:
+    - chi ha priorita_tutti_operatori vede tutti gli utenti attivi,
+      tranne se stesso e tranne gli admin
+    - gli altri vedono se stessi + utenti sottostanti nella gerarchia roles_manageable_roles
+    - gli admin non vengono mai mostrati
+    """
+
+    hidden_user_ids = _priorita_hidden_user_ids()
+
+    # Caso speciale: Acquisti / gestione globale priorità
+    if current_user.has_permission("priorita_tutti_operatori"):
+        return {
+            int(user_id)
+            for user_id in db.session.execute(
+                select(User.id)
+                .where(User.active.is_(True))
+                .where(User.id != current_user.id)
+                .where(~User.id.in_(hidden_user_ids))
+            )
+            .scalars()
+            .all()
+        }
+
+    # Caso normale: gerarchia ruoli
+    visible_ids: set[int] = {int(current_user.id)}
+
+    manageable_role_ids = _priorita_manageable_role_ids_for_user(current_user)
+
+    if manageable_role_ids:
+        users_with_managed_roles = set(
+            db.session.execute(
+                select(user_roles.c.user_id).where(
+                    user_roles.c.role_id.in_(manageable_role_ids)
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        users_with_not_managed_roles = set(
+            db.session.execute(
+                select(user_roles.c.user_id).where(
+                    ~user_roles.c.role_id.in_(manageable_role_ids)
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        visible_ids.update(
+            int(user_id)
+            for user_id in users_with_managed_roles - users_with_not_managed_roles
+        )
+
+    visible_ids.difference_update(hidden_user_ids)
+
+    return visible_ids
+
+
+def _get_priorita_visible_operatore_or_403(operatore_id: int) -> User:
+    """
+    Recupera l'operatore solo se è visibile all'utente corrente.
+    Serve per proteggere anche le chiamate manuali agli endpoint.
+    """
+    try:
+        operatore_id = int(operatore_id)
+    except (TypeError, ValueError):
+        abort(404)
+
+    visible_ids = _priorita_visible_operator_ids_for_current_user()
+
+    if operatore_id not in visible_ids:
+        abort(403)
+
+    operatore = User.query.filter(
+        User.id == operatore_id,
+        User.active.is_(True),
+    ).first()
+
+    if operatore is None:
+        abort(404)
+
+    return operatore
