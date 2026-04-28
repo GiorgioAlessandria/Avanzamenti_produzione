@@ -18,6 +18,7 @@ from flask import (
     jsonify,
     current_app,
     send_file,
+    redirect,
 )
 from flask_login import login_required, current_user
 from sqlalchemy import func, select, delete
@@ -2016,6 +2017,11 @@ def api_home_bridge(tab):
         return {"changed": False, "last_event_id": last_event_id}
 
     odp = list(_query_for_tab(policy, cfg["reparto"]).all())
+    odp = _apply_priorita_to_ordini(
+        list(odp),
+        current_user.id,
+        sort_result=True,
+    )
     fragments = RENDERERS[tab](odp)
     return {
         "changed": True,
@@ -7211,10 +7217,34 @@ def api_export_acquisti_excel(section):
 def priorita():
     policy = RbacPolicy(current_user)
 
+    if policy.can("priorita_edit"):
+        return redirect(url_for("main.priorita_edit"))
+
+    return redirect(url_for("main.priorita_view"))
+
+
+@main_bp.get("/priorita/view")
+@login_required
+@require_perm("priorita_view")
+def priorita_view():
+    policy = RbacPolicy(current_user)
+
     return render_template(
-        "priorita.j2",
+        "priorita_view.j2",
         policy=policy,
-        can_edit_priorita=policy.can("priorita_edit"),
+        priorita_2_max=_priorita_2_max(),
+    )
+
+
+@main_bp.get("/priorita/edit")
+@login_required
+@require_perm("priorita_edit")
+def priorita_edit():
+    policy = RbacPolicy(current_user)
+
+    return render_template(
+        "priorita_edit.j2",
+        policy=policy,
         priorita_2_max=_priorita_2_max(),
     )
 

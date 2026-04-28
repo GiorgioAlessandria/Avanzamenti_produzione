@@ -1053,13 +1053,32 @@ def _delete_rows_by_pk(
     return deleted
 
 
-def _pk_set_from_df(df: pd.DataFrame, pk_cols: tuple[str, ...]) -> set[tuple[str, ...]]:
-    if df.empty:
+def _pk_set_from_df(
+    df: pd.DataFrame,
+    key_cols: tuple[str, ...] = PK_COLS,
+) -> set[tuple[str, ...]]:
+    """
+    Ritorna il set delle chiavi presenti nel dataframe.
+
+    Default:
+        PK_COLS = ("IdDocumento", "IdRiga")
+
+    Esempio output:
+        {
+            ("123", "10"),
+            ("124", "20"),
+        }
+    """
+    if df is None or df.empty:
         return set()
 
+    missing = [col for col in key_cols if col not in df.columns]
+    if missing:
+        raise KeyError(f"Colonne PK mancanti nel dataframe: {missing}")
+
     return {
-        tuple(_norm_text(value) for value in row)
-        for row in df[list(pk_cols)].itertuples(index=False, name=None)
+        tuple(_norm_text(row[col]) for col in key_cols)
+        for _, row in df[list(key_cols)].iterrows()
     }
 
 
