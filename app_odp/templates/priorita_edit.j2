@@ -64,11 +64,19 @@
         <div class="d-flex justify-content-between align-items-center mb-3">
             <h2 class="mb-0">Modifica priorità</h2>
 
-            <button class="btn btn-primary"
-                    type="button"
-                    id="btn-priorita-salva">
-                Conferma priorità
-            </button>
+            <div class="d-flex gap-2">
+                <button class="btn btn-outline-danger"
+                        type="button"
+                        id="btn-priorita-reset">
+                    Azzera priorità
+                </button>
+
+                <button class="btn btn-primary"
+                        type="button"
+                        id="btn-priorita-salva">
+                    Conferma priorità
+                </button>
+            </div>
         </div>
 
         <div id="priorita-alert"
@@ -229,6 +237,7 @@
             const selectOperatore = document.getElementById("priorita-operatore-select");
             const alertBox = document.getElementById("priorita-alert");
             const btnSalva = document.getElementById("btn-priorita-salva");
+            const btnReset = document.getElementById("btn-priorita-reset");
             const filterOrdine = document.getElementById("priorita-filter-ordine");
             const filterCodice = document.getElementById("priorita-filter-codice");
 
@@ -350,6 +359,43 @@
                 }
             }
 
+            async function resetPriorita() {
+                clearAlert();
+
+                const operatoreId = selectOperatore.value;
+
+                if (!operatoreId) {
+                    showAlert("warning", "Seleziona un operatore.");
+                    return;
+                }
+
+                const conferma = window.confirm(
+                    "Confermi l'azzeramento di tutte le priorità dell'operatore selezionato?"
+                );
+
+                if (!conferma) {
+                    return;
+                }
+
+                const response = await fetch(`/api/priorita/operatori/${encodeURIComponent(operatoreId)}/reset`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                });
+
+                const data = await response.json();
+
+                if (!response.ok || !data.ok) {
+                    showAlert("danger", data.error || "Errore azzeramento priorità.");
+                    return;
+                }
+
+                dirty = false;
+                showAlert("success", "Priorità azzerate correttamente.");
+                await loadOrdiniOperatore();
+            }
+
             function setupSortable() {
                 if (!canEdit) {
                     return;
@@ -362,6 +408,7 @@
                     );
                     return;
                 }
+
 
                 document.querySelectorAll(".js-priorita-list").forEach((el) => {
                     Sortable.create(el, {
@@ -489,6 +536,9 @@
 
             if (btnSalva) {
                 btnSalva.addEventListener("click", salvaPriorita);
+            }
+            if (btnReset) {
+                btnReset.addEventListener("click", resetPriorita);
             }
             loadOperatori()
                 .then(setupSortable)
