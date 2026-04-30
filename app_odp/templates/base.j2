@@ -405,9 +405,6 @@
             const imageOpenEl = document.getElementById("ricerca-articolo-image-open");
             const fullscreenModalEl = document.getElementById("modalRicercaArticoloImageFullscreen");
             const fullscreenImageEl = document.getElementById("ricerca-articolo-image-fullscreen");
-            const fullscreenModal = fullscreenModalEl
-                ? bootstrap.Modal.getOrCreateInstance(fullscreenModalEl)
-                : null;
 
             const ordersMessageEl = document.getElementById("ricerca-articolo-orders-message");
             const ordersBodyEl = document.getElementById("ricerca-articolo-orders-body");
@@ -592,9 +589,19 @@
 
             btnCerca.addEventListener("click", eseguiRicerca);
             btnReset.addEventListener("click", resetAll);
-            if (imageOpenEl && fullscreenModal && fullscreenImageEl) {
+            if (imageOpenEl && fullscreenImageEl) {
                 imageOpenEl.addEventListener("click", function () {
                     if (!fullscreenImageEl.src) return;
+
+                    const modalEl = document.getElementById("modalRicercaArticoloImageFullscreen");
+                    if (!modalEl || !window.bootstrap || !bootstrap.Modal) return;
+
+                    const fullscreenModal = bootstrap.Modal.getOrCreateInstance(modalEl, {
+                        backdrop: true,
+                        keyboard: true,
+                        focus: true,
+                    });
+
                     fullscreenModal.show();
                 });
             }

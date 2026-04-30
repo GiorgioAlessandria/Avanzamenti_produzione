@@ -145,7 +145,7 @@
                         </div>
                     </div>
 
-                    <div class="card-body priorita-table-scroll">
+                    <div class="card-body priorita-table-scrofll">
                         <table class="table table-sm table-hover priorita-table mb-0">
                             <thead class="table-light">
                             <tr>
@@ -230,6 +230,7 @@
                                 <th>Ordine</th>
                                 <th>Codice</th>
                                 <th>Descrizione</th>
+                                <th>Matricola</th>
                                 <th>Fase</th>
                                 <th>Risorsa</th>
                             </tr>
@@ -299,14 +300,14 @@
                 tr.dataset.descrizione = item.descrizione || "";
                 tr.dataset.matricola = item.matricola || "";
 
-                tr.innerHTML = ```
+                tr.innerHTML = `
                                 <td>${escapeHtml(item.ordine)}</td>
                                 <td>${escapeHtml(item.codice)}</td>
                                 <td>${escapeHtml(item.descrizione)}</td>
                                 <td>${escapeHtml(item.matricola)}</td>
                                 <td>${escapeHtml(item.fase)}</td>
                                 <td>${escapeHtml(item.risorsa)}</td>
-                            ```;
+                            `;
 
                 if (!canEdit) {
                     tr.classList.add("user-select-none");
