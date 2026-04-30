@@ -6,7 +6,9 @@
     <main class="container-fluid mt-3"
           id="priorita-page"
           data-can-edit="0"
-          data-max-p2="{{ priorita_2_max }}">
+          data-max-p2="{{ priorita_2_max }}"
+          data-operatore-id="{{ current_user.id }}"
+          data-operatore-username="{{ current_user.username }}">
 
         <div class="d-flex justify-content-between align-items-center mb-3">
             <h2 class="mb-0">Visualizzazione priorità</h2>
@@ -22,90 +24,74 @@
         <div id="priorita-alert"
              class="alert d-none"
              role="alert"></div>
+        <div class="d-flex flex-column gap-3 w-100"
+             style="height: calc(100vh - 180px); min-height: 0;">
 
-        <div class="row g-3">
-            <div class="col-3 d-flex flex-column"
-                 style="height: calc(100vh - 180px); min-height: 0;">
-
-                <div class="card shadow-sm">
-                    <div class="card-body">
-                        <label for="priorita-operatore-select"
-                               class="form-label fw-semibold">
-                            Operatore
-                        </label>
-                        <select id="priorita-operatore-select"
-                                class="form-select">
-                            <option value="">Seleziona operatore...</option>
-                        </select>
-                    </div>
+            <div class="card shadow-sm"
+                 style="height: 25%;">
+                <div class="card-header bg-danger-subtle fw-semibold">
+                    Priorità 1
+                </div>
+                <div class="card-body p-0"
+                     style="overflow: auto;">
+                    <table class="table table-sm table-hover align-middle mb-0">
+                        <thead class="table-light sticky-top">
+                        <tr>
+                            <th>Ordine</th>
+                            <th>Codice</th>
+                            <th>Descrizione</th>
+                            <th>Matricola</th>
+                            <th>Fase</th>
+                            <th>Risorsa</th>
+                        </tr>
+                        </thead>
+                        <tbody id="priorita-p1-body"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="card shadow-sm"
+                 style="height: 35%;">
+                <div class="card-header bg-warning-subtle fw-semibold">
+                    Priorità 2
+                </div>
+                <div class="card-body p-0"
+                     style="overflow: auto;">
+                    <table class="table table-sm table-hover align-middle mb-0">
+                        <thead class="table-light sticky-top">
+                        <tr>
+                            <th>Ordine</th>
+                            <th>Codice</th>
+                            <th>Descrizione</th>
+                            <th>Matricola</th>
+                            <th>Fase</th>
+                            <th>Risorsa</th>
+                        </tr>
+                        </thead>
+                        <tbody id="priorita-p2-body"></tbody>
+                    </table>
                 </div>
             </div>
 
-            <div class="col-9 d-flex flex-column gap-3"
-                 style="height: calc(100vh - 180px); min-height: 0;">
-
-                <div class="card shadow-sm"
-                     style="height: 25%;">
-                    <div class="card-header bg-danger-subtle fw-semibold">
-                        Priorità 1
-                    </div>
-                    <div class="card-body p-0"
-                         style="overflow: auto;">
-                        <table class="table table-sm table-hover align-middle mb-0">
-                            <thead class="table-light sticky-top">
-                            <tr>
-                                <th>Ordine</th>
-                                <th>Codice</th>
-                                <th>Descrizione</th>
-                                <th>Fase</th>
-                                <th>Risorsa</th>
-                            </tr>
-                            </thead>
-                            <tbody id="priorita-p1-body"></tbody>
-                        </table>
-                    </div>
+            <div class="card shadow-sm flex-grow-1"
+                 style="min-height: 0;">
+                <div class="card-header bg-success-subtle fw-semibold">
+                    Priorità 3
                 </div>
-
-                <div class="card shadow-sm"
-                     style="height: 35%;">
-                    <div class="card-header bg-warning-subtle fw-semibold">
-                        Priorità 2
-                    </div>
-                    <div class="card-body p-0"
-                         style="overflow: auto;">
-                        <table class="table table-sm table-hover align-middle mb-0">
-                            <thead class="table-light sticky-top">
-                            <tr>
-                                <th>Ordine</th>
-                                <th>Codice</th>
-                                <th>Fase</th>
-                                <th>Risorsa</th>
-                            </tr>
-                            </thead>
-                            <tbody id="priorita-p2-body"></tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <div class="card shadow-sm flex-grow-1"
-                     style="min-height: 0;">
-                    <div class="card-header bg-success-subtle fw-semibold">
-                        Priorità 3
-                    </div>
-                    <div class="card-body p-0"
-                         style="overflow: auto;">
-                        <table class="table table-sm table-hover align-middle mb-0">
-                            <thead class="table-light sticky-top">
-                            <tr>
-                                <th>Ordine</th>
-                                <th>Codice</th>
-                                <th>Fase</th>
-                                <th>Risorsa</th>
-                            </tr>
-                            </thead>
-                            <tbody id="priorita-p3-body"></tbody>
-                        </table>
-                    </div>
+                <div class="card-body p-0"
+                     style="overflow: auto;">
+                    <table class="table table-sm table-hover align-middle mb-0">
+                        <thead class="table-light sticky-top">
+                        <tr>
+                            <th>Ordine</th>
+                            <th>Codice</th>
+                            <th>Descrizione</th>
+                            <th>Matricola</th>
+                            <th>Fase</th>
+                            <th>Risorsa</th>
+                        </tr>
+                        </thead>
+                        <tbody id="priorita-p3-body"></tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -113,7 +99,8 @@
 
     <script>
         (() => {
-            const selectOperatore = document.getElementById("priorita-operatore-select");
+            const page = document.getElementById("priorita-page");
+            const operatoreId = page.dataset.operatoreId;
             const alertBox = document.getElementById("priorita-alert");
 
             const bodies = {
@@ -146,13 +133,13 @@
                 const tr = document.createElement("tr");
 
                 tr.innerHTML = `
-                                <td>${escapeHtml(item.ordine)}</td>
-                                <td>${escapeHtml(item.codice)}</td>
-                                <td>${escapeHtml(item.descrizione)}</td>
-                                <td>${escapeHtml(item.fase)}</td>
-                                <td>${escapeHtml(item.risorsa)}</td>
-                            `;
-
+                            <td>${escapeHtml(item.ordine)}</td>
+                            <td>${escapeHtml(item.codice)}</td>
+                            <td>${escapeHtml(item.descrizione)}</td>
+                            <td>${escapeHtml(item.matricola)}</td>
+                            <td>${escapeHtml(item.fase)}</td>
+                            <td>${escapeHtml(item.risorsa)}</td>
+                        `;
                 return tr;
             }
 
@@ -164,28 +151,15 @@
                 }
             }
 
-            async function loadOperatori() {
-                const response = await fetch("{{ url_for('main.api_priorita_operatori') }}");
-                const data = await response.json();
-
-                for (const op of data.operatori || []) {
-                    const option = document.createElement("option");
-                    option.value = op.id;
-                    option.textContent = op.username;
-                    selectOperatore.appendChild(option);
-                }
-            }
-
             async function loadOrdiniOperatore() {
                 clearAlert();
-
-                const operatoreId = selectOperatore.value;
 
                 renderRows(bodies.p1, []);
                 renderRows(bodies.p2, []);
                 renderRows(bodies.p3, []);
 
                 if (!operatoreId) {
+                    showAlert("warning", "Utente corrente non valido.");
                     return;
                 }
 
@@ -203,13 +177,10 @@
                 renderRows(bodies.p3, data.p3 || []);
             }
 
-            selectOperatore.addEventListener("change", loadOrdiniOperatore);
-
-            loadOperatori()
-                .catch(() => showAlert("danger", "Errore caricamento operatori."));
+            loadOrdiniOperatore()
+                .catch(() => showAlert("danger", "Errore caricamento priorità."));
 
             setInterval(() => {
-                if (!selectOperatore.value) return;
                 loadOrdiniOperatore();
             }, 30000);
         })();

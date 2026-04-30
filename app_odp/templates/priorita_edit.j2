@@ -107,7 +107,7 @@
                     <div class="card-body py-2 flex-shrink-0"
                          style="border-bottom: 0;">
                         <div class="row g-2">
-                            <div class="col-6">
+                            <div class="col-4">
                                 <label for="priorita-filter-ordine"
                                        class="form-label mb-1 small fw-semibold">
                                     Filtra ordine
@@ -119,7 +119,7 @@
                                        placeholder="Ordine...">
                             </div>
 
-                            <div class="col-6">
+                            <div class="col-4">
                                 <label for="priorita-filter-codice"
                                        class="form-label mb-1 small fw-semibold">
                                     Filtra codice
@@ -129,6 +129,18 @@
                                        class="form-control form-control-sm"
                                        autocomplete="off"
                                        placeholder="Codice...">
+                            </div>
+
+                            <div class="col-4">
+                                <label for="priorita-filter-matricola"
+                                       class="form-label mb-1 small fw-semibold">
+                                    Filtra matricola
+                                </label>
+                                <input type="text"
+                                       id="priorita-filter-matricola"
+                                       class="form-control form-control-sm"
+                                       autocomplete="off"
+                                       placeholder="Matricola...">
                             </div>
                         </div>
                     </div>
@@ -140,6 +152,7 @@
                                 <th>Ordine</th>
                                 <th>Codice</th>
                                 <th>Descrizione</th>
+                                <th>Matricola</th>
                                 <th>Fase</th>
                                 <th>Risorsa</th>
                             </tr>
@@ -167,6 +180,7 @@
                                 <th>Ordine</th>
                                 <th>Codice</th>
                                 <th>Descrizione</th>
+                                <th>Matricola</th>
                                 <th>Fase</th>
                                 <th>Risorsa</th>
                             </tr>
@@ -191,6 +205,7 @@
                                 <th>Ordine</th>
                                 <th>Codice</th>
                                 <th>Descrizione</th>
+                                <th>Matricola</th>
                                 <th>Fase</th>
                                 <th>Risorsa</th>
                             </tr>
@@ -240,6 +255,7 @@
             const btnReset = document.getElementById("btn-priorita-reset");
             const filterOrdine = document.getElementById("priorita-filter-ordine");
             const filterCodice = document.getElementById("priorita-filter-codice");
+            const filterMatricola = document.getElementById("priorita-filter-matricola");
 
             const canEdit = page.dataset.canEdit === "1";
             const maxP2 = Number(page.dataset.maxP2 || 5);
@@ -274,23 +290,23 @@
 
             function makeRow(item) {
                 const tr = document.createElement("tr");
-
                 tr.dataset.key = item.key;
                 tr.dataset.idDocumento = item.id_documento;
                 tr.dataset.idRiga = item.id_riga;
                 tr.dataset.fase = item.fase;
-
                 tr.dataset.ordine = item.ordine || "";
                 tr.dataset.codice = item.codice || "";
                 tr.dataset.descrizione = item.descrizione || "";
+                tr.dataset.matricola = item.matricola || "";
 
-                tr.innerHTML = `
+                tr.innerHTML = ```
                                 <td>${escapeHtml(item.ordine)}</td>
                                 <td>${escapeHtml(item.codice)}</td>
                                 <td>${escapeHtml(item.descrizione)}</td>
+                                <td>${escapeHtml(item.matricola)}</td>
                                 <td>${escapeHtml(item.fase)}</td>
                                 <td>${escapeHtml(item.risorsa)}</td>
-                            `;
+                            ```;
 
                 if (!canEdit) {
                     tr.classList.add("user-select-none");
@@ -311,15 +327,18 @@
             function applyAvailableFilters() {
                 const ordineFilter = (filterOrdine?.value || "").trim().toLowerCase();
                 const codiceFilter = (filterCodice?.value || "").trim().toLowerCase();
+                const matricolaFilter = (filterMatricola?.value || "").trim().toLowerCase();
 
                 Array.from(bodies.available.children).forEach((tr) => {
                     const ordine = (tr.dataset.ordine || "").toLowerCase();
                     const codice = (tr.dataset.codice || "").toLowerCase();
+                    const matricola = (tr.dataset.matricola || "").toLowerCase();
 
                     const matchOrdine = !ordineFilter || ordine.includes(ordineFilter);
                     const matchCodice = !codiceFilter || codice.includes(codiceFilter);
+                    const matchMatricola = !matricolaFilter || matricola.includes(matricolaFilter);
 
-                    tr.style.display = matchOrdine && matchCodice ? "" : "none";
+                    tr.style.display = matchOrdine && matchCodice && matchMatricola ? "" : "none";
                 });
             }
 
@@ -539,6 +558,9 @@
             }
             if (btnReset) {
                 btnReset.addEventListener("click", resetPriorita);
+            }
+            if (filterMatricola) {
+                filterMatricola.addEventListener("input", applyAvailableFilters);
             }
             loadOperatori()
                 .then(setupSortable)
