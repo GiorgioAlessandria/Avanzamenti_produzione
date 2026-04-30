@@ -434,21 +434,33 @@
         overflow: hidden;
     }
 
-    .home-fill-page .home-fill-container,
-    .home-fill-page .home-fill-row,
-    .home-fill-page .home-fill-col {
-        min-height: 0;
+    .home-fill-page .home-fill-container {
         height: 100%;
+        min-height: 0;
     }
 
     .home-fill-page .home-fill-row {
+        height: 100%;
+        min-height: 0;
         display: flex;
         align-items: stretch !important;
     }
 
     .home-fill-page .home-fill-col {
+        height: 100%;
+        min-height: 0;
         display: flex;
         flex-direction: column;
+    }
+
+    .home-fill-page h2 {
+        height: auto !important;
+        flex: 0 0 auto;
+        margin-bottom: .5rem !important;
+    }
+
+    .home-fill-page .home-fill-col > .row {
+        flex: 0 0 auto;
     }
 
     .home-fill-page .home-table-scroll {
@@ -458,6 +470,7 @@
         max-height: none !important;
     }
 
+    .home-fill-page .home-fill-col > button,
     .home-fill-page .home-actions {
         flex: 0 0 auto;
     }
@@ -470,7 +483,31 @@
         position: sticky;
         top: 0;
         z-index: 5;
-        background-color: var(--bs-light);
+        background-color: var(--bs-table-bg);
+        color: var(--bs-table-color);
+    }
+
+    .home-fill-page .home-table-scroll > table {
+        height: auto !important;
+        min-height: 0 !important;
+    }
+
+    .home-fill-page tbody tr {
+        height: 30px;
+    }
+
+    .home-fill-page tbody td {
+        height: 30px;
+        padding-top: .35rem;
+        padding-bottom: .35rem;
+        vertical-align: middle;
+    }
+
+    .home-fill-page thead th {
+        height: 30px;
+        padding-top: .35rem;
+        padding-bottom: .35rem;
+        vertical-align: middle;
     }
 </style>
 
@@ -480,8 +517,7 @@
         <div class="row text-center w-100 home-fill-row align-items-start">
             <div class="col home-fill-col ms-2 me-0"
                  style="border-color: rgb(0,0,0);">
-                <h2 class="w-100 h-100 mb-3"
-                    style="width: auto;height: auto;">Ordini da eseguire</h2>
+                <h2 class="w-100 mb-2">Ordini da eseguire</h2>
                 <div class="row mb-1">
                     <div class="col">
                         <label><input
@@ -540,8 +576,7 @@
                 </button>
             </div>
             <div class="col home-fill-col ms-0">
-                <h2 class="w-100 h-100 mb-3"
-                    style="width: auto;height: auto;">Ordini attivi</h2>
+                <h2 class="w-100 mb-2">Ordini attivi</h2>
                 <div class="row mb-1">
                     <div class="col">
                         <label><input
