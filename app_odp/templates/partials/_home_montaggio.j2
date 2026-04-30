@@ -652,14 +652,53 @@
         </button>
     </div>
 </div>
+<style>
+    .home-montaggio-fill {
+        height: calc(100vh - 130px);
+        min-height: 0;
+        overflow: hidden;
+    }
 
-<main class="d-flex flex-column"
-      data-bridge-tab="montaggio"
-      style="height: fit-content;">
-    <div class="row text-center align-items-start mx-0"
-         style="width: auto;height: auto;">
-        <div class="col ms-0 me-0"
-             style="width: auto;height: auto;border-color: rgb(0,0,0);">
+    .home-montaggio-fill .montaggio-main-row {
+        height: 100%;
+        min-height: 0;
+        display: flex;
+        align-items: stretch !important;
+    }
+
+    .home-montaggio-fill .montaggio-col {
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .home-montaggio-fill .montaggio-table-scroll {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: auto !important;
+        max-height: none !important;
+    }
+
+    .home-montaggio-fill .montaggio-actions {
+        flex: 0 0 auto;
+    }
+
+    .home-montaggio-fill table {
+        margin-bottom: 0 !important;
+    }
+
+    .home-montaggio-fill thead th {
+        position: sticky;
+        top: 0;
+        z-index: 5;
+        background-color: var(--bs-light);
+    }
+</style>
+<main class="home-montaggio-fill d-flex flex-column"
+      data-bridge-tab="montaggio">
+    <div class="row text-center align-items-start mx-0 montaggio-main-row">
+        <div class="col montaggio-col ms-0 me-0"
+             style="border-color: rgb(0,0,0);">
             <h2 class="w-100 h-100 mb-1"
                 style="width: auto;height: auto;">Ordini semilavorati da eseguire</h2>
             <div class="row mb-1">
@@ -686,8 +725,8 @@
                     ></label>
                 </div>
             </div>
-            <div class="table-responsive text-capitalize fw-semibold text-center w-100 h-100 justify-content-start align-items-start mb-0 pb-0"
-                 style="width: auto;height: auto;color: rgb(0,0,0);display: block;overflow: auto;max-height: 275px">
+            <div class="montaggio-table-scroll table-responsive text-capitalize fw-semibold text-center w-100 justify-content-start align-items-start mb-0 pb-0"
+                 style="color: rgb(0,0,0);">
                 <table class="table table-striped table-sortable table-hover table-selectable table-responsive table-sticky-wrap text-capitalize fw-semibold text-center justify-content-start align-items-start"
                        id="ordini_da_eseguire_sl">
                     <thead>
@@ -719,8 +758,7 @@
                 Attiva ordine semilavorati
             </button>
         </div>
-        <div class="col w-100 h-100 ms-0"
-             style="width: auto;height: auto;">
+        <div class="col montaggio-col ms-0">
             <h2 class="w-100 h-100 mb-0"
                 style="width: auto;height: auto;">Ordini semilavorati attivi</h2>
             <div class="row mb-0">
@@ -747,8 +785,8 @@
                     ></label>
                 </div>
             </div>
-            <div class="table-responsive text-capitalize fw-semibold text-center w-100 h-100 justify-content-start align-items-start mb-0 pb-0"
-                 style="width: auto;height: auto;color: rgb(0,0,0);display: block;max-height: 275px">
+            <div class="montaggio-table-scroll table-responsive text-capitalize fw-semibold text-center w-100 justify-content-start align-items-start mb-0 pb-0"
+                 style="color: rgb(0,0,0);">
                 <table class="table table-striped table-state-rowcolor table-sortable table-hover table-responsive table-selectable table-sticky-wrap text-capitalize fw-semibold text-center w-100 h-100 justify-content-start align-items-start"
                        id="ordini_in_corso_sl">
                     <thead>

@@ -11,6 +11,7 @@ import hashlib
 from werkzeug.security import generate_password_hash, check_password_hash
 import re
 
+
 db = SQLAlchemy()
 
 # --- Tabelle di associazione ---
@@ -180,7 +181,6 @@ users_risorse = db.Table(
     ),
 )
 
-
 roles_manageable_roles = db.Table(
     "roles_manageable_roles",
     db.Column(
@@ -196,6 +196,7 @@ roles_manageable_roles = db.Table(
         primary_key=True,
     ),
 )
+
 
 # --- Modelli ---
 
@@ -596,6 +597,23 @@ class Roles(db.Model):
         return f"<Roles {self.__dict__}>"
 
 
+users_famiglia = db.Table(
+    "users_famiglia",
+    db.Column(
+        "user_id",
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    db.Column(
+        "famiglia_id",
+        db.Integer,
+        db.ForeignKey("famiglia.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+)
+
+
 class User(UserMixin, db.Model):
     __tablename__ = "users"
 
@@ -632,6 +650,11 @@ class User(UserMixin, db.Model):
     risorse = db.relationship(
         "Risorse",
         secondary=users_risorse,
+        lazy="joined",
+    )
+    famiglie = db.relationship(
+        "Famiglia",
+        secondary=users_famiglia,
         lazy="joined",
     )
 

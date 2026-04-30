@@ -24,6 +24,7 @@ from app_odp.models import (
     roles_reparti,
     roles_risorse,
     user_roles,
+    users_famiglia,
     Roles,
     User,
 )
@@ -446,6 +447,62 @@ class RbacPolicy:
     @cached_property
     def can_view_role_delete_section(self) -> bool:
         return self.can("modifica_permessi_ruolo")
+
+    @cached_property
+    def user_allowed_famiglia(self) -> set[str]:
+        return {
+            str(x.Codice)
+            for x in (getattr(self.user, "famiglie", None) or [])
+            if getattr(x, "Codice", None) is not None
+        }
+
+    @cached_property
+    def effective_allowed_famiglia(self) -> set[str]:
+        effective, _ = _effective_user_subset(
+            self.allowed_famiglia,
+            self.user_allowed_famiglia,
+        )
+        return effective
+
+    def filter_montaggio_macchine_famiglia_rows(self, rows):
+        """
+        Filtro ABAC utente per home montaggio.
+
+        Regole:
+        - si applica solo agli utenti con permission filtro_macchine;
+        - si applica solo agli ordini macchina: GestioneMatricola == 'si';
+        - se non sono state selezionate famiglie utente, non filtra nulla;
+        - gli ordini semilavorati restano sempre invariati.
+        """
+        rows = list(rows or [])
+
+        if not self.can("filtro_macchine"):
+            return rows
+
+        allowed_famiglia = {
+            str(x).strip() for x in self.user_allowed_famiglia if str(x).strip()
+        }
+
+        if not allowed_famiglia:
+            return rows
+
+        filtered = []
+
+        for ordine in rows:
+            gestione_matricola = _norm_text(
+                getattr(ordine, "GestioneMatricola", "")
+            ).lower()
+
+            if gestione_matricola != "si":
+                filtered.append(ordine)
+                continue
+
+            cod_famiglia = _norm_text(getattr(ordine, "CodFamiglia", ""))
+
+            if cod_famiglia in allowed_famiglia:
+                filtered.append(ordine)
+
+        return filtered
 
     def role_delete_manageable_roles(self) -> list[Roles]:
         if not self.can_view_role_delete_section:

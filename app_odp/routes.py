@@ -41,6 +41,7 @@ from app_odp.models import (
     user_roles,
     users_lavorazioni,
     users_risorse,
+    users_famiglia,
     Permissions,
     Risorse,
     Lavorazioni,
@@ -945,6 +946,26 @@ def _runtime_snapshot(stato) -> dict:
         "utente_operazione": _norm_text(getattr(stato, "Utente_operazione", "")),
         "rif_ordine_princ": _norm_text(getattr(stato, "RifOrdinePrinc", "")),
     }
+
+
+def _normalize_id_list(raw_values) -> list[int]:
+    if raw_values in (None, ""):
+        return []
+
+    if not isinstance(raw_values, (list, tuple, set)):
+        raise ValueError("I valori devono essere una lista di id.")
+
+    out = []
+    for value in raw_values:
+        try:
+            item_id = int(value)
+        except (TypeError, ValueError):
+            raise ValueError("Id non valido.")
+
+        if item_id > 0 and item_id not in out:
+            out.append(item_id)
+
+    return out
 
 
 def _add_input_odp_closure_log(
@@ -1935,6 +1956,8 @@ def home():
 
     q = _tab_scoped_odp(policy, req["reparto"])
     odp = list(q.all())
+    if tab == "montaggio":
+        odp = policy.filter_montaggio_macchine_famiglia_rows(odp)
 
     causali = (
         db.session.execute(
@@ -2083,6 +2106,10 @@ def api_home_bridge(tab):
         return {"changed": False, "last_event_id": last_event_id}
 
     odp = list(_query_for_tab(policy, cfg["reparto"]).all())
+
+    if tab == "montaggio":
+        odp = policy.filter_montaggio_macchine_famiglia_rows(odp)
+
     odp = _apply_priorita_to_ordini(
         list(odp),
         current_user.id,
@@ -2367,16 +2394,13 @@ def _priorita_rows_for_operatore(operatore_id: int) -> list[OdpPriorita]:
 
 
 def _ordini_pianificata_visibili_per_operatore(operatore: User) -> list[InputOdp]:
-    """
-    Ritorna gli ordini Pianificata che l'operatore può vedere/lavorare
-    secondo RBAC/ABAC.
-    """
     policy_operatore = RbacPolicy(operatore)
 
     q = _base_odp_query()
     q = policy_operatore.filter_input_odp(q)
 
     ordini = q.all()
+    ordini = policy_operatore.filter_montaggio_macchine_famiglia_rows(ordini)
 
     return [ordine for ordine in ordini if _is_ordine_pianificata(ordine)]
 
@@ -2828,7 +2852,13 @@ def _get_visible_odp_by_key(
         .filter_by(IdDocumento=id_documento, IdRiga=id_riga)
         .first()
     )
+
     if ordine:
+        if _tab_from_ordine(ordine) == "montaggio":
+            visible_rows = policy.filter_montaggio_macchine_famiglia_rows([ordine])
+            if not visible_rows:
+                abort(403)
+
         return ordine
 
     exists_anyway = (
@@ -2863,6 +2893,10 @@ def _fragments_for_ordine_tab(
 
     reparto_code = BRIDGE_CONFIG[tab]["reparto"]
     odp = list(_query_for_tab(policy, reparto_code).all())
+
+    if tab == "montaggio":
+        odp = policy.filter_montaggio_macchine_famiglia_rows(odp)
+
     fragments = RENDERERS[tab](odp)
     return tab, fragments
 
@@ -4493,6 +4527,10 @@ def api_chiudi_ordine():
     if tab:
         reparto_code = BRIDGE_CONFIG[tab]["reparto"]
         odp = list(_query_for_tab(policy, reparto_code).all())
+
+        if tab == "montaggio":
+            odp = policy.filter_montaggio_macchine_famiglia_rows(odp)
+
         fragments = RENDERERS[tab](odp)
 
     des_art_for_label = ordine.DesArt
@@ -4896,6 +4934,10 @@ def api_chiudi_ordine_montaggio_macchina():
     if tab:
         reparto_code = BRIDGE_CONFIG[tab]["reparto"]
         odp = list(_query_for_tab(policy, reparto_code).all())
+
+        if tab == "montaggio":
+            odp = policy.filter_montaggio_macchine_famiglia_rows(odp)
+
         fragments = RENDERERS[tab](odp)
 
     db.session.commit()
@@ -5249,8 +5291,13 @@ def impostazioni():
                 key=lambda x: ((x.Codice or "").lower(), (x.Descrizione or "").lower()),
             )
 
+            famiglie = sorted(
+                ruolo.effective_famiglia,
+                key=lambda x: ((x.Codice or "").lower(), (x.Descrizione or "").lower()),
+            )
             ruolo_lavorazioni_ids = {x.id for x in lavorazioni}
             ruolo_risorse_ids = {x.id for x in risorse}
+            ruolo_famiglia_ids = {x.id for x in famiglie}
 
             ruolo_details[str(ruolo.id)] = {
                 "id": ruolo.id,
@@ -5272,6 +5319,14 @@ def impostazioni():
                     }
                     for x in risorse
                 ],
+                "famiglia": [
+                    {
+                        "id": x.id,
+                        "codice": x.Codice or "",
+                        "descrizione": x.Descrizione or "",
+                    }
+                    for x in famiglie
+                ],
             }
 
             user_abac_details[str(ruolo.id)] = {}
@@ -5289,6 +5344,14 @@ def impostazioni():
                         x.id
                         for x in (utente.risorse or [])
                         if x.id in ruolo_risorse_ids
+                    ),
+                    "famiglia_ids": sorted(
+                        int(famiglia.id)
+                        for famiglia in (getattr(utente, "famiglie", []) or [])
+                        if famiglia.id in ruolo_famiglia_ids
+                    ),
+                    "has_filtro_macchine": bool(
+                        utente.has_permission("filtro_macchine")
                     ),
                 }
     if show_role_delete_section:
@@ -5695,6 +5758,11 @@ def api_elimina_ruolo():
                     users_risorse.c.user_id.in_(sorted(impacted_user_ids))
                 )
             )
+            db.session.execute(
+                delete(users_famiglia).where(
+                    users_famiglia.c.user_id.in_(sorted(impacted_user_ids))
+                )
+            )
 
         # pulizia link role -> entità
         db.session.execute(
@@ -5807,6 +5875,9 @@ def api_assegna_ruolo():
 
         db.session.execute(
             delete(users_risorse).where(users_risorse.c.user_id == utente.id)
+        )
+        db.session.execute(
+            delete(users_famiglia).where(users_famiglia.c.user_id == utente.id)
         )
 
         db.session.commit()
@@ -5973,6 +6044,7 @@ def api_crea_ruolo():
 @login_required
 def api_save_user_abac():
     policy = RbacPolicy(current_user)
+
     if not current_user.has_permission("impostazioni_utente"):
         return jsonify({"ok": False, "error": "Permesso insufficiente."}), 403
 
@@ -5988,6 +6060,7 @@ def api_save_user_abac():
         user_id = int(user_id_raw)
         lavorazioni_ids = {int(x) for x in lavorazioni_ids_raw}
         risorse_ids = {int(x) for x in risorse_ids_raw}
+        famiglia_ids = _normalize_id_list(data.get("famiglia_ids", []))
     except (TypeError, ValueError):
         return jsonify({"ok": False, "error": "Parametri non validi."}), 400
 
@@ -6006,26 +6079,31 @@ def api_save_user_abac():
 
     allowed_lavorazioni_ids = {x.id for x in ruolo.effective_lavorazioni}
     allowed_risorse_ids = {x.id for x in ruolo.effective_risorse}
+    allowed_famiglia_ids = {x.id for x in ruolo.effective_famiglia}
 
-    # Protezione: niente estensioni oltre RBAC
     invalid_lavorazioni = lavorazioni_ids - allowed_lavorazioni_ids
     invalid_risorse = risorse_ids - allowed_risorse_ids
+    invalid_famiglia = set(famiglia_ids) - allowed_famiglia_ids
 
-    if invalid_lavorazioni or invalid_risorse:
+    if invalid_lavorazioni or invalid_risorse or invalid_famiglia:
         return jsonify(
             {
                 "ok": False,
                 "error": "Il payload contiene assegnazioni fuori dal perimetro RBAC del ruolo.",
                 "invalid_lavorazioni": sorted(invalid_lavorazioni),
                 "invalid_risorse": sorted(invalid_risorse),
+                "invalid_famiglia": sorted(invalid_famiglia),
             }
         ), 400
 
-    # Stato attuale utente globale
+    target_has_filtro_macchine = bool(utente.has_permission("filtro_macchine"))
+
+    if not target_has_filtro_macchine:
+        famiglia_ids = []
+
     current_lavorazioni_ids = {x.id for x in (utente.lavorazioni or [])}
     current_risorse_ids = {x.id for x in (utente.risorse or [])}
 
-    # Lavora SOLO nel perimetro del ruolo selezionato
     current_lavorazioni_in_scope = current_lavorazioni_ids & allowed_lavorazioni_ids
     current_risorse_in_scope = current_risorse_ids & allowed_risorse_ids
 
@@ -6072,6 +6150,19 @@ def api_save_user_abac():
                 )
             )
 
+        db.session.execute(
+            delete(users_famiglia).where(users_famiglia.c.user_id == utente.id)
+        )
+
+        if target_has_filtro_macchine:
+            for famiglia_id in famiglia_ids:
+                db.session.execute(
+                    users_famiglia.insert().values(
+                        user_id=utente.id,
+                        famiglia_id=famiglia_id,
+                    )
+                )
+
         db.session.commit()
 
     except Exception as exc:
@@ -6091,6 +6182,8 @@ def api_save_user_abac():
             "user_id": utente.id,
             "lavorazioni_ids": sorted(lavorazioni_ids),
             "risorse_ids": sorted(risorse_ids),
+            "famiglia_ids": famiglia_ids if target_has_filtro_macchine else [],
+            "has_filtro_macchine": target_has_filtro_macchine,
             "delta": {
                 "lavorazioni": {
                     "added": sorted(lavorazioni_to_add),
@@ -6099,6 +6192,9 @@ def api_save_user_abac():
                 "risorse": {
                     "added": sorted(risorse_to_add),
                     "removed": sorted(risorse_to_remove),
+                },
+                "famiglia": {
+                    "selected": famiglia_ids if target_has_filtro_macchine else [],
                 },
             },
         }
@@ -7368,7 +7464,6 @@ def api_priorita_operatori():
 @login_required
 @require_perm("priorita_view")
 def api_priorita_ordini_operatore(operatore_id: int):
-    operatore = User.query.get_or_404(operatore_id)
     operatore = _get_priorita_visible_operatore_or_403(operatore_id)
     operatore_id = operatore.id
 

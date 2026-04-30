@@ -112,13 +112,20 @@
                 if (!selectedUser) {
                     return {
                         lavorazioni_ids: [],
-                        risorse_ids: []
+                        risorse_ids: [],
+                        famiglia_ids: [],
+                        has_filtro_macchine: false,
                     };
                 }
 
                 return (
                     userAbacDetails?.[String(selectedUser.roleId)]?.[String(selectedUser.userId)]
-                    || {lavorazioni_ids: [], risorse_ids: []}
+                    || {
+                        lavorazioni_ids: [],
+                        risorse_ids: [],
+                        famiglia_ids: [],
+                        has_filtro_macchine: false,
+                    }
                 );
             }
 
@@ -178,6 +185,8 @@
                 }
 
                 const abac = getCurrentAbacForSelection();
+                const showFamigliaMacchine = Boolean(selectedUser && abac.has_filtro_macchine);
+                const abacColClass = showFamigliaMacchine ? "col-12 col-xl-4" : "col-12 col-xl-6";
 
                 let userBlock = `
     <div class="mb-3 text-muted">
@@ -237,34 +246,48 @@
 
     ${userBlock}
     ${actionButtons}
-
-    <div class="row g-4">
-        <div class="col-12 col-xl-6">
-            <div class="border rounded p-3 h-100">
-                <h5 class="mb-3">Lavorazioni consentite dal ruolo</h5>
-                ${renderCheckboxList(
+<div class="row g-4">
+    <div class="${abacColClass}">
+        <div class="border rounded p-3 h-100">
+            <h5 class="mb-3">Lavorazioni consentite dal ruolo</h5>
+            ${renderCheckboxList(
                     detail.lavorazioni,
                     abac.lavorazioni_ids,
                     "Nessuna lavorazione associata a questo ruolo.",
                     "lav",
                     "lavorazione"
                 )}
-            </div>
         </div>
+    </div>
 
-        <div class="col-12 col-xl-6">
-            <div class="border rounded p-3 h-100">
-                <h5 class="mb-3">Risorse consentite dal ruolo</h5>
-                ${renderCheckboxList(
+    <div class="${abacColClass}">
+        <div class="border rounded p-3 h-100">
+            <h5 class="mb-3">Risorse consentite dal ruolo</h5>
+            ${renderCheckboxList(
                     detail.risorse,
                     abac.risorse_ids,
                     "Nessuna risorsa associata a questo ruolo.",
                     "ris",
                     "risorsa"
                 )}
-            </div>
         </div>
     </div>
+
+    ${showFamigliaMacchine ? `
+    <div class="${abacColClass}">
+        <div class="border rounded p-3 h-100">
+            <h5 class="mb-3">Famiglie macchina consentite</h5>
+            ${renderCheckboxList(
+                    detail.famiglia,
+                    abac.famiglia_ids,
+                    "Nessuna famiglia macchina associata a questo ruolo.",
+                    "fam",
+                    "famiglia"
+                )}
+        </div>
+    </div>
+    ` : ""}
+</div>
     `;
             }
 
@@ -316,11 +339,16 @@
             async function saveAbacChanges() {
                 if (!selectedUser) return;
 
+                const currentAbac = getCurrentAbacForSelection();
+
                 const payload = {
                     role_id: Number(selectedUser.roleId),
                     user_id: Number(selectedUser.userId),
                     lavorazioni_ids: collectCheckedIds("lavorazione"),
                     risorse_ids: collectCheckedIds("risorsa"),
+                    famiglia_ids: currentAbac.has_filtro_macchine
+                        ? collectCheckedIds("famiglia")
+                        : [],
                 };
 
                 const btnSave = document.getElementById("btn-abac-save");
@@ -358,6 +386,8 @@
                         username: selectedUser.username,
                         lavorazioni_ids: data.lavorazioni_ids || [],
                         risorse_ids: data.risorse_ids || [],
+                        famiglia_ids: data.famiglia_ids || [],
+                        has_filtro_macchine: Boolean(data.has_filtro_macchine),
                     };
 
                     editMode = false;
