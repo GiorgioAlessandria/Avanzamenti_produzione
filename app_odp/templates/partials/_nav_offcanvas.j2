@@ -21,8 +21,9 @@
             {% set is_priorita_view = request.endpoint == 'main.priorita_view' %}
             {% set is_priorita_edit = request.endpoint == 'main.priorita_edit' %}
             {% set is_priorita = is_priorita_view or is_priorita_edit %}
+            {% set can_return_produzione = policy and policy.can('home') %}
 
-            {% if policy and policy.can('priorita_view') %}
+            {% if policy and policy.can('priorita_view') and (not is_priorita or can_return_produzione) %}
                 <div class="row d-flex w-100 h-100 justify-content-start align-items-center ms-0 me-0 mb-0"
                      style="width: auto;height: auto;font-size: 25px;">
                     <div class="col-md-12 text-start d-flex justify-content-start align-items-center ps-0 pe-0"
