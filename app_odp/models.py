@@ -1151,6 +1151,7 @@ class AcqGiacenze(db.Model):
     CodArt = db.Column(db.Text, primary_key=True)
     CodMag = db.Column(db.Text, primary_key=True)
     Giacenza = db.Column(db.Float)
+    VarianteArt = db.Column(db.Text, primary_key=True)
     synced_at = db.Column(db.Text)
 
 

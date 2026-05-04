@@ -251,8 +251,9 @@ def ensure_schema():
                                                     CodArt TEXT NOT NULL,
                                                     CodMag TEXT NOT NULL,
                                                     Giacenza REAL,
+                                                    VarianteArt TEXT NOT NULL,
                                                     synced_at TEXT,
-                                                    PRIMARY KEY (CodArt, CodMag)
+                                                    PRIMARY KEY (CodArt, CodMag, VarianteArt)
         )
         """,
         """

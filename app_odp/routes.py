@@ -6925,6 +6925,20 @@ def _extract_comp_udm(comp: dict, articolo=None) -> str:
     )
 
 
+def _norm_variante_art(value) -> str:
+    if value is None:
+        return ""
+
+    text = str(value).strip()
+
+    if text.lower() in {"nan", "none", "null"}:
+        return ""
+    if text.upper() in {"X", "-"}:
+        return ""
+
+    return text
+
+
 def _build_acquisti_giacenze_rows() -> list[dict]:
     magazzini_default = list(ACQUISTI_MAGAZZINI_GIACENZA)
 
