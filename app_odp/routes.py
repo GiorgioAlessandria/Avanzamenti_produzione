@@ -6939,71 +6939,105 @@ def _norm_variante_art(value) -> str:
     return text
 
 
+def _normalize_variante_art(value) -> str:
+    variante = _norm_text(value)
+    if not variante:
+        return ""
+    if variante == "-" or variante.upper() == "X":
+        return ""
+    return variante
+
+
 def _build_acquisti_giacenze_rows() -> list[dict]:
-    magazzini_default = list(ACQUISTI_MAGAZZINI_GIACENZA)
+    magazzini = ["6", "0", "10", "11", "12", "13"]
 
-    q = db.session.query(AcqGiacenze, AcqArticoli).outerjoin(
-        AcqArticoli,
-        AcqArticoli.CodArt == AcqGiacenze.CodArt,
-    )
+    articoli_by_codart = {_norm_text(a.CodArt): a for a in AcqArticoli.query.all()}
 
-    q = q.filter(AcqGiacenze.CodMag.in_(magazzini_default))
+    lookup_by_codart_variante = {}
 
-    rows = q.order_by(
-        AcqGiacenze.CodArt.asc(),
-        AcqGiacenze.CodMag.asc(),
-    ).all()
+    for item in AcqArticoliLookup.query.all():
+        cod_art = _norm_text(item.CodArt)
+        variante_art = _normalize_variante_art(getattr(item, "VarianteArt", ""))
 
-    grouped = {}
-
-    for giacenza, articolo in rows:
-        cod_art = _norm_text(giacenza.CodArt)
         if not cod_art:
             continue
 
-        lead_time_days = int((articolo.PianTempoApprovFisso if articolo else 0) or 0)
-        data_prevista_calc = _calc_supply_date_from_today(lead_time_days)
+        lookup_by_codart_variante.setdefault(
+            (cod_art, variante_art),
+            item,
+        )
 
-        row = grouped.setdefault(
-            cod_art,
-            {
+    rows = {}
+
+    for giac in AcqGiacenze.query.all():
+        cod_art = _norm_text(giac.CodArt)
+        variante_art = _normalize_variante_art(getattr(giac, "VarianteArt", ""))
+        cod_mag = _norm_text(giac.CodMag)
+
+        if not cod_art:
+            continue
+
+        key = (cod_art, variante_art)
+
+        lookup = lookup_by_codart_variante.get(key) or lookup_by_codart_variante.get(
+            (cod_art, "")
+        )
+
+        articolo_base = articoli_by_codart.get(cod_art)
+
+        if key not in rows:
+            rows[key] = {
                 "CodArt": cod_art,
-                "DesArt": (articolo.DesArt if articolo else "") or "",
-                "MagUM": _norm_text(getattr(articolo, "MagUM", "")) if articolo else "",
-                "Mag_0": 0.0,
+                "VarianteArt": variante_art,
+                "DesArt": (
+                    _norm_text(getattr(lookup, "DesArt", ""))
+                    or _norm_text(getattr(articolo_base, "DesArt", ""))
+                ),
+                "MagUM": (
+                    _norm_text(getattr(lookup, "MagUM", ""))
+                    or _norm_text(getattr(articolo_base, "MagUM", ""))
+                ),
                 "Mag_6": 0.0,
+                "Mag_0": 0.0,
                 "Mag_10": 0.0,
                 "Mag_11": 0.0,
                 "Mag_12": 0.0,
                 "Mag_13": 0.0,
                 "PuntoRiordino": float(
-                    (articolo.PuntoRiordino if articolo else 0) or 0
+                    getattr(lookup, "PuntoRiordino", None)
+                    or getattr(articolo_base, "PuntoRiordino", 0)
+                    or 0
                 ),
                 "LottoRiordino": float(
-                    (articolo.LottoRiordino if articolo else 0) or 0
+                    getattr(lookup, "LottoRiordino", None)
+                    or getattr(articolo_base, "LottoRiordino", 0)
+                    or 0
                 ),
-                "PianTempoApprovFisso": lead_time_days,
-                "DataPrevistaApprovvigionamento": _format_date_it(data_prevista_calc),
-                "is_negative_any": False,
-            },
-        )
+                "PianTempoApprovFisso": int(
+                    getattr(lookup, "PianTempoApprovFisso", None)
+                    or getattr(articolo_base, "PianTempoApprovFisso", 0)
+                    or 0
+                ),
+                "DataPrevistaApprovvigionamento": (
+                    _norm_text(getattr(lookup, "DataPrevistaApprovvigionamento", ""))
+                    or _norm_text(
+                        getattr(articolo_base, "DataPrevistaApprovvigionamento", "")
+                    )
+                ),
+            }
 
-        cod_mag = _norm_text(giacenza.CodMag)
-        qty = float(giacenza.Giacenza or 0)
+        mag_key = f"Mag_{cod_mag}"
 
-        if cod_mag in ACQUISTI_MAGAZZINI_GIACENZA:
-            row[f"Mag_{cod_mag}"] += qty
+        if mag_key in rows[key]:
+            rows[key][mag_key] += _safe_float(getattr(giac, "Giacenza", 0))
 
-        if qty < 0:
-            row["is_negative_any"] = True
-
-        if articolo:
-            if not row["DesArt"]:
-                row["DesArt"] = articolo.DesArt or ""
-            if not row["MagUM"]:
-                row["MagUM"] = _norm_text(getattr(articolo, "MagUM", ""))
-
-    return list(grouped.values())
+    return sorted(
+        rows.values(),
+        key=lambda r: (
+            _norm_text(r.get("CodArt")).lower(),
+            _norm_text(r.get("VarianteArt")).lower(),
+        ),
+    )
 
 
 def _ordine_state_rank(stato: str) -> int:
@@ -7073,7 +7107,9 @@ def _build_acquisti_ordini_rows() -> dict:
             "OrdineProduzione": ordine_produzione,
             "CodArt": _norm_text(getattr(ordine, "CodArt", "")),
             "VarianteArt": _norm_text(getattr(ordine, "VarianteArt", "")),
-            "Revisione": _norm_text(getattr(ordine, "IndiceModifica", "")),
+            "Revisione": _normalize_indice_articolo_search(
+                getattr(ordine, "IndiceModifica", "")
+            ),
             "DesArt": _norm_text(getattr(ordine, "DesArt", "")),
             "Qty": qty,
             "Stato": stato,
@@ -7134,6 +7170,7 @@ def home_acquisti():
     giacenze_rows = _build_acquisti_giacenze_rows()
     materiali_rows = _build_acquisti_materiale_rows()
     ordini_rows = _build_acquisti_ordini_rows()
+    ordini_rows = _build_acquisti_ordini_rows()
 
     return render_template(
         "home_acquisti.j2",
@@ -7182,30 +7219,25 @@ def _contains_insensitive(value, needle: str) -> bool:
     return needle_norm in _norm_text(value).lower()
 
 
-def _filter_acquisti_giacenze_rows(
-    rows: list[dict],
-    *,
-    codart: str = "",
-    desart: str = "",
-    only_negative: bool = False,
-    only_understock: bool = False,
-) -> list[dict]:
+def _filter_acquisti_giacenze_rows(rows: list[dict], args) -> list[dict]:
+    codart = _norm_text(args.get("codart", "")).lower()
+    desart = _norm_text(args.get("desart", "")).lower()
+    variante = _norm_text(args.get("variante", "")).lower()
+
     out = []
 
     for row in rows:
-        mag0 = float(row.get("Mag_0") or 0)
-        punto_riordino = float(row.get("PuntoRiordino") or 0)
+        row_codart = _norm_text(row.get("CodArt")).lower()
+        row_desart = _norm_text(row.get("DesArt")).lower()
+        row_variante = _norm_text(row.get("VarianteArt")).lower()
 
-        is_negative_mag0 = mag0 < 0
-        is_understock_mag0 = (not is_negative_mag0) and (mag0 < punto_riordino)
+        if codart and codart not in row_codart:
+            continue
 
-        if not _contains_insensitive(row.get("CodArt"), codart):
+        if desart and desart not in row_desart:
             continue
-        if not _contains_insensitive(row.get("DesArt"), desart):
-            continue
-        if only_negative and not is_negative_mag0:
-            continue
-        if only_understock and not is_understock_mag0:
+
+        if variante and variante not in row_variante:
             continue
 
         out.append(row)
@@ -7247,14 +7279,15 @@ def _build_acquisti_excel_workbook(section: str, rows: list[dict]) -> Workbook:
     if section == "giacenza":
         headers = [
             "CodArt",
+            "Variante",
             "Descrizione",
             "UdM",
-            "0 Principale",
-            "6 Accettazione",
-            "10 Scarti",
-            "11 Obsoleto",
-            "12 DEMO",
-            "13 Rottamare",
+            "6-Accettazione",
+            "0-Principale",
+            "10-Scarti",
+            "11-Obsoleto",
+            "12-DEMO",
+            "13-Rottamare",
             "Punto riordino",
             "Lotto riordino",
             "Lead time",
@@ -7263,10 +7296,11 @@ def _build_acquisti_excel_workbook(section: str, rows: list[dict]) -> Workbook:
         data_rows = [
             [
                 row.get("CodArt", ""),
+                row.get("VarianteArt", ""),
                 row.get("DesArt", ""),
                 row.get("MagUM", ""),
-                row.get("Mag_0", 0),
                 row.get("Mag_6", 0),
+                row.get("Mag_0", 0),
                 row.get("Mag_10", 0),
                 row.get("Mag_11", 0),
                 row.get("Mag_12", 0),

@@ -1,3 +1,53 @@
+<style>
+    .acq-montaggio-stack {
+        min-height: 0;
+        height: 100%;
+    }
+
+    .acq-montaggio-sl-card {
+        flex: 0 1 auto;
+        min-height: 0;
+        max-height: calc((100% - 1rem) / 2);
+        overflow: hidden;
+    }
+
+    .acq-montaggio-m-card {
+        flex: 1 1 0;
+        min-height: 0;
+        overflow: hidden;
+    }
+
+    .acq-montaggio-sl-card .card-header,
+    .acq-montaggio-m-card .card-header {
+        flex: 0 0 auto;
+    }
+
+    .acq-montaggio-sl-card .card-body,
+    .acq-montaggio-m-card .card-body {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: hidden;
+    }
+
+    .acq-montaggio-sl-scroll,
+    .acq-montaggio-m-scroll {
+        overflow: auto;
+    }
+
+    .acq-montaggio-sl-scroll {
+        max-height: 100%;
+    }
+
+    .acq-montaggio-m-scroll {
+        height: 100%;
+    }
+
+    .acq-montaggio-sl-card table,
+    .acq-montaggio-m-card table {
+        height: auto !important;
+        margin-bottom: 0 !important;
+    }
+</style>
 <div class="container-fluid px-0 h-100">
     <div class="row g-3 h-100">
 
@@ -5,17 +55,15 @@
         <div class="col-12 col-xxl-4 d-flex flex-column h-100"
              style="min-height: 0;">
 
-            <div class="d-flex flex-column flex-grow-1 gap-3"
+            <div class="d-flex flex-column flex-grow-1 gap-3 acq-montaggio-stack"
                  style="min-height: 0;">
 
-                <div class="card shadow-sm d-flex flex-column flex-fill"
-                     style="min-height: 0; max-height: 32vh">
+                <div class="card shadow-sm d-flex flex-column acq-montaggio-sl-card">
                     <div class="card-header flex-shrink-0">
                         <h3 class="h6 mb-0">Ordini SL</h3>
                     </div>
                     <div class="card-body py-2 flex-grow-1 overflow-hidden">
-                        <div class="table-responsive h-100"
-                             style="overflow: auto;">
+                        <div class="table-responsive acq-montaggio-sl-scroll">
                             <table class="table table-sm text-center table-striped table-hover table-sortable table-state-rowcolor align-middle mb-0"
                                    id="acquisti_ordini_montaggio_sl_table">
                                 <thead>
@@ -56,14 +104,12 @@
                     </div>
                 </div>
 
-                <div class="card shadow-sm d-flex flex-column flex-fill"
-                     style="min-height: 0;">
+                <div class="card shadow-sm d-flex flex-column acq-montaggio-m-card">
                     <div class="card-header flex-shrink-0">
                         <h3 class="h6 mb-0">Ordini macchina</h3>
                     </div>
                     <div class="card-body py-2 flex-grow-1 overflow-hidden">
-                        <div class="table-responsive h-100"
-                             style="overflow: auto;">
+                        <div class="table-responsive acq-montaggio-m-scroll">
                             <table class="table table-sm text-center table-striped table-hover table-sortable table-state-rowcolor align-middle mb-0"
                                    id="acquisti_ordini_montaggio_m_table">
                                 <thead>

@@ -230,6 +230,48 @@ def add_workdays(start_date: date, days: int) -> date:
 # region SCHEMA TABELLE CACHE
 
 
+def _ensure_acq_giacenze_schema(conn) -> None:
+    cols = conn.execute(sa.text("PRAGMA table_info(acq_giacenze)")).fetchall()
+
+    # Tabella non esistente: la crea sotto.
+    if not cols:
+        conn.execute(
+            sa.text("""
+                             CREATE TABLE IF NOT EXISTS acq_giacenze (
+                                                                         CodArt TEXT NOT NULL,
+                                                                         VarianteArt TEXT NOT NULL DEFAULT '',
+                                                                         CodMag TEXT NOT NULL,
+                                                                         Giacenza REAL,
+                                                                         synced_at TEXT,
+                                                                         PRIMARY KEY (CodArt, VarianteArt, CodMag)
+                             )
+                             """)
+        )
+        return
+
+    col_names = {row[1] for row in cols}
+
+    # pk order: row[5] contiene la posizione nella primary key.
+    pk_cols = [row[1] for row in sorted(cols, key=lambda r: r[5] or 999) if row[5]]
+
+    expected_pk = ["CodArt", "VarianteArt", "CodMag"]
+
+    if "VarianteArt" not in col_names or pk_cols != expected_pk:
+        conn.execute(sa.text("DROP TABLE IF EXISTS acq_giacenze"))
+        conn.execute(
+            sa.text("""
+                             CREATE TABLE acq_giacenze (
+                                                           CodArt TEXT NOT NULL,
+                                                           VarianteArt TEXT NOT NULL DEFAULT '',
+                                                           CodMag TEXT NOT NULL,
+                                                           Giacenza REAL,
+                                                           synced_at TEXT,
+                                                           PRIMARY KEY (CodArt, VarianteArt, CodMag)
+                             )
+                             """)
+        )
+
+
 def ensure_schema():
     ensure_init()
 
@@ -249,11 +291,11 @@ def ensure_schema():
         """
         CREATE TABLE IF NOT EXISTS acq_giacenze (
                                                     CodArt TEXT NOT NULL,
+                                                    VarianteArt TEXT NOT NULL DEFAULT '',
                                                     CodMag TEXT NOT NULL,
                                                     Giacenza REAL,
-                                                    VarianteArt TEXT NOT NULL,
                                                     synced_at TEXT,
-                                                    PRIMARY KEY (CodArt, CodMag, VarianteArt)
+                                                    PRIMARY KEY (CodArt, VarianteArt, CodMag)
         )
         """,
         """
@@ -311,6 +353,11 @@ def ensure_schema():
     ]
 
     with sqlite_engine_acq.begin() as conn:
+        for stmt in ddl:
+            conn.execute(sa.text(stmt))
+
+        _ensure_acq_giacenze_schema(conn)
+
         cols = conn.execute(sa.text("PRAGMA table_info(acq_articoli)")).fetchall()
         col_names = {row[1] for row in cols}
         if "MagUM" not in col_names:
@@ -455,29 +502,39 @@ def build_acq_giacenze(df_giacenza: pd.DataFrame) -> pd.DataFrame:
         timespec="seconds"
     )
 
-    needed_cols = ["CodArt", "CodMag", "Giacenza"]
+    needed_cols = ["CodArt", "VarianteArt", "CodMag", "Giacenza"]
     for col in needed_cols:
         if col not in df_giacenza.columns:
             df_giacenza[col] = None
 
     df = df_giacenza[needed_cols].copy()
+
     df = df.dropna(subset=["CodArt", "CodMag"], how="any")
     df["CodArt"] = df["CodArt"].astype(str).str.strip()
+    df["VarianteArt"] = df["VarianteArt"].apply(_normalize_variante_lookup)
     df["CodMag"] = df["CodMag"].astype(str).str.strip()
+
     df = df[(df["CodArt"] != "") & (df["CodMag"] != "")]
+
     df["Giacenza"] = df["Giacenza"].apply(_safe_float)
+
+    df = df.groupby(
+        ["CodArt", "VarianteArt", "CodMag"],
+        as_index=False,
+        dropna=False,
+    )["Giacenza"].sum()
+
     df["synced_at"] = synced_at
 
-    df = (
-        df.groupby(["CodArt", "CodMag"], as_index=False, dropna=False)["Giacenza"]
-        .sum()
-        .merge(
-            df[["CodArt", "CodMag", "synced_at"]].drop_duplicates(),
-            on=["CodArt", "CodMag"],
-            how="left",
-        )
-    )
-    return df
+    return df[
+        [
+            "CodArt",
+            "VarianteArt",
+            "CodMag",
+            "Giacenza",
+            "synced_at",
+        ]
+    ].copy()
 
 
 def _parse_distinta_materiale(value) -> list[dict]:
@@ -525,7 +582,7 @@ def build_acq_fabbisogno_odp(df_input_odp: pd.DataFrame) -> pd.DataFrame:
         for comp in distinta:
             cod_art = _norm_text(comp.get("CodArt"))
             num_fase = _norm_text(comp.get("NumFase"))
-            variante_art = _norm_text(comp.get("VarianteArt"))
+            variante_art = _normalize_variante_lookup(comp.get("VarianteArt"))
             quantita = _safe_float(comp.get("Quantita"), 0.0)
 
             if not cod_art or not num_fase:
@@ -542,7 +599,7 @@ def build_acq_fabbisogno_odp(df_input_odp: pd.DataFrame) -> pd.DataFrame:
                     "IdRiga": id_riga,
                     "NumFase": num_fase,
                     "CodArt": cod_art,
-                    "VarianteArt": variante_art or None,
+                    "VarianteArt": variante_art,
                     "QuantitaNecessaria": quantita,
                     "synced_at": synced_at,
                 }
@@ -600,14 +657,21 @@ def build_acq_riepilogo_materiali(
         )
 
     giac_tot = (
-        df_giacenze_cache.groupby(["CodArt"], as_index=False, dropna=False)["Giacenza"]
+        df_giacenze_cache.groupby(
+            ["CodArt", "VarianteArt"],
+            as_index=False,
+            dropna=False,
+        )["Giacenza"]
         .sum()
         .rename(columns={"Giacenza": "GiacenzaTotale"})
     )
 
-    df = df_fabbisogno_odp.merge(
+    df = df_fabbisogno_odp.copy()
+    df["VarianteArt"] = df["VarianteArt"].apply(_normalize_variante_lookup)
+
+    df = df.merge(
         giac_tot,
-        on="CodArt",
+        on=["CodArt", "VarianteArt"],
         how="left",
     ).merge(
         df_articoli_cache[
