@@ -7,19 +7,19 @@
 
             <div class="card-body">
                 <div class="mb-3">
-                    <label for="select-user-reset-login-code"
+                    <label for="create-user-login-code"
                            class="form-label fw-semibold">
-                        Utente
+                        Login code
                     </label>
-                    <select id="select-user-reset-login-code"
-                            class="form-select">
-                        <option value="">-- Seleziona un utente --</option>
-                        {% for user in registry_users %}
-                            <option value="{{ user.id }}">
-                                {{ user.username }} - {{ user.current_role_description or user.current_role_name or "Nessun ruolo" }}
-                            </option>
-                        {% endfor %}
-                    </select>
+                    <input type="text"
+                           id="create-user-login-code"
+                           class="form-control"
+                           minlength="6"
+                           autocomplete="off"
+                           placeholder="Minimo 6 caratteri alfanumerici">
+                    <div class="form-text">
+                        Obbligatorio. Solo lettere e numeri, minimo 6 caratteri.
+                    </div>
                 </div>
 
                 <div class="mb-4">

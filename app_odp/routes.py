@@ -21,6 +21,7 @@ from flask import (
     redirect,
 )
 from flask_login import login_required, current_user
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy import func, select, delete
 from app_odp.etichette import gen_etichette
 from app_odp.models import (
@@ -5445,21 +5446,50 @@ def impostazioni():
     )
 
 
-def _login_code_is_already_used(
-    login_code: str, exclude_user_id: int | None = None
-) -> bool:
-    lookup = User.login_code_lookup_for(login_code)
+LOGIN_CODE_DUPLICATO_MSG = "Il codice di login è già utilizzato"
 
-    q = User.query.filter(User.login_code_lookup == lookup)
+
+def _login_code_error_response(message: str, status_code: int = 400):
+    return jsonify(
+        {
+            "ok": False,
+            "error": message,
+        }
+    ), status_code
+
+
+def _is_login_code_integrity_error(exc: IntegrityError) -> bool:
+    msg = str(getattr(exc, "orig", exc)).lower()
+    return "unique constraint failed" in msg and "login_code_lookup" in msg
+
+
+def _prepare_login_code_or_response(
+    raw_code,
+    exclude_user_id: int | None = None,
+):
+    """
+    Valida il login code e verifica che non sia già assegnato.
+
+    exclude_user_id serve nel reset/modifica:
+    - permette allo stesso utente di mantenere lo stesso codice;
+    - blocca il codice se appartiene a un altro utente.
+    """
+    try:
+        code = User.validate_login_code(raw_code)
+    except ValueError as exc:
+        return None, _login_code_error_response(str(exc), 400)
+
+    lookup = User.login_code_lookup_for(code)
+
+    query = User.query.filter(User.login_code_lookup == lookup)
 
     if exclude_user_id is not None:
-        q = q.filter(User.id != int(exclude_user_id))
+        query = query.filter(User.id != int(exclude_user_id))
 
-    return q.first() is not None
+    if query.first() is not None:
+        return None, _login_code_error_response(LOGIN_CODE_DUPLICATO_MSG, 409)
 
-
-def _validate_login_code(raw_value) -> str:
-    return User.validate_login_code(raw_value)
+    return code, None
 
 
 @main_bp.post("/api/impostazioni/crea-utente")
@@ -5516,15 +5546,9 @@ def api_crea_utente():
             {"ok": False, "error": "Esiste già un utente con questo public_id."}
         ), 409
 
-    try:
-        login_code = _validate_login_code(login_code_raw)
-    except ValueError as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
-
-    if _login_code_is_already_used(login_code):
-        return jsonify(
-            {"ok": False, "error": "Il codice di login è già utilizzato."}
-        ), 409
+    login_code, error_response = _prepare_login_code_or_response(login_code_raw)
+    if error_response:
+        return error_response
 
     if reparto_princ:
         reparto_exists = Reparti.query.filter(Reparti.Codice == reparto_princ).first()
@@ -5555,8 +5579,23 @@ def api_crea_utente():
 
         db.session.commit()
 
+    except IntegrityError as exc:
+        db.session.rollback()
+
+        if _is_login_code_integrity_error(exc):
+            return _login_code_error_response(LOGIN_CODE_DUPLICATO_MSG, 409)
+
+        current_app.logger.exception("Errore integrità durante la creazione utente")
+        return jsonify(
+            {
+                "ok": False,
+                "error": "Errore creazione utente.",
+            }
+        ), 500
+
     except Exception as exc:
         db.session.rollback()
+        current_app.logger.exception("Errore creazione utente")
         return jsonify(
             {
                 "ok": False,
@@ -5615,17 +5654,34 @@ def api_reset_login_code():
 
     if not policy.can_manage_target_user(utente):
         return jsonify({"ok": False, "error": "Utente non gestibile."}), 403
-
-    try:
-        login_code = _validate_login_code(login_code_raw)
-    except ValueError as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
+    login_code, error_response = _prepare_login_code_or_response(
+        login_code_raw,
+        exclude_user_id=utente.id,
+    )
+    if error_response:
+        return error_response
 
     try:
         utente.set_login_code(login_code)
         db.session.commit()
+
+    except IntegrityError as exc:
+        db.session.rollback()
+
+        if _is_login_code_integrity_error(exc):
+            return _login_code_error_response(LOGIN_CODE_DUPLICATO_MSG, 409)
+
+        current_app.logger.exception("Errore integrità durante il reset login code")
+        return jsonify(
+            {
+                "ok": False,
+                "error": "Errore reset login_code.",
+            }
+        ), 500
+
     except Exception as exc:
         db.session.rollback()
+        current_app.logger.exception("Errore reset login_code")
         return jsonify(
             {
                 "ok": False,
