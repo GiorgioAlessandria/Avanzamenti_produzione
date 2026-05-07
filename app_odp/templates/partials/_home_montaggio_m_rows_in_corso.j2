@@ -1,13 +1,25 @@
 {% for singolo_odp in odp %}
     {% if singolo_odp.GestioneMatricola == 'si' and singolo_odp.StatoOrdine != "Pianificata" and singolo_odp.StatoOrdine != "Chiusa" %}
         {% set operatore = singolo_odp.runtime_row.Utente_operazione if singolo_odp.runtime_row else "" %}
+        {% set runtime = singolo_odp.runtime_row %}
+        {% set pr_visible = runtime and runtime.PrioritaOperatoreIdInCarico|string == current_user.id|string %}
+        {% set pr = runtime.PrioritaInCarico if pr_visible else none %}
+        {% set pr_class =
+                        'table-danger' if pr == 1 else
+                        'table-warning' if pr == 2 else'table-success' if pr == 3 else'' %}
+        {% set stato_norm = singolo_odp.StatoOrdine|string|lower %}
+        {% set stato_class =
+                            'table-success' if 'attiv' in stato_norm else
+                            'table-warning' if 'sospes' in stato_norm else'' %}
         {% set rev = singolo_odp.IndiceModifica %}
         {% set rev_pdf = rev|string|trim if rev is not none else "" %}
         {% set rev_pdf = "" if rev_pdf == "-" or rev_pdf|upper == "X" else rev_pdf %}
         {% set metodo_key = singolo_odp.CodArt ~ ('.' ~ rev_pdf if rev_pdf else '') %}
         {% set metodo_doc = metodo_montaggio_lookup.get(metodo_key) if metodo_montaggio_lookup is defined and metodo_key else none %}
 
-        <tr data-row-key="{{ singolo_odp.IdDocumento }}|{{ singolo_odp.NumProgrRiga }}"
+        <tr class="{{ stato_class }}"
+            data-row-key="{{ singolo_odp.IdDocumento }}|{{ singolo_odp.NumProgrRiga }}"
+            data-priorita="{{ pr or '' }}"
             data-tipodocumento="{{ singolo_odp.CodTipoDoc }}"
             data-iddocumento="{{ singolo_odp.IdDocumento }}"
             data-variante="{{ singolo_odp.VarianteArt }}"
@@ -22,6 +34,7 @@
             data-fase="{{ singolo_odp.FaseAttiva }}"
             data-stato="{{ singolo_odp.StatoOrdine }}"
             data-operatore="{{ operatore }}">
+            <td class="pr-cell {{ pr_class }} fw-bold text-center">{{ pr or "" }}</td>
             <td>
                 <button
                         type="button"

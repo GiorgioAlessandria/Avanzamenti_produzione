@@ -143,3 +143,87 @@ table.table-state-rowcolor tbody tr.row-state-sospeso {
 #ordini_da_eseguire_m tbody tr.table-success {
     font-weight: 700;
 }
+
+/* Priorità visualizzata negli ordini attivi: solo cella PR */
+#ordini_in_corso td.pr-cell.table-danger,
+#ordini_in_corso_sl td.pr-cell.table-danger,
+#ordini_in_corso_m td.pr-cell.table-danger {
+    background-color: #ff0015 !important;
+    color: #000 !important;
+    font-weight: 700;
+}
+
+#ordini_in_corso td.pr-cell.table-warning,
+#ordini_in_corso_sl td.pr-cell.table-warning,
+#ordini_in_corso_m td.pr-cell.table-warning {
+    background-color: #fdfd01 !important;
+    color: #000 !important;
+    font-weight: 700;
+}
+
+#ordini_in_corso td.pr-cell.table-success,
+#ordini_in_corso_sl td.pr-cell.table-success,
+#ordini_in_corso_m td.pr-cell.table-success {
+    background-color: #00ff3c !important;
+    color: #000 !important;
+    font-weight: 700;
+}
+
+/* Priorità ordini attivi: la cella PR non deve essere sbiadita da righe alternate, hover o selezione */
+#ordini_in_corso td.pr-cell,
+#ordini_in_corso_sl td.pr-cell,
+#ordini_in_corso_m td.pr-cell {
+    box-shadow: none !important;
+    --bs-table-accent-bg: transparent !important;
+}
+
+/* PR 1 - rosso pieno */
+#ordini_in_corso td.pr-cell.table-danger,
+#ordini_in_corso_sl td.pr-cell.table-danger,
+#ordini_in_corso_m td.pr-cell.table-danger,
+#ordini_in_corso tr.row-selected td.pr-cell.table-danger,
+#ordini_in_corso_sl tr.row-selected td.pr-cell.table-danger,
+#ordini_in_corso_m tr.row-selected td.pr-cell.table-danger {
+    --bs-table-bg: #ff0015 !important;
+    --bs-table-striped-bg: #ff0015 !important;
+    --bs-table-hover-bg: #ff0015 !important;
+    --bs-table-accent-bg: transparent !important;
+    background-color: #ff0015 !important;
+    color: #000 !important;
+    box-shadow: none !important;
+    font-weight: 700;
+}
+
+/* PR 2 - giallo pieno */
+#ordini_in_corso td.pr-cell.table-warning,
+#ordini_in_corso_sl td.pr-cell.table-warning,
+#ordini_in_corso_m td.pr-cell.table-warning,
+#ordini_in_corso tr.row-selected td.pr-cell.table-warning,
+#ordini_in_corso_sl tr.row-selected td.pr-cell.table-warning,
+#ordini_in_corso_m tr.row-selected td.pr-cell.table-warning {
+    --bs-table-bg: #fdfd01 !important;
+    --bs-table-striped-bg: #fdfd01 !important;
+    --bs-table-hover-bg: #fdfd01 !important;
+    --bs-table-accent-bg: transparent !important;
+    background-color: #fdfd01 !important;
+    color: #000 !important;
+    box-shadow: none !important;
+    font-weight: 700;
+}
+
+/* PR 3 - verde pieno */
+#ordini_in_corso td.pr-cell.table-success,
+#ordini_in_corso_sl td.pr-cell.table-success,
+#ordini_in_corso_m td.pr-cell.table-success,
+#ordini_in_corso tr.row-selected td.pr-cell.table-success,
+#ordini_in_corso_sl tr.row-selected td.pr-cell.table-success,
+#ordini_in_corso_m tr.row-selected td.pr-cell.table-success {
+    --bs-table-bg: #00ff3c !important;
+    --bs-table-striped-bg: #00ff3c !important;
+    --bs-table-hover-bg: #00ff3c !important;
+    --bs-table-accent-bg: transparent !important;
+    background-color: #00ff3c !important;
+    color: #000 !important;
+    box-shadow: none !important;
+    font-weight: 700;
+}

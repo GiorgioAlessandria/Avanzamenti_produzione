@@ -2535,6 +2535,128 @@ def _consume_priorita_ordine(id_documento: str, id_riga: str, fase: str) -> None
         _compact_priorita_operatore(operatore_id)
 
 
+def _priorita_row_for_operatore_ordine(
+    operatore_id: int,
+    id_documento: str,
+    id_riga: str,
+    fase: str,
+) -> OdpPriorita | None:
+    """
+    Recupera la priorità assegnata allo specifico operatore
+    per lo specifico ordine/fase.
+    """
+    key = _make_ordine_fase_key(id_documento, id_riga, fase)
+
+    return (
+        OdpPriorita.query.filter_by(
+            operatore_id=int(operatore_id),
+            IdDocumento=key[0],
+            IdRiga=key[1],
+            Fase=key[2],
+        )
+        .order_by(
+            OdpPriorita.Priorita.asc(),
+            OdpPriorita.Posizione.asc(),
+            OdpPriorita.id.asc(),
+        )
+        .first()
+    )
+
+
+def _snapshot_priorita_in_runtime(
+    stato,
+    priorita_row: OdpPriorita | None,
+    operatore_id: int,
+    when_iso: str,
+) -> None:
+    """
+    Salva nel runtime la priorità che l'ordine aveva
+    per l'operatore che lo prende in carico.
+
+    Se l'operatore corrente non aveva priorità assegnata,
+    lo snapshot viene pulito.
+    """
+    if stato is None:
+        return
+
+    if priorita_row is None:
+        stato.PrioritaInCarico = None
+        stato.PrioritaOperatoreIdInCarico = None
+        stato.PrioritaPresaInCaricoAt = None
+        return
+
+    stato.PrioritaInCarico = int(priorita_row.Priorita)
+    stato.PrioritaOperatoreIdInCarico = int(operatore_id)
+    stato.PrioritaPresaInCaricoAt = when_iso
+
+
+def _restore_priorita_for_next_phase_from_runtime(
+    stato,
+    ordine,
+    next_phase: str | None,
+) -> None:
+    """
+    Se un ordine prioritizzato avanza alla fase successiva,
+    ricrea la priorità sulla nuova fase per lo stesso operatore.
+
+    Non compatta la coda: mantiene il numero priorità originale.
+    """
+    if stato is None or not next_phase:
+        return
+
+    priorita = getattr(stato, "PrioritaInCarico", None)
+    operatore_id = getattr(stato, "PrioritaOperatoreIdInCarico", None)
+
+    if priorita not in (1, 2, 3) or not operatore_id:
+        return
+
+    key = _make_ordine_fase_key(
+        ordine.IdDocumento,
+        ordine.IdRiga,
+        next_phase,
+    )
+
+    existing = OdpPriorita.query.filter_by(
+        operatore_id=int(operatore_id),
+        IdDocumento=key[0],
+        IdRiga=key[1],
+        Fase=key[2],
+    ).first()
+
+    now_iso = _priority_now_iso()
+
+    max_posizione = (
+        db.session.query(func.max(OdpPriorita.Posizione))
+        .filter_by(
+            operatore_id=int(operatore_id),
+            Priorita=int(priorita),
+        )
+        .scalar()
+        or 0
+    )
+
+    if existing is not None:
+        existing.Priorita = int(priorita)
+        existing.Posizione = int(max_posizione) + 1
+        existing.updated_at = now_iso
+        existing.updated_by = _current_username("priorita_fase_successiva")
+        return
+
+    db.session.add(
+        OdpPriorita(
+            operatore_id=int(operatore_id),
+            IdDocumento=key[0],
+            IdRiga=key[1],
+            Fase=key[2],
+            Priorita=int(priorita),
+            Posizione=int(max_posizione) + 1,
+            created_at=now_iso,
+            updated_at=now_iso,
+            updated_by=_current_username("priorita_fase_successiva"),
+        )
+    )
+
+
 def _now_rome_dt() -> datetime:
     return datetime.now(ROME_TZ)
 
@@ -3349,6 +3471,12 @@ def api_prendi_ordine():
         stato_ordine_pre = _norm_text(ordine.StatoOrdine)
         qty_pre = _qty_da_lavorare_text(ordine)
         now_iso = now_dt.isoformat(timespec="seconds")
+        priorita_row = _priorita_row_for_operatore_ordine(
+            operatore_id=current_user.id,
+            id_documento=ordine.IdDocumento,
+            id_riga=ordine.IdRiga,
+            fase=fase_corrente,
+        )
 
         stato = _ensure_stato_attivo(
             ordine=ordine,
@@ -3357,6 +3485,12 @@ def api_prendi_ordine():
             when_dt=now_dt,
             fase_corrente=fase_corrente,
             rif_ordine_princ=rif_ordine_princ,
+        )
+        _snapshot_priorita_in_runtime(
+            stato=stato,
+            priorita_row=priorita_row,
+            operatore_id=current_user.id,
+            when_iso=now_iso,
         )
         ordine.StatoOrdine = "Attivo"
         operation_group_id = _build_operation_group_id(
@@ -4417,6 +4551,12 @@ def api_chiudi_ordine():
         chiusura_parziale=chiusura_parziale,
         username=_current_username(),
     )
+    if transition["tipo"] == "avanzata":
+        _restore_priorita_for_next_phase_from_runtime(
+            stato=stato,
+            ordine=ordine,
+            next_phase=transition["fase_successiva"],
+        )
     runtime_post = _runtime_snapshot(stato)
 
     if transition["tipo"] == "finale" and stato is not None:
@@ -4838,6 +4978,12 @@ def api_chiudi_ordine_montaggio_macchina():
         chiusura_parziale=chiusura_parziale,
         username=_current_username(),
     )
+    if transition["tipo"] == "avanzata":
+        _restore_priorita_for_next_phase_from_runtime(
+            stato=stato,
+            ordine=ordine,
+            next_phase=transition["fase_successiva"],
+        )
 
     runtime_post = _runtime_snapshot(stato)
 

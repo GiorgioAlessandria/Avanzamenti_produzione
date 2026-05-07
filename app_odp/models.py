@@ -1123,6 +1123,9 @@ class InputOdpRuntime(db.Model):
     RifOrdinePrinc = db.Column(db.Text)
     AttrezzaggioAttivo = db.Column(db.Text)
     VarianteArt = db.Column(db.Text)
+    PrioritaInCarico = db.Column(db.Integer)
+    PrioritaOperatoreIdInCarico = db.Column(db.Integer)
+    PrioritaPresaInCaricoAt = db.Column(db.Text)
 
     __table_args__ = (
         db.ForeignKeyConstraint(
