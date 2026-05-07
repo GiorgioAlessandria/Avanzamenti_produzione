@@ -1727,5 +1727,187 @@
 
             renderDetail();
         })();
+        (() => {
+            const userSelectEl = document.getElementById("select-user-reset-login-code");
+            const codeInputEl = document.getElementById("reset-login-code-value");
+            const saveBtn = document.getElementById("btn-reset-login-code-save");
+            const cancelBtn = document.getElementById("btn-reset-login-code-cancel");
+            const feedbackEl = document.getElementById("reset-login-code-feedback");
+            const detailEl = document.getElementById("reset-login-code-detail");
+            const usersDataEl = document.getElementById("registry-users-data");
+
+            if (!userSelectEl || !codeInputEl || !saveBtn) {
+                return;
+            }
+
+            let registryUsers = [];
+
+            try {
+                registryUsers = JSON.parse(usersDataEl?.textContent || "[]");
+            } catch (_) {
+                registryUsers = [];
+            }
+
+            function escapeHtml(value) {
+                return String(value ?? "")
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;")
+                    .replace(/"/g, "&quot;")
+                    .replace(/'/g, "&#039;");
+            }
+
+            function showFeedback(type, message) {
+                if (!feedbackEl) return;
+
+                if (!message) {
+                    feedbackEl.innerHTML = "";
+                    return;
+                }
+
+                const classMap = {
+                    success: "alert-success",
+                    danger: "alert-danger",
+                    warning: "alert-warning",
+                    info: "alert-info",
+                };
+
+                const alertClass = classMap[type] || "alert-secondary";
+
+                feedbackEl.innerHTML = `
+            <div class="alert ${alertClass} mb-0">
+                ${escapeHtml(message)}
+            </div>
+        `;
+            }
+
+            function getSelectedUser() {
+                const userId = userSelectEl.value || "";
+                if (!userId) return null;
+
+                return registryUsers.find(
+                    user => String(user.id) === String(userId)
+                ) || null;
+            }
+
+            function renderDetail() {
+                if (!detailEl) return;
+
+                const user = getSelectedUser();
+
+                if (!user) {
+                    detailEl.innerHTML = `
+                <div class="alert alert-info mb-0">
+                    Seleziona un utente e inserisci il nuovo login code.
+                </div>
+            `;
+                    return;
+                }
+
+                const ruolo = user.current_role_description
+                    || user.current_role_name
+                    || "Nessun ruolo";
+
+                detailEl.innerHTML = `
+            <div class="mb-3">
+                <h4 class="mb-1">${escapeHtml(user.username)}</h4>
+                <div class="text-muted">
+                    Ruolo attuale:
+                    <strong>${escapeHtml(ruolo)}</strong>
+                </div>
+            </div>
+
+            <div class="alert alert-warning mb-0">
+                Il nuovo login code sostituirà quello precedente.
+                Non è necessario conoscere il vecchio codice.
+            </div>
+        `;
+            }
+
+            async function resetLoginCode() {
+                const user = getSelectedUser();
+                const loginCode = String(codeInputEl.value || "").trim();
+
+                if (!user) {
+                    showFeedback("warning", "Seleziona prima un utente.");
+                    return;
+                }
+
+                if (!loginCode) {
+                    showFeedback("warning", "Inserisci il nuovo login code.");
+                    return;
+                }
+
+                const confirmed = window.confirm(
+                    `Confermi il reset del login code per "${user.username}"?`
+                );
+
+                if (!confirmed) {
+                    return;
+                }
+
+                saveBtn.disabled = true;
+                showFeedback("info", "Salvataggio in corso...");
+
+                try {
+                    const resp = await fetch("/api/impostazioni/reset-login-code", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "X-Requested-With": "XMLHttpRequest",
+                        },
+                        credentials: "same-origin",
+                        body: JSON.stringify({
+                            user_id: Number(user.id),
+                            login_code: loginCode,
+                        }),
+                    });
+
+                    let data = {};
+                    try {
+                        data = await resp.json();
+                    } catch (_) {
+                        data = {};
+                    }
+
+                    if (!resp.ok || data.ok === false) {
+                        showFeedback(
+                            "danger",
+                            data.error || "Errore durante il reset del login code."
+                        );
+                        return;
+                    }
+
+                    codeInputEl.value = "";
+                    showFeedback(
+                        "success",
+                        data.message || "Login code aggiornato correttamente."
+                    );
+                    renderDetail();
+
+                } catch (err) {
+                    console.error("Errore reset login code:", err);
+                    showFeedback("danger", "Errore di comunicazione con il server.");
+                } finally {
+                    saveBtn.disabled = false;
+                }
+            }
+
+            userSelectEl.addEventListener("change", () => {
+                showFeedback("", "");
+                renderDetail();
+            });
+
+            saveBtn.addEventListener("click", resetLoginCode);
+
+            cancelBtn?.addEventListener("click", () => {
+                userSelectEl.value = "";
+                codeInputEl.value = "";
+                showFeedback("", "");
+                renderDetail();
+            });
+
+            renderDetail();
+        })();
     </script>
 {% endblock %}
