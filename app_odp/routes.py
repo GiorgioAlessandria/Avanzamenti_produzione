@@ -7219,25 +7219,66 @@ def _contains_insensitive(value, needle: str) -> bool:
     return needle_norm in _norm_text(value).lower()
 
 
-def _filter_acquisti_giacenze_rows(rows: list[dict], args) -> list[dict]:
-    codart = _norm_text(args.get("codart", "")).lower()
-    desart = _norm_text(args.get("desart", "")).lower()
-    variante = _norm_text(args.get("variante", "")).lower()
+def _filter_acquisti_giacenze_rows(
+    rows: list[dict],
+    *,
+    codart: str = "",
+    variante: str = "",
+    desart: str = "",
+    only_negative: bool = False,
+    only_understock: bool = False,
+    **legacy_kwargs,
+) -> list[dict]:
+    """
+    Filtra le righe giacenza per export Excel.
+
+    Accetta sia i nomi usati dalla query string/frontend:
+    - codart
+    - variante
+    - desart
+
+    sia eventuali nomi interni/vecchi:
+    - cod_art
+    - variante_art
+    - des_art
+    """
+
+    codart_filter = _norm_text(codart or legacy_kwargs.get("cod_art", ""))
+    variante_filter = _norm_text(
+        variante
+        or legacy_kwargs.get("variante_art", "")
+        or legacy_kwargs.get("variante", "")
+    )
+    desart_filter = _norm_text(desart or legacy_kwargs.get("des_art", ""))
 
     out = []
 
     for row in rows:
-        row_codart = _norm_text(row.get("CodArt")).lower()
-        row_desart = _norm_text(row.get("DesArt")).lower()
-        row_variante = _norm_text(row.get("VarianteArt")).lower()
+        mag0 = float(row.get("Mag_0") or 0)
+        punto_riordino = float(row.get("PuntoRiordino") or 0)
 
-        if codart and codart not in row_codart:
+        is_negative_mag0 = mag0 < 0
+        is_understock_mag0 = (not is_negative_mag0) and (mag0 < punto_riordino)
+
+        if codart_filter and not _contains_insensitive(
+            row.get("CodArt"), codart_filter
+        ):
             continue
 
-        if desart and desart not in row_desart:
+        if variante_filter and not _contains_insensitive(
+            row.get("VarianteArt"), variante_filter
+        ):
             continue
 
-        if variante and variante not in row_variante:
+        if desart_filter and not _contains_insensitive(
+            row.get("DesArt"), desart_filter
+        ):
+            continue
+
+        if only_negative and not is_negative_mag0:
+            continue
+
+        if only_understock and not is_understock_mag0:
             continue
 
         out.append(row)
@@ -7385,6 +7426,7 @@ def api_export_acquisti_excel(section):
         rows = _filter_acquisti_giacenze_rows(
             rows,
             codart=request.args.get("codart", ""),
+            variante=request.args.get("variante", ""),
             desart=request.args.get("desart", ""),
             only_negative=_parse_bool_flag(request.args.get("negative")),
             only_understock=_parse_bool_flag(request.args.get("understock")),

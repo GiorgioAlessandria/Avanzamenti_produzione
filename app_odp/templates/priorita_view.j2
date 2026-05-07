@@ -56,17 +56,6 @@
           data-operatore-id="{{ current_user.id }}"
           data-operatore-username="{{ current_user.username }}">
 
-        <div class="priorita-view-stack w-100">
-            <h2 class="mb-0">Visualizzazione priorità</h2>
-
-            {% if policy and policy.can("priorita_edit") %}
-                <a class="btn btn-primary"
-                   href="{{ url_for('main.priorita_edit') }}">
-                    Modifica priorità
-                </a>
-            {% endif %}
-        </div>
-
         <div id="priorita-alert"
              class="alert d-none"
              role="alert"></div>
