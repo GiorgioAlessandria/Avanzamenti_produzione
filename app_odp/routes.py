@@ -2910,6 +2910,64 @@ def _ensure_stato_attivo(
     return stato
 
 
+def _stato_operativo_chiusura(ordine, stato=None) -> str:
+    """
+    Stato reale da usare per decidere se un ordine è chiudibile.
+
+    Priorità:
+    1. runtime.Stato_odp
+    2. ordine.StatoOrdine
+    """
+    stato_runtime = _norm_text(getattr(stato, "Stato_odp", ""))
+    if stato_runtime:
+        return stato_runtime
+
+    return _norm_text(getattr(ordine, "StatoOrdine", ""))
+
+
+def _ensure_ordine_attivo_per_chiusura(ordine, stato=None):
+    stato_attuale = _stato_operativo_chiusura(ordine, stato=stato)
+    stato_norm = stato_attuale.lower()
+
+    if stato_norm == "attivo":
+        return None
+
+    if stato_norm == "in sospeso":
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": (
+                        "Ordine non chiudibile: è in sospeso. "
+                        "Riattiva l'ordine prima della chiusura."
+                    ),
+                }
+            ),
+            409,
+        )
+
+    if stato_norm == "pianificata":
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": "Ordine non chiudibile: è ancora Pianificata.",
+                }
+            ),
+            409,
+        )
+
+    return (
+        jsonify(
+            {
+                "ok": False,
+                "error": f"Ordine non chiudibile: stato attuale '{stato_attuale or '-'}'.",
+            }
+        ),
+        409,
+    )
+
+
 def _accumulate_runtime_until(stato, end_dt: datetime) -> int:
     if stato is None:
         return 0
@@ -4238,18 +4296,13 @@ def api_chiudi_ordine():
             409,
         )
 
-    stato_attuale = _norm_text(ordine.StatoOrdine).lower()
-    if stato_attuale == "pianificata":
-        return (
-            jsonify(
-                {"ok": False, "error": "Ordine non chiudibile: è ancora Pianificata"}
-            ),
-            409,
-        )
     stato = InputOdpRuntime.query.filter_by(
         IdDocumento=ordine.IdDocumento,
         IdRiga=ordine.IdRiga,
     ).first()
+    closure_error = _ensure_ordine_attivo_per_chiusura(ordine, stato=stato)
+    if closure_error:
+        return closure_error
     try:
         q_tot = _qty_da_lavorare_decimal(ordine, stato=stato)
     except ValueError as e:
@@ -4796,18 +4849,14 @@ def api_chiudi_ordine_montaggio_macchina():
             409,
         )
 
-    stato_attuale = _norm_text(ordine.StatoOrdine).lower()
-    if stato_attuale == "pianificata":
-        return (
-            jsonify(
-                {"ok": False, "error": "Ordine non chiudibile: è ancora Pianificata"}
-            ),
-            409,
-        )
     stato = InputOdpRuntime.query.filter_by(
         IdDocumento=ordine.IdDocumento,
         IdRiga=ordine.IdRiga,
     ).first()
+
+    closure_error = _ensure_ordine_attivo_per_chiusura(ordine, stato=stato)
+    if closure_error:
+        return closure_error
 
     componenti_richiesti_lotto = _componenti_lotto_per_ordine(
         ordine,
