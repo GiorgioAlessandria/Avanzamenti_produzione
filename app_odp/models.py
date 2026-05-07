@@ -11,6 +11,7 @@ import hashlib
 from werkzeug.security import generate_password_hash, check_password_hash
 import re
 
+LOGIN_CODE_MIN_LENGTH = 6
 
 db = SQLAlchemy()
 
@@ -665,8 +666,10 @@ class User(UserMixin, db.Model):
         if not code:
             raise ValueError("Il login_code è obbligatorio.")
 
-        if len(code) < 12:
-            raise ValueError("Il login_code deve contenere almeno 12 caratteri.")
+        if len(code) < LOGIN_CODE_MIN_LENGTH:
+            raise ValueError(
+                f"Il login_code deve contenere almeno {LOGIN_CODE_MIN_LENGTH} caratteri."
+            )
 
         if not re.fullmatch(r"[A-Z0-9]+", code):
             raise ValueError(
@@ -680,9 +683,7 @@ class User(UserMixin, db.Model):
         return (raw_code or "").strip().upper()
 
     def set_login_code(self, raw_code: str) -> None:
-        code = self._normalize_login_code(raw_code)
-        if not code:
-            raise ValueError("Il codice accesso non può essere vuoto.")
+        code = self.validate_login_code(raw_code)
 
         self.login_code_lookup = hashlib.sha256(code.encode("utf-8")).hexdigest()
         self.login_code_hash = generate_password_hash(code)
