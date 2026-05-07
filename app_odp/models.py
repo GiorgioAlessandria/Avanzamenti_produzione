@@ -685,7 +685,7 @@ class User(UserMixin, db.Model):
     def set_login_code(self, raw_code: str) -> None:
         code = self.validate_login_code(raw_code)
 
-        self.login_code_lookup = hashlib.sha256(code.encode("utf-8")).hexdigest()
+        self.login_code_lookup = User.login_code_lookup_for(code)
         self.login_code_hash = generate_password_hash(code)
 
     def check_login_code(self, raw_code: str) -> bool:
@@ -693,6 +693,11 @@ class User(UserMixin, db.Model):
         if not code or not self.login_code_hash:
             return False
         return check_password_hash(self.login_code_hash, code)
+
+    @staticmethod
+    def login_code_lookup_for(raw_code: str) -> str:
+        code = User.validate_login_code(raw_code)
+        return hashlib.sha256(code.encode("utf-8")).hexdigest()
 
     @property
     def is_active(self):

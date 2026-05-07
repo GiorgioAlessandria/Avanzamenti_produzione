@@ -5445,19 +5445,21 @@ def impostazioni():
     )
 
 
+def _login_code_is_already_used(
+    login_code: str, exclude_user_id: int | None = None
+) -> bool:
+    lookup = User.login_code_lookup_for(login_code)
+
+    q = User.query.filter(User.login_code_lookup == lookup)
+
+    if exclude_user_id is not None:
+        q = q.filter(User.id != int(exclude_user_id))
+
+    return q.first() is not None
+
+
 def _validate_login_code(raw_value) -> str:
-    login_code = _norm_text(raw_value)
-
-    if not login_code:
-        raise ValueError("Il login_code è obbligatorio.")
-
-    if len(login_code) < 12:
-        raise ValueError("Il login_code deve contenere almeno 12 caratteri.")
-
-    if not re.fullmatch(r"[A-Za-z0-9]+", login_code):
-        raise ValueError("Il login_code può contenere solo lettere e numeri.")
-
-    return login_code
+    return User.validate_login_code(raw_value)
 
 
 @main_bp.post("/api/impostazioni/crea-utente")
@@ -5518,6 +5520,11 @@ def api_crea_utente():
         login_code = _validate_login_code(login_code_raw)
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
+
+    if _login_code_is_already_used(login_code):
+        return jsonify(
+            {"ok": False, "error": "Il codice di login è già utilizzato."}
+        ), 409
 
     if reparto_princ:
         reparto_exists = Reparti.query.filter(Reparti.Codice == reparto_princ).first()
