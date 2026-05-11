@@ -21,8 +21,105 @@
             const intervalMs = Number(cfg.intervalMs || 2000);
             let inFlight = false;
 
+            function parseDateDDMMYYYY(s) {
+                const m = String(s).trim().match(
+                    /^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?/
+                );
+
+                if (!m) return NaN;
+
+                const dd = Number(m[1]);
+                const mm = Number(m[2]) - 1;
+                const yyyy = Number(m[3]);
+                const hh = m[4] ? Number(m[4]) : 0;
+                const mi = m[5] ? Number(m[5]) : 0;
+
+                return new Date(yyyy, mm, dd, hh, mi).getTime();
+            }
+
+            function cellValue(tr, colIndex) {
+                const td = tr.children[colIndex];
+                return td ? td.textContent.trim() : "";
+            }
+
+            function compareFactory(type, desc, colIndex) {
+                return (a, b) => {
+                    const avRaw = cellValue(a, colIndex);
+                    const bvRaw = cellValue(b, colIndex);
+
+                    if (avRaw === "" && bvRaw === "") return 0;
+                    if (avRaw === "") return 1;
+                    if (bvRaw === "") return -1;
+
+                    let res = 0;
+
+                    if (type === "num") {
+                        const av = Number(avRaw.replace(/\./g, "").replace(",", "."));
+                        const bv = Number(bvRaw.replace(/\./g, "").replace(",", "."));
+                        res = av - bv;
+                    } else if (type === "date") {
+                        const av = parseDateDDMMYYYY(avRaw);
+                        const bv = parseDateDDMMYYYY(bvRaw);
+                        res = av - bv;
+                    } else {
+                        res = avRaw.localeCompare(bvRaw, undefined, {
+                            numeric: true,
+                            sensitivity: "base",
+                        });
+                    }
+
+                    return desc ? -res : res;
+                };
+            }
+
+            function getHomeSortSnapshot() {
+                const snapshot = {};
+
+                document.querySelectorAll("table.table-sortable[id]").forEach((table) => {
+                    const activeTh = table.querySelector("thead th[data-sort-dir]");
+                    if (!activeTh) return;
+
+                    snapshot[table.id] = {
+                        colIndex: activeTh.cellIndex,
+                        dir: activeTh.getAttribute("data-sort-dir"),
+                        type: (activeTh.getAttribute("data-sort") || "text").toLowerCase(),
+                    };
+                });
+
+                return snapshot;
+            }
+
+            function restoreHomeSortSnapshot(snapshot) {
+                Object.entries(snapshot || {}).forEach(([tableId, meta]) => {
+                    const table = document.getElementById(tableId);
+                    if (!table) return;
+
+                    const thead = table.tHead;
+                    const tbody = table.tBodies[0];
+                    if (!thead || !tbody) return;
+
+                    const ths = Array.from(thead.querySelectorAll("th"));
+
+                    ths.forEach((th, index) => {
+                        if (index === meta.colIndex) {
+                            th.setAttribute("data-sort-dir", meta.dir);
+                        } else {
+                            th.removeAttribute("data-sort-dir");
+                        }
+                    });
+
+                    const rows = Array.from(tbody.rows);
+                    const desc = meta.dir === "desc";
+
+                    rows.sort(compareFactory(meta.type || "text", desc, meta.colIndex));
+                    rows.forEach((row) => tbody.appendChild(row));
+                });
+            }
+
             function applyFragments(fragments) {
                 if (!fragments || typeof fragments !== "object") return;
+
+                const sortSnapshot = getHomeSortSnapshot();
 
                 Object.entries(fragments).forEach(([targetId, html]) => {
                     const el = document.getElementById(targetId);
@@ -37,6 +134,8 @@
                 document.querySelectorAll(".js-table-filter").forEach((input) => {
                     input.dispatchEvent(new Event("input", {bubbles: true}));
                 });
+
+                restoreHomeSortSnapshot(sortSnapshot);
             }
 
             window.applyHomeFragments = applyFragments;
