@@ -57,6 +57,7 @@ sql_params = "DRIVER={ODBC Driver 18 for SQL Server};SERVER=SERVERSPRING02;DATAB
 [parametri_etichette]
 dimensioni = [80.0, 50.0]
 dpi = 250
+nome_stampante = "CAB EOS1/300"
 font_path = "C:/Windows/Fonts/arial.ttf"
 [lavorazioni_richiesta_disegni]
 lavorazioni = ["FRE", "TOR"]

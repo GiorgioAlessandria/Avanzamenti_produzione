@@ -1079,6 +1079,7 @@ class LottiGeneratiLog(db.Model):
             timespec="seconds"
         ),
     )
+    LabelFilename = db.Column(db.Text)
 
     OperationGroupId = db.Column(db.Text, index=True)
 

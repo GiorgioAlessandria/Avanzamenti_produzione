@@ -67,7 +67,7 @@ from app_odp.policy.policy import RbacPolicy, PROTECTED_ROLE_NAMES
 from app_odp.odp_output import txt_generator
 from threading import Lock
 from time import monotonic
-
+from uuid import uuid4
 
 main_bp = Blueprint("main", __name__)
 ROME_TZ = ZoneInfo("Europe/Rome")
@@ -1217,6 +1217,7 @@ def _add_lotto_generato_log(
     lotto_prodotto: dict | None,
     closed_by: str,
     closed_at: str,
+    label_filename: str = "",
 ):
     if lotto_prodotto is None:
         return
@@ -1232,6 +1233,7 @@ def _add_lotto_generato_log(
             Fase=lotto_prodotto["Fase"],
             ClosedBy=_norm_text(closed_by),
             ClosedAt=_norm_text(closed_at),
+            LabelFilename=_norm_text(label_filename),
         ),
     )
 
@@ -3261,12 +3263,82 @@ def _genera_e_salva_etichetta_lotto(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     timestamp = _now_rome_dt().strftime("%Y%m%d_%H%M%S")
-    filename = f"etichetta_{_safe_filename(lotto)}_{timestamp}.png"
+    unique_suffix = uuid4().hex[:8]
+    filename = f"etichetta_{_safe_filename(lotto)}_{timestamp}_{unique_suffix}.png"
     file_path = output_dir / filename
 
     img.save(file_path, format="PNG")
 
     return filename
+
+
+def _resolve_label_file_path(filename: str) -> Path | None:
+    filename = _norm_text(filename)
+    if not filename:
+        return None
+
+    base_dir = Path(current_app.config["ETICHETTE_OUTPUT_DIR"]).expanduser()
+
+    try:
+        base_dir = base_dir.resolve()
+        file_path = (base_dir / filename).resolve()
+        file_path.relative_to(base_dir)
+    except Exception:
+        return None
+
+    return file_path
+
+
+def _print_label_png_to_windows_printer(file_path: Path) -> None:
+    """
+    Invia il PNG alla stampante Windows configurata.
+    La dimensione di stampa viene ricavata da DIMENSIONI in mm,
+    non dal numero di pixel del PNG.
+    """
+    try:
+        import win32con
+        import win32ui
+        from PIL import Image, ImageWin
+    except ImportError as exc:
+        raise RuntimeError(
+            "Modulo di stampa non disponibile. Installare pywin32 nel virtual environment."
+        ) from exc
+
+    printer_name = _norm_text(current_app.config.get("LABEL_PRINTER_NAME"))
+    if not printer_name:
+        raise RuntimeError("Nome stampante etichette non configurato.")
+
+    if not file_path.is_file():
+        raise FileNotFoundError(f"File etichetta non trovato: {file_path}")
+
+    label_width_mm, label_height_mm = current_app.config["DIMENSIONI"]
+
+    image = Image.open(file_path).convert("RGB")
+    dc = win32ui.CreateDC()
+
+    try:
+        dc.CreatePrinterDC(printer_name)
+
+        printer_dpi_x = dc.GetDeviceCaps(win32con.LOGPIXELSX)
+        printer_dpi_y = dc.GetDeviceCaps(win32con.LOGPIXELSY)
+
+        target_width_px = round(float(label_width_mm) / 25.4 * printer_dpi_x)
+        target_height_px = round(float(label_height_mm) / 25.4 * printer_dpi_y)
+
+        dib = ImageWin.Dib(image)
+
+        dc.StartDoc(file_path.name)
+        dc.StartPage()
+        dib.draw(
+            dc.GetHandleOutput(),
+            (0, 0, target_width_px, target_height_px),
+        )
+        dc.EndPage()
+        dc.EndDoc()
+
+    finally:
+        dc.DeleteDC()
+        image.close()
 
 
 @main_bp.post("/api/ordini/presa")
@@ -4278,15 +4350,9 @@ def api_riattiva_ordine_montaggio_macchina():
 @main_bp.get("/etichette/<path:filename>")
 @login_required
 def etichetta_png(filename):
-    base_dir = Path(current_app.config["ETICHETTE_OUTPUT_DIR"])
-    file_path = (base_dir / filename).resolve()
+    file_path = _resolve_label_file_path(filename)
 
-    try:
-        file_path.relative_to(base_dir.resolve())
-    except ValueError:
-        abort(404)
-
-    if not file_path.is_file():
+    if file_path is None or not file_path.is_file():
         abort(404)
 
     return send_file(
@@ -4294,6 +4360,129 @@ def etichetta_png(filename):
         mimetype="image/png",
         as_attachment=False,
         download_name=file_path.name,
+    )
+
+
+@main_bp.post("/api/etichette/stampa")
+@login_required
+@require_perm("home")
+def api_stampa_etichetta():
+    data = request.get_json(silent=True) or {}
+    filename = _norm_text(data.get("filename"))
+
+    if not filename:
+        return jsonify({"ok": False, "error": "Nome file etichetta mancante."}), 400
+
+    file_path = _resolve_label_file_path(filename)
+    if file_path is None or not file_path.is_file():
+        return jsonify({"ok": False, "error": "Etichetta non trovata."}), 404
+
+    try:
+        _print_label_png_to_windows_printer(file_path)
+    except Exception as exc:
+        current_app.logger.exception("Errore stampa etichetta %s", filename)
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": f"Errore durante la stampa dell'etichetta: {exc}",
+                }
+            ),
+            500,
+        )
+
+    return jsonify(
+        {
+            "ok": True,
+            "message": "Etichetta inviata in stampa.",
+            "filename": filename,
+        }
+    )
+
+
+@main_bp.get("/api/etichette/ricerca")
+@login_required
+@require_perm("home")
+def api_ricerca_etichette():
+    cod_art = _norm_text(request.args.get("cod_art"))
+    lotto = _norm_text(request.args.get("lotto"))
+
+    if not cod_art and not lotto:
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": "Inserire almeno il codice articolo oppure il lotto.",
+                }
+            ),
+            400,
+        )
+
+    q = LottiGeneratiLog.query
+
+    if cod_art:
+        q = q.filter(func.lower(LottiGeneratiLog.CodArt).like(f"%{cod_art.lower()}%"))
+
+    if lotto:
+        q = q.filter(
+            func.lower(LottiGeneratiLog.RifLottoAlfa).like(f"%{lotto.lower()}%")
+        )
+
+    rows = q.order_by(LottiGeneratiLog.log_id.desc()).limit(100).all()
+
+    operation_group_ids = {
+        row.OperationGroupId for row in rows if _norm_text(row.OperationGroupId)
+    }
+
+    descrizioni_by_operation = {}
+
+    if operation_group_ids:
+        log_rows = (
+            InputOdpLog.query.filter(
+                InputOdpLog.OperationGroupId.in_(sorted(operation_group_ids))
+            )
+            .order_by(InputOdpLog.log_id.desc())
+            .all()
+        )
+
+        for log_row in log_rows:
+            op_id = _norm_text(log_row.OperationGroupId)
+            if op_id and op_id not in descrizioni_by_operation:
+                descrizioni_by_operation[op_id] = _norm_text(log_row.DesArt)
+
+    items = []
+
+    for row in rows:
+        filename = _norm_text(getattr(row, "LabelFilename", ""))
+        file_path = _resolve_label_file_path(filename) if filename else None
+        file_exists = bool(file_path and file_path.is_file())
+
+        items.append(
+            {
+                "log_id": row.log_id,
+                "closed_at": _norm_text(row.ClosedAt or row.logged_at),
+                "cod_art": _norm_text(row.CodArt),
+                "descrizione": descrizioni_by_operation.get(
+                    _norm_text(row.OperationGroupId),
+                    "",
+                ),
+                "lotto": _norm_text(row.RifLottoAlfa),
+                "quantita": _norm_text(row.Quantita),
+                "filename": filename if file_exists else "",
+                "label_url": (
+                    url_for("main.etichetta_png", filename=filename)
+                    if file_exists
+                    else ""
+                ),
+                "file_exists": file_exists,
+            }
+        )
+
+    return jsonify(
+        {
+            "ok": True,
+            "items": items,
+        }
     )
 
 
@@ -4774,6 +4963,7 @@ def api_chiudi_ordine():
         lotto_prodotto=lotto_prodotto,
         closed_by=_current_username(),
         closed_at=now_iso,
+        label_filename=label_filename or "",
     )
 
     tab = _tab_from_ordine(ordine)

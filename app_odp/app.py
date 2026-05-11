@@ -105,6 +105,12 @@ def create_app():
     app.config["ETICHETTE_OUTPUT_DIR"] = configurazione["Percorsi"][
         "percorso_etichette_generate"
     ]
+    app.config["LABEL_PRINTER_NAME"] = configurazione.get(
+        "parametri_etichette", {}
+    ).get(
+        "nome_stampante",
+        "",
+    )
     # inizializza estensioni
     db.init_app(app)
     register_filters(app)

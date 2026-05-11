@@ -134,7 +134,16 @@
             </div>
             <div class="col-md-1 d-flex w-auto flex-grow-1 justify-content-end align-items-center"
                  style="width: auto; height: auto;">
-                <div class="d-flex align-items-center me-1">
+                <div class="d-flex align-items-center gap-2 me-1">
+                    {% if active_tab|default('') == 'montaggio' %}
+                        <button class="btn btn-outline-secondary d-flex align-items-center gap-2"
+                                type="button"
+                                data-bs-toggle="modal"
+                                data-bs-target="#modalRistampaEtichette">
+                            <i class="bi bi-printer"></i>
+                            <span>Ristampa etichette</span>
+                        </button>
+                    {% endif %}
                     <button class="btn btn-outline-secondary d-flex align-items-center gap-2"
                             type="button"
                             data-bs-toggle="modal"
@@ -1229,31 +1238,302 @@
         });
     </script>
     <script>
+        function escapeHtmlLabel(value) {
+            return String(value || "")
+                .replaceAll("&", "&amp;")
+                .replaceAll("<", "&lt;")
+                .replaceAll(">", "&gt;")
+                .replaceAll('"', "&quot;")
+                .replaceAll("'", "&#039;");
+        }
+
+        function filenameFromLabelUrl(labelUrl) {
+            try {
+                const url = new URL(labelUrl, window.location.origin);
+                const parts = url.pathname.split("/").filter(Boolean);
+                return decodeURIComponent(parts.at(-1) || "");
+            } catch (_) {
+                return "";
+            }
+        }
+
+        function setLabelFeedback(element, message, type = "success") {
+            if (!element) return;
+
+            if (!message) {
+                element.className = "alert d-none";
+                element.textContent = "";
+                return;
+            }
+
+            element.className = `alert alert-${type}`;
+            element.textContent = message;
+        }
+
+        async function printLabelFilename(filename, feedbackEl = null, buttonEl = null) {
+            if (!filename) {
+                setLabelFeedback(feedbackEl, "Nome file etichetta mancante.", "warning");
+                return false;
+            }
+
+            if (buttonEl) buttonEl.disabled = true;
+
+            try {
+                const resp = await fetch("/api/etichette/stampa", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-Requested-With": "XMLHttpRequest"
+                    },
+                    credentials: "same-origin",
+                    body: JSON.stringify({filename})
+                });
+
+                const data = await resp.json();
+
+                if (!resp.ok || data.ok === false) {
+                    setLabelFeedback(
+                        feedbackEl,
+                        data.error || "Errore durante la stampa dell'etichetta.",
+                        "danger"
+                    );
+                    return false;
+                }
+
+                setLabelFeedback(
+                    feedbackEl,
+                    data.message || "Etichetta inviata in stampa.",
+                    "success"
+                );
+                return true;
+
+            } catch (err) {
+                console.error("Errore stampa etichetta:", err);
+                setLabelFeedback(
+                    feedbackEl,
+                    "Errore di comunicazione durante la stampa dell'etichetta.",
+                    "danger"
+                );
+                return false;
+
+            } finally {
+                if (buttonEl) buttonEl.disabled = false;
+            }
+        }
+
         window.showGeneratedLabel = function (labelUrl) {
             if (!labelUrl) return;
 
             const modalEl = document.getElementById("modalEtichettaGenerata");
             const imgEl = document.getElementById("img-etichetta-generata");
             const openLinkEl = document.getElementById("btn-apri-etichetta-nuova-scheda");
+            const printBtnEl = document.getElementById("btn-stampa-etichetta-generata");
+            const feedbackEl = document.getElementById("etichetta-generata-feedback");
 
-            if (!modalEl || !imgEl || !openLinkEl) return;
+            if (!modalEl || !imgEl || !openLinkEl || !printBtnEl) return;
+
+            const filename = filenameFromLabelUrl(labelUrl);
 
             imgEl.src = labelUrl;
             openLinkEl.href = labelUrl;
+            printBtnEl.dataset.filename = filename;
+            printBtnEl.disabled = !filename;
+            setLabelFeedback(feedbackEl, "");
 
             bootstrap.Modal.getOrCreateInstance(modalEl).show();
         };
 
         document.addEventListener("DOMContentLoaded", function () {
-            const modalEl = document.getElementById("modalEtichettaGenerata");
+            const modalEtichettaEl = document.getElementById("modalEtichettaGenerata");
             const imgEl = document.getElementById("img-etichetta-generata");
             const openLinkEl = document.getElementById("btn-apri-etichetta-nuova-scheda");
+            const printBtnEl = document.getElementById("btn-stampa-etichetta-generata");
+            const generatedFeedbackEl = document.getElementById("etichetta-generata-feedback");
 
-            if (!modalEl || !imgEl || !openLinkEl) return;
+            printBtnEl?.addEventListener("click", function () {
+                printLabelFilename(
+                    this.dataset.filename || "",
+                    generatedFeedbackEl,
+                    this
+                );
+            });
 
-            modalEl.addEventListener("hidden.bs.modal", function () {
-                imgEl.src = "";
-                openLinkEl.href = "#";
+            modalEtichettaEl?.addEventListener("hidden.bs.modal", function () {
+                if (imgEl) imgEl.src = "";
+                if (openLinkEl) openLinkEl.href = "#";
+                if (printBtnEl) {
+                    printBtnEl.dataset.filename = "";
+                    printBtnEl.disabled = true;
+                }
+                setLabelFeedback(generatedFeedbackEl, "");
+            });
+
+            const cercaBtn = document.getElementById("btn-ristampa-etichette-cerca");
+            const codArtEl = document.getElementById("ristampa-etichette-codart");
+            const lottoEl = document.getElementById("ristampa-etichette-lotto");
+            const feedbackEl = document.getElementById("ristampa-etichette-feedback");
+            const tbodyEl = document.getElementById("tbody-ristampa-etichette");
+            const ristampaModalEl = document.getElementById("modalRistampaEtichette");
+
+            function formatDateTimeIt(value) {
+                if (!value) return "";
+                const d = new Date(value);
+                if (Number.isNaN(d.getTime())) return value;
+
+                return d.toLocaleString("it-IT", {
+                    day: "2-digit",
+                    month: "2-digit",
+                    year: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit",
+                });
+            }
+
+            function renderRistampaRows(items) {
+                if (!tbodyEl) return;
+
+                if (!items || !items.length) {
+                    tbodyEl.innerHTML = `
+                    <tr>
+                        <td colspan="7" class="text-center text-muted">
+                            Nessuna etichetta trovata.
+                        </td>
+                    </tr>
+                `;
+                    return;
+                }
+
+                tbodyEl.innerHTML = items.map((row) => {
+                    const disabled = row.file_exists ? "" : "disabled";
+                    const previewDisabledClass = row.file_exists ? "" : "disabled";
+
+                    return `
+                    <tr>
+                        <td>${escapeHtmlLabel(formatDateTimeIt(row.closed_at))}</td>
+                        <td>${escapeHtmlLabel(row.cod_art)}</td>
+                        <td>${escapeHtmlLabel(row.descrizione)}</td>
+                        <td>${escapeHtmlLabel(row.lotto)}</td>
+                        <td class="text-end">${escapeHtmlLabel(row.quantita)}</td>
+                        <td class="text-center">
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-secondary js-preview-etichetta ${previewDisabledClass}"
+                                    data-url="${escapeHtmlLabel(row.label_url)}"
+                                    ${disabled}>
+                                Anteprima
+                            </button>
+                        </td>
+                        <td class="text-center">
+                            <button type="button"
+                                    class="btn btn-sm btn-primary js-stampa-etichetta"
+                                    data-filename="${escapeHtmlLabel(row.filename)}"
+                                    ${disabled}>
+                                Stampa
+                            </button>
+                        </td>
+                    </tr>
+                `;
+                }).join("");
+            }
+
+            async function cercaEtichette() {
+                const codArt = (codArtEl?.value || "").trim();
+                const lotto = (lottoEl?.value || "").trim();
+
+                if (!codArt && !lotto) {
+                    setLabelFeedback(
+                        feedbackEl,
+                        "Inserire almeno il codice articolo oppure il lotto.",
+                        "warning"
+                    );
+                    return;
+                }
+
+                if (cercaBtn) cercaBtn.disabled = true;
+                setLabelFeedback(feedbackEl, "");
+
+                try {
+                    const params = new URLSearchParams({
+                        cod_art: codArt,
+                        lotto: lotto,
+                    });
+
+                    const resp = await fetch(`/api/etichette/ricerca?${params.toString()}`, {
+                        headers: {
+                            "X-Requested-With": "XMLHttpRequest"
+                        },
+                        credentials: "same-origin"
+                    });
+
+                    const data = await resp.json();
+
+                    if (!resp.ok || data.ok === false) {
+                        setLabelFeedback(
+                            feedbackEl,
+                            data.error || "Errore durante la ricerca delle etichette.",
+                            "danger"
+                        );
+                        renderRistampaRows([]);
+                        return;
+                    }
+
+                    renderRistampaRows(data.items || []);
+
+                } catch (err) {
+                    console.error("Errore ricerca etichette:", err);
+                    setLabelFeedback(
+                        feedbackEl,
+                        "Errore di comunicazione durante la ricerca delle etichette.",
+                        "danger"
+                    );
+                    renderRistampaRows([]);
+
+                } finally {
+                    if (cercaBtn) cercaBtn.disabled = false;
+                }
+            }
+
+            cercaBtn?.addEventListener("click", cercaEtichette);
+
+            [codArtEl, lottoEl].forEach((inputEl) => {
+                inputEl?.addEventListener("keydown", function (event) {
+                    if (event.key === "Enter") {
+                        event.preventDefault();
+                        cercaEtichette();
+                    }
+                });
+            });
+
+            tbodyEl?.addEventListener("click", async function (event) {
+                const previewBtn = event.target.closest(".js-preview-etichetta");
+                if (previewBtn && !previewBtn.disabled) {
+                    const url = previewBtn.dataset.url || "";
+                    if (!url) return;
+
+                    bootstrap.Modal.getInstance(ristampaModalEl)?.hide();
+
+                    setTimeout(() => {
+                        window.showGeneratedLabel(url);
+                    }, 200);
+
+                    return;
+                }
+
+                const printBtn = event.target.closest(".js-stampa-etichetta");
+                if (printBtn && !printBtn.disabled) {
+                    await printLabelFilename(
+                        printBtn.dataset.filename || "",
+                        feedbackEl,
+                        printBtn
+                    );
+                }
+            });
+
+            ristampaModalEl?.addEventListener("hidden.bs.modal", function () {
+                if (codArtEl) codArtEl.value = "";
+                if (lottoEl) lottoEl.value = "";
+                if (tbodyEl) tbodyEl.innerHTML = "";
+                setLabelFeedback(feedbackEl, "");
             });
         });
     </script>
@@ -1270,9 +1550,15 @@
                     id="modalEtichettaGenerataLabel">
                     Etichetta generata
                 </h5>
+                <button id="btn-stampa-etichetta-generata"
+                        type="button"
+                        class="btn btn-primary ms-auto me-2"
+                        disabled>
+                    Stampa etichetta
+                </button>
 
                 <a id="btn-apri-etichetta-nuova-scheda"
-                   class="btn btn-outline-secondary ms-auto me-2"
+                   class="btn btn-outline-secondary me-2"
                    href="#"
                    target="_blank"
                    rel="noopener noreferrer">
@@ -1285,12 +1571,90 @@
                         aria-label="Chiudi"></button>
             </div>
 
-            <div class="modal-body text-center">
+            <div id="etichetta-generata-feedback"
+                 class="alert d-none text-start"
+                 role="alert">
                 <img id="img-etichetta-generata"
                      src=""
                      alt="Etichetta generata"
                      class="img-fluid"
                      style="max-height: 75vh;">
+            </div>
+        </div>
+    </div>
+</div>
+<div class="modal fade"
+     id="modalRistampaEtichette"
+     tabindex="-1"
+     aria-labelledby="modalRistampaEtichetteLabel"
+     aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"
+                    id="modalRistampaEtichetteLabel">
+                    Ristampa etichette
+                </h5>
+                <button type="button"
+                        class="btn-close"
+                        data-bs-dismiss="modal"
+                        aria-label="Chiudi"></button>
+            </div>
+
+            <div class="modal-body">
+                <div class="row g-2 align-items-end mb-3">
+                    <div class="col-md-5">
+                        <label for="ristampa-etichette-codart"
+                               class="form-label">
+                            Codice articolo
+                        </label>
+                        <input type="text"
+                               id="ristampa-etichette-codart"
+                               class="form-control"
+                               autocomplete="off">
+                    </div>
+
+                    <div class="col-md-5">
+                        <label for="ristampa-etichette-lotto"
+                               class="form-label">
+                            Lotto
+                        </label>
+                        <input type="text"
+                               id="ristampa-etichette-lotto"
+                               class="form-control"
+                               autocomplete="off">
+                    </div>
+
+                    <div class="col-md-2 d-grid">
+                        <button type="button"
+                                id="btn-ristampa-etichette-cerca"
+                                class="btn btn-primary">
+                            Cerca
+                        </button>
+                    </div>
+                </div>
+
+                <div id="ristampa-etichette-feedback"
+                     class="alert d-none"
+                     role="alert"></div>
+
+                <div class="table-responsive"
+                     style="max-height: 55vh; overflow-y: auto;">
+                    <table class="table table-sm table-hover align-middle mb-0">
+                        <thead class="table-light">
+                        <tr>
+                            <th>Data</th>
+                            <th>Codice</th>
+                            <th>Descrizione</th>
+                            <th>Lotto</th>
+                            <th class="text-end">Quantità</th>
+                            <th class="text-center">Anteprima</th>
+                            <th class="text-center">Stampa</th>
+                        </tr>
+                        </thead>
+                        <tbody id="tbody-ristampa-etichette"></tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>

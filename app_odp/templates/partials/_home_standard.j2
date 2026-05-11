@@ -1228,9 +1228,6 @@
             alert(data.error || "Errore durante la sospensione del semilavorato.");
             return;
         }
-        if (data.label_url && window.showGeneratedLabel) {
-            window.showGeneratedLabel(data.label_url);
-        }
 
         bootstrap.Toast.getOrCreateInstance(document.getElementById("toast-2")).hide();
 
@@ -2048,6 +2045,10 @@
                     alert(data.error || "Errore durante la chiusura dell'ordine.");
                     return;
                 }
+                if (data.label_url && window.showGeneratedLabel) {
+                    window.showGeneratedLabel(data.label_url);
+                }
+
 
                 const exportResult = await exportAvpTxt({
                     suffix: "officina",
