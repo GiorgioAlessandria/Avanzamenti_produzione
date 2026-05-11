@@ -181,8 +181,10 @@ def _normalize_indice_lookup(value) -> str:
     indice = _norm_text(value)
     if not indice:
         return ""
-    if indice == "-" or indice.upper() == "X":
+
+    if indice.upper() in {"X", "-", "NONE", "NULL", "NAN"}:
         return ""
+
     return indice
 
 
@@ -413,7 +415,10 @@ def build_acq_articoli(df_articoli: pd.DataFrame) -> pd.DataFrame:
     ].copy()
 
 
-def build_acq_articoli_lookup(df_articoli: pd.DataFrame) -> pd.DataFrame:
+def build_acq_articoli_lookup(
+    df_articoli: pd.DataFrame,
+    df_giacenza: pd.DataFrame,
+) -> pd.DataFrame:
     today = _now_local_date()
     synced_at = datetime.now(ZoneInfo(TIMEZONE or "Europe/Rome")).isoformat(
         timespec="seconds"
@@ -437,11 +442,34 @@ def build_acq_articoli_lookup(df_articoli: pd.DataFrame) -> pd.DataFrame:
         "PuntoRiordino",
         "PianTempoApprovFisso",
     ]
+    varianti_cols = ["CodArt", "VarianteArt"]
+    for col in varianti_cols:
+        if col not in df_giacenza.columns:
+            df_giacenza[col] = None
+
+    df_varianti = df_giacenza[varianti_cols].copy()
+    df_varianti = df_varianti.dropna(subset=["CodArt"], how="any")
+    df_varianti["CodArt"] = df_varianti["CodArt"].astype(str).str.strip()
+    df_varianti = df_varianti[df_varianti["CodArt"] != ""]
+    df_varianti["VarianteArt"] = df_varianti["VarianteArt"].apply(
+        _normalize_variante_lookup
+    )
+    df_varianti = df_varianti.drop_duplicates(
+        subset=["CodArt", "VarianteArt"],
+        keep="last",
+    )
     for col in needed_cols:
         if col not in df_articoli.columns:
             df_articoli[col] = None
 
-    df = df_articoli[needed_cols].copy()
+    articoli_cols = [col for col in needed_cols if col != "VarianteArt"]
+    df = df_articoli[articoli_cols].copy()
+
+    df = df.merge(
+        df_varianti,
+        on="CodArt",
+        how="left",
+    )
 
     df = df.dropna(subset=["CodArt"], how="any")
     df["CodArt"] = df["CodArt"].astype(str).str.strip()
@@ -732,7 +760,10 @@ def elaborazione_dati_acq():
     df_input_odp_aperti = leggi_input_odp_aperti()
 
     df_acq_articoli = build_acq_articoli(df_articoli)
-    df_acq_articoli_lookup = build_acq_articoli_lookup(df_articoli)
+    df_acq_articoli_lookup = build_acq_articoli_lookup(
+        df_articoli,
+        df_giacenza,
+    )
     df_acq_giacenze = build_acq_giacenze(df_giacenza)
     df_acq_fabbisogno_odp = build_acq_fabbisogno_odp(df_input_odp_aperti)
     df_acq_riepilogo = build_acq_riepilogo_materiali(

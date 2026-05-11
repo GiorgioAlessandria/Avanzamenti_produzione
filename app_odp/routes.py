@@ -1377,7 +1377,7 @@ def _norm_articolo_search_value(value) -> str:
 def _norm_articolo_revisione(value) -> str:
     raw = _norm_articolo_search_value(value)
 
-    if raw in {"", "X", "-", "NONE", "NULL"}:
+    if raw in {"", "X", "-", "NONE", "NULL", "NAN"}:
         return ""
 
     return raw
@@ -1394,11 +1394,11 @@ def _same_articolo_revisione(db_value, search_value) -> bool:
 
 
 def _find_articolo_lookup(
-    cod_art: str, variante_art: str = "", indice_modifica: str = ""
+    cod_art: str,
+    variante_art: str = "",
 ):
     cod_art_norm = _norm_articolo_search_value(cod_art)
     variante_norm = _norm_articolo_search_value(variante_art)
-    revisione_norm = _norm_articolo_revisione(indice_modifica)
 
     if not cod_art_norm:
         return None
@@ -1412,13 +1412,6 @@ def _find_articolo_lookup(
             row
             for row in candidates
             if _same_articolo_variante(row.VarianteArt, variante_norm)
-        ]
-
-    if revisione_norm:
-        candidates = [
-            row
-            for row in candidates
-            if _same_articolo_revisione(row.IndiceModifica, revisione_norm)
         ]
 
     if not candidates:
@@ -1688,8 +1681,10 @@ def _normalize_indice_articolo_search(value) -> str:
     indice = _norm_text(value)
     if not indice:
         return ""
-    if indice == "-" or indice.upper() == "X":
+
+    if indice.upper() in {"X", "-", "NONE", "NULL", "NAN"}:
         return ""
+
     return indice
 
 
@@ -2226,7 +2221,6 @@ def api_ricerca_articolo():
 
     cod_art = _normalize_article_search_token(data.get("cod_art"))
     variante_art = _normalize_variante_articolo_search(data.get("variante_art"))
-    indice_modifica = _normalize_indice_articolo_search(data.get("indice_modifica"))
 
     if not cod_art:
         return jsonify({"ok": False, "error": "CodArt obbligatorio."}), 400
@@ -2234,7 +2228,6 @@ def api_ricerca_articolo():
     articolo = _find_articolo_lookup(
         cod_art=cod_art,
         variante_art=variante_art,
-        indice_modifica=indice_modifica,
     )
 
     if articolo is None:
@@ -2249,11 +2242,18 @@ def api_ricerca_articolo():
                 "orders_message": "",
             }
         )
-
+    cod_art = _normalize_article_search_token(getattr(articolo, "CodArt", ""))
+    variante_art = _normalize_variante_articolo_search(
+        getattr(articolo, "VarianteArt", "")
+    )
+    indice_modifica = _normalize_indice_articolo_search(
+        getattr(articolo, "IndiceModifica", "")
+    )
     giacenza_totale = (
         db.session.execute(
             select(func.coalesce(func.sum(AcqGiacenze.Giacenza), 0.0)).where(
-                AcqGiacenze.CodArt == cod_art
+                AcqGiacenze.CodArt == cod_art,
+                AcqGiacenze.VarianteArt == variante_art,
             )
         ).scalar()
         or 0.0

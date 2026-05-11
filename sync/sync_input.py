@@ -333,6 +333,27 @@ def generazione_lista(
     return componenti_per_odp
 
 
+def _normalize_indice_modifica(value) -> str:
+    """
+    Normalizza l'indice di modifica proveniente dal gestionale.
+
+    Valori tecnici/non significativi come X, -, NaN, None, Null
+    devono essere trattati come campo vuoto per non essere mostrati agli operatori.
+    """
+    if pd.isna(value):
+        return ""
+
+    indice = str(value or "").strip()
+
+    if not indice:
+        return ""
+
+    if indice.upper() in {"X", "-", "NAN", "NONE", "NULL"}:
+        return ""
+
+    return indice
+
+
 def _sanitize_json_scalar(value):
     """
     Converte i valori pandas/numpy non JSON-validi in None.
@@ -2293,6 +2314,10 @@ def elaborazione_dati(session: Session) -> None:
         filtra_odp_componenti_con_odp, df_odp=df_odp
     )
     df_articoli = leggi_view("vwESArticoli")
+    if "IndiceModifica" in df_articoli.columns:
+        df_articoli["IndiceModifica"] = df_articoli["IndiceModifica"].apply(
+            _normalize_indice_modifica
+        )
     df_fasi_componenti = unione_fasi_componenti(
         df_odpfasi, df_odpcomponenti, df_articoli
     )

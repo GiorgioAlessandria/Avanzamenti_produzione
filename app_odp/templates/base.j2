@@ -208,14 +208,6 @@
                                class="form-control"
                                autocomplete="off">
                     </div>
-                    <div class="col-md-3">
-                        <label for="ricerca-articolo-revisione"
-                               class="form-label">Revisione</label>
-                        <input type="text"
-                               id="ricerca-articolo-revisione"
-                               class="form-control"
-                               autocomplete="off">
-                    </div>
                     <div class="col-md-2 d-flex gap-2">
                         <button type="button"
                                 class="btn btn-primary w-100"
@@ -394,7 +386,6 @@
 
             const codArtEl = document.getElementById("ricerca-articolo-codart");
             const varianteEl = document.getElementById("ricerca-articolo-variante");
-            const revisioneEl = document.getElementById("ricerca-articolo-revisione");
             const btnCerca = document.getElementById("btn-ricerca-articolo-cerca");
             const btnReset = document.getElementById("btn-ricerca-articolo-reset");
 
@@ -460,7 +451,6 @@
             function resetAll() {
                 codArtEl.value = "";
                 varianteEl.value = "";
-                revisioneEl.value = "";
                 resetResults();
             }
 
@@ -504,7 +494,6 @@
             async function eseguiRicerca() {
                 const codArt = (codArtEl.value || "").trim();
                 const variante = (varianteEl.value || "").trim();
-                const revisione = (revisioneEl.value || "").trim();
 
                 resetResults();
 
@@ -528,8 +517,7 @@
                         credentials: "same-origin",
                         body: JSON.stringify({
                             cod_art: codArt,
-                            variante_art: variante,
-                            indice_modifica: revisione
+                            variante_art: variante
                         })
                     });
 
