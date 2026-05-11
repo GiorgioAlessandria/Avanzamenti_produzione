@@ -156,6 +156,4 @@ def gen_etichette(
 
     qr = make_qr(lotto, 250)
     img.paste(qr, (sesti_x * 3, terzo_y))
-
-    img.show()
-    # return img
+    return img

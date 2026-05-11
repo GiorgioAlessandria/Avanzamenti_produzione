@@ -1228,8 +1228,73 @@
             window.applyFiltersToTable = applyFiltersToTable;
         });
     </script>
-{% endblock %}
+    <script>
+        window.showGeneratedLabel = function (labelUrl) {
+            if (!labelUrl) return;
 
+            const modalEl = document.getElementById("modalEtichettaGenerata");
+            const imgEl = document.getElementById("img-etichetta-generata");
+            const openLinkEl = document.getElementById("btn-apri-etichetta-nuova-scheda");
+
+            if (!modalEl || !imgEl || !openLinkEl) return;
+
+            imgEl.src = labelUrl;
+            openLinkEl.href = labelUrl;
+
+            bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        };
+
+        document.addEventListener("DOMContentLoaded", function () {
+            const modalEl = document.getElementById("modalEtichettaGenerata");
+            const imgEl = document.getElementById("img-etichetta-generata");
+            const openLinkEl = document.getElementById("btn-apri-etichetta-nuova-scheda");
+
+            if (!modalEl || !imgEl || !openLinkEl) return;
+
+            modalEl.addEventListener("hidden.bs.modal", function () {
+                imgEl.src = "";
+                openLinkEl.href = "#";
+            });
+        });
+    </script>
+{% endblock %}
+<div class="modal fade"
+     id="modalEtichettaGenerata"
+     tabindex="-1"
+     aria-labelledby="modalEtichettaGenerataLabel"
+     aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"
+                    id="modalEtichettaGenerataLabel">
+                    Etichetta generata
+                </h5>
+
+                <a id="btn-apri-etichetta-nuova-scheda"
+                   class="btn btn-outline-secondary ms-auto me-2"
+                   href="#"
+                   target="_blank"
+                   rel="noopener noreferrer">
+                    Apri in una nuova scheda
+                </a>
+
+                <button type="button"
+                        class="btn-close"
+                        data-bs-dismiss="modal"
+                        aria-label="Chiudi"></button>
+            </div>
+
+            <div class="modal-body text-center">
+                <img id="img-etichetta-generata"
+                     src=""
+                     alt="Etichetta generata"
+                     class="img-fluid"
+                     style="max-height: 75vh;">
+            </div>
+        </div>
+    </div>
+</div>
 <script src="{{ url_for('static', filename='assets/js/jquery.min.js') }}"></script>
 <script src="{{ url_for('static', filename='assets/bootstrap/js/bootstrap.min.js') }}"></script>
 <script src="{{ url_for('static', filename='assets/js/bs-init.js') }}"></script>

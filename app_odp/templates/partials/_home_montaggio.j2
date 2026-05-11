@@ -1352,6 +1352,9 @@
                     alert(data.error || "Errore durante la presa in carico dell'ordine.");
                     return;
                 }
+                if (data.label_url && window.showGeneratedLabel) {
+                    window.showGeneratedLabel(data.label_url);
+                }
 
                 const toastEl = document.getElementById("toast-1");
                 if (toastEl) bootstrap.Toast.getOrCreateInstance(toastEl).hide();

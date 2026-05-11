@@ -3231,6 +3231,44 @@ def _build_public_id_from_full_name(value: str) -> str:
     return normalized
 
 
+def _safe_filename(value: str) -> str:
+    value = str(value or "").strip()
+    value = re.sub(r"[^A-Za-z0-9._-]+", "_", value)
+    return value or "etichetta"
+
+
+def _genera_e_salva_etichetta_lotto(
+    *,
+    codice: str,
+    descrizione: str,
+    lotto: str,
+    quantita: str,
+) -> str:
+    """
+    Genera il PNG dell'etichetta lotto e restituisce il nome file salvato.
+    """
+    img = gen_etichette(
+        codice=codice,
+        descrizione=descrizione,
+        lotto=lotto,
+        qty=quantita,
+        label_dimensions=current_app.config["DIMENSIONI"],
+        dpi=current_app.config["DPI"],
+        font_path=current_app.config["FONT_PATH"],
+    )
+
+    output_dir = Path(current_app.config["ETICHETTE_OUTPUT_DIR"])
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    timestamp = _now_rome_dt().strftime("%Y%m%d_%H%M%S")
+    filename = f"etichetta_{_safe_filename(lotto)}_{timestamp}.png"
+    file_path = output_dir / filename
+
+    img.save(file_path, format="PNG")
+
+    return filename
+
+
 @main_bp.post("/api/ordini/presa")
 @login_required
 @require_perm("home")
@@ -4237,6 +4275,28 @@ def api_riattiva_ordine_montaggio_macchina():
     )
 
 
+@main_bp.get("/etichette/<path:filename>")
+@login_required
+def etichetta_png(filename):
+    base_dir = Path(current_app.config["ETICHETTE_OUTPUT_DIR"])
+    file_path = (base_dir / filename).resolve()
+
+    try:
+        file_path.relative_to(base_dir.resolve())
+    except ValueError:
+        abort(404)
+
+    if not file_path.is_file():
+        abort(404)
+
+    return send_file(
+        file_path,
+        mimetype="image/png",
+        as_attachment=False,
+        download_name=file_path.name,
+    )
+
+
 @main_bp.post("/api/ordini/chiudi")
 @login_required
 @require_perm("home")
@@ -4501,6 +4561,16 @@ def api_chiudi_ordine():
             "Fase": fase_corrente,
         }
 
+    label_filename = None
+
+    if lotto_prodotto:
+        label_filename = _genera_e_salva_etichetta_lotto(
+            codice=ordine.CodArt,
+            descrizione=ordine.DesArt,
+            lotto=lotto_prodotto["RifLottoAlfa"],
+            quantita=lotto_prodotto["Quantita"],
+        )
+
     tempo_finale = "0"
     elapsed_seconds = 0
     removed_seconds = 0
@@ -4727,20 +4797,12 @@ def api_chiudi_ordine():
 
         fragments = RENDERERS[tab](odp)
 
-    des_art_for_label = ordine.DesArt
-    quantita_for_label = ordine.Quantita
-
     db.session.commit()
-    if lotto_prodotto is not None:
-        gen_etichette(
-            str(lotto_prodotto["CodArt"]),
-            des_art_for_label,
-            str(lotto_prodotto["RifLottoAlfa"]),
-            quantita_for_label,
-            current_app.config["DIMENSIONI"],
-            current_app.config["DPI"],
-            current_app.config["FONT_PATH"],
-        )
+    label_url = (
+        url_for("main.etichetta_png", filename=label_filename)
+        if label_filename
+        else None
+    )
     if transition["tipo"] == "finale":
         message = (
             "Ordine chiuso definitivamente, archiviato nel db_log "
@@ -4779,6 +4841,7 @@ def api_chiudi_ordine():
                 "last_event_id": _last_log_token(),
                 "fragments": fragments,
                 "num_progr_riga": ordine.NumProgrRiga,
+                "label_url": label_url,
             }
         ),
         200,

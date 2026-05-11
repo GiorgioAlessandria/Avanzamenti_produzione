@@ -45,6 +45,7 @@ percorso_file_output = "V:/Avanzamenti_produzione/output"
 percorso_db_acq = "//Serverspring02/PythonDB/Avanzamenti_produzione/app_odp/instance/db_acq.sqlite"
 percorso_metodi_montaggio = "//Serverspring02/PythonDB/materiale_avanzamenti_produzione/metodi_di_montaggio"
 percorso_fotografie_materiale = "//Serverspring02/PythonDB/materiale_avanzamenti_produzione/fotografie_materiale"
+percorso_etichette_generate = "//Serverspring02/PythonDB/materiale_avanzamenti_produzione/"
 [sync_config]
 tempo_polling = 2
 counter_righe = 0

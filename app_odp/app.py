@@ -102,6 +102,9 @@ def create_app():
     app.config["FOTOGRAFIE_MATERIALE"] = configurazione["Percorsi"][
         "percorso_fotografie_materiale"
     ]
+    app.config["ETICHETTE_OUTPUT_DIR"] = configurazione["Percorsi"][
+        "percorso_etichette_generate"
+    ]
     # inizializza estensioni
     db.init_app(app)
     register_filters(app)
