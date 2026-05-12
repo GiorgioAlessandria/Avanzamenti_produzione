@@ -134,7 +134,22 @@
             </div>
             <div class="col-md-1 d-flex w-auto flex-grow-1 justify-content-end align-items-center"
                  style="width: auto; height: auto;">
-                <div class="d-flex align-items-center gap-2 me-1">
+                <div class="d-flex align-items-center gap-2 me-0">
+                    <button class="btn btn-outline-secondary d-flex align-items-center gap-2"
+                            type="button"
+                            data-bs-toggle="modal"
+                            data-bs-target="#modalMetodoUtilizzo">
+                        <svg xmlns="http://www.w3.org/2000/svg"
+                             width="20"
+                             height="20"
+                             fill="currentColor"
+                             viewBox="0 0 16 16"
+                             aria-hidden="true">
+                            <path d="M14 4.5V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2h5.5L14 4.5zM9.5 1.5V5H13L9.5 1.5z"/>
+                            <path d="M4.5 11.5h1.25c.69 0 1.25-.56 1.25-1.25S6.44 9 5.75 9H4.5v2.5zm1.25-1H5.5V10h.25a.25.25 0 0 1 0 .5zM8 9h1.1c.83 0 1.4.55 1.4 1.25S9.93 11.5 9.1 11.5H8V9zm1 1v.5h.1c.28 0 .4-.08.4-.25S9.38 10 9.1 10H9zm2.5-1H14v1h-1.5v.5H14v1h-1.5v1H11.5V9z"/>
+                        </svg>
+                        <span>Metodo di utilizzo</span>
+                    </button>
                     {% if active_tab|default('') == 'montaggio' %}
                         <button class="btn btn-outline-secondary d-flex align-items-center gap-2"
                                 type="button"
@@ -157,7 +172,6 @@
                             <path d="M11.742 10.344a6.5 6.5 0 1 0-1.398 1.398h-.001l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.866-3.834zm-5.242.656a5 5 0 1 1 0-10 5 5 0 0 1 0 10z"/>
                         </svg>
                         <span>Ricerca per articolo</span>
-                    </button>
                     </button>
                 </div>
 
@@ -226,7 +240,7 @@
 
                 <div id="ricerca-articolo-loading"
                      class="d-none mb-3">
-                    <div class="d-flex align-items-center gap-2">
+                    <div class="d-flex align-items-center gap-1">
                         <div class="spinner-border spinner-border-sm"
                              role="status"
                              aria-hidden="true"></div>
@@ -354,8 +368,62 @@
         </div>
     </div>
 </div>
+<div class="modal fade"
+     id="modalMetodoUtilizzo"
+     tabindex="-1"
+     aria-labelledby="modalMetodoUtilizzoLabel"
+     aria-hidden="true">
+    <div class="modal-dialog modal-fullscreen">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"
+                    id="modalMetodoUtilizzoLabel">
+                    Metodo di utilizzo
+                </h5>
+
+                <a class="btn btn-outline-secondary ms-auto me-2"
+                   href="{{ url_for('main.metodo_utilizzo_pdf') }}"
+                   target="_blank"
+                   rel="noopener noreferrer">
+                    Apri in una nuova scheda
+                </a>
+
+                <button type="button"
+                        class="btn-close"
+                        data-bs-dismiss="modal"
+                        aria-label="Chiudi"></button>
+            </div>
+
+            <div class="modal-body p-0">
+                <iframe id="metodo-utilizzo-frame"
+                        title="Metodo di utilizzo"
+                        src="about:blank"
+                        data-src="{{ url_for('main.metodo_utilizzo_pdf') }}"
+                        style="width: 100%; height: calc(100vh - 72px); border: 0;"></iframe>
+            </div>
+        </div>
+    </div>
+</div>
 {% block content %}{% endblock %}
 {% block extra_js %}
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            const modalEl = document.getElementById("modalMetodoUtilizzo");
+            const frameEl = document.getElementById("metodo-utilizzo-frame");
+
+            if (!modalEl || !frameEl) return;
+
+            modalEl.addEventListener("shown.bs.modal", function () {
+                if (frameEl.src === "about:blank") {
+                    frameEl.src = frameEl.dataset.src;
+                }
+            });
+
+            modalEl.addEventListener("hidden.bs.modal", function () {
+                frameEl.src = "about:blank";
+            });
+        });
+    </script>
     <script>
         document.addEventListener("click", function (event) {
             const trigger = event.target.closest(
@@ -942,7 +1010,7 @@
 
                 modalCodArt.textContent = codArt ? `- ${codArt}` : "";
                 modalBody.innerHTML = `
-      <div class="d-flex align-items-center gap-2">
+      <div class="d-flex align-items-center gap-1">
         <div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>
         <span>Caricamento materiali...</span>
       </div>

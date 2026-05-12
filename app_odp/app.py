@@ -111,6 +111,9 @@ def create_app():
         "nome_stampante",
         "",
     )
+    app.config["METODO_UTILIZZO_DIR"] = configurazione["Percorsi"][
+        "percorso_metodo_utilizzo"
+    ]
     # inizializza estensioni
     db.init_app(app)
     register_filters(app)

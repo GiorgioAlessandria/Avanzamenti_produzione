@@ -1927,6 +1927,23 @@ def inject_policy_and_nav():
     return {"policy": policy, "home_switch_items": items}
 
 
+@main_bp.get("/documenti/metodo-utilizzo")
+@login_required
+def metodo_utilizzo_pdf():
+    base_dir = Path(current_app.config.get("METODO_UTILIZZO_DIR", ""))
+    pdf_path = base_dir / "metodo_utilizzo.pdf"
+
+    if not pdf_path.is_file():
+        abort(404)
+
+    return send_file(
+        pdf_path,
+        mimetype="application/pdf",
+        as_attachment=False,
+        download_name=pdf_path.name,
+    )
+
+
 # region PERCORSI
 @main_bp.route("/")
 @login_required
