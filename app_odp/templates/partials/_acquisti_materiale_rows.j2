@@ -2,15 +2,16 @@
     {% for row in materiali_rows %}
         <tr class="
         {% if row.Mag0Missing %}row-acq-material-missing{% endif %}
-        {% if row.RimanenzaMaterialeCritica %} row-acq-material-critical{% elif row.RimanenzaMaterialeSottoScorta %} row-acq-material-understock{% endif %}
-    "
+        {% if row.RimanenzaMaterialeCritica %} row-acq-material-critical{% elif row.RimanenzaMaterialeSottoScorta %} row-acq-material-understock{% endif %}"
             data-codart="{{ row.CodArt or '' }}"
+            data-revisione="{{ row.IndiceModifica or '' }}"
             data-variante="{{ row.VarianteArt or '' }}"
             data-desart="{{ row.DesArt or '' }}"
             data-rem-critical="{{ '1' if row.RimanenzaMaterialeCritica else '0' }}"
             data-rem-understock="{{ '1' if row.RimanenzaMaterialeSottoScorta else '0' }}">
             <td>{{ row.CodArt or '' }}</td>
             <td>{{ row.VarianteArt or '' }}</td>
+            <td>{{ row.IndiceModifica or '' }}</td>
             <td>{{ row.DesArt or '' }}</td>
             <td>{{ row.MagUM or '' }}</td>
             <td>
@@ -44,7 +45,7 @@
     {% endfor %}
 {% else %}
     <tr>
-        <td colspan="13"
+        <td colspan="14"
             class="text-center text-muted py-4">
             Nessun materiale disponibile.
         </td>

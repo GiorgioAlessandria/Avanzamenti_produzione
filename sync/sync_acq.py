@@ -165,7 +165,16 @@ def leggi_input_odp_aperti() -> pd.DataFrame:
 
 
 def _norm_text(value) -> str:
-    return str(value or "").strip()
+    if value is None:
+        return ""
+
+    try:
+        if pd.isna(value):
+            return ""
+    except (TypeError, ValueError):
+        pass
+
+    return str(value).strip()
 
 
 def _normalize_variante_lookup(value) -> str:
@@ -182,7 +191,7 @@ def _normalize_indice_lookup(value) -> str:
     if not indice:
         return ""
 
-    if indice.upper() in {"X", "-", "NONE", "NULL", "NAN"}:
+    if indice == "-" or indice.upper() in {"X", "NAN", "NONE", "NULL"}:
         return ""
 
     return indice
@@ -282,6 +291,7 @@ def ensure_schema():
         CREATE TABLE IF NOT EXISTS acq_articoli (
                                                     CodArt TEXT PRIMARY KEY,
                                                     DesArt TEXT,
+                                                    IndiceModifica TEXT,
                                                     LottoRiordino REAL,
                                                     PuntoRiordino REAL,
                                                     PianTempoApprovFisso INTEGER,
@@ -364,6 +374,10 @@ def ensure_schema():
         col_names = {row[1] for row in cols}
         if "MagUM" not in col_names:
             conn.execute(sa.text("ALTER TABLE acq_articoli ADD COLUMN MagUM TEXT"))
+        if "IndiceModifica" not in col_names:
+            conn.execute(
+                sa.text("ALTER TABLE acq_articoli ADD COLUMN IndiceModifica TEXT")
+            )
 
 
 # endregion
@@ -376,35 +390,48 @@ def build_acq_articoli(df_articoli: pd.DataFrame) -> pd.DataFrame:
     synced_at = datetime.now(ZoneInfo(TIMEZONE or "Europe/Rome")).isoformat(
         timespec="seconds"
     )
+
     needed_cols = [
         "CodArt",
         "DesArt",
+        "IndiceModifica",
         "MagUM",
         "LottoRiordino",
         "PuntoRiordino",
         "PianTempoApprovFisso",
     ]
+
     for col in needed_cols:
         if col not in df_articoli.columns:
             df_articoli[col] = None
+
     df = df_articoli[needed_cols].copy()
+
     df = df.dropna(subset=["CodArt"], how="any")
     df["CodArt"] = df["CodArt"].astype(str).str.strip()
     df = df[df["CodArt"] != ""]
+
+    df["DesArt"] = df["DesArt"].fillna("").astype(str).str.strip()
+    df["IndiceModifica"] = df["IndiceModifica"].apply(_normalize_indice_lookup)
     df["MagUM"] = df["MagUM"].fillna("").astype(str).str.strip()
+
     df["LottoRiordino"] = df["LottoRiordino"].apply(_safe_float)
     df["PuntoRiordino"] = df["PuntoRiordino"].apply(_safe_float)
     df["PianTempoApprovFisso"] = df["PianTempoApprovFisso"].apply(_safe_int)
+
     df["DataPrevistaApprovvigionamento"] = df["PianTempoApprovFisso"].apply(
         lambda x: add_workdays(today, x).isoformat()
     )
+
     df["synced_at"] = synced_at
+
     df = df.drop_duplicates(subset=["CodArt"], keep="last")
 
     return df[
         [
             "CodArt",
             "DesArt",
+            "IndiceModifica",
             "MagUM",
             "LottoRiordino",
             "PuntoRiordino",

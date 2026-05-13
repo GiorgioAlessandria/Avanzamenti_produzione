@@ -1151,6 +1151,7 @@ class AcqArticoli(db.Model):
     PuntoRiordino = db.Column(db.Float)
     PianTempoApprovFisso = db.Column(db.Integer)
     DataPrevistaApprovvigionamento = db.Column(db.Text)
+    IndiceModifica = db.Column(db.Text)
     synced_at = db.Column(db.Text)
 
 

@@ -8,11 +8,13 @@
         <tr data-codart="{{ row.CodArt or '' }}"
             data-desart="{{ row.DesArt or '' }}"
             data-variante="{{ row.VarianteArt or '' }}"
+            data-revisione="{{ row.IndiceModifica or '' }}"
 
             data-negative="{{ '1' if is_negative_mag0 else '0' }}"
             data-understock="{{ '1' if is_understock_mag0 else '0' }}">
             <td>{{ row.CodArt or '' }}</td>
             <td>{{ row.VarianteArt or '' }}</td>
+            <td>{{ row.IndiceModifica or '' }}</td>
             <td>{{ row.DesArt or '' }}</td>
             <td>{{ row.MagUM or '' }}</td>
             <td class="{% if row.Mag_6 < 0 %}text-danger fw-bold{% endif %}">
@@ -43,7 +45,7 @@
     {% endfor %}
 {% else %}
     <tr>
-        <td colspan="14"
+        <td colspan="15"
             class="text-center text-muted py-4">
             Nessuna giacenza disponibile.
         </td>

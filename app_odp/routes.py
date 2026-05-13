@@ -1682,7 +1682,7 @@ def _normalize_indice_articolo_search(value) -> str:
     if not indice:
         return ""
 
-    if indice.upper() in {"X", "-", "NONE", "NULL", "NAN"}:
+    if indice == "-" or indice.upper() in {"X", "NAN", "NONE", "NULL"}:
         return ""
 
     return indice
@@ -7199,6 +7199,7 @@ def _new_acq_material_row(cod_art: str, variante_art: str) -> dict:
     return {
         "CodArt": _norm_text(cod_art),
         "VarianteArt": _norm_text(variante_art),
+        "IndiceModifica": "",
         "DesArt": "",
         "QtyMag0": None,
         "MaterialeDaConsumare": 0.0,
@@ -7359,7 +7360,9 @@ def _build_acquisti_materiale_rows() -> list[dict]:
             row["MagUM"] = _first_not_blank_text(
                 getattr(articolo, "MagUM", "") if articolo else "",
             )
-
+        row["IndiceModifica"] = _normalize_indice_articolo_search(
+            getattr(articolo, "IndiceModifica", "") if articolo else ""
+        )
         row["LottoRiordino"] = float(getattr(articolo, "LottoRiordino", 0) or 0)
         row["PuntoRiordino"] = float(getattr(articolo, "PuntoRiordino", 0) or 0)
         row["PianTempoApprovFisso"] = int(
@@ -7416,6 +7419,7 @@ def _build_acquisti_materiale_rows() -> list[dict]:
         row["ModalPayload"] = {
             "cod_art": row["CodArt"],
             "variante_art": row["VarianteArt"],
+            "indice_modifica": row["IndiceModifica"],
             "des_art": row["DesArt"],
             "mag_um": row["MagUM"],
             "in_distinta": row["DistintaDettagli"],
@@ -7517,6 +7521,10 @@ def _build_acquisti_giacenze_rows() -> list[dict]:
             rows[key] = {
                 "CodArt": cod_art,
                 "VarianteArt": variante_art,
+                "IndiceModifica": _normalize_indice_articolo_search(
+                    getattr(articolo_base, "IndiceModifica", "")
+                    or getattr(lookup, "IndiceModifica", "")
+                ),
                 "DesArt": (
                     _norm_text(getattr(lookup, "DesArt", ""))
                     or _norm_text(getattr(articolo_base, "DesArt", ""))
@@ -7848,6 +7856,7 @@ def _build_acquisti_excel_workbook(section: str, rows: list[dict]) -> Workbook:
     if section == "giacenza":
         headers = [
             "CodArt",
+            "Revisione",
             "Variante",
             "Descrizione",
             "UdM",
@@ -7866,6 +7875,7 @@ def _build_acquisti_excel_workbook(section: str, rows: list[dict]) -> Workbook:
             [
                 row.get("CodArt", ""),
                 row.get("VarianteArt", ""),
+                row.get("IndiceModifica", ""),
                 row.get("DesArt", ""),
                 row.get("MagUM", ""),
                 row.get("Mag_6", 0),

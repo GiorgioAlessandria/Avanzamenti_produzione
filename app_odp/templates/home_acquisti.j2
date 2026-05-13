@@ -536,19 +536,21 @@
 
                 const codArt = payload.cod_art || "";
                 const variante = payload.variante_art || "";
+                const revisione = payload.indice_modifica || "";
                 const desArt = payload.des_art || "";
                 const magUm = payload.mag_um || "";
 
-                titleExtraEl.textContent = [codArt, variante].filter(Boolean).join(" - ");
+                titleExtraEl.textContent = [codArt, variante, revisione].filter(Boolean).join(" - ");
 
                 const headerInfo = `
-                <div class="mb-3">
-                    <div><strong>Codice:</strong> ${escHtml(codArt || "-")}</div>
-                    <div><strong>Variante:</strong> ${escHtml(variante || "-")}</div>
-                    <div><strong>Descrizione:</strong> ${escHtml(desArt || "-")}</div>
-                    <div><strong>UdM:</strong> ${escHtml(magUm || "-")}</div>
-                </div>
-            `;
+                    <div class="mb-3">
+                        <div><strong>Codice:</strong> ${escHtml(codArt || "-")}</div>
+                        <div><strong>Variante:</strong> ${escHtml(variante || "-")}</div>
+                        <div><strong>Revisione:</strong> ${escHtml(revisione || "-")}</div>
+                        <div><strong>Descrizione:</strong> ${escHtml(desArt || "-")}</div>
+                        <div><strong>UdM:</strong> ${escHtml(magUm || "-")}</div>
+                    </div>
+                `;
 
                 const distintaHtml = renderRowsTable(
                     "Impeghi in distinta",
