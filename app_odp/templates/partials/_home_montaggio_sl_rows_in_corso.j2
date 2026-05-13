@@ -16,6 +16,7 @@
         {% set rev_pdf = "" if rev_pdf == "-" or rev_pdf|upper == "X" else rev_pdf %}
         {% set metodo_key = singolo_odp.CodArt ~ ('.' ~ rev_pdf if rev_pdf else '') %}
         {% set metodo_doc = metodo_montaggio_lookup.get(metodo_key) if metodo_montaggio_lookup is defined and metodo_key else none %}
+        {% set ordine_display = ordine_ref_display(singolo_odp) %}
 
         <tr class="{{ stato_class }}"
             data-row-key="{{ singolo_odp.IdDocumento }}|{{ singolo_odp.NumProgrRiga }}"
@@ -25,7 +26,7 @@
             data-numprogrriga="{{ singolo_odp.NumProgrRiga }}"
             data-idriga="{{ singolo_odp.IdRiga }}"
             data-variante="{{ singolo_odp.VarianteArt }}"
-            data-ordine="{{ singolo_odp.RifRegistraz }}.{{ singolo_odp.NumProgrRiga }}"
+            data-ordine="{{ ordine_display }}"
             data-codice="{{ singolo_odp.CodArt }}"
             data-indicemodifica="{{ singolo_odp.IndiceModifica }}"
             data-descrizione="{{ singolo_odp.DesArt }}"
@@ -45,7 +46,7 @@
                         data-variante="{{ singolo_odp.VarianteArt|e }}"
                         data-fase-attiva="{{ singolo_odp.FaseAttiva }}"
                         data-distinta='{{ singolo_odp.DistintaMateriale|tojson }}'>
-                    {{ singolo_odp.RifRegistraz }}.{{ singolo_odp.NumProgrRiga }}
+                    {{ ordine_display }}
                 </button>
             </td>
             {% set rev = singolo_odp.IndiceModifica %}

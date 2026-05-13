@@ -4,6 +4,7 @@ from typing import Literal
 from datetime import datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import json
+from app_odp.ordine_ref import format_ordine_ref_export
 
 
 def _text(value) -> str:
@@ -109,7 +110,7 @@ def txt_generator(export_rows: list[dict]) -> list[str]:
     id_riga = payload["id_riga"]
     rif_registraz = payload["rif_registraz"]
     fase = payload["fase"]
-    num_progr_riga = payload["num_progr_riga"]
+    num_progr_riga = payload.get("num_progr_riga")
 
     codice_articolo = payload["cod_art"]
     variante_articolo = payload.get("variante", "")
@@ -125,8 +126,18 @@ def txt_generator(export_rows: list[dict]) -> list[str]:
     distinta_base = _load_distinta_base(payload.get("distinta_base"))
     lotti_components = payload.get("lotti") or []
 
-    riferimento_ordine = f"{rif_registraz}.{num_progr_riga},00"
-    riferimento_ordine_time = f"{rif_registraz}.{num_progr_riga},00.{fase},00"
+    riferimento_ordine = format_ordine_ref_export(
+        rif_registraz,
+        num_progr_riga=num_progr_riga,
+        id_riga=id_riga,
+    )
+
+    riferimento_ordine_time = format_ordine_ref_export(
+        rif_registraz,
+        num_progr_riga=num_progr_riga,
+        id_riga=id_riga,
+        fase=fase,
+    )
 
     lines = []
 

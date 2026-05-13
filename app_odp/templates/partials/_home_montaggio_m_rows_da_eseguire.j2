@@ -6,6 +6,7 @@
                 'table-warning' if pr == 2 else'table-success' if pr == 3 else'' %}
         {% set distinta_raw = singolo_odp.DistintaMateriale|string|trim if singolo_odp.DistintaMateriale is not none else "" %}
         {% set distinta_missing = not distinta_raw or distinta_raw|lower in ['[]', 'null', 'none', '""'] %}
+        {% set ordine_display = ordine_ref_display(singolo_odp) %}
         <tr data-row-key="{{ singolo_odp.IdDocumento }}|{{ singolo_odp.NumProgrRiga }}"
             class="{{ pr_class if pr_class else ('table-danger' if distinta_missing else '') }}"
             data-tipodocumento="{{ singolo_odp.CodTipoDoc }}"
@@ -13,7 +14,7 @@
             data-iddocumento="{{ singolo_odp.IdDocumento }}"
             data-numprogrriga="{{ singolo_odp.NumProgrRiga }}"
             data-idriga="{{ singolo_odp.IdRiga }}"
-            data-ordine="{{ singolo_odp.RifRegistraz }}.{{ singolo_odp.NumProgrRiga }}"
+            data-ordine="{{ ordine_display }}"
             data-codice="{{ singolo_odp.CodArt }}"
             data-descrizione="{{ singolo_odp.DesArt }}"
             data-matricola="{{ singolo_odp.CodMatricola }}"
@@ -25,12 +26,12 @@
             <td>
                 {% if distinta_missing %}
                     <span class="text-danger fw-bold">
-                        {{ singolo_odp.RifRegistraz }}.{{ singolo_odp.NumProgrRiga }}
+                        {{ ordine_display }}
                     </span>
                     <i class="bi bi-exclamation-triangle-fill text-danger ms-1"
                        title="Distinta materiale assente"></i>
                 {% else %}
-                    {{ singolo_odp.RifRegistraz }}.{{ singolo_odp.NumProgrRiga }}
+                    {{ ordine_display }}
                 {% endif %}
             </td>
             <td>{{ singolo_odp.CodArt }}</td>

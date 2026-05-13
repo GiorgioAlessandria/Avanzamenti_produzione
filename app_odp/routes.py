@@ -62,6 +62,7 @@ from app_odp.models import (
     AcqGiacenze,
     AcqArticoliLookup,
 )
+from app_odp.ordine_ref import format_ordine_ref_display_from_ordine
 from app_odp.policy.decorator import require_perm
 from app_odp.policy.policy import RbacPolicy, PROTECTED_ROLE_NAMES
 from app_odp.odp_output import txt_generator
@@ -1927,6 +1928,13 @@ def inject_policy_and_nav():
     return {"policy": policy, "home_switch_items": items}
 
 
+@main_bp.context_processor
+def inject_order_ref_formatters():
+    return {
+        "ordine_ref_display": format_ordine_ref_display_from_ordine,
+    }
+
+
 @main_bp.get("/documenti/metodo-utilizzo")
 @login_required
 def metodo_utilizzo_pdf():
@@ -2514,7 +2522,7 @@ def _ordine_priorita_payload(ordine, priorita_row: OdpPriorita | None = None) ->
         "id_documento": _norm_text(ordine.IdDocumento),
         "id_riga": _norm_text(ordine.IdRiga),
         "fase": fase,
-        "ordine": f"{_norm_text(ordine.RifRegistraz)}.{_norm_text(ordine.NumProgrRiga)}",
+        "ordine": _ordine_ref_label(ordine),
         "codice": _norm_text(ordine.CodArt),
         "variante": _norm_text(ordine.VarianteArt),
         "revisione": _norm_text(ordine.IndiceModifica),
@@ -7046,7 +7054,7 @@ def dash_reparto():
             minuti_attrezzaggio = _safe_float(getattr(ordine, "AttrezzaggioAttivo", ""))
 
             record = {
-                "ordine": f"{_norm_text(ordine.RifRegistraz)}.{_norm_text(ordine.IdRiga)}",
+                "ordine": _ordine_ref_label(ordine),
                 "descrizione": _norm_text(ordine.DesArt),
                 "quantita": _norm_text(ordine.Quantita),
                 "risorsa": _first_not_blank(
@@ -7129,15 +7137,12 @@ def dash_reparto():
 
 
 def _ordine_ref_label(ordine) -> str:
-    rif = _norm_text(getattr(ordine, "RifRegistraz", ""))
-    prog = _norm_text(getattr(ordine, "NumProgrRiga", "")) or _norm_text(
-        getattr(ordine, "IdRiga", "")
-    )
-    if rif and prog:
-        return f"{rif}.{prog}"
-    return (
-        rif or prog or f"{_norm_text(ordine.IdDocumento)}.{_norm_text(ordine.IdRiga)}"
-    )
+    ref = format_ordine_ref_display_from_ordine(ordine)
+
+    if ref:
+        return ref
+
+    return f"{_norm_text(ordine.IdDocumento)} {_norm_text(ordine.IdRiga)}".strip()
 
 
 def _remaining_phase_codes_for_ordine(ordine) -> set[str]:
