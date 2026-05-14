@@ -424,6 +424,131 @@
         </div>
     </div>
 </div>
+<div class="modal fade"
+     id="modalEtichettaGenerata"
+     tabindex="-1"
+     aria-labelledby="modalEtichettaGenerataLabel"
+     aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+
+            <div class="modal-header">
+                <h5 class="modal-title"
+                    id="modalEtichettaGenerataLabel">
+                    Etichetta generata
+                </h5>
+
+                <button id="btn-stampa-etichetta-generata"
+                        type="button"
+                        class="btn btn-primary ms-auto me-2"
+                        disabled>
+                    Stampa etichetta
+                </button>
+
+                <a id="btn-apri-etichetta-nuova-scheda"
+                   class="btn btn-outline-secondary me-2"
+                   href="#"
+                   target="_blank"
+                   rel="noopener noreferrer">
+                    Apri in una nuova scheda
+                </a>
+
+                <button type="button"
+                        class="btn-close"
+                        data-bs-dismiss="modal"
+                        aria-label="Chiudi"></button>
+            </div>
+
+            <div class="modal-body text-center">
+                <div id="etichetta-generata-feedback"
+                     class="alert d-none text-start"
+                     role="alert"></div>
+
+                <img id="img-etichetta-generata"
+                     src=""
+                     alt="Etichetta generata"
+                     class="img-fluid border rounded"
+                     style="max-height: 70vh;">
+            </div>
+        </div>
+    </div>
+</div>
+<div class="modal fade"
+     id="modalRistampaEtichette"
+     tabindex="-1"
+     aria-labelledby="modalRistampaEtichetteLabel"
+     aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"
+                    id="modalRistampaEtichetteLabel">
+                    Ristampa etichette
+                </h5>
+                <button type="button"
+                        class="btn-close"
+                        data-bs-dismiss="modal"
+                        aria-label="Chiudi"></button>
+            </div>
+
+            <div class="modal-body">
+                <div class="row g-2 align-items-end mb-3">
+                    <div class="col-md-5">
+                        <label for="ristampa-etichette-codart"
+                               class="form-label">
+                            Codice articolo
+                        </label>
+                        <input type="text"
+                               id="ristampa-etichette-codart"
+                               class="form-control"
+                               autocomplete="off">
+                    </div>
+
+                    <div class="col-md-5">
+                        <label for="ristampa-etichette-lotto"
+                               class="form-label">
+                            Lotto
+                        </label>
+                        <input type="text"
+                               id="ristampa-etichette-lotto"
+                               class="form-control"
+                               autocomplete="off">
+                    </div>
+
+                    <div class="col-md-2 d-grid">
+                        <button type="button"
+                                id="btn-ristampa-etichette-cerca"
+                                class="btn btn-primary">
+                            Cerca
+                        </button>
+                    </div>
+                </div>
+
+                <div id="ristampa-etichette-feedback"
+                     class="alert d-none"
+                     role="alert"></div>
+
+                <div class="table-responsive"
+                     style="max-height: 55vh; overflow-y: auto;">
+                    <table class="table table-sm table-hover align-middle mb-0">
+                        <thead class="table-light">
+                        <tr>
+                            <th>Data</th>
+                            <th>Codice</th>
+                            <th>Descrizione</th>
+                            <th>Lotto</th>
+                            <th class="text-end">Quantità</th>
+                            <th class="text-center">Anteprima</th>
+                            <th class="text-center">Stampa</th>
+                        </tr>
+                        </thead>
+                        <tbody id="tbody-ristampa-etichette"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 {% block content %}{% endblock %}
 {% block extra_js %}
     <script>
@@ -1398,7 +1523,10 @@
         }
 
         window.showGeneratedLabel = function (labelUrl) {
-            if (!labelUrl) return;
+            if (!labelUrl) {
+                console.error("URL etichetta mancante.");
+                return;
+            }
 
             const modalEl = document.getElementById("modalEtichettaGenerata");
             const imgEl = document.getElementById("img-etichetta-generata");
@@ -1406,11 +1534,41 @@
             const printBtnEl = document.getElementById("btn-stampa-etichetta-generata");
             const feedbackEl = document.getElementById("etichetta-generata-feedback");
 
-            if (!modalEl || !imgEl || !openLinkEl || !printBtnEl) return;
+            if (!modalEl || !imgEl || !openLinkEl || !printBtnEl) {
+                console.error("Modal etichetta non completo", {
+                    modalEl,
+                    imgEl,
+                    openLinkEl,
+                    printBtnEl,
+                });
+                alert("Errore visualizzazione etichetta: modal non completo.");
+                return;
+            }
 
             const filename = filenameFromLabelUrl(labelUrl);
+            const separator = labelUrl.includes("?") ? "&" : "?";
+            const imgUrl = labelUrl.startsWith("data:")
+                ? labelUrl
+                : `${labelUrl}${separator}_=${Date.now()}`;
 
-            imgEl.src = labelUrl;
+            imgEl.classList.add("d-none");
+            imgEl.removeAttribute("src");
+
+            imgEl.onload = function () {
+                imgEl.classList.remove("d-none");
+            };
+
+            imgEl.onerror = function () {
+                imgEl.classList.add("d-none");
+                setLabelFeedback(
+                    feedbackEl,
+                    "Impossibile caricare l'anteprima dell'etichetta.",
+                    "danger"
+                );
+                console.error("Errore caricamento anteprima etichetta", imgUrl);
+            };
+
+            imgEl.src = imgUrl;
             openLinkEl.href = labelUrl;
             printBtnEl.dataset.filename = filename;
             printBtnEl.disabled = !filename;
@@ -1481,8 +1639,11 @@
                 }
 
                 tbodyEl.innerHTML = items.map((row) => {
-                    const disabled = row.file_exists ? "" : "disabled";
-                    const previewDisabledClass = row.file_exists ? "" : "disabled";
+                    const labelUrl = row.label_url || row.url || row.image_url || row.png_url || "";
+                    const filename = row.filename || filenameFromLabelUrl(labelUrl);
+                    const fileExists = row.file_exists !== false;
+                    const previewDisabled = (!fileExists || !labelUrl) ? "disabled" : "";
+                    const printDisabled = (!fileExists || !filename) ? "disabled" : "";
 
                     return `
                     <tr>
@@ -1493,17 +1654,17 @@
                         <td class="text-end">${escapeHtmlLabel(row.quantita)}</td>
                         <td class="text-center">
                             <button type="button"
-                                    class="btn btn-sm btn-outline-secondary js-preview-etichetta ${previewDisabledClass}"
-                                    data-url="${escapeHtmlLabel(row.label_url)}"
-                                    ${disabled}>
+                                    class="btn btn-sm btn-outline-secondary js-preview-etichetta"
+                                    data-url="${escapeHtmlLabel(labelUrl)}"
+                                    ${previewDisabled}>
                                 Anteprima
                             </button>
                         </td>
                         <td class="text-center">
                             <button type="button"
                                     class="btn btn-sm btn-primary js-stampa-etichetta"
-                                    data-filename="${escapeHtmlLabel(row.filename)}"
-                                    ${disabled}>
+                                    data-filename="${escapeHtmlLabel(filename)}"
+                                    ${printDisabled}>
                                 Stampa
                             </button>
                         </td>
@@ -1582,21 +1743,41 @@
 
             tbodyEl?.addEventListener("click", async function (event) {
                 const previewBtn = event.target.closest(".js-preview-etichetta");
-                if (previewBtn && !previewBtn.disabled) {
-                    const url = previewBtn.dataset.url || "";
-                    if (!url) return;
+                if (previewBtn) {
+                    event.preventDefault();
+                    event.stopPropagation();
 
-                    bootstrap.Modal.getInstance(ristampaModalEl)?.hide();
+                    if (previewBtn.disabled) return;
+
+                    const url = previewBtn.dataset.url || "";
+                    if (!url) {
+                        setLabelFeedback(
+                            feedbackEl,
+                            "URL anteprima etichetta mancante.",
+                            "warning"
+                        );
+                        console.warn("Riga etichetta senza data-url", previewBtn.closest("tr"));
+                        return;
+                    }
+
+                    if (ristampaModalEl) {
+                        bootstrap.Modal.getOrCreateInstance(ristampaModalEl).hide();
+                    }
 
                     setTimeout(() => {
                         window.showGeneratedLabel(url);
-                    }, 200);
+                    }, 150);
 
                     return;
                 }
 
                 const printBtn = event.target.closest(".js-stampa-etichetta");
-                if (printBtn && !printBtn.disabled) {
+                if (printBtn) {
+                    event.preventDefault();
+                    event.stopPropagation();
+
+                    if (printBtn.disabled) return;
+
                     await printLabelFilename(
                         printBtn.dataset.filename || "",
                         feedbackEl,
@@ -1614,127 +1795,6 @@
         });
     </script>
 {% endblock %}
-<div class="modal fade"
-     id="modalEtichettaGenerata"
-     tabindex="-1"
-     aria-labelledby="modalEtichettaGenerataLabel"
-     aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title"
-                    id="modalEtichettaGenerataLabel">
-                    Etichetta generata
-                </h5>
-                <button id="btn-stampa-etichetta-generata"
-                        type="button"
-                        class="btn btn-primary ms-auto me-2"
-                        disabled>
-                    Stampa etichetta
-                </button>
-
-                <a id="btn-apri-etichetta-nuova-scheda"
-                   class="btn btn-outline-secondary me-2"
-                   href="#"
-                   target="_blank"
-                   rel="noopener noreferrer">
-                    Apri in una nuova scheda
-                </a>
-
-                <button type="button"
-                        class="btn-close"
-                        data-bs-dismiss="modal"
-                        aria-label="Chiudi"></button>
-            </div>
-
-            <div id="etichetta-generata-feedback"
-                 class="alert d-none text-start"
-                 role="alert">
-                <img id="img-etichetta-generata"
-                     src=""
-                     alt="Etichetta generata"
-                     class="img-fluid border rounded"
-                     style="max-height: 70vh;">
-            </div>
-        </div>
-    </div>
-</div>
-<div class="modal fade"
-     id="modalRistampaEtichette"
-     tabindex="-1"
-     aria-labelledby="modalRistampaEtichetteLabel"
-     aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title"
-                    id="modalRistampaEtichetteLabel">
-                    Ristampa etichette
-                </h5>
-                <button type="button"
-                        class="btn-close"
-                        data-bs-dismiss="modal"
-                        aria-label="Chiudi"></button>
-            </div>
-
-            <div class="modal-body">
-                <div class="row g-2 align-items-end mb-3">
-                    <div class="col-md-5">
-                        <label for="ristampa-etichette-codart"
-                               class="form-label">
-                            Codice articolo
-                        </label>
-                        <input type="text"
-                               id="ristampa-etichette-codart"
-                               class="form-control"
-                               autocomplete="off">
-                    </div>
-
-                    <div class="col-md-5">
-                        <label for="ristampa-etichette-lotto"
-                               class="form-label">
-                            Lotto
-                        </label>
-                        <input type="text"
-                               id="ristampa-etichette-lotto"
-                               class="form-control"
-                               autocomplete="off">
-                    </div>
-
-                    <div class="col-md-2 d-grid">
-                        <button type="button"
-                                id="btn-ristampa-etichette-cerca"
-                                class="btn btn-primary">
-                            Cerca
-                        </button>
-                    </div>
-                </div>
-
-                <div id="ristampa-etichette-feedback"
-                     class="alert d-none"
-                     role="alert"></div>
-
-                <div class="table-responsive"
-                     style="max-height: 55vh; overflow-y: auto;">
-                    <table class="table table-sm table-hover align-middle mb-0">
-                        <thead class="table-light">
-                        <tr>
-                            <th>Data</th>
-                            <th>Codice</th>
-                            <th>Descrizione</th>
-                            <th>Lotto</th>
-                            <th class="text-end">Quantità</th>
-                            <th class="text-center">Anteprima</th>
-                            <th class="text-center">Stampa</th>
-                        </tr>
-                        </thead>
-                        <tbody id="tbody-ristampa-etichette"></tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
 <script src="{{ url_for('static', filename='assets/js/jquery.min.js') }}"></script>
 <script src="{{ url_for('static', filename='assets/bootstrap/js/bootstrap.min.js') }}"></script>
 <script src="{{ url_for('static', filename='assets/js/bs-init.js') }}"></script>
