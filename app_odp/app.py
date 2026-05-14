@@ -114,6 +114,16 @@ def create_app():
     app.config["METODO_UTILIZZO_DIR"] = configurazione["Percorsi"][
         "percorso_metodo_utilizzo"
     ]
+    label_params = configurazione.get("parametri_etichette", {})
+
+    app.config["LABEL_PRINT_ROTATION"] = int(label_params.get("stampa_rotazione", 0))
+    app.config["LABEL_PRINT_OFFSET_X_MM"] = float(
+        label_params.get("stampa_offset_x_mm", 0.0)
+    )
+    app.config["LABEL_PRINT_OFFSET_Y_MM"] = float(
+        label_params.get("stampa_offset_y_mm", 0.0)
+    )
+    app.config["LABEL_PRINT_SCALE"] = float(label_params.get("stampa_scala", 1.0))
     # inizializza estensioni
     db.init_app(app)
     register_filters(app)

@@ -46,6 +46,7 @@ percorso_db_acq = "//Serverspring02/PythonDB/Avanzamenti_produzione/app_odp/inst
 percorso_metodi_montaggio = "//Serverspring02/PythonDB/materiale_avanzamenti_produzione/metodi_di_montaggio"
 percorso_fotografie_materiale = "//Serverspring02/PythonDB/materiale_avanzamenti_produzione/fotografie_materiale"
 percorso_etichette_generate = "//Serverspring02/PythonDB/materiale_avanzamenti_produzione/"
+percorso_metodo_utilizzo = "//Serverspring02/PythonDB/materiale_avanzamenti_produzione/metodo_utilizzo"
 [sync_config]
 tempo_polling = 2
 counter_righe = 0
@@ -56,8 +57,12 @@ time_zone = "Europe/Rome"
 sql_params = "DRIVER={ODBC Driver 18 for SQL Server};SERVER=SERVERSPRING02;DATABASE=BernardiProd;UID=Produzione;PWD=Produzione2025.;Encrypt=no;TrustServerCertificate=no;Pooling=no;MultipleActiveResultSets=False;"
 [parametri_etichette]
 dimensioni = [80.0, 50.0]
-dpi = 250
+dpi = 300
 nome_stampante = "CAB EOS1/300"
 font_path = "C:/Windows/Fonts/arial.ttf"
+stampa_rotazione = 0
+stampa_offset_x_mm = 5.0
+stampa_offset_y_mm = 11.0
+stampa_scala = 1.0
 [lavorazioni_richiesta_disegni]
 lavorazioni = ["FRE", "TOR"]

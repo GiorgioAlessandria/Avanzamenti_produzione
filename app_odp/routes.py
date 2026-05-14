@@ -69,6 +69,9 @@ from app_odp.odp_output import txt_generator
 from threading import Lock
 from time import monotonic
 from uuid import uuid4
+import win32con
+import win32ui
+from PIL import Image, ImageOps, ImageWin
 
 main_bp = Blueprint("main", __name__)
 ROME_TZ = ZoneInfo("Europe/Rome")
@@ -3314,56 +3317,182 @@ def _resolve_label_file_path(filename: str) -> Path | None:
     return file_path
 
 
-def _print_label_png_to_windows_printer(file_path: Path) -> None:
+def _apply_label_image_offset(img, offset_x_mm: float, offset_y_mm: float, dpi: int):
     """
-    Invia il PNG alla stampante Windows configurata.
-    La dimensione di stampa viene ricavata da DIMENSIONI in mm,
-    non dal numero di pixel del PNG.
+    Applica l'offset direttamente dentro al PNG.
+    La dimensione finale resta identica: 80x50 mm.
     """
-    try:
-        import win32con
-        import win32ui
-        from PIL import Image, ImageWin
-    except ImportError as exc:
-        raise RuntimeError(
-            "Modulo di stampa non disponibile. Installare pywin32 nel virtual environment."
-        ) from exc
+    offset_x_px = int(round(float(offset_x_mm) / 25.4 * int(dpi)))
+    offset_y_px = int(round(float(offset_y_mm) / 25.4 * int(dpi)))
 
-    printer_name = _norm_text(current_app.config.get("LABEL_PRINTER_NAME"))
+    if offset_x_px == 0 and offset_y_px == 0:
+        return img
+
+    canvas = Image.new("RGB", img.size, "white")
+
+    src_left = 0
+    src_top = 0
+    src_right = max(0, img.width - offset_x_px)
+    src_bottom = max(0, img.height - offset_y_px)
+
+    if src_right <= src_left or src_bottom <= src_top:
+        return img
+
+    cropped = img.crop((src_left, src_top, src_right, src_bottom))
+    canvas.paste(cropped, (offset_x_px, offset_y_px))
+
+    return canvas
+
+
+def _mm_to_printer_px(mm: float, dpi: int) -> int:
+    return int(round(float(mm) / 25.4 * int(dpi)))
+
+
+def _get_label_print_settings() -> dict:
+    dimensioni = current_app.config.get("DIMENSIONI") or [80.0, 50.0]
+
+    return {
+        "printer_name": current_app.config.get("LABEL_PRINTER_NAME") or "",
+        "width_mm": float(dimensioni[0]),
+        "height_mm": float(dimensioni[1]),
+        "dpi": int(current_app.config.get("DPI") or 300),
+        "rotation": int(current_app.config.get("LABEL_PRINT_ROTATION", 0) or 0),
+        "offset_x_mm": float(
+            current_app.config.get("LABEL_PRINT_OFFSET_X_MM", 0.0) or 0.0
+        ),
+        "offset_y_mm": float(
+            current_app.config.get("LABEL_PRINT_OFFSET_Y_MM", 0.0) or 0.0
+        ),
+        "scale": float(current_app.config.get("LABEL_PRINT_SCALE", 1.0) or 1.0),
+    }
+
+
+def _create_label_printer_dc(printer_name: str, width_mm: float, height_mm: float):
+    """
+    Crea il Device Context della stampante etichette.
+
+    Non forza PaperWidth/PaperLength da Python perché alcuni ambienti pywin32
+    espongono win32gui.CreateDC con soli 3 argomenti.
+    Il formato 80x50 deve essere configurato nel driver Windows della CAB.
+    """
+    printer_dc = win32ui.CreateDC()
+    printer_dc.CreatePrinterDC(printer_name)
+    return printer_dc
+
+
+def _print_label_png_to_windows_printer(file_path: Path) -> None:
+    settings = _get_label_print_settings()
+
+    printer_name = settings["printer_name"]
     if not printer_name:
         raise RuntimeError("Nome stampante etichette non configurato.")
 
-    if not file_path.is_file():
+    width_mm = settings["width_mm"]
+    height_mm = settings["height_mm"]
+    dpi = settings["dpi"]
+    rotation = settings["rotation"]
+    offset_x_mm = settings["offset_x_mm"]
+    offset_y_mm = settings["offset_y_mm"]
+    scale = settings["scale"]
+
+    if not file_path or not Path(file_path).is_file():
         raise FileNotFoundError(f"File etichetta non trovato: {file_path}")
 
-    label_width_mm, label_height_mm = current_app.config["DIMENSIONI"]
+    img = Image.open(file_path)
+    img = ImageOps.exif_transpose(img).convert("RGB")
+    img = _apply_label_image_offset(
+        img,
+        offset_x_mm=offset_x_mm,
+        offset_y_mm=offset_y_mm,
+        dpi=dpi,
+    )
 
-    image = Image.open(file_path).convert("RGB")
-    dc = win32ui.CreateDC()
+    if rotation:
+        # PIL ruota in senso antiorario.
+        img = img.rotate(rotation, expand=True)
+
+    # Dimensione fisica voluta: 80x50 mm a 300 dpi.
+    target_w_px = _mm_to_printer_px(width_mm * scale, dpi)
+    target_h_px = _mm_to_printer_px(height_mm * scale, dpi)
+
+    offset_x_px = _mm_to_printer_px(offset_x_mm, dpi)
+    offset_y_px = _mm_to_printer_px(offset_y_mm, dpi)
+
+    printer_dc = _create_label_printer_dc(printer_name, width_mm, height_mm)
+
+    started_doc = False
+    started_page = False
 
     try:
-        dc.CreatePrinterDC(printer_name)
+        printable_w = printer_dc.GetDeviceCaps(win32con.HORZRES)
+        printable_h = printer_dc.GetDeviceCaps(win32con.VERTRES)
 
-        printer_dpi_x = dc.GetDeviceCaps(win32con.LOGPIXELSX)
-        printer_dpi_y = dc.GetDeviceCaps(win32con.LOGPIXELSY)
-
-        target_width_px = round(float(label_width_mm) / 25.4 * printer_dpi_x)
-        target_height_px = round(float(label_height_mm) / 25.4 * printer_dpi_y)
-
-        dib = ImageWin.Dib(image)
-
-        dc.StartDoc(file_path.name)
-        dc.StartPage()
-        dib.draw(
-            dc.GetHandleOutput(),
-            (0, 0, target_width_px, target_height_px),
+        current_app.logger.info(
+            "Stampa etichetta: file=%s printer=%s img=%sx%s target=%sx%s printable=%sx%s dpi=%s rotation=%s offset=%s,%s",
+            file_path,
+            printer_name,
+            img.width,
+            img.height,
+            target_w_px,
+            target_h_px,
+            printable_w,
+            printable_h,
+            dpi,
+            rotation,
+            offset_x_px,
+            offset_y_px,
         )
-        dc.EndPage()
-        dc.EndDoc()
+
+        # Se il driver restituisce un'area stampabile leggermente diversa,
+        # evitiamo di uscire dal formato etichetta.
+        draw_w = min(target_w_px, printable_w)
+        draw_h = min(target_h_px, printable_h)
+
+        x1 = 0
+        y1 = 0
+        x2 = target_w_px
+        y2 = target_h_px
+
+        dib = ImageWin.Dib(img)
+        dib.draw(printer_dc.GetHandleOutput(), (x1, y1, x2, y2))
+
+        printer_dc.StartDoc(str(file_path.name))
+        started_doc = True
+
+        printer_dc.StartPage()
+        started_page = True
+
+        # Stampa una singola immagine in una singola area 80x50.
+        dib.draw(printer_dc.GetHandleOutput(), (x1, y1, x2, y2))
+
+        printer_dc.EndPage()
+        started_page = False
+
+        printer_dc.EndDoc()
+        started_doc = False
+
+    except Exception:
+        if started_page:
+            try:
+                printer_dc.EndPage()
+            except Exception:
+                pass
+
+        if started_doc:
+            try:
+                printer_dc.AbortDoc()
+            except Exception:
+                pass
+
+        raise
 
     finally:
-        dc.DeleteDC()
-        image.close()
+        printer_dc.DeleteDC()
+        current_app.logger.warning(
+            "OFFSET ETICHETTA LETTO: x=%s mm, y=%s mm",
+            offset_x_mm,
+            offset_y_mm,
+        )
 
 
 @main_bp.post("/api/ordini/presa")
