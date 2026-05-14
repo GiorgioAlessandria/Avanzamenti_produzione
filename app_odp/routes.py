@@ -3450,11 +3450,10 @@ def _print_label_png_to_windows_printer(file_path: Path) -> None:
 
         x1 = 0
         y1 = 0
-        x2 = target_w_px
-        y2 = target_h_px
+        x2 = draw_w
+        y2 = draw_h
 
         dib = ImageWin.Dib(img)
-        dib.draw(printer_dc.GetHandleOutput(), (x1, y1, x2, y2))
 
         printer_dc.StartDoc(str(file_path.name))
         started_doc = True
