@@ -3487,11 +3487,6 @@ def _print_label_png_to_windows_printer(file_path: Path) -> None:
 
     finally:
         printer_dc.DeleteDC()
-        current_app.logger.warning(
-            "OFFSET ETICHETTA LETTO: x=%s mm, y=%s mm",
-            offset_x_mm,
-            offset_y_mm,
-        )
 
 
 @main_bp.post("/api/ordini/presa")

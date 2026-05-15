@@ -953,37 +953,98 @@
         }
 
         window.validateDrawingScanToast1 = function () {
-            const requiredForOrder = currentOrderRequiresDrawingScan();
+            const scanWrapper = document.getElementById("toast1-scan-wrapper");
+            const scanInput = document.getElementById("toast1-scan-disegno");
+            const scanFeedback = document.getElementById("toast1-scan-feedback");
+            const codiceInput = document.getElementById("toast1-codice");
+            const indiceModificaInput = document.getElementById("toast1-indicemodifica");
 
-            if (!requiredForOrder) {
-                clearInvalid();
+            if (!scanWrapper || scanWrapper.style.display === "none") {
                 return true;
             }
 
-            const scanned = normalizeValue(scanField?.value || "");
-            const expected = getExpectedDrawingCode();
-
-            if (!scanned) {
-                setInvalid("La scansione del disegno è obbligatoria.");
-                scanField?.focus();
+            if (!scanInput || !codiceInput || !indiceModificaInput) {
+                console.error("Elementi controllo disegno mancanti.");
                 return false;
             }
 
-            if (!expected) {
-                setInvalid("Impossibile validare il disegno: codice o revisione mancanti sull'ordine.");
-                scanField?.focus();
-                return false;
+            function normalizeDrawingPart(value) {
+                return String(value || "")
+                    .replace(/\s+/g, "")
+                    .trim()
+                    .toUpperCase();
             }
 
-            if (scanned !== expected) {
-                setInvalid("Disegno errato: il codice scansionato non corrisponde all'ordine selezionato.");
-                scanField?.focus();
-                scanField?.select();
-                return false;
+            function normalizeRevision(value) {
+                const rev = normalizeDrawingPart(value);
+
+                if (
+                    rev === "" ||
+                    rev === "-" ||
+                    rev === "X" ||
+                    rev === "NAN" ||
+                    rev === "NONE" ||
+                    rev === "NULL"
+                ) {
+                    return "";
+                }
+
+                return rev;
             }
 
-            clearInvalid();
-            return true;
+            function normalizeScannedDrawing(value) {
+                const raw = normalizeDrawingPart(value);
+
+                if (!raw) {
+                    return "";
+                }
+
+                const parts = raw.split("|");
+
+                const codice = normalizeDrawingPart(parts[0]);
+                const revisione = normalizeRevision(parts[1] || "");
+
+                return `${codice}|${revisione}`;
+            }
+
+            function expectedDrawingCode(codice, revisione) {
+                const codiceNorm = normalizeDrawingPart(codice);
+                const revisioneNorm = normalizeRevision(revisione);
+
+                return `${codiceNorm}|${revisioneNorm}`;
+            }
+
+            const scanned = normalizeScannedDrawing(scanInput.value);
+            const expected = expectedDrawingCode(
+                codiceInput.value,
+                indiceModificaInput.value
+            );
+
+            const isValid = scanned !== "" && scanned === expected;
+
+            if (isValid) {
+                scanInput.classList.remove("is-invalid");
+                scanInput.classList.add("is-valid");
+
+                if (scanFeedback) {
+                    scanFeedback.textContent = "";
+                }
+
+                return true;
+            }
+
+            scanInput.classList.remove("is-valid");
+            scanInput.classList.add("is-invalid");
+
+            if (scanFeedback) {
+                scanFeedback.textContent =
+                    `Il disegno scansionato non corrisponde. Atteso: ${expected}`;
+            }
+
+            scanInput.focus();
+            scanInput.select();
+
+            return false;
         };
 
         scanField?.addEventListener("input", clearInvalid);
