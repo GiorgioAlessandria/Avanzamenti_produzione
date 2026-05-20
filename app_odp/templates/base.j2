@@ -429,8 +429,8 @@
                 </h5>
 
                 <a class="btn btn-outline-secondary ms-auto me-2"
-                   href="{{ url_for('main.metodo_utilizzo_pdf') }}"
-                   target="_blank"
+                   href={{ operator_url_for('main.metodo_utilizzo_pdf') }}
+                           target="_blank"
                    rel="noopener noreferrer">
                     Apri in una nuova scheda
                 </a>
@@ -445,8 +445,16 @@
                 <iframe id="metodo-utilizzo-frame"
                         title="Metodo di utilizzo"
                         src="about:blank"
-                        data-src="{{ url_for('main.metodo_utilizzo_pdf') }}"
-                        style="width: 100%; height: calc(100vh - 72px); border: 0;"></iframe>
+                        data-src={{ operator_url_for('main.metodo_utilizzo_pdf') }}
+                                style="width:
+                        100%;
+                        height:
+                        calc(100vh
+                        -
+                        72px);
+                        border:
+                        0;
+                "></iframe>
             </div>
         </div>
     </div>
@@ -776,7 +784,7 @@
                 btnReset.disabled = true;
 
                 try {
-                    const resp = await fetch("/api/materiali/ricerca-articolo", {
+                    const resp = await window.avpFetch("/api/materiali/ricerca-articolo", {
                         method: "POST",
                         headers: {
                             "Content-Type": "application/json",
@@ -1535,7 +1543,7 @@
             if (buttonEl) buttonEl.disabled = true;
 
             try {
-                const resp = await fetch("/api/etichette/stampa", {
+                const resp = await window.avpFetch("/api/etichette/stampa", {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",

@@ -79,7 +79,9 @@ from app_odp.operator_session import (
     active_user,
     active_policy,
     active_token,
+    revoke_operator_sessions_for_user,
 )
+from app_odp.operator_session import operator_or_login_required
 
 main_bp = Blueprint("main", __name__)
 ROME_TZ = ZoneInfo("Europe/Rome")
@@ -1959,7 +1961,7 @@ def inject_order_ref_formatters():
 
 
 @main_bp.get("/documenti/metodo-utilizzo")
-@login_required
+@operator_or_login_required
 def metodo_utilizzo_pdf():
     base_dir = Path(current_app.config.get("METODO_UTILIZZO_DIR", ""))
     pdf_path = base_dir / "metodo_utilizzo.pdf"
@@ -2228,7 +2230,7 @@ def api_metodo_montaggio_pdf():
 
 
 @main_bp.get("/api/materiali/foto")
-@login_required
+@operator_or_login_required
 def api_materiale_foto():
     cod_art = _normalize_article_search_token(request.args.get("cod_art"))
     variante_art = _normalize_variante_articolo_search(request.args.get("variante_art"))
@@ -2268,7 +2270,7 @@ def api_materiale_foto():
 
 
 @main_bp.post("/api/materiali/ricerca-articolo")
-@login_required
+@operator_or_login_required
 def api_ricerca_articolo():
     data = request.get_json(silent=True) or {}
 
@@ -2323,6 +2325,7 @@ def api_ricerca_articolo():
             cod_art=cod_art,
             variante_art=variante_art,
             indice_modifica=indice_modifica,
+            tab_session=active_token(),
         )
         if image_path is not None
         else ""
@@ -6273,6 +6276,8 @@ def api_reset_login_code():
 
     try:
         utente.set_login_code(login_code)
+        db.session.flush()
+        revoke_operator_sessions_for_user(utente.id)
         db.session.commit()
 
     except IntegrityError as exc:

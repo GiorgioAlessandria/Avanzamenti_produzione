@@ -22,11 +22,11 @@ auth_bp = Blueprint("auth", __name__)
 def _get_post_login_redirect(user):
     policy = RbacPolicy(user)
 
-    if policy.can("home"):
-        return url_for("main.home")
-
     if policy.can("home_acquisti"):
         return url_for("main.home_acquisti")
+
+    if policy.can("home"):
+        return url_for("auth.operator_login")
 
     return None
 

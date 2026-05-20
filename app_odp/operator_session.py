@@ -35,6 +35,20 @@ def get_operator_token() -> str:
     ).strip()
 
 
+def operator_or_login_required(fn):
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        if resolve_operator_session() is not None:
+            return fn(*args, **kwargs)
+
+        if getattr(current_user, "is_authenticated", False):
+            return fn(*args, **kwargs)
+
+        return redirect(url_for("auth.operator_login"))
+
+    return wrapper
+
+
 def create_operator_session(user: User) -> str:
     token = new_token()
     now = _now()
