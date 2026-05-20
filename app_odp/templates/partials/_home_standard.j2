@@ -1179,7 +1179,7 @@
         btn.disabled = true;
 
         try {
-            const resp = await fetch("/api/ordini/presa", {
+            const resp = await window.avpFetch("/api/ordini/presa", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -1265,7 +1265,7 @@
 
         if (!idDocumento || !idRiga) return;
 
-        const resp = await fetch("/api/ordini/sospendi", {
+        const resp = await window.avpFetch("/api/ordini/sospendi", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
@@ -1318,7 +1318,7 @@
         btn.disabled = true;
 
         try {
-            const resp = await fetch("/api/ordini/riattiva", {
+            const resp = await window.avpFetch("/api/ordini/riattiva", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -1768,7 +1768,7 @@
             _hasSelectableLotti = false;
 
             try {
-                const resp = await fetch("/api/ordini/lotti-componenti", {
+                const resp = await window.avpFetch("/api/ordini/lotti-componenti", {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
@@ -2076,7 +2076,7 @@
             btn.disabled = true;
 
             try {
-                const resp = await fetch("/api/ordini/chiudi", {
+                const resp = await window.avpFetch("/api/ordini/chiudi", {
                     method: "POST",
                     headers: {"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"},
                     credentials: "same-origin",
@@ -2155,7 +2155,7 @@
         }
 
         try {
-            const resp = await fetch("/api/erp/export/avp", {
+            const resp = await window.avpFetch("/api/erp/export/avp", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",

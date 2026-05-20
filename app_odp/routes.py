@@ -80,8 +80,8 @@ from app_odp.operator_session import (
     active_policy,
     active_token,
     revoke_operator_sessions_for_user,
+    operator_or_login_required,
 )
-from app_odp.operator_session import operator_or_login_required
 
 main_bp = Blueprint("main", __name__)
 ROME_TZ = ZoneInfo("Europe/Rome")
@@ -6277,10 +6277,6 @@ def api_reset_login_code():
     try:
         utente.set_login_code(login_code)
         db.session.flush()
-        revoke_operator_sessions_for_user(utente.id, commit=False)
-        db.session.commit()
-        revoke_operator_sessions_for_user(utente.id)
-        db.session.commit()
 
     except IntegrityError as exc:
         db.session.rollback()
