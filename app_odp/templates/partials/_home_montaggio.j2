@@ -1331,7 +1331,7 @@
             btnSl.disabled = true;
 
             try {
-                const resp = await fetch("/api/ordini/presa", {
+                const resp = window.avpFetch("/api/ordini/presa", {
                     method: "POST",
                     headers: {"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"},
                     credentials: "same-origin",
@@ -1407,7 +1407,7 @@
             btnM.disabled = true;
 
             try {
-                const resp = await fetch("/api/ordini/presa", {
+                const resp = window.avpFetch("/api/ordini/presa", {
                     method: "POST",
                     headers: {"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"},
                     credentials: "same-origin",
@@ -1489,7 +1489,7 @@
             btnSosp.disabled = true;
 
             try {
-                const resp = await fetch("/api/ordini/sospendi", {
+                const resp = window.avpFetch("/api/ordini/sospendi", {
                     method: "POST",
                     headers: {"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"},
                     credentials: "same-origin",
@@ -1550,7 +1550,7 @@
             btnSospM.disabled = true;
 
             try {
-                const resp = await fetch("/api/ordini/montaggio/macchina/sospendi", {
+                const resp = window.avpFetch("/api/ordini/montaggio/macchina/sospendi", {
                     method: "POST",
                     headers: {"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"},
                     credentials: "same-origin",
@@ -1614,7 +1614,7 @@
             btnRiattSl.disabled = true;
 
             try {
-                const resp = await fetch("/api/ordini/riattiva", {
+                const resp = window.avpFetch("/api/ordini/riattiva", {
                     method: "POST",
                     headers: {"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"},
                     credentials: "same-origin",
@@ -1672,7 +1672,7 @@
             btnRiattM.disabled = true;
 
             try {
-                const resp = await fetch("/api/ordini/montaggio/macchina/riattiva", {
+                const resp = window.avpFetch("/api/ordini/montaggio/macchina/riattiva", {
                     method: "POST",
                     headers: {"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"},
                     credentials: "same-origin",
@@ -1879,7 +1879,7 @@
             _hasSelectableLotti = false;
 
             try {
-                const resp = await fetch("/api/ordini/lotti-componenti", {
+                const resp = window.avpFetch("/api/ordini/lotti-componenti", {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
@@ -2121,7 +2121,7 @@
             btn.disabled = true;
 
             try {
-                const resp = await fetch("/api/ordini/montaggio/macchina/chiudi", {
+                const resp = window.avpFetch("/api/ordini/montaggio/macchina/chiudi", {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
@@ -2468,7 +2468,7 @@
             _hasSelectableLotti = false;
 
             try {
-                const resp = await fetch("/api/ordini/lotti-componenti", {
+                const resp = window.avpFetch("/api/ordini/lotti-componenti", {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
@@ -2854,7 +2854,7 @@
             btn.disabled = true;
 
             try {
-                const resp = await fetch("/api/ordini/chiudi", {
+                const resp = window.avpFetch("/api/ordini/chiudi", {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
@@ -2934,7 +2934,7 @@
         }
 
         try {
-            const resp = await fetch("/api/erp/export/avp", {
+            const resp = window.avpFetch("/api/erp/export/avp", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",

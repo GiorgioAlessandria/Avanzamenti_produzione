@@ -6277,6 +6277,8 @@ def api_reset_login_code():
     try:
         utente.set_login_code(login_code)
         db.session.flush()
+        revoke_operator_sessions_for_user(utente.id, commit=False)
+        db.session.commit()
 
     except IntegrityError as exc:
         db.session.rollback()
