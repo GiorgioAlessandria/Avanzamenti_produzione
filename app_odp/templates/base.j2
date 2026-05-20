@@ -58,6 +58,8 @@
 
 
 <body>
+{% set visible_user = operator_user if operator_user else current_user %}
+{% set visible_policy = operator_policy if operator_policy else policy %}
 <header class="text-center w-auto m-auto"
         style="width: auto;height: auto;">
     <div class="container-fluid text-center d-flex w-100 h-100 flex-shrink-0 flex-fill justify-content-center align-items-center"
@@ -94,12 +96,22 @@
             </div>
             <div class="col-md-4 d-flex w-auto flex-grow-1 justify-content-center align-items-center"
                  style="width: auto;height: auto;">
+                {% if operator_user %}
+                <h1 class="mb-0">
+                    {% if visible_policy and visible_policy.allowed_reparti_descr %}
+                        {{ visible_policy.allowed_reparti_descr[0] }}
+                    {% else %}
+                        {{ visible_user.RepartoPrinc }}
+                    {% endif %}
+                    - {{ visible_user.username }}
+                </h1>
+                {% elif current_user.is_authenticated and current_user.has_role('responsabile_produzione') %}
                 {% if current_user.genere == "m" %}
                     {% set genere = 'o' %}
                 {% elif current_user.genere == "f" %}
                     {% set genere = 'a' %}
                 {% endif %}
-                {% if current_user.is_authenticated and current_user.has_role('responsabile_produzione') %}
+                {% if operator_user %}
                     <h1 class="mb-0">Responsabile di produzione
                                      - Benvenut{{ genere }} {{ current_user.username }}</h1>
                     <div class="btn-group dropup d-flex"
@@ -119,7 +131,7 @@
                             {% endfor %}
                         </ul>
                     </div>
-                {% elif current_user.is_authenticated and current_user.has_role('responsabile_acquisti') %}
+                {% elif current_user.is_authenticated and current_user.has_role('responsabile_produzione') %}
                     <h1 class="mb-0">Responsabile acquisti
                                      - Benvenut{{ genere }} {{ current_user.username }}</h1>
                     <div class="btn-group dropup d-flex"
@@ -1798,6 +1810,33 @@
 <script src="{{ url_for('static', filename='assets/js/jquery.min.js') }}"></script>
 <script src="{{ url_for('static', filename='assets/bootstrap/js/bootstrap.min.js') }}"></script>
 <script src="{{ url_for('static', filename='assets/js/bs-init.js') }}"></script>
+<script>
+    window.AVP_TAB_SESSION = "{{ tab_session|default('') }}";
 
+    window.avpAddTabSessionToUrl = function (urlValue) {
+        const token = window.AVP_TAB_SESSION || "";
+        if (!token) {
+            return urlValue;
+        }
+
+        const url = new URL(urlValue, window.location.origin);
+        url.searchParams.set("tab_session", token);
+        return url.toString();
+    };
+
+    window.avpFetch = function (urlValue, options) {
+        options = options || {};
+        options.headers = options.headers || {};
+
+        const token = window.AVP_TAB_SESSION || "";
+
+        if (token) {
+            options.headers["X-Tab-Session"] = token;
+            urlValue = window.avpAddTabSessionToUrl(urlValue);
+        }
+
+        return fetch(urlValue, options);
+    };
+</script>
 </body>
 </html>

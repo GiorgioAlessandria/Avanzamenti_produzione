@@ -792,6 +792,38 @@ class User(UserMixin, db.Model):
         return f"<Users {self.__dict__}>"
 
 
+class BrowserTabSession(db.Model):
+    __tablename__ = "browser_tab_sessions"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    token_hash = db.Column(
+        db.String(64),
+        unique=True,
+        nullable=False,
+        index=True,
+    )
+
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    created_at = db.Column(db.DateTime, nullable=False)
+    last_seen_at = db.Column(db.DateTime, nullable=False)
+    revoked_at = db.Column(db.DateTime)
+
+    ip_address = db.Column(db.Text)
+    user_agent = db.Column(db.Text)
+
+    user = db.relationship("User")
+
+    def __repr__(self):
+        return f"<BrowserTabSession user_id={self.user_id} revoked={self.revoked_at is not None}>"
+
+
 class GiacenzaLotti(db.Model):
     __tablename__ = "giacenza_lotti"
 

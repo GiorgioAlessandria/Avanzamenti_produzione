@@ -19,6 +19,7 @@ from flask import (
     current_app,
     send_file,
     redirect,
+    g,
 )
 from flask_login import login_required, current_user
 from sqlalchemy.exc import IntegrityError
@@ -72,6 +73,13 @@ from uuid import uuid4
 import win32con
 import win32ui
 from PIL import Image, ImageOps, ImageWin
+from app_odp.operator_session import (
+    operator_tab_required,
+    operator_perm_required,
+    active_user,
+    active_policy,
+    active_token,
+)
 
 main_bp = Blueprint("main", __name__)
 ROME_TZ = ZoneInfo("Europe/Rome")
@@ -913,12 +921,23 @@ def _normalize_lotto_prodotto_for_payload(lotto: dict | None) -> dict | None:
 
 
 def _current_username(default: str = "utente_sconosciuto") -> str:
+    user = active_user()
+
     return (
-        getattr(current_user, "username", None)
-        or getattr(current_user, "name", None)
-        or getattr(current_user, "email", None)
-        or str(getattr(current_user, "id", default))
+        getattr(user, "username", None)
+        or getattr(user, "name", None)
+        or getattr(user, "email", None)
+        or str(getattr(user, "id", default))
     )
+
+
+def _current_user_id(default: int | None = None):
+    user = active_user()
+    return getattr(user, "id", default)
+
+
+def _current_policy() -> RbacPolicy:
+    return active_policy()
 
 
 def _bool_text(value: bool) -> str:
@@ -1957,10 +1976,10 @@ def metodo_utilizzo_pdf():
 
 # region PERCORSI
 @main_bp.route("/")
-@login_required
-@require_perm("home")
+@operator_perm_required("home")
 def home():
-    policy = RbacPolicy(current_user)
+    policy = _current_policy()
+    user = active_user()
     tab = request.args.get("tab")
 
     # default: prima tab consentita
@@ -2009,6 +2028,9 @@ def home():
         bridge_url=url_for("main.api_home_bridge", tab=tab),
         bridge_last_event_id=_last_log_token(),
         metodo_montaggio_lookup=_build_metodo_montaggio_lookup(odp),
+        operator_user=user,
+        operator_policy=policy,
+        tab_session=active_token(),
     )
 
 
@@ -2111,14 +2133,13 @@ def _first_code_from_cell(value) -> str:
 
 
 @main_bp.get("/api/home/<tab>/bridge")
-@login_required
-@require_perm("home")
+@operator_perm_required("home")
 def api_home_bridge(tab):
     cfg = BRIDGE_CONFIG.get(tab)
     if not cfg:
         abort(404)
 
-    policy = RbacPolicy(current_user)
+    policy = _current_policy()
 
     if cfg["reparto"] not in policy.allowed_reparti:
         abort(403)
@@ -2150,8 +2171,7 @@ def api_home_bridge(tab):
 
 
 @main_bp.get("/api/documenti/metodo-montaggio")
-@login_required
-@require_perm("home")
+@operator_perm_required("home")
 def api_metodo_montaggio_pdf():
     cod_art = _norm_text(request.args.get("cod_art"))
     indice_modifica = _normalize_indice_modifica_for_pdf(
@@ -3490,8 +3510,7 @@ def _print_label_png_to_windows_printer(file_path: Path) -> None:
 
 
 @main_bp.post("/api/ordini/presa")
-@login_required
-@require_perm("home")
+@operator_perm_required("home")
 def api_prendi_ordine():
     data = request.get_json(silent=True) or {}
 
@@ -3541,7 +3560,7 @@ def api_prendi_ordine():
             400,
         )
 
-    policy = RbacPolicy(current_user)
+    policy = _current_policy()
     ordine = _get_visible_odp_by_key(policy, id_documento, id_riga)
 
     fase_corrente = _fase_corrente_for_export(ordine)
@@ -3788,7 +3807,7 @@ def api_prendi_ordine():
         qty_pre = _qty_da_lavorare_text(ordine)
         now_iso = now_dt.isoformat(timespec="seconds")
         priorita_row = _priorita_row_for_operatore_ordine(
-            operatore_id=current_user.id,
+            operatore_id=_current_user_id(),
             id_documento=ordine.IdDocumento,
             id_riga=ordine.IdRiga,
             fase=fase_corrente,
@@ -3805,7 +3824,7 @@ def api_prendi_ordine():
         _snapshot_priorita_in_runtime(
             stato=stato,
             priorita_row=priorita_row,
-            operatore_id=current_user.id,
+            operatore_id=_current_user_id(),
             when_iso=now_iso,
         )
         ordine.StatoOrdine = "Attivo"
@@ -3871,8 +3890,7 @@ def api_prendi_ordine():
 
 
 @main_bp.post("/api/ordini/sospendi")
-@login_required
-@require_perm("home")
+@operator_perm_required("home")
 def api_sospendi_ordine():
     data = request.get_json(silent=True) or {}
 
@@ -3899,7 +3917,7 @@ def api_sospendi_ordine():
             400,
         )
 
-    policy = RbacPolicy(current_user)
+    policy = _current_policy()
     ordine = _get_visible_odp_by_key(policy, id_documento, id_riga)
 
     stato_attuale = _norm_text(ordine.StatoOrdine)
@@ -4004,8 +4022,7 @@ def api_sospendi_ordine():
 
 
 @main_bp.post("/api/ordini/montaggio/macchina/sospendi")
-@login_required
-@require_perm("home")
+@operator_perm_required("home")
 def api_sospendi_ordine_montaggio_macchina():
     data = request.get_json(silent=True) or {}
 
@@ -4026,7 +4043,7 @@ def api_sospendi_ordine_montaggio_macchina():
             400,
         )
 
-    policy = RbacPolicy(current_user)
+    policy = _current_policy()
     ordine = _get_visible_odp_by_key(policy, id_documento, id_riga)
 
     if _tab_from_ordine(ordine) != "montaggio":
@@ -4149,8 +4166,7 @@ def api_sospendi_ordine_montaggio_macchina():
 
 
 @main_bp.post("/api/ordini/riattiva")
-@login_required
-@require_perm("home")
+@operator_perm_required("home")
 def api_riattiva_ordine():
     data = request.get_json(silent=True) or {}
 
@@ -4168,7 +4184,7 @@ def api_riattiva_ordine():
             400,
         )
 
-    policy = RbacPolicy(current_user)
+    policy = _current_policy()
     ordine = _get_visible_odp_by_key(policy, id_documento, id_riga)
     fase_corrente = _fase_corrente_for_export(ordine)
 
@@ -4315,8 +4331,7 @@ def api_riattiva_ordine():
 
 
 @main_bp.post("/api/ordini/montaggio/macchina/riattiva")
-@login_required
-@require_perm("home")
+@operator_perm_required("home")
 def api_riattiva_ordine_montaggio_macchina():
     data = request.get_json(silent=True) or {}
 
@@ -4336,7 +4351,7 @@ def api_riattiva_ordine_montaggio_macchina():
             400,
         )
 
-    policy = RbacPolicy(current_user)
+    policy = _current_policy()
     ordine = _get_visible_odp_by_key(policy, id_documento, id_riga)
 
     if _tab_from_ordine(ordine) != "montaggio":
@@ -4512,8 +4527,7 @@ def etichetta_png(filename):
 
 
 @main_bp.post("/api/etichette/stampa")
-@login_required
-@require_perm("home")
+@operator_perm_required("home")
 def api_stampa_etichetta():
     data = request.get_json(silent=True) or {}
     filename = _norm_text(data.get("filename"))
@@ -4549,8 +4563,7 @@ def api_stampa_etichetta():
 
 
 @main_bp.get("/api/etichette/ricerca")
-@login_required
-@require_perm("home")
+@operator_perm_required("home")
 def api_ricerca_etichette():
     cod_art = _norm_text(request.args.get("cod_art"))
     lotto = _norm_text(request.args.get("lotto"))
@@ -4635,8 +4648,7 @@ def api_ricerca_etichette():
 
 
 @main_bp.post("/api/ordini/chiudi")
-@login_required
-@require_perm("home")
+@operator_perm_required("home")
 def api_chiudi_ordine():
     data = request.get_json(silent=True) or {}
 
@@ -4667,7 +4679,7 @@ def api_chiudi_ordine():
             400,
         )
 
-    policy = RbacPolicy(current_user)
+    policy = _current_policy()
     ordine = _get_visible_odp_by_key(policy, id_documento, id_riga)
     can_override_registration_date = policy.can("modifica_data_chiusura")
 
@@ -5187,8 +5199,7 @@ def api_chiudi_ordine():
 
 
 @main_bp.post("/api/ordini/montaggio/macchina/chiudi")
-@login_required
-@require_perm("home")
+@operator_perm_required("home")
 def api_chiudi_ordine_montaggio_macchina():
     data = request.get_json(silent=True) or {}
 
@@ -5205,7 +5216,7 @@ def api_chiudi_ordine_montaggio_macchina():
             400,
         )
 
-    policy = RbacPolicy(current_user)
+    policy = _current_policy()
     ordine = _get_visible_odp_by_key(policy, id_documento, id_riga)
     can_override_registration_date = policy.can("modifica_data_chiusura")
 
@@ -5565,8 +5576,7 @@ def api_chiudi_ordine_montaggio_macchina():
 
 
 @main_bp.post("/api/ordini/lotti-componenti")
-@login_required
-@require_perm("home")
+@operator_perm_required("home")
 def api_lotti_componenti():
     data = request.get_json(silent=True) or {}
     id_documento = _norm_text(data.get("id_documento"))
@@ -5637,8 +5647,7 @@ def generazione_lotti(dt=None) -> str:
 
 
 @main_bp.post("/api/erp/export/avp")
-@login_required
-@require_perm("home")
+@operator_perm_required("home")
 def api_export_avp_txt():
     data = request.get_json(silent=True) or {}
 

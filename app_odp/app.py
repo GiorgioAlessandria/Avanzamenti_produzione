@@ -1,7 +1,7 @@
-from flask import Flask, request, g
+from flask import Flask, request, g, url_for
 from flask_login import LoginManager
 from .filters import register_filters
-
+from app_odp.operator_session import active_user, active_policy, active_token
 from app_odp.models import db, User
 from app_odp.auth import auth_bp
 from app_odp.routes import main_bp
@@ -137,15 +137,33 @@ def create_app():
 
     @app.context_processor
     def inject_policy():
-        if current_user.is_authenticated:
-            return {"policy": RbacPolicy(current_user)}
-        return {"policy": None}
+        try:
+            user = active_user()
+            token = active_token()
 
-    with app.app_context():
-        for eng in db.engines.values():
-            _apply_sqlite_pragmas(eng)
-        db.create_all(bind_key="log")
-        db.create_all(bind_key="acq")
-    app.register_blueprint(auth_bp)
-    app.register_blueprint(main_bp)
-    return app
+            if getattr(user, "is_authenticated", False):
+                policy_obj = active_policy()
+            else:
+                policy_obj = None
+
+            def operator_url_for(endpoint, **values):
+                if token and "tab_session" not in values:
+                    values["tab_session"] = token
+                return url_for(endpoint, **values)
+
+            return {
+                "policy": policy_obj,
+                "operator_user": user if token else None,
+                "operator_policy": policy_obj if token else None,
+                "tab_session": token,
+                "operator_url_for": operator_url_for,
+            }
+
+        except Exception:
+            return {
+                "policy": None,
+                "operator_user": None,
+                "operator_policy": None,
+                "tab_session": "",
+                "operator_url_for": url_for,
+            }

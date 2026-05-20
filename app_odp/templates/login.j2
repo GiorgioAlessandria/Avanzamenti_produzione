@@ -61,8 +61,15 @@
                             </div>
                             <form class="text-center"
                                   method="post"
-                                  autocomplete="off">
-                                <div class="mb-3">
+                                  autocomplete="off"
+                                  action="
+                                          {% if operator_login|default(false) %}
+                                                <h2>Login operatore</h2>
+                                            {% else %}
+                                                <h2>Login</h2>
+                                            {% endif %}">
+                                <div class="
+                                  mb-3">
                                     <label for="login_code"
                                            class="form-label visually-hidden">Codice accesso</label>
                                     <input
