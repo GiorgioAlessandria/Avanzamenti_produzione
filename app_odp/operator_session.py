@@ -135,7 +135,7 @@ def operator_perm_required(code: str):
     return deco
 
 
-def revoke_operator_sessions_for_user(user_id: int) -> None:
+def revoke_operator_sessions_for_user(user_id: int, *, commit: bool = True) -> None:
     now = _now()
 
     BrowserTabSession.query.filter(
@@ -146,7 +146,8 @@ def revoke_operator_sessions_for_user(user_id: int) -> None:
         synchronize_session=False,
     )
 
-    db.session.commit()
+    if commit:
+        db.session.commit()
 
 
 def active_user():
