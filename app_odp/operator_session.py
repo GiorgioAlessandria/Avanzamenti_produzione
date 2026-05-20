@@ -82,8 +82,9 @@ def resolve_operator_session():
         db.session.commit()
         return None
 
-    row.last_seen_at = now
-    db.session.commit()
+    if row.last_seen_at < now - timedelta(minutes=60):
+        row.last_seen_at = now
+        db.session.commit()
 
     g.operator_session = row
     g.operator_token = token

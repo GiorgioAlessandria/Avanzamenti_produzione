@@ -1678,6 +1678,7 @@ def _build_metodo_montaggio_lookup(odp_rows) -> dict[str, dict]:
                     "main.api_metodo_montaggio_pdf",
                     cod_art=cod_art,
                     indice_modifica=indice_modifica,
+                    tab_session=active_token(),
                 )
                 if pdf_path is not None
                 else ""
@@ -2015,7 +2016,7 @@ def home():
     )
     odp = _apply_priorita_to_ordini(
         list(odp),
-        current_user.id,
+        _current_user_id(),
         sort_result=True,
     )
     return render_template(
@@ -2025,7 +2026,11 @@ def home():
         policy=policy,
         odp=odp,
         causali_attivita=causali,
-        bridge_url=url_for("main.api_home_bridge", tab=tab),
+        bridge_url=url_for(
+            "main.api_home_bridge",
+            tab=tab,
+            tab_session=active_token(),
+        ),
         bridge_last_event_id=_last_log_token(),
         metodo_montaggio_lookup=_build_metodo_montaggio_lookup(odp),
         operator_user=user,
@@ -2159,7 +2164,7 @@ def api_home_bridge(tab):
 
     odp = _apply_priorita_to_ordini(
         list(odp),
-        current_user.id,
+        _current_user_id(),
         sort_result=True,
     )
     fragments = RENDERERS[tab](odp)

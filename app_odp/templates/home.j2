@@ -148,7 +148,7 @@
                     const url = new URL(cfg.url, window.location.origin);
                     url.searchParams.set("after", String(lastEventId));
 
-                    const res = await fetch(url.toString(), {
+                    const res = await window.avpFetch(url.toString(), {
                         method: "GET",
                         headers: {
                             "X-Requested-With": "XMLHttpRequest"

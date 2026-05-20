@@ -167,3 +167,16 @@ def create_app():
                 "tab_session": "",
                 "operator_url_for": url_for,
             }
+
+    with app.app_context():
+        for eng in db.engines.values():
+            _apply_sqlite_pragmas(eng)
+
+        db.create_all()
+        db.create_all(bind_key="log")
+        db.create_all(bind_key="acq")
+
+    app.register_blueprint(auth_bp)
+    app.register_blueprint(main_bp)
+
+    return app
