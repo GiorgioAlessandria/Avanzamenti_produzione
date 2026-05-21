@@ -1935,25 +1935,79 @@ def _build_articolo_ordini_attivi_rows(
 
 @main_bp.context_processor
 def inject_policy_and_nav():
-    if not current_user.is_authenticated:
+    user = active_user()
+
+    if not getattr(user, "is_authenticated", False):
         return {}
 
-    policy = RbacPolicy(current_user)
+    policy = active_policy()
+
+    operator_token = active_token()
+    if not operator_token:
+        operator_token = _norm_text(request.args.get("tab_session"))
+
     items = []
 
-    # voci reparto da DB + policy
     for cod, descr in policy.allowed_reparti_menu:
         cfg = HOME_TABS.get(str(cod))
         if not cfg:
             continue
+
+        url_kwargs = {"tab": cfg["tab"]}
+        if operator_token:
+            url_kwargs["tab_session"] = operator_token
+
         items.append(
             {
                 "label": descr or cfg["label_fallback"],
-                "url": url_for(".home", tab=cfg["tab"]),
+                "url": url_for(".home", **url_kwargs),
                 "tab": cfg["tab"],
             }
         )
-    return {"policy": policy, "home_switch_items": items}
+
+    area_switch_items = []
+
+    if policy.can("home_acquisti"):
+        acq_kwargs = {}
+        if operator_token:
+            acq_kwargs["tab_session"] = operator_token
+
+        area_switch_items.append(
+            {
+                "label": "Acquisti",
+                "url": url_for(".home_acquisti", **acq_kwargs),
+                "area": "acquisti",
+            }
+        )
+
+    if policy.can("home"):
+        first_production_tab = None
+
+        for it in items:
+            first_production_tab = it["tab"]
+            break
+
+        if first_production_tab:
+            prod_kwargs = {"tab": first_production_tab}
+            if operator_token:
+                prod_kwargs["tab_session"] = operator_token
+
+            area_switch_items.append(
+                {
+                    "label": "Produzione",
+                    "url": url_for(".home", **prod_kwargs),
+                    "area": "produzione",
+                }
+            )
+
+    return {
+        "policy": policy,
+        "operator_user": getattr(g, "operator_user", None),
+        "operator_policy": getattr(g, "operator_policy", None),
+        "tab_session": operator_token,
+        "home_switch_items": items,
+        "area_switch_items": area_switch_items,
+    }
 
 
 @main_bp.context_processor

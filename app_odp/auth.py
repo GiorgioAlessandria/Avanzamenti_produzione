@@ -22,10 +22,17 @@ auth_bp = Blueprint("auth", __name__)
 def _get_post_login_redirect(user):
     policy = RbacPolicy(user)
 
-    if policy.can("home_acquisti"):
+    has_acquisti = policy.can("home_acquisti")
+    has_produzione = policy.can("home")
+
+    if has_acquisti and has_produzione:
+        token = create_operator_session(user)
+        return url_for("main.home_acquisti", tab_session=token)
+
+    if has_acquisti:
         return url_for("main.home_acquisti")
 
-    if policy.can("home"):
+    if has_produzione:
         token = create_operator_session(user)
         return url_for("main.home", tab_session=token)
 
@@ -63,12 +70,19 @@ def login():
         policy = RbacPolicy(user)
 
         # Login normale: acquisti / amministrazione
-        if policy.can("home_acquisti"):
+        has_acquisti = policy.can("home_acquisti")
+        has_produzione = policy.can("home")
+
+        if has_acquisti and has_produzione:
+            login_user(user)
+            token = create_operator_session(user)
+            return redirect(url_for("main.home_acquisti", tab_session=token))
+
+        if has_acquisti:
             login_user(user)
             return redirect(url_for("main.home_acquisti"))
 
-        # Login operatore: produzione standard / montaggio
-        if policy.can("home"):
+        if has_produzione:
             token = create_operator_session(user)
             return redirect(url_for("main.home", tab_session=token))
 

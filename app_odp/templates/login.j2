@@ -60,15 +60,16 @@
                                 </svg>
                             </div>
                             {% if operator_login|default(false) %}
-                                <h2>Login operatore</h2>
+                                <h4>Login operatore</h4>
                             {% else %}
-                                <h2>Log in ordini di produzione</h2>
+                                <h4>Log in ordini di produzione</h4>
                             {% endif %}
 
                             <form class="text-center"
                                   method="post"
                                   autocomplete="off"
                                   action="
+
                                           {% if operator_login|default(false) %}{{ url_for('auth.operator_login') }}{% else %}{{ url_for('auth.login') }}{% endif %}">
                                 <div class="
                                   mb-3">
