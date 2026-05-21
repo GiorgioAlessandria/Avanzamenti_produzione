@@ -151,6 +151,13 @@
                  style="width: auto;height: auto;">
                 {% set visible_user = operator_user if operator_user else current_user %}
                 {% set visible_policy = operator_policy if operator_policy else policy %}
+                {% set can_show_cambia_pagina =
+                    visible_user
+                    and visible_user.is_authenticated
+                    and (
+                        visible_user.has_role('responsabile_produzione')
+                        or visible_user.has_role('responsabile_acquisti')
+                ) %}
 
                 {% if visible_user.genere|default('') == "m" %}
                     {% set genere = 'o' %}
@@ -170,28 +177,36 @@
                         - {{ visible_user.username }}
                     </h1>
 
-                    {{ cambia_pagina_dropdown(area_switch_items, home_switch_items) }}
+                    {% if can_show_cambia_pagina %}
+                        {{ cambia_pagina_dropdown(area_switch_items, home_switch_items) }}
+                    {% endif %}
 
                 {% elif current_user.is_authenticated and current_user.has_role('responsabile_produzione') %}
                     <h1 class="mb-0">
                         Responsabile di produzione - Benvenut{{ genere }} {{ current_user.username }}
                     </h1>
 
-                    {{ cambia_pagina_dropdown(area_switch_items, home_switch_items) }}
+                    {% if can_show_cambia_pagina %}
+                        {{ cambia_pagina_dropdown(area_switch_items, home_switch_items) }}
+                    {% endif %}
 
                 {% elif current_user.is_authenticated and current_user.has_role('responsabile_acquisti') %}
                     <h1 class="mb-0">
                         Responsabile acquisti - Benvenut{{ genere }} {{ current_user.username }}
                     </h1>
 
-                    {{ cambia_pagina_dropdown(area_switch_items, home_switch_items) }}
+                    {% if can_show_cambia_pagina %}
+                        {{ cambia_pagina_dropdown(area_switch_items, home_switch_items) }}
+                    {% endif %}
 
                 {% elif current_user.is_authenticated and current_user.has_permission('home_acquisti') %}
                     <h1 class="mb-0">
                         Acquisti - Benvenut{{ genere }} {{ current_user.username }}
                     </h1>
 
-                    {{ cambia_pagina_dropdown(area_switch_items, home_switch_items) }}
+                    {% if can_show_cambia_pagina %}
+                        {{ cambia_pagina_dropdown(area_switch_items, home_switch_items) }}
+                    {% endif %}
 
                 {% elif current_user.is_authenticated and current_user.has_role('responsabile_qualita') %}
                     <h1 class="mb-0">
@@ -203,7 +218,9 @@
                             - Benvenut{{ genere }} {{ current_user.username }}
                     </h1>
 
-                    {{ cambia_pagina_dropdown(area_switch_items, home_switch_items) }}
+                    {% if can_show_cambia_pagina %}
+                        {{ cambia_pagina_dropdown(area_switch_items, home_switch_items) }}
+                    {% endif %}
 
                 {% elif current_user.is_authenticated %}
                     <h1 class="mb-0">
@@ -215,7 +232,9 @@
                             - Benvenut{{ genere }} {{ current_user.username }}
                     </h1>
 
-                    {{ cambia_pagina_dropdown(area_switch_items, home_switch_items) }}
+                    {% if can_show_cambia_pagina %}
+                        {{ cambia_pagina_dropdown(area_switch_items, home_switch_items) }}
+                    {% endif %}
                 {% endif %}
             </div>
             <div class="col-md-1 d-flex w-auto flex-grow-1 justify-content-end align-items-center"
