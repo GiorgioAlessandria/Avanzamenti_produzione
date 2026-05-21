@@ -138,11 +138,11 @@ def create_app():
     @app.context_processor
     def inject_policy():
         try:
-            user = active_user()
+            request_token = (request.args.get("tab_session") or "").strip()
+            active_request_token = active_token()
+            token = request_token or active_request_token
 
-            token = active_token()
-            if not token:
-                token = (request.args.get("tab_session") or "").strip()
+            user = active_user()
 
             if getattr(user, "is_authenticated", False):
                 policy_obj = active_policy()
@@ -150,9 +150,9 @@ def create_app():
                 policy_obj = None
 
             def operator_url_for(endpoint, **values):
-                current_token = active_token()
-                if not current_token:
-                    current_token = (request.args.get("tab_session") or "").strip()
+                current_request_token = (request.args.get("tab_session") or "").strip()
+                current_active_token = active_token()
+                current_token = current_request_token or current_active_token
 
                 if current_token and "tab_session" not in values:
                     values["tab_session"] = current_token

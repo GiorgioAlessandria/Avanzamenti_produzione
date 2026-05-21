@@ -11,10 +11,6 @@ from app_odp.operator_session import (
     revoke_operator_sessions_for_user,
 )
 
-try:
-    from icecream import ic
-finally:
-    pass
 
 auth_bp = Blueprint("auth", __name__)
 

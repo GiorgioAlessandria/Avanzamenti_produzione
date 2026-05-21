@@ -635,35 +635,36 @@
     </div>
 </div>
 {% block content %}{% endblock %}
+<script>
+    window.AVP_TAB_SESSION = "{{ tab_session|default('') }}";
+
+    window.avpAddTabSessionToUrl = function (urlValue) {
+        const token = window.AVP_TAB_SESSION || "";
+        if (!token) {
+            return urlValue;
+        }
+
+        const url = new URL(urlValue, window.location.origin);
+        url.searchParams.set("tab_session", token);
+        return url.toString();
+    };
+
+    window.avpFetch = function (urlValue, options) {
+        options = options || {};
+        options.headers = options.headers || {};
+
+        const token = window.AVP_TAB_SESSION || "";
+
+        if (token) {
+            options.headers["X-Tab-Session"] = token;
+            urlValue = window.avpAddTabSessionToUrl(urlValue);
+        }
+
+        return fetch(urlValue, options);
+    };
+</script>
+
 {% block extra_js %}
-    <script>
-        window.AVP_TAB_SESSION = "{{ tab_session|default('') }}";
-
-        window.avpAddTabSessionToUrl = function (urlValue) {
-            const token = window.AVP_TAB_SESSION || "";
-            if (!token) {
-                return urlValue;
-            }
-
-            const url = new URL(urlValue, window.location.origin);
-            url.searchParams.set("tab_session", token);
-            return url.toString();
-        };
-
-        window.avpFetch = function (urlValue, options) {
-            options = options || {};
-            options.headers = options.headers || {};
-
-            const token = window.AVP_TAB_SESSION || "";
-
-            if (token) {
-                options.headers["X-Tab-Session"] = token;
-                urlValue = window.avpAddTabSessionToUrl(urlValue);
-            }
-
-            return fetch(urlValue, options);
-        };
-    </script>
     <script>
         document.addEventListener("DOMContentLoaded", function () {
             const modalEl = document.getElementById("modalMetodoUtilizzo");

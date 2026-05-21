@@ -1942,9 +1942,7 @@ def inject_policy_and_nav():
 
     policy = active_policy()
 
-    operator_token = active_token()
-    if not operator_token:
-        operator_token = _norm_text(request.args.get("tab_session"))
+    operator_token = _norm_text(request.args.get("tab_session")) or active_token()
 
     items = []
 
