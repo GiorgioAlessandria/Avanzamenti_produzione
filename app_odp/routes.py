@@ -1280,6 +1280,7 @@ def _build_phase_payload(
     risorsa: str = "",
     magazzino: str = "",
     variante: str = "",
+    include_time_line: bool = True,
 ) -> dict:
     salda_riga = 0 if chiusura_parziale is True else 1
     return {
@@ -1306,6 +1307,7 @@ def _build_phase_payload(
         "distinta_base": distinta_base,
         "variante": variante,
         "num_progr_riga": ordine.NumProgrRiga,
+        "include_time_line": bool(include_time_line),
     }
 
 
@@ -4690,6 +4692,11 @@ def api_chiudi_ordine():
     policy = _current_policy()
     ordine = _get_visible_odp_by_key(policy, id_documento, id_riga)
     can_override_registration_date = policy.can("modifica_data_chiusura")
+    can_choose_time_line = policy.can("export_avp_senza_riga_tempo")
+    include_time_line = True
+
+    if can_choose_time_line:
+        include_time_line = _parse_bool_flag(data.get("include_time_line", True))
 
     fase_corrente = _fase_corrente_for_export(ordine)
     blocking_outbox = _get_blocking_outbox_for_phase(
@@ -4980,6 +4987,7 @@ def api_chiudi_ordine():
             risorsa=ordine.RisorsaAttiva,
             magazzino=ordine.CodMagPrincipale,
             variante=ordine.VarianteArt,
+            include_time_line=include_time_line,
         )
         outbox = _queue_phase_export(
             ordine=ordine,
@@ -5004,6 +5012,7 @@ def api_chiudi_ordine():
             risorsa=ordine.RisorsaAttiva,
             magazzino=ordine.CodMagPrincipale,
             variante=ordine.VarianteArt,
+            include_time_line=include_time_line,
         )
         outbox = _queue_phase_export(
             ordine=ordine,
@@ -5227,6 +5236,11 @@ def api_chiudi_ordine_montaggio_macchina():
     policy = _current_policy()
     ordine = _get_visible_odp_by_key(policy, id_documento, id_riga)
     can_override_registration_date = policy.can("modifica_data_chiusura")
+    can_choose_time_line = policy.can("export_avp_senza_riga_tempo")
+    include_time_line = True
+
+    if can_choose_time_line:
+        include_time_line = _parse_bool_flag(data.get("include_time_line", True))
 
     if _tab_from_ordine(ordine) != "montaggio":
         return (
@@ -5425,6 +5439,7 @@ def api_chiudi_ordine_montaggio_macchina():
         risorsa=ordine.RisorsaAttiva,
         magazzino=ordine.CodMagPrincipale,
         variante=ordine.VarianteArt,
+        include_time_line=include_time_line,
     )
 
     outbox = _queue_phase_export(
@@ -5687,7 +5702,13 @@ def api_export_avp_txt():
     outbox_rows = [row["outbox"] for row in export_rows]
 
     try:
-        list_line = txt_generator(export_rows)
+        payload = export_rows[0]["payload"]
+        include_time_line = _parse_bool_flag(payload.get("include_time_line", True))
+
+        list_line = txt_generator(
+            export_rows,
+            include_time_line=include_time_line,
+        )
         path_txt = _write_txt_content(
             list_line,
             prefix="AVPB",

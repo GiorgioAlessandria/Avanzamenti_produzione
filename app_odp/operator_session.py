@@ -2,7 +2,6 @@ import hashlib
 import secrets
 from datetime import datetime, timedelta
 from functools import wraps
-from zoneinfo import ZoneInfo
 
 from flask import g, request, redirect, url_for
 from flask_login import current_user
@@ -10,12 +9,11 @@ from flask_login import current_user
 from app_odp.models import db, User, BrowserTabSession
 from app_odp.policy.policy import RbacPolicy
 
-ROME_TZ = ZoneInfo("Europe/Rome")
 OPERATOR_SESSION_TIMEOUT = timedelta(hours=12)
 
 
 def _now():
-    return datetime.now(ROME_TZ)
+    return datetime.now()
 
 
 def hash_token(token: str) -> str:
@@ -44,7 +42,7 @@ def operator_or_login_required(fn):
         if getattr(current_user, "is_authenticated", False):
             return fn(*args, **kwargs)
 
-        return redirect(url_for("auth.operator_login"))
+        return redirect(url_for("auth.login"))
 
     return wrapper
 
@@ -112,7 +110,7 @@ def operator_tab_required(fn):
     @wraps(fn)
     def wrapper(*args, **kwargs):
         if resolve_operator_session() is None:
-            return redirect(url_for("auth.operator_login"))
+            return redirect(url_for("auth.login"))
         return fn(*args, **kwargs)
 
     return wrapper
@@ -123,10 +121,10 @@ def operator_perm_required(code: str):
         @wraps(fn)
         def wrapper(*args, **kwargs):
             if resolve_operator_session() is None:
-                return redirect(url_for("auth.operator_login"))
+                return redirect(url_for("auth.login"))
 
             if not g.operator_policy.can(code):
-                return redirect(url_for("auth.operator_login"))
+                return redirect(url_for("auth.login"))
 
             return fn(*args, **kwargs)
 

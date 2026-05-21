@@ -93,7 +93,11 @@ def row_writer(
     )
 
 
-def txt_generator(export_rows: list[dict]) -> list[str]:
+def txt_generator(
+    export_rows: list[dict],
+    *,
+    include_time_line: bool = True,
+) -> list[str]:
     if not export_rows:
         raise ValueError("Nessun record pending da esportare")
 
@@ -171,27 +175,28 @@ def txt_generator(export_rows: list[dict]) -> list[str]:
     )
     lines.append(product_line)
 
-    product_time_line = row_writer(
-        tipo_record="RIG",
-        tipo_documento=710,
-        registrazione_data=registrazione_data,
-        codice_documento=id_documento,
-        operazione_avanzamento="709",
-        riferimento_ordine=riferimento_ordine_time,
-        codice_articolo=codice_articolo,
-        variante=variante_articolo,
-        quantita_principale=0,
-        quantita_scarti_prima=str(q_ko),
-        quantita_scarti_seconda=0,
-        riga_saldata=salda_riga,
-        riferimento_lotto_padre=lotto_articolo,
-        riferimento_lotto_pf=lotto_articolo,
-        magazzino_principale=magazzino,
-        codice_risorsa=risorsa,
-        causale_prestazione="",
-        ore_lavorate=str(tempo_funzionamento),
-    )
-    lines.append(product_time_line)
+    if include_time_line:
+        product_time_line = row_writer(
+            tipo_record="RIG",
+            tipo_documento=710,
+            registrazione_data=registrazione_data,
+            codice_documento=id_documento,
+            operazione_avanzamento="709",
+            riferimento_ordine=riferimento_ordine_time,
+            codice_articolo=codice_articolo,
+            variante=variante_articolo,
+            quantita_principale=0,
+            quantita_scarti_prima=str(q_ko),
+            quantita_scarti_seconda=0,
+            riga_saldata=salda_riga,
+            riferimento_lotto_padre=lotto_articolo,
+            riferimento_lotto_pf=lotto_articolo,
+            magazzino_principale=magazzino,
+            codice_risorsa=risorsa,
+            causale_prestazione="",
+            ore_lavorate=str(tempo_funzionamento),
+        )
+        lines.append(product_time_line)
 
     for component in distinta_base:
         if not isinstance(component, dict):

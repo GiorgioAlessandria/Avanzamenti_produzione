@@ -26,48 +26,17 @@ def _get_post_login_redirect(user):
         return url_for("main.home_acquisti")
 
     if policy.can("home"):
-        return url_for("auth.operator_login")
+        token = create_operator_session(user)
+        return url_for("main.home", tab_session=token)
 
     return None
-
-
-@auth_bp.route("/operator-login", methods=["GET", "POST"])
-def operator_login():
-    if request.method == "POST":
-        login_code = (request.form.get("login_code") or "").strip().upper()
-
-        if not login_code:
-            return render_template(
-                "login.j2",
-                error="Inserisci il codice di accesso.",
-                operator_login=True,
-            ), 400
-
-        lookup = hashlib.sha256(login_code.encode("utf-8")).hexdigest()
-
-        user = User.query.filter_by(
-            login_code_lookup=lookup,
-            active=True,
-        ).first()
-
-        if user is None or not user.check_login_code(login_code):
-            return render_template(
-                "login.j2",
-                error="Codice di accesso non valido.",
-                operator_login=True,
-            ), 401
-
-        token = create_operator_session(user)
-
-        return redirect(url_for("main.home", tab_session=token))
-
-    return render_template("login.j2", operator_login=True)
 
 
 @auth_bp.route("/login", methods=["GET", "POST"])
 def login():
     if current_user.is_authenticated:
-        return redirect(_get_post_login_redirect(current_user))
+        target = _get_post_login_redirect(current_user)
+        return redirect(target or url_for("auth.login"))
 
     if request.method == "POST":
         login_code = (request.form.get("login_code") or "").strip().upper()
@@ -91,8 +60,22 @@ def login():
                 error="Codice di accesso non valido.",
             ), 401
 
-        login_user(user)
-        return redirect(_get_post_login_redirect(user))
+        policy = RbacPolicy(user)
+
+        # Login normale: acquisti / amministrazione
+        if policy.can("home_acquisti"):
+            login_user(user)
+            return redirect(url_for("main.home_acquisti"))
+
+        # Login operatore: produzione standard / montaggio
+        if policy.can("home"):
+            token = create_operator_session(user)
+            return redirect(url_for("main.home", tab_session=token))
+
+        return render_template(
+            "login.j2",
+            error="Utente senza permessi di accesso.",
+        ), 403
 
     return render_template("login.j2")
 
@@ -111,4 +94,4 @@ def operator_logout():
     if row is not None:
         revoke_operator_sessions_for_user(row.user_id)
 
-    return redirect(url_for("auth.operator_login"))
+    return redirect(url_for("auth.login"))

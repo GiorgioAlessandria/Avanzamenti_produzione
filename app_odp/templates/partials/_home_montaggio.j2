@@ -1,4 +1,5 @@
 {% set has_modifica_data_chiusura_permission = policy and policy.can('modifica_data_chiusura') %}
+{% set has_export_senza_tempo_permission = policy and policy.can('export_avp_senza_riga_tempo') %}
 <!--toast nuovo ordine in carico SL -->
 <div class="toast lh-lg hide"
      role="alert"
@@ -316,17 +317,35 @@
                     </label>
                 </div>
             </div>
-            {% if has_modifica_data_chiusura_permission %}
-                <div class="row mt-2">
-                    <div class="col">
-                        <label for="toast-chiudi-sl-data-registrazione"
-                               style="font-size: 20px;">
-                            Data registrazione:<br>
-                            <input type="date"
-                                   id="toast-chiudi-sl-data-registrazione"
-                                   class="form-control">
-                        </label>
-                    </div>
+            {% if has_modifica_data_chiusura_permission or has_export_senza_tempo_permission %}
+                <div class="row mt-2 align-items-end">
+                    {% if has_modifica_data_chiusura_permission %}
+                        <div class="col">
+                            <label for="toast-chiudi-sl-data-registrazione"
+                                   style="font-size: 20px;">
+                                Data registrazione:<br>
+                                <input type="date"
+                                       id="toast-chiudi-sl-data-registrazione"
+                                       class="form-control">
+                            </label>
+                        </div>
+                    {% endif %}
+
+                    {% if has_export_senza_tempo_permission %}
+                        <div class="col">
+                            <div class="form-check"
+                                 style="font-size: 20px;">
+                                <input class="form-check-input"
+                                       type="checkbox"
+                                       id="toast-chiudi-sl-include-time-line"
+                                       checked>
+                                <label class="form-check-label"
+                                       for="toast-chiudi-sl-include-time-line">
+                                    Inserisci tempo nel file ERP
+                                </label>
+                            </div>
+                        </div>
+                    {% endif %}
                 </div>
             {% endif %}
         </div>
@@ -584,17 +603,35 @@
                 </label>
             </div>
         </div>
-        {% if has_modifica_data_chiusura_permission %}
-            <div class="row mt-2">
-                <div class="col">
-                    <label for="toast-chiudi-m-data-registrazione"
-                           style="font-size: 20px;">
-                        Data registrazione:<br>
-                        <input type="date"
-                               id="toast-chiudi-m-data-registrazione"
-                               class="form-control">
-                    </label>
-                </div>
+        {% if has_modifica_data_chiusura_permission or has_export_senza_tempo_permission %}
+            <div class="row mt-2 align-items-end">
+                {% if has_modifica_data_chiusura_permission %}
+                    <div class="col">
+                        <label for="toast-chiudi-m-data-registrazione"
+                               style="font-size: 20px;">
+                            Data registrazione:<br>
+                            <input type="date"
+                                   id="toast-chiudi-m-data-registrazione"
+                                   class="form-control">
+                        </label>
+                    </div>
+                {% endif %}
+
+                {% if has_export_senza_tempo_permission %}
+                    <div class="col">
+                        <div class="form-check"
+                             style="font-size: 20px;">
+                            <input class="form-check-input"
+                                   type="checkbox"
+                                   id="toast-chiudi-m-include-time-line"
+                                   checked>
+                            <label class="form-check-label"
+                                   for="toast-chiudi-m-include-time-line">
+                                Inserisci tempo nel file ERP
+                            </label>
+                        </div>
+                    </div>
+                {% endif %}
             </div>
         {% endif %}
         <!-- Sezione Lotti (nascosta di default) -->
@@ -1731,6 +1768,7 @@
         const tbody = document.getElementById("tbody-lotti-m");
         const riepilogo = document.getElementById("lotti-riepilogo-m");
         const inpDataRegistrazione = document.getElementById("toast-chiudi-m-data-registrazione");
+        const chkIncludeTimeLine = document.getElementById("toast-chiudi-m-include-time-line");
         if (!toastEl || !section || !tbody) return;
 
         function escHtml(s) {
@@ -1749,6 +1787,7 @@
         }
 
         function resetRegistrationDateInput() {
+            if (chkIncludeTimeLine) chkIncludeTimeLine.checked = true;
             if (!inpDataRegistrazione) return;
             const today = todayIsoLocal();
             inpDataRegistrazione.max = today;
@@ -2136,6 +2175,7 @@
                         note: note,
                         lotti: lottiPayload,
                         data_registrazione: inpDataRegistrazione?.value || "",
+                        include_time_line: chkIncludeTimeLine ? chkIncludeTimeLine.checked : true,
                         num_progr_riga: numProgrRiga
                     })
                 });
@@ -2211,6 +2251,7 @@
         const chkParziale = document.getElementById("toast-chiudi-sl-parziale");
         const chkTotale = document.getElementById("toast-chiudi-sl-totale");
         const inpDataRegistrazione = document.getElementById("toast-chiudi-sl-data-registrazione");
+        const chkIncludeTimeLine = document.getElementById("toast-chiudi-sl-include-time-line");
 
         if (!toastEl || !section || !tbody || !inpConf || !inpNonConf) return;
 
@@ -2351,6 +2392,7 @@
         }
 
         function resetQuantitaInputs() {
+            if (chkIncludeTimeLine) chkIncludeTimeLine.checked = true;
             resetRegistrationDateInput();
             const qResidua = getQuantitaResiduaCorrente();
 
@@ -2870,6 +2912,7 @@
                         lotti: lottiPayload,
                         chiusura_parziale: chiusuraParziale,
                         data_registrazione: inpDataRegistrazione?.value || "",
+                        include_time_line: chkIncludeTimeLine ? chkIncludeTimeLine.checked : true,
                         num_progr_riga: numProgrRiga
                     })
                 });
