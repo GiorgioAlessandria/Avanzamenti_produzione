@@ -13,6 +13,9 @@
         <section class="d-flex justify-content-end align-items-end"></section>
         <div class="container ms-2 ps-3 me-0"
              style="width: auto;height: auto;">
+            {% set nav_policy = operator_policy if operator_policy else policy %}
+            {% set nav_user = operator_user if operator_user else current_user %}
+            {% set can_return_produzione = nav_policy and nav_policy.can('home') %}
             {% set is_impostazioni = request.endpoint == 'main.impostazioni' %}
             {% set is_dash_reparto = request.endpoint == 'main.dash_reparto' %}
             {% set is_dash_complessiva = request.endpoint == 'main.dash_complessiva' %}
@@ -20,12 +23,9 @@
             {% set is_priorita_view = request.endpoint == 'main.priorita_view' %}
             {% set is_priorita_edit = request.endpoint == 'main.priorita_edit' %}
             {% set is_priorita = is_priorita_view or is_priorita_edit %}
-            {% set can_return_produzione = nav_policy and nav_policy.can('home') %}
-            {% set nav_policy = operator_policy if operator_policy else policy %}
-            {% set nav_user = operator_user if operator_user else current_user %}
-            {% set can_return_produzione = nav_policy and nav_policy.can('home') %}
 
-            {% if policy and policy.can('priorita_view') and (not is_priorita or can_return_produzione) %}
+
+            {% if nav_policy and nav_policy.can('priorita_view') and (not is_priorita or can_return_produzione) %}
                 <div class="row d-flex w-100 h-100 justify-content-start align-items-center ms-0 me-0 mb-0"
                      style="width: auto;height: auto;font-size: 25px;">
                     <div class="col-md-12 text-start d-flex justify-content-start align-items-center ps-0 pe-0"
@@ -65,7 +65,7 @@
                                 <path d="M15 17h6"></path>
                             </svg>
 
-                            {% if policy.can('priorita_edit') %}
+                            {% if nav_policy.can('priorita_edit') %}
                                 <a href="{{ operator_url_for('main.priorita_edit') }}"
                                    style="color: rgb(0,0,0);font-size: 25px;">
                                     <span style="color: rgb(33, 37, 41);">Modifica priorità</span>

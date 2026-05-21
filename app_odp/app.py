@@ -139,7 +139,10 @@ def create_app():
     def inject_policy():
         try:
             user = active_user()
+
             token = active_token()
+            if not token:
+                token = (request.args.get("tab_session") or "").strip()
 
             if getattr(user, "is_authenticated", False):
                 policy_obj = active_policy()
@@ -147,8 +150,13 @@ def create_app():
                 policy_obj = None
 
             def operator_url_for(endpoint, **values):
-                if token and "tab_session" not in values:
-                    values["tab_session"] = token
+                current_token = active_token()
+                if not current_token:
+                    current_token = (request.args.get("tab_session") or "").strip()
+
+                if current_token and "tab_session" not in values:
+                    values["tab_session"] = current_token
+
                 return url_for(endpoint, **values)
 
             return {
