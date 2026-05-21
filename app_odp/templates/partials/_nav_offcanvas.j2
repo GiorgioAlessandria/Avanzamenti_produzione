@@ -20,7 +20,10 @@
             {% set is_priorita_view = request.endpoint == 'main.priorita_view' %}
             {% set is_priorita_edit = request.endpoint == 'main.priorita_edit' %}
             {% set is_priorita = is_priorita_view or is_priorita_edit %}
-            {% set can_return_produzione = policy and policy.can('home') %}
+            {% set can_return_produzione = nav_policy and nav_policy.can('home') %}
+            {% set nav_policy = operator_policy if operator_policy else policy %}
+            {% set nav_user = operator_user if operator_user else current_user %}
+            {% set can_return_produzione = nav_policy and nav_policy.can('home') %}
 
             {% if policy and policy.can('priorita_view') and (not is_priorita or can_return_produzione) %}
                 <div class="row d-flex w-100 h-100 justify-content-start align-items-center ms-0 me-0 mb-0"
@@ -40,7 +43,7 @@
                                  style="font-size: 25px;">
                                 <path d="M15 18l-6-6l6-6"></path>
                             </svg>
-                            <a href="{{ url_for('main.home') }}"
+                            <a href="{{ operator_url_for('main.home') }}"
                                style="color: rgb(0,0,0);font-size: 25px;">
                                 <span style="color: rgb(33, 37, 41);">Torna alla produzione</span>
                             </a>
@@ -63,12 +66,12 @@
                             </svg>
 
                             {% if policy.can('priorita_edit') %}
-                                <a href="{{ url_for('main.priorita_edit') }}"
+                                <a href="{{ operator_url_for('main.priorita_edit') }}"
                                    style="color: rgb(0,0,0);font-size: 25px;">
                                     <span style="color: rgb(33, 37, 41);">Modifica priorità</span>
                                 </a>
                             {% else %}
-                                <a href="{{ url_for('main.priorita_view') }}"
+                                <a href="{{ operator_url_for('main.priorita_view') }}"
                                    style="color: rgb(0,0,0);font-size: 25px;">
                                     <span style="color: rgb(33, 37, 41);">Visualizza priorità</span>
                                 </a>
@@ -78,7 +81,7 @@
                 </div>
             {% endif %}
 
-            {% if current_user.is_authenticated and current_user.has_permission('home_acquisti') %}
+            {% if nav_policy and nav_policy.can('home_acquisti') %}
                 {% if is_home_acquisti %}
 
                 {% else %}
@@ -101,7 +104,7 @@
                                 <path d="M10 15h4"></path>
                                 <path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"></path>
                             </svg>
-                            <a href="{{ url_for('main.home_acquisti') }}"
+                            <a href="{{ operator_url_for('main.home_acquisti') }}"
                                style="color: rgb(0,0,0);font-size: 25px;">
                                 <span style="color: rgb(33, 37, 41);">Acquisti</span>
                             </a>
@@ -109,7 +112,7 @@
                     </div>
                 {% endif %}
             {% endif %}
-            {% if current_user.is_authenticated and current_user.has_permission('controllo_qualita') %}
+            {% if nav_policy and nav_policy.can('controllo_qualita') %}
                 <div class="row d-flex w-100 h-100 justify-content-start align-items-center ms-0 me-0 mb-0"
                      style="font-size: 25px;">
                     <div class="col-md-12 text-start d-flex justify-content-start align-items-center ps-0 pe-0"
@@ -142,8 +145,10 @@
                                 style="color: rgb(33, 37, 41);">Controllo qualità</span></a></div>
                 </div>
             {% endif %}
-            {% if current_user.is_authenticated and (current_user.has_permission('impostazioni_utente') or
-    current_user.has_permission('impostazioni_reparto')) %}
+            {% if nav_policy and (
+                nav_policy.can('impostazioni_utente') or
+                nav_policy.can('impostazioni_reparto')
+            ) %}
                 {% if is_impostazioni %}
                     <div class="row d-flex w-100 h-100 justify-content-start align-items-center ms-0 me-0 mb-0"
                          style="width: auto;height: auto;font-size: 25px;">
@@ -161,7 +166,7 @@
                                  style="font-size: 25px;">
                                 <path d="M15 18l-6-6l6-6"></path>
                             </svg>
-                            <a href="{{ url_for('main.home') }}"
+                            <a href="{{ operator_url_for('main.home') }}"
                                style="color: rgb(0,0,0);font-size: 25px;">
                                 <span style="color: rgb(33, 37, 41);">Torna alla produzione</span>
                             </a>
@@ -182,7 +187,7 @@
                                 <path d="M8 4.754a3.246 3.246 0 1 0 0 6.492 3.246 3.246 0 0 0 0-6.492zM5.754 8a2.246 2.246 0 1 1 4.492 0 2.246 2.246 0 0 1-4.492 0z"></path>
                                 <path d="M9.796 1.343c-.527-1.79-3.065-1.79-3.592 0l-.094.319a.873.873 0 0 1-1.255.52l-.292-.16c-1.64-.892-3.433.902-2.54 2.541l.159.292a.873.873 0 0 1-.52 1.255l-.319.094c-1.79.527-1.79 3.065 0 3.592l.319.094a.873.873 0 0 1 .52 1.255l-.16.292c-.892 1.64.901 3.434 2.541 2.54l.292-.159a.873.873 0 0 1 1.255.52l.094.319c.527 1.79 3.065 1.79 3.592 0l.094-.319a.873.873 0 0 1 1.255-.52l.292.16c1.64.893 3.434-.902 2.54-2.541l-.159-.292a.873.873 0 0 1 .52-1.255l.319-.094c1.79-.527 1.79-3.065 0-3.592l-.319-.094a.873.873 0 0 1-.52-1.255l.16-.292c.893-1.64-.902-3.433-2.541-2.54l-.292.159a.873.873 0 0 1-1.255-.52l-.094-.319zm-2.633.283c.246-.835 1.428-.835 1.674 0l.094.319a1.873 1.873 0 0 0 2.693 1.115l.291-.16c.764-.415 1.6.42 1.184 1.185l-.159.292a1.873 1.873 0 0 0 1.116 2.692l.318.094c.835.246.835 1.428 0 1.674l-.319.094a1.873 1.873 0 0 0-1.115 2.693l.16.291c.415.764-.42 1.6-1.185 1.184l-.291-.159a1.873 1.873 0 0 0-2.693 1.116l-.094.318c-.246.835-1.428.835-1.674 0l-.094-.319a1.873 1.873 0 0 0-2.692-1.115l-.292.16c-.764.415-1.6-.42-1.184-1.185l.159-.291A1.873 1.873 0 0 0 1.945 8.93l-.319-.094c-.835-.246-.835-1.428 0-1.674l.319-.094A1.873 1.873 0 0 0 3.06 4.377l-.16-.292c-.415-.764.42-1.6 1.185-1.184l.292.159a1.873 1.873 0 0 0 2.692-1.115l.094-.319z"></path>
                             </svg>
-                            <a href="{{ url_for('main.impostazioni') }}"
+                            <a href="{{ operator_url_for('main.impostazioni') }}"
                                style="color: rgb(0,0,0);font-size: 25px;">
                                 <span style="color: rgb(33, 37, 41);">Impostazioni</span>
                             </a>
@@ -191,7 +196,7 @@
                 {% endif %}
             {% endif %}
 
-            {% if current_user.is_authenticated and current_user.has_permission('priorita') %}
+            {% if nav_policy and nav_policy.can('priorita') %}
                 <div class="row d-flex w-100 h-100 justify-content-start align-items-center ms-0 me-0 mb-0"
                      style="width: auto;height: auto;font-size: 25px;">
                     <div class="col-md-12 text-start d-flex justify-content-start align-items-center ps-0 pe-0"
@@ -215,7 +220,7 @@
                 </div>
             {% endif %}
 
-            {% if current_user.is_authenticated and current_user.has_permission('dash_reparto') %}
+            {% if nav_policy and nav_policy.can('dash_reparto') %}
                 {% if is_dash_reparto %}
                     <div class="row d-flex w-100 h-100 justify-content-start align-items-center ms-0 me-0 mb-0"
                          style="width: auto;height: auto;font-size: 25px;">
@@ -233,7 +238,7 @@
                                  style="font-size: 25px;">
                                 <path d="M15 18l-6-6l6-6"></path>
                             </svg>
-                            <a href="{{ url_for('main.home') }}"
+                            <a href="{{ operator_url_for('main.home') }}"
                                style="color: rgb(0,0,0);font-size: 25px;">
                                 <span style="color: rgb(33, 37, 41);">Torna alla produzione</span>
                             </a>
@@ -254,13 +259,13 @@
                                       fill="none"></path>
                                 <path d="M20.38 8.57l-1.23 1.85a8 8 0 0 1-.22 7.58H5.07A8 8 0 0 1 15.58 6.85l1.85-1.23A10 10 0 0 0 3.35 19a2 2 0 0 0 1.72 1h13.85a2 2 0 0 0 1.74-1 10 10 0 0 0-.27-10.44zm-9.79 6.84a2 2 0 0 0 2.83 0l5.66-8.49-8.49 5.66a2 2 0 0 0 0 2.83z"></path>
                             </svg>
-                            <a href="{{ url_for('main.dash_reparto') }}"
+                            <a href="{{ operator_url_for('main.dash_reparto') }}"
                                style="color: rgb(0,0,0);font-size: 25px;">Dashboard reparto</a>
                         </div>
                     </div>
                 {% endif %}
             {% endif %}
-            {% if current_user.is_authenticated and current_user.has_permission('dash_complessiva') %}
+            {% if nav_policy and nav_policy.can('dash_complessiva') %}
                 {% if is_dash_complessiva %}
                     <div class="row d-flex w-100 h-100 justify-content-start align-items-center ms-0 me-0 mb-0"
                          style="width: auto;height: auto;font-size: 25px;">
@@ -278,7 +283,7 @@
                                  style="font-size: 25px;">
                                 <path d="M15 18l-6-6l6-6"></path>
                             </svg>
-                            <a href="{{ url_for('main.home') }}"
+                            <a href="{{ operator_url_for('main.home') }}"
                                style="color: rgb(0,0,0);font-size: 25px;">
                                 <span style="color: rgb(33, 37, 41);">Torna alla produzione</span>
                             </a>
@@ -300,7 +305,7 @@
                                 <path fill-rule="evenodd"
                                       d="M6.664 15.889A8 8 0 1 1 9.336.11a8 8 0 0 1-2.672 15.78zm-4.665-4.283A11.945 11.945 0 0 1 8 10c2.186 0 4.236.585 6.001 1.606a7 7 0 1 0-12.002 0z"></path>
                             </svg>
-                            <a href="{{ url_for('main.dash_complessiva') }}"
+                            <a href="{{ operator_url_for('main.dash_complessiva') }}"
                                style="color: rgb(0,0,0);font-size: 25px;">Dashboard complessiva</a>
                         </div>
                     </div>
