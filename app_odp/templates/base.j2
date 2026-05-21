@@ -58,6 +58,53 @@
 
 
 <body>
+{% macro cambia_pagina_dropdown(area_switch_items, home_switch_items) %}
+    {% set has_area_items = area_switch_items|default([], true)|length > 0 %}
+    {% set has_home_items = home_switch_items|default([], true)|length > 0 %}
+
+    {% if has_area_items or has_home_items %}
+        <div class="dropdown d-inline-flex"
+             style="margin: 10px; position: relative; z-index: 3000;">
+            <button class="btn btn-secondary btn-lg dropdown-toggle"
+                    type="button"
+                    data-bs-toggle="dropdown"
+                    aria-expanded="false">
+                Cambia pagina
+            </button>
+
+            <ul class="dropdown-menu"
+                style="z-index: 3001;">
+                {% if has_area_items %}
+                    {% for it in area_switch_items %}
+                        <li>
+                            <a class="dropdown-item"
+                               href="{{ it.url }}">
+                                {{ it.label }}
+                            </a>
+                        </li>
+                    {% endfor %}
+                {% endif %}
+
+                {% if has_area_items and has_home_items %}
+                    <li>
+                        <hr class="dropdown-divider">
+                    </li>
+                {% endif %}
+
+                {% if has_home_items %}
+                    {% for it in home_switch_items %}
+                        <li>
+                            <a class="dropdown-item"
+                               href="{{ it.url }}">
+                                {{ it.label }}
+                            </a>
+                        </li>
+                    {% endfor %}
+                {% endif %}
+            </ul>
+        </div>
+    {% endif %}
+{% endmacro %}
 <header class="text-center w-auto m-auto"
         style="width: auto;height: auto;">
     <div class="container-fluid text-center d-flex w-100 h-100 flex-shrink-0 flex-fill justify-content-center align-items-center"
@@ -114,115 +161,53 @@
                         {% endif %}
                         - {{ visible_user.username }}
                     </h1>
-                    {% if home_switch_items|default([])|length > 1 %}
-                        <div class="btn-group dropup d-flex"
-                             style="margin: 10px;">
-                            <button class="dropdown-toggle btn-lg text-center d-flex w-100 h-100 flex-column justify-content-center ms-2 me-2 mt-4 mb-4"
-                                    data-bs-toggle="dropdown"
-                                    type="button">
-                                Cambia reparto
-                            </button>
-                            {% if area_switch_items|default([])|length > 1 %}
-                                <div class="btn-group dropup d-flex"
-                                     style="margin: 10px;">
-                                    <button class="dropdown-toggle btn-lg text-center d-flex w-100 h-100 flex-column justify-content-center ms-2 me-2 mt-4 mb-4"
-                                            data-bs-toggle="dropdown"
-                                            type="button">
-                                        Cambia area
-                                    </button>
 
-                                    <ul class="dropdown-menu">
-                                        {% for it in area_switch_items %}
-                                            <li>
-                                                <h4>
-                                                    <a class="dropdown-item"
-                                                       href="{{ it.url }}">
-                                                        {{ it.label }}
-                                                    </a>
-                                                </h4>
-                                            </li>
-                                        {% endfor %}
-                                    </ul>
-                                </div>
-                            {% endif %}
-
-                            <ul class="dropdown-menu">
-                                {% for it in home_switch_items %}
-                                    <li>
-                                        <h4>
-                                            <a class="dropdown-item"
-                                               href="{{ it.url }}">
-                                                {{ it.label }}
-                                            </a>
-                                        </h4>
-                                    </li>
-                                {% endfor %}
-                            </ul>
-                        </div>
-                    {% endif %}
+                    {{ cambia_pagina_dropdown(area_switch_items, home_switch_items) }}
 
                 {% elif current_user.is_authenticated and current_user.has_role('responsabile_produzione') %}
                     <h1 class="mb-0">
                         Responsabile di produzione - Benvenut{{ genere }} {{ current_user.username }}
                     </h1>
 
-                    <div class="btn-group dropup d-flex"
-                         style="margin: 10px;">
-                        <button class="dropdown-toggle btn-lg text-center d-flex w-100 h-100 flex-column justify-content-center ms-2 me-2 mt-4 mb-4"
-                                data-bs-toggle="dropdown"
-                                type="button">
-                            Cambia pagina
-                        </button>
-
-                        <ul class="dropdown-menu">
-                            {% for it in home_switch_items %}
-                                <li>
-                                    <h4>
-                                        <a class="dropdown-item"
-                                           href="{{ it.url }}">{{ it.label }}</a>
-                                    </h4>
-                                </li>
-                            {% endfor %}
-                        </ul>
-                    </div>
+                    {{ cambia_pagina_dropdown(area_switch_items, home_switch_items) }}
 
                 {% elif current_user.is_authenticated and current_user.has_role('responsabile_acquisti') %}
                     <h1 class="mb-0">
                         Responsabile acquisti - Benvenut{{ genere }} {{ current_user.username }}
                     </h1>
 
-                    <div class="btn-group dropup d-flex"
-                         style="margin: 10px;">
-                        <button class="dropdown-toggle btn-lg text-center d-flex w-100 h-100 flex-column justify-content-center ms-2 me-2 mt-4 mb-4"
-                                data-bs-toggle="dropdown"
-                                type="button">
-                            Cambia pagina
-                        </button>
-
-                        <ul class="dropdown-menu">
-                            {% for it in home_switch_items %}
-                                <li>
-                                    <h4>
-                                        <a class="dropdown-item"
-                                           href="{{ it.url }}">{{ it.label }}</a>
-                                    </h4>
-                                </li>
-                            {% endfor %}
-                        </ul>
-                    </div>
+                    {{ cambia_pagina_dropdown(area_switch_items, home_switch_items) }}
 
                 {% elif current_user.is_authenticated and current_user.has_permission('home_acquisti') %}
-                    <h1 class="mb-0">Acquisti - Benvenut{{ genere }} {{ current_user.username }}</h1>
+                    <h1 class="mb-0">
+                        Acquisti - Benvenut{{ genere }} {{ current_user.username }}
+                    </h1>
+
+                    {{ cambia_pagina_dropdown(area_switch_items, home_switch_items) }}
 
                 {% elif current_user.is_authenticated and current_user.has_role('responsabile_qualita') %}
                     <h1 class="mb-0">
-                        {{ policy.allowed_reparti_descr[0] }} - Benvenut{{ genere }} {{ current_user.username }}
+                        {% if policy and policy.allowed_reparti_descr %}
+                            {{ policy.allowed_reparti_descr[0] }}
+                        {% else %}
+                            Qualità
+                        {% endif %}
+                            - Benvenut{{ genere }} {{ current_user.username }}
                     </h1>
+
+                    {{ cambia_pagina_dropdown(area_switch_items, home_switch_items) }}
 
                 {% elif current_user.is_authenticated %}
                     <h1 class="mb-0">
-                        {{ policy.allowed_reparti_descr[0] }} - Benvenut{{ genere }} {{ current_user.username }}
+                        {% if policy and policy.allowed_reparti_descr %}
+                            {{ policy.allowed_reparti_descr[0] }}
+                        {% else %}
+                            Home
+                        {% endif %}
+                            - Benvenut{{ genere }} {{ current_user.username }}
                     </h1>
+
+                    {{ cambia_pagina_dropdown(area_switch_items, home_switch_items) }}
                 {% endif %}
             </div>
             <div class="col-md-1 d-flex w-auto flex-grow-1 justify-content-end align-items-center"
@@ -1897,7 +1882,7 @@
     </script>
 {% endblock %}
 <script src="{{ url_for('static', filename='assets/js/jquery.min.js') }}"></script>
-<script src="{{ url_for('static', filename='assets/bootstrap/js/bootstrap.min.js') }}"></script>
+<script src="{{ url_for('static', filename='assets/bootstrap/js/bootstrap.bundle.min.js') }}"></script>
 <script src="{{ url_for('static', filename='assets/js/bs-init.js') }}"></script>
 </body>
 </html>
