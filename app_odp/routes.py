@@ -85,6 +85,7 @@ from app_odp.operator_session import (
 
 main_bp = Blueprint("main", __name__)
 ROME_TZ = ZoneInfo("Europe/Rome")
+MIN_SECONDS_BEFORE_CLOSE_WITHOUT_TIME_PERMISSION = 180
 MONTAGGIO_PDF_INDEX_TTL_SECONDS = 60
 _montaggio_pdf_index_lock = Lock()
 _montaggio_pdf_index_cache = {
@@ -2985,6 +2986,78 @@ def _stato_operativo_chiusura(ordine, stato=None) -> str:
     return _norm_text(getattr(ordine, "StatoOrdine", ""))
 
 
+def _ensure_min_active_time_before_chiusura(
+    stato,
+    now_dt: datetime,
+    *,
+    can_bypass: bool,
+    min_seconds: int = MIN_SECONDS_BEFORE_CLOSE_WITHOUT_TIME_PERMISSION,
+):
+    """
+    Impedisce la chiusura troppo rapida agli operatori senza permission
+    export_avp_senza_riga_tempo.
+
+    Usa data_ultima_attivazione come riferimento principale.
+    Se manca, usa Data_in_carico come fallback.
+    """
+    if can_bypass:
+        return None
+
+    if stato is None:
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": (
+                        "Ordine non chiudibile: runtime ordine non trovato. "
+                        "Riattivare l'ordine prima della chiusura."
+                    ),
+                }
+            ),
+            409,
+        )
+
+    start_dt = _parse_iso_dt(
+        getattr(stato, "data_ultima_attivazione", "")
+    ) or _parse_iso_dt(getattr(stato, "Data_in_carico", ""))
+
+    if start_dt is None:
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": (
+                        "Ordine non chiudibile: data di attivazione non disponibile. "
+                        "Riattivare l'ordine e attendere almeno 3 minuti prima della chiusura."
+                    ),
+                }
+            ),
+            409,
+        )
+
+    elapsed_seconds = max(0, int((now_dt - start_dt).total_seconds()))
+
+    if elapsed_seconds >= min_seconds:
+        return None
+
+    remaining_seconds = min_seconds - elapsed_seconds
+    remaining_minutes = (remaining_seconds + 59) // 60
+
+    return (
+        jsonify(
+            {
+                "ok": False,
+                "error": (
+                    "Ordine non chiudibile: attendere almeno 3 minuti "
+                    "dalla presa in carico o dall'ultima riattivazione. "
+                    f"Tempo residuo circa {remaining_minutes} min."
+                ),
+            }
+        ),
+        409,
+    )
+
+
 def _ensure_ordine_attivo_per_chiusura(ordine, stato=None):
     stato_attuale = _stato_operativo_chiusura(ordine, stato=stato)
     stato_norm = stato_attuale.lower()
@@ -4727,6 +4800,16 @@ def api_chiudi_ordine():
     closure_error = _ensure_ordine_attivo_per_chiusura(ordine, stato=stato)
     if closure_error:
         return closure_error
+
+    now_dt = _now_rome_dt()
+
+    min_time_error = _ensure_min_active_time_before_chiusura(
+        stato,
+        now_dt,
+        can_bypass=can_choose_time_line,
+    )
+    if min_time_error:
+        return min_time_error
     try:
         q_tot = _qty_da_lavorare_decimal(ordine, stato=stato)
     except ValueError as e:
@@ -4873,7 +4956,6 @@ def api_chiudi_ordine():
                     400,
                 )
 
-    now_dt = _now_rome_dt()
     now_iso = now_dt.isoformat(timespec="seconds")
 
     try:
@@ -5292,6 +5374,16 @@ def api_chiudi_ordine_montaggio_macchina():
     if closure_error:
         return closure_error
 
+    now_dt = _now_rome_dt()
+
+    min_time_error = _ensure_min_active_time_before_chiusura(
+        stato,
+        now_dt,
+        can_bypass=can_choose_time_line,
+    )
+    if min_time_error:
+        return min_time_error
+
     componenti_richiesti_lotto = _componenti_lotto_per_ordine(
         ordine,
         include_senza_lotti=True,
@@ -5380,7 +5472,6 @@ def api_chiudi_ordine_montaggio_macchina():
     qty_lavorata_text = _decimal_to_text(q_tot)
     chiusura_parziale = False
 
-    now_dt = _now_rome_dt()
     now_iso = now_dt.isoformat(timespec="seconds")
 
     try:
@@ -5610,7 +5701,7 @@ def api_lotti_componenti():
     if not id_documento or not id_riga:
         return jsonify({"ok": False, "error": "IdDocumento e IdRiga obbligatori"}), 400
 
-    policy = RbacPolicy(current_user)
+    policy = _current_policy()
     ordine = _get_visible_odp_by_key(policy, id_documento, id_riga)
 
     if is_macchina:
