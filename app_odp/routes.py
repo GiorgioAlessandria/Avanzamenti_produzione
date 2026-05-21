@@ -4806,7 +4806,7 @@ def api_chiudi_ordine():
     min_time_error = _ensure_min_active_time_before_chiusura(
         stato,
         now_dt,
-        can_bypass=can_choose_time_line,
+        can_bypass=can_choose_time_line and not include_time_line,
     )
     if min_time_error:
         return min_time_error
@@ -5379,7 +5379,7 @@ def api_chiudi_ordine_montaggio_macchina():
     min_time_error = _ensure_min_active_time_before_chiusura(
         stato,
         now_dt,
-        can_bypass=can_choose_time_line,
+        can_bypass=can_choose_time_line and not include_time_line,
     )
     if min_time_error:
         return min_time_error
