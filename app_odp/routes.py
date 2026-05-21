@@ -21,7 +21,6 @@ from flask import (
     redirect,
     g,
 )
-from flask_login import login_required, current_user
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import func, select, delete
 from app_odp.etichette import gen_etichette
@@ -64,7 +63,7 @@ from app_odp.models import (
     AcqArticoliLookup,
 )
 from app_odp.ordine_ref import format_ordine_ref_display_from_ordine
-from app_odp.policy.decorator import require_perm
+from app_odp.policy.decorator import require_active_perm
 from app_odp.policy.policy import RbacPolicy, PROTECTED_ROLE_NAMES
 from app_odp.odp_output import txt_generator
 from threading import Lock
@@ -74,7 +73,6 @@ import win32con
 import win32ui
 from PIL import Image, ImageOps, ImageWin
 from app_odp.operator_session import (
-    operator_tab_required,
     operator_perm_required,
     active_user,
     active_policy,
@@ -2440,6 +2438,7 @@ def _norm_text(value) -> str:
 
 
 PRIORITA_2_MAX_DEFAULT = 5
+PRIORITA_HIDDEN_ROLE_NAMES = {"admin"}
 
 
 def _priorita_2_max() -> int:
@@ -3798,7 +3797,7 @@ def api_prendi_ordine():
                     "TempoFunzionamento": tempo_funzionamento_pre,
                     "RifOrdinePrinc": rif_ordine_princ,
                 },
-                "utente": _norm_text(getattr(current_user, "username", "")),
+                "utente": _current_username(),
             }
 
             try:
@@ -3861,7 +3860,7 @@ def api_prendi_ordine():
                         StatoOrdinePost=stato_ordine_pre,
                         QtyDaLavorarePre=qty_pre,
                         QtyDaLavorarePost=qty_pre,
-                        ClosedBy=_norm_text(getattr(current_user, "username", "")),
+                        ClosedBy=_current_username(),
                         ClosedAt=event_at,
                         VarianteArt=_norm_text(getattr(ordine, "VarianteArt", "")),
                         NoteChiusura=action_note,
@@ -3882,9 +3881,7 @@ def api_prendi_ordine():
                         RifRegistraz=_norm_text(getattr(ordine, "RifRegistraz", "")),
                         Azione=action_code,
                         Motivo=action_note,
-                        UtenteOperazione=_norm_text(
-                            getattr(current_user, "username", "")
-                        ),
+                        UtenteOperazione=_current_username(),
                         EventAt=event_at,
                         StatoOdpPre=stato_odp_pre,
                         StatoOdpPost=stato_odp_pre,
@@ -4646,7 +4643,7 @@ def api_riattiva_ordine_montaggio_macchina():
 
 
 @main_bp.get("/etichette/<path:filename>")
-@login_required
+@operator_or_login_required
 def etichetta_png(filename):
     file_path = _resolve_label_file_path(filename)
 
@@ -5893,12 +5890,10 @@ def api_export_avp_txt():
 
 
 @main_bp.route("/impostazioni")
-@login_required
+@require_active_perm("impostazioni_utente")
 def impostazioni():
-    if not current_user.has_permission("impostazioni_utente"):
-        abort(403)
-
-    policy = RbacPolicy(current_user)
+    user = active_user()
+    policy = _current_policy()
 
     show_role_assignment_section = policy.can_view_role_assignment_section
     show_user_abac_section = policy.can_view_user_abac_section
@@ -6161,7 +6156,7 @@ def impostazioni():
             utenti_anagrafica = (
                 User.query.join(user_roles, user_roles.c.user_id == User.id)
                 .filter(
-                    User.id != current_user.id,
+                    User.id != user.id,
                     user_roles.c.role_id.in_(sorted(manageable_role_ids)),
                 )
                 .distinct()
@@ -6270,9 +6265,9 @@ def _prepare_login_code_or_response(
 
 
 @main_bp.post("/api/impostazioni/crea-utente")
-@login_required
+@require_active_perm("impostazioni_utente")
 def api_crea_utente():
-    policy = RbacPolicy(current_user)
+    policy = _current_policy()
 
     if not policy.can_view_role_assignment_section:
         return jsonify({"ok": False, "error": "Permesso insufficiente."}), 403
@@ -6400,9 +6395,10 @@ def api_crea_utente():
 
 
 @main_bp.post("/api/impostazioni/reset-login-code")
-@login_required
+@require_active_perm("impostazioni_utente")
 def api_reset_login_code():
-    policy = RbacPolicy(current_user)
+    user = active_user()
+    policy = _current_policy()
 
     if not policy.can_view_role_assignment_section:
         return jsonify({"ok": False, "error": "Permesso insufficiente."}), 403
@@ -6421,7 +6417,7 @@ def api_reset_login_code():
     if utente is None:
         return jsonify({"ok": False, "error": "Utente non trovato."}), 404
 
-    if int(utente.id) == int(current_user.id):
+    if int(utente.id) == int(user.id):
         return jsonify(
             {
                 "ok": False,
@@ -6431,6 +6427,7 @@ def api_reset_login_code():
 
     if not policy.can_manage_target_user(utente):
         return jsonify({"ok": False, "error": "Utente non gestibile."}), 403
+
     login_code, error_response = _prepare_login_code_or_response(
         login_code_raw,
         exclude_user_id=utente.id,
@@ -6478,9 +6475,9 @@ def api_reset_login_code():
 
 
 @main_bp.post("/api/impostazioni/utente-attivo")
-@login_required
+@require_active_perm("impostazioni_utente")
 def api_set_utente_attivo():
-    policy = RbacPolicy(current_user)
+    policy = _current_policy()
 
     if not policy.can_view_role_assignment_section:
         return jsonify({"ok": False, "error": "Permesso insufficiente."}), 403
@@ -6499,7 +6496,9 @@ def api_set_utente_attivo():
     if utente is None:
         return jsonify({"ok": False, "error": "Utente non trovato."}), 404
 
-    if int(utente.id) == int(current_user.id):
+    user = active_user()
+
+    if int(utente.id) == int(user.id):
         return jsonify(
             {"ok": False, "error": "Non puoi modificare il tuo stato attivo."}
         ), 403
@@ -6545,9 +6544,9 @@ def api_set_utente_attivo():
 
 
 @main_bp.post("/api/impostazioni/elimina-ruolo")
-@login_required
+@require_active_perm("impostazioni_utente")
 def api_elimina_ruolo():
-    policy = RbacPolicy(current_user)
+    policy = _current_policy()
 
     if not policy.can_view_role_delete_section:
         return jsonify({"ok": False, "error": "Permesso insufficiente."}), 403
@@ -6670,9 +6669,9 @@ def api_elimina_ruolo():
 
 
 @main_bp.post("/api/impostazioni/assegna-ruolo")
-@login_required
+@require_active_perm("impostazioni_utente")
 def api_assegna_ruolo():
-    policy = RbacPolicy(current_user)
+    policy = _current_policy()
 
     if not policy.can_view_role_assignment_section:
         return jsonify({"ok": False, "error": "Permesso insufficiente."}), 403
@@ -6746,9 +6745,9 @@ def api_assegna_ruolo():
 
 
 @main_bp.post("/api/impostazioni/crea-ruolo")
-@login_required
+@require_active_perm("impostazioni_utente")
 def api_crea_ruolo():
-    policy = RbacPolicy(current_user)
+    policy = _current_policy()
 
     if not policy.can_view_role_creation_section:
         return jsonify({"ok": False, "error": "Permesso insufficiente."}), 403
@@ -6883,13 +6882,9 @@ def api_crea_ruolo():
 
 
 @main_bp.post("/api/impostazioni/utente-abac")
-@login_required
+@require_active_perm("impostazioni_utente")
 def api_save_user_abac():
-    policy = RbacPolicy(current_user)
-
-    if not current_user.has_permission("impostazioni_utente"):
-        return jsonify({"ok": False, "error": "Permesso insufficiente."}), 403
-
+    policy = _current_policy()
     data = request.get_json(silent=True) or {}
 
     role_id_raw = data.get("role_id")
@@ -7044,9 +7039,9 @@ def api_save_user_abac():
 
 
 @main_bp.post("/api/impostazioni/ruolo-link")
-@login_required
+@require_active_perm("impostazioni_utente")
 def api_save_role_links():
-    policy = RbacPolicy(current_user)
+    policy = _current_policy()
 
     if not policy.can_view_role_links_section:
         return jsonify({"ok": False, "error": "Permesso insufficiente."}), 403
@@ -7109,7 +7104,18 @@ def api_save_role_links():
                 }
             ), 400
 
-    valid_ids = {getattr(item, cfg["model_id"]) for item in model.query.all()}
+    valid_ids: set[int] = set()
+
+    for item in model.query.all():
+        raw_id = getattr(item, cfg["model_id"], None)
+
+        if raw_id is None:
+            continue
+
+        try:
+            valid_ids.add(int(raw_id))
+        except (TypeError, ValueError):
+            continue
 
     invalid_ids = selected_ids - valid_ids
     if invalid_ids:
@@ -7189,10 +7195,9 @@ def _hours_to_work_days(total_hours: float, hours_per_day: float = 8.0) -> float
 
 @main_bp.get("/api/dash-complessiva")
 @main_bp.get("/dash-complessiva")
-@login_required
-@require_perm("dash_complessiva")
+@require_active_perm("dash_complessiva")
 def dash_complessiva():
-    policy = RbacPolicy(current_user)
+    policy = _current_policy()
     ordini_visibili = policy.filter_input_odp(_base_odp_query()).all()
     ordini_globali_unici = set()
 
@@ -7282,10 +7287,10 @@ def dash_complessiva():
 
 @main_bp.get("/api/dash-reparto")
 @main_bp.get("/dash-reparto")
-@login_required
-@require_perm("dash_reparto")
+@require_active_perm("dash_reparto")
 def dash_reparto():
-    manageable_role_ids = current_user.manageable_role_ids
+    user = active_user()
+    manageable_role_ids = user.manageable_role_ids
     utenti_subordinati = []
 
     if manageable_role_ids:
@@ -7293,7 +7298,7 @@ def dash_reparto():
             User.query.join(user_roles, user_roles.c.user_id == User.id)
             .filter(
                 User.active.is_(True),
-                User.id != current_user.id,
+                User.id != user.id,
                 user_roles.c.role_id.in_(manageable_role_ids),
             )
             .distinct()
@@ -7302,9 +7307,9 @@ def dash_reparto():
         )
 
     utenti_data = {}
-    utenti_data[current_user.username] = {
-        "id": current_user.id,
-        "username": current_user.username,
+    utenti_data[user.username] = {
+        "id": user.id,
+        "username": user.username,
         "is_current": True,
         "kpi": {
             "attivi": 0,
@@ -8011,8 +8016,7 @@ def _build_acquisti_ordini_rows() -> dict:
 
 
 @main_bp.get("/acquisti")
-@login_required
-@require_perm("home_acquisti")
+@require_active_perm("home_acquisti")
 def home_acquisti():
     giacenze_rows = _build_acquisti_giacenze_rows()
     materiali_rows = _build_acquisti_materiale_rows()
@@ -8028,8 +8032,7 @@ def home_acquisti():
 
 
 @main_bp.get("/api/acquisti/bridge")
-@login_required
-@require_perm("home_acquisti")
+@require_active_perm("home_acquisti")
 def api_acquisti_bridge():
     giacenze_rows = _build_acquisti_giacenze_rows()
     materiali_rows = _build_acquisti_materiale_rows()
@@ -8265,8 +8268,7 @@ def _build_acquisti_excel_workbook(section: str, rows: list[dict]) -> Workbook:
 
 
 @main_bp.get("/api/acquisti/export/<section>")
-@login_required
-@require_perm("home_acquisti")
+@require_active_perm("home_acquisti")
 def api_export_acquisti_excel(section):
     section = _norm_text(section).lower()
 
@@ -8314,33 +8316,34 @@ def api_export_acquisti_excel(section):
 
 
 @main_bp.get("/priorita")
-@login_required
-@require_perm("priorita_view")
+@require_active_perm("priorita_view")
 def priorita():
-    policy = RbacPolicy(current_user)
+    policy = _current_policy()
+    token = active_token()
+
+    redirect_kwargs = {}
+    if token:
+        redirect_kwargs["tab_session"] = token
 
     if policy.can("priorita_edit"):
-        return redirect(url_for("main.priorita_edit"))
+        return redirect(url_for("main.priorita_edit", **redirect_kwargs))
 
-    return redirect(url_for("main.priorita_view"))
+    return redirect(url_for("main.priorita_view", **redirect_kwargs))
 
 
 @main_bp.get("/priorita/view")
-@login_required
-@require_perm("priorita_view")
+@require_active_perm("priorita_view")
 def priorita_view():
-    policy = RbacPolicy(current_user)
+    policy = _current_policy()
+    user = active_user()
 
     return render_template(
         "priorita_view.j2",
         policy=policy,
         priorita_2_max=_priorita_2_max(),
+        current_operator_id=user.id,
+        current_operator_username=user.username or "",
     )
-
-
-PRIORITA_HIDDEN_ROLE_NAMES = {
-    "admin",
-}
 
 
 def _priorita_hidden_user_ids() -> set[int]:
@@ -8362,20 +8365,22 @@ def _priorita_hidden_user_ids() -> set[int]:
 
 
 @main_bp.get("/priorita/edit")
-@login_required
-@require_perm("priorita_edit")
+@require_active_perm("priorita_edit")
 def priorita_edit():
-    policy = RbacPolicy(current_user)
+    policy = _current_policy()
+    user = active_user()
 
     return render_template(
         "priorita_edit.j2",
         policy=policy,
         priorita_2_max=_priorita_2_max(),
+        current_operator_id=user.id,
+        current_operator_username=user.username or "",
     )
 
 
 @main_bp.get("/api/priorita/operatori")
-@login_required
+@require_active_perm("priorita_view")
 def api_priorita_operatori():
     visible_ids = _priorita_visible_operator_ids_for_current_user()
 
@@ -8400,8 +8405,7 @@ def api_priorita_operatori():
 
 
 @main_bp.get("/api/priorita/operatori/<int:operatore_id>/ordini")
-@login_required
-@require_perm("priorita_view")
+@require_active_perm("priorita_view")
 def api_priorita_ordini_operatore(operatore_id: int):
     operatore = _get_priorita_visible_operatore_or_403(operatore_id)
     operatore_id = operatore.id
@@ -8419,7 +8423,7 @@ def api_priorita_ordini_operatore(operatore_id: int):
         "p2": [],
         "p3": [],
         "max_p2": _priorita_2_max(),
-        "can_edit": RbacPolicy(current_user).can("priorita_edit"),
+        "can_edit": _current_policy().can("priorita_edit"),
     }
 
     for ordine in ordini:
@@ -8445,8 +8449,7 @@ def api_priorita_ordini_operatore(operatore_id: int):
 
 
 @main_bp.post("/api/priorita/operatori/<int:operatore_id>/salva")
-@login_required
-@require_perm("priorita_edit")
+@require_active_perm("priorita_edit")
 def api_priorita_salva_operatore(operatore_id: int):
     operatore = _get_priorita_visible_operatore_or_403(operatore_id)
     operatore_id = operatore.id
@@ -8561,27 +8564,27 @@ def _priorita_visible_operator_ids_for_current_user() -> set[int]:
     - gli altri vedono se stessi + utenti sottostanti nella gerarchia roles_manageable_roles
     - gli admin non vengono mai mostrati
     """
+    user = active_user()
+    policy = _current_policy()
 
     hidden_user_ids = _priorita_hidden_user_ids()
 
-    # Caso speciale: Acquisti / gestione globale priorità
-    if current_user.has_permission("priorita_tutti_operatori"):
+    if policy.can("priorita_tutti_operatori"):
         return {
             int(user_id)
             for user_id in db.session.execute(
                 select(User.id)
                 .where(User.active.is_(True))
-                .where(User.id != current_user.id)
+                .where(User.id != user.id)
                 .where(~User.id.in_(hidden_user_ids))
             )
             .scalars()
             .all()
         }
 
-    # Caso normale: gerarchia ruoli
-    visible_ids: set[int] = {int(current_user.id)}
+    visible_ids: set[int] = {int(user.id)}
 
-    manageable_role_ids = _priorita_manageable_role_ids_for_user(current_user)
+    manageable_role_ids = _priorita_manageable_role_ids_for_user(user)
 
     if manageable_role_ids:
         users_with_managed_roles = set(
@@ -8641,8 +8644,7 @@ def _get_priorita_visible_operatore_or_403(operatore_id: int) -> User:
 
 
 @main_bp.post("/api/priorita/operatori/<int:operatore_id>/reset")
-@login_required
-@require_perm("priorita_edit")
+@require_active_perm("priorita_edit")
 def api_priorita_reset_operatore(operatore_id):
     operatore = _get_priorita_visible_operatore_or_403(operatore_id)
 

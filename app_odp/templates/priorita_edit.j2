@@ -250,59 +250,58 @@
     <script src="{{ url_for('static', filename='vendor/Sortable.min.js') }}"></script>
 
     <script>
-        (() => {
-            const page = document.getElementById("priorita-page");
-            const selectOperatore = document.getElementById("priorita-operatore-select");
-            const alertBox = document.getElementById("priorita-alert");
-            const btnSalva = document.getElementById("btn-priorita-salva");
-            const btnReset = document.getElementById("btn-priorita-reset");
-            const filterOrdine = document.getElementById("priorita-filter-ordine");
-            const filterCodice = document.getElementById("priorita-filter-codice");
-            const filterMatricola = document.getElementById("priorita-filter-matricola");
+        const page = document.getElementById("priorita-page");
+        const selectOperatore = document.getElementById("priorita-operatore-select");
+        const alertBox = document.getElementById("priorita-alert");
+        const btnSalva = document.getElementById("btn-priorita-salva");
+        const btnReset = document.getElementById("btn-priorita-reset");
+        const filterOrdine = document.getElementById("priorita-filter-ordine");
+        const filterCodice = document.getElementById("priorita-filter-codice");
+        const filterMatricola = document.getElementById("priorita-filter-matricola");
 
-            const canEdit = page.dataset.canEdit === "1";
-            const maxP2 = Number(page.dataset.maxP2 || 5);
-            let dirty = false;
+        const canEdit = page.dataset.canEdit === "1";
+        const maxP2 = Number(page.dataset.maxP2 || 5);
+        let dirty = false;
 
-            const bodies = {
-                available: document.getElementById("priorita-available-body"),
-                p1: document.getElementById("priorita-p1-body"),
-                p2: document.getElementById("priorita-p2-body"),
-                p3: document.getElementById("priorita-p3-body"),
-            };
+        const bodies = {
+            available: document.getElementById("priorita-available-body"),
+            p1: document.getElementById("priorita-p1-body"),
+            p2: document.getElementById("priorita-p2-body"),
+            p3: document.getElementById("priorita-p3-body"),
+        };
 
-            function showAlert(type, message) {
-                alertBox.className = `alert alert-${type}`;
-                alertBox.textContent = message;
-                alertBox.classList.remove("d-none");
-            }
+        function showAlert(type, message) {
+            alertBox.className = `alert alert-${type}`;
+            alertBox.textContent = message;
+            alertBox.classList.remove("d-none");
+        }
 
-            function clearAlert() {
-                alertBox.classList.add("d-none");
-                alertBox.textContent = "";
-            }
+        function clearAlert() {
+            alertBox.classList.add("d-none");
+            alertBox.textContent = "";
+        }
 
-            function escapeHtml(value) {
-                return String(value ?? "")
-                    .replaceAll("&", "&amp;")
-                    .replaceAll("<", "&lt;")
-                    .replaceAll(">", "&gt;")
-                    .replaceAll('"', "&quot;")
-                    .replaceAll("'", "&#039;");
-            }
+        function escapeHtml(value) {
+            return String(value ?? "")
+                .replaceAll("&", "&amp;")
+                .replaceAll("<", "&lt;")
+                .replaceAll(">", "&gt;")
+                .replaceAll('"', "&quot;")
+                .replaceAll("'", "&#039;");
+        }
 
-            function makeRow(item) {
-                const tr = document.createElement("tr");
-                tr.dataset.key = item.key;
-                tr.dataset.idDocumento = item.id_documento;
-                tr.dataset.idRiga = item.id_riga;
-                tr.dataset.fase = item.fase;
-                tr.dataset.ordine = item.ordine || "";
-                tr.dataset.codice = item.codice || "";
-                tr.dataset.descrizione = item.descrizione || "";
-                tr.dataset.matricola = item.matricola || "";
+        function makeRow(item) {
+            const tr = document.createElement("tr");
+            tr.dataset.key = item.key;
+            tr.dataset.idDocumento = item.id_documento;
+            tr.dataset.idRiga = item.id_riga;
+            tr.dataset.fase = item.fase;
+            tr.dataset.ordine = item.ordine || "";
+            tr.dataset.codice = item.codice || "";
+            tr.dataset.descrizione = item.descrizione || "";
+            tr.dataset.matricola = item.matricola || "";
 
-                tr.innerHTML = `
+            tr.innerHTML = `
                                 <td>${escapeHtml(item.ordine)}</td>
                                 <td>${escapeHtml(item.codice)}</td>
                                 <td>${escapeHtml(item.descrizione)}</td>
@@ -311,268 +310,287 @@
                                 <td>${escapeHtml(item.risorsa)}</td>
                             `;
 
-                if (!canEdit) {
-                    tr.classList.add("user-select-none");
-                } else {
-                    tr.style.cursor = "grab";
-                }
-
-                return tr;
+            if (!canEdit) {
+                tr.classList.add("user-select-none");
+            } else {
+                tr.style.cursor = "grab";
             }
 
-            function renderRows(tbody, rows) {
-                tbody.innerHTML = "";
-                for (const item of rows || []) {
-                    tbody.appendChild(makeRow(item));
-                }
+            return tr;
+        }
+
+        function renderRows(tbody, rows) {
+            tbody.innerHTML = "";
+            for (const item of rows || []) {
+                tbody.appendChild(makeRow(item));
             }
+        }
 
-            function applyAvailableFilters() {
-                const ordineFilter = (filterOrdine?.value || "").trim().toLowerCase();
-                const codiceFilter = (filterCodice?.value || "").trim().toLowerCase();
-                const matricolaFilter = (filterMatricola?.value || "").trim().toLowerCase();
+        function applyAvailableFilters() {
+            const ordineFilter = (filterOrdine?.value || "").trim().toLowerCase();
+            const codiceFilter = (filterCodice?.value || "").trim().toLowerCase();
+            const matricolaFilter = (filterMatricola?.value || "").trim().toLowerCase();
 
-                Array.from(bodies.available.children).forEach((tr) => {
-                    const ordine = (tr.dataset.ordine || "").toLowerCase();
-                    const codice = (tr.dataset.codice || "").toLowerCase();
-                    const matricola = (tr.dataset.matricola || "").toLowerCase();
+            Array.from(bodies.available.children).forEach((tr) => {
+                const ordine = (tr.dataset.ordine || "").toLowerCase();
+                const codice = (tr.dataset.codice || "").toLowerCase();
+                const matricola = (tr.dataset.matricola || "").toLowerCase();
 
-                    const matchOrdine = !ordineFilter || ordine.includes(ordineFilter);
-                    const matchCodice = !codiceFilter || codice.includes(codiceFilter);
-                    const matchMatricola = !matricolaFilter || matricola.includes(matricolaFilter);
+                const matchOrdine = !ordineFilter || ordine.includes(ordineFilter);
+                const matchCodice = !codiceFilter || codice.includes(codiceFilter);
+                const matchMatricola = !matricolaFilter || matricola.includes(matricolaFilter);
 
-                    tr.style.display = matchOrdine && matchCodice && matchMatricola ? "" : "none";
-                });
-            }
+                tr.style.display = matchOrdine && matchCodice && matchMatricola ? "" : "none";
+            });
+        }
 
-            function moveExtraRows(evt = null) {
-                const dragged = evt && evt.item ? evt.item : null;
+        function moveExtraRows(evt = null) {
+            const dragged = evt && evt.item ? evt.item : null;
 
-                /*
-                 * Priorità 1:
-                 * deve contenere sempre massimo 1 riga.
-                 *
-                 * Se trascino una nuova riga dentro P1 e P1 era già occupata,
-                 * la vecchia riga P1 scende in cima a P2.
-                 */
-                if (bodies.p1.children.length > 1) {
-                    if (dragged && dragged.parentElement === bodies.p1) {
-                        const oldP1 = Array.from(bodies.p1.children).find((row) => row !== dragged);
+            /*
+             * Priorità 1:
+             * deve contenere sempre massimo 1 riga.
+             *
+             * Se trascino una nuova riga dentro P1 e P1 era già occupata,
+             * la vecchia riga P1 scende in cima a P2.
+             */
+            if (bodies.p1.children.length > 1) {
+                if (dragged && dragged.parentElement === bodies.p1) {
+                    const oldP1 = Array.from(bodies.p1.children).find((row) => row !== dragged);
 
-                        if (oldP1) {
-                            bodies.p2.insertBefore(oldP1, bodies.p2.firstChild);
-                        }
-                    }
-
-                    while (bodies.p1.children.length > 1) {
-                        const extra = bodies.p1.lastElementChild;
-                        bodies.p2.insertBefore(extra, bodies.p2.firstChild);
+                    if (oldP1) {
+                        bodies.p2.insertBefore(oldP1, bodies.p2.firstChild);
                     }
                 }
 
-                /*
-                 * Priorità 2:
-                 * deve contenere massimo maxP2 righe.
-                 * Le righe in eccesso scendono in cima a P3.
-                 */
-                while (bodies.p2.children.length > maxP2) {
-                    const extra = bodies.p2.lastElementChild;
-                    bodies.p3.insertBefore(extra, bodies.p3.firstChild);
+                while (bodies.p1.children.length > 1) {
+                    const extra = bodies.p1.lastElementChild;
+                    bodies.p2.insertBefore(extra, bodies.p2.firstChild);
                 }
             }
 
-            async function resetPriorita() {
-                clearAlert();
+            /*
+             * Priorità 2:
+             * deve contenere massimo maxP2 righe.
+             * Le righe in eccesso scendono in cima a P3.
+             */
+            while (bodies.p2.children.length > maxP2) {
+                const extra = bodies.p2.lastElementChild;
+                bodies.p3.insertBefore(extra, bodies.p3.firstChild);
+            }
+        }
 
-                const operatoreId = selectOperatore.value;
+        async function resetPriorita() {
+            clearAlert();
 
-                if (!operatoreId) {
-                    showAlert("warning", "Seleziona un operatore.");
-                    return;
-                }
+            const operatoreId = selectOperatore.value;
 
-                const conferma = window.confirm(
-                    "Confermi l'azzeramento di tutte le priorità dell'operatore selezionato?"
+            if (!operatoreId) {
+                showAlert("warning", "Seleziona un operatore.");
+                return;
+            }
+
+            const conferma = window.confirm(
+                "Confermi l'azzeramento di tutte le priorità dell'operatore selezionato?"
+            );
+
+            if (!conferma) {
+                return;
+            }
+
+            const response = await window.avpFetch(`/api/priorita/operatori/${encodeURIComponent(operatoreId)}/reset`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+            });
+
+            const data = await response.json();
+
+            if (!response.ok || !data.ok) {
+                showAlert("danger", data.error || "Errore azzeramento priorità.");
+                return;
+            }
+
+            dirty = false;
+            showAlert("success", "Priorità azzerate correttamente.");
+            await loadOrdiniOperatore();
+        }
+
+        function setupSortable() {
+            if (!canEdit) {
+                return;
+            }
+
+            if (typeof Sortable === "undefined") {
+                showAlert(
+                    "danger",
+                    "Drag & drop non disponibile: file Sortable.min.js non caricato."
                 );
+                return;
+            }
 
-                if (!conferma) {
-                    return;
-                }
 
-                const response = await fetch(`/api/priorita/operatori/${encodeURIComponent(operatoreId)}/reset`, {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
+            document.querySelectorAll(".js-priorita-list").forEach((el) => {
+                Sortable.create(el, {
+                    group: "priorita-ordini",
+                    animation: 150,
+                    ghostClass: "table-active",
+
+                    onAdd: (evt) => {
+                        dirty = true;
+                        moveExtraRows(evt);
+                    },
+
+                    onUpdate: (evt) => {
+                        dirty = true;
+                        moveExtraRows(evt);
+                    },
+
+                    onEnd: (evt) => {
+                        dirty = true;
+                        moveExtraRows(evt);
                     },
                 });
+            });
+        }
 
-                const data = await response.json();
+        async function loadOperatori() {
+            const response = await window.avpFetch("{{ url_for('main.api_priorita_operatori') }}");
 
-                if (!response.ok || !data.ok) {
-                    showAlert("danger", data.error || "Errore azzeramento priorità.");
-                    return;
+            if (!response.ok) {
+                let message = "Errore caricamento operatori.";
+
+                try {
+                    const data = await response.json();
+                    message = data.error || message;
+                } catch (_) {
+                    message = `Errore caricamento operatori. HTTP ${response.status}`;
                 }
 
-                dirty = false;
-                showAlert("success", "Priorità azzerate correttamente.");
-                await loadOrdiniOperatore();
+                throw new Error(message);
             }
 
-            function setupSortable() {
-                if (!canEdit) {
-                    return;
+            const data = await response.json();
+
+            selectOperatore.innerHTML = `<option value="">Seleziona operatore...</option>`;
+
+            for (const op of data.operatori || []) {
+                const option = document.createElement("option");
+                option.value = op.id;
+                option.textContent = op.username;
+                selectOperatore.appendChild(option);
+            }
+        }
+
+        async function loadOrdiniOperatore() {
+            clearAlert();
+
+            const operatoreId = selectOperatore.value;
+
+            renderRows(bodies.available, []);
+            renderRows(bodies.p1, []);
+            renderRows(bodies.p2, []);
+            renderRows(bodies.p3, []);
+
+            if (!operatoreId) {
+                return;
+            }
+
+            const url = `/api/priorita/operatori/${encodeURIComponent(operatoreId)}/ordini`;
+            const response = await window.avpFetch(url);
+            const data = await response.json();
+
+            if (!response.ok) {
+                showAlert("danger", data.error || "Errore caricamento priorità.");
+                return;
+            }
+
+            renderRows(bodies.available, data.available || []);
+            renderRows(bodies.p1, data.p1 || []);
+            renderRows(bodies.p2, data.p2 || []);
+            renderRows(bodies.p3, data.p3 || []);
+
+            moveExtraRows();
+            applyAvailableFilters();
+        }
+
+        function collectItemsFromBody(tbody, priorita) {
+            return Array.from(tbody.children).map((tr, index) => ({
+                id_documento: tr.dataset.idDocumento,
+                id_riga: tr.dataset.idRiga,
+                fase: tr.dataset.fase,
+                priorita: priorita,
+                posizione: index + 1,
+            }));
+        }
+
+        async function salvaPriorita() {
+            clearAlert();
+
+            const operatoreId = selectOperatore.value;
+
+            if (!operatoreId) {
+                showAlert("warning", "Seleziona un operatore.");
+                return;
+            }
+
+            moveExtraRows();
+
+            const items = [
+                ...collectItemsFromBody(bodies.p1, 1),
+                ...collectItemsFromBody(bodies.p2, 2),
+                ...collectItemsFromBody(bodies.p3, 3),
+            ];
+
+            const response = await window.avpFetch(`/api/priorita/operatori/${encodeURIComponent(operatoreId)}/salva`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({items}),
+            });
+
+            const data = await response.json();
+
+            if (!response.ok || !data.ok) {
+                showAlert("danger", data.error || "Errore salvataggio priorità.");
+                return;
+            }
+            dirty = false;
+            showAlert("success", "Priorità salvata correttamente.");
+            await loadOrdiniOperatore();
+        }
+
+        selectOperatore.addEventListener("change", loadOrdiniOperatore);
+        if (filterOrdine) {
+            filterOrdine.addEventListener("input", applyAvailableFilters);
+        }
+
+        if (filterCodice) {
+            filterCodice.addEventListener("input", applyAvailableFilters);
+        }
+
+        if (btnSalva) {
+            btnSalva.addEventListener("click", salvaPriorita);
+        }
+        if (btnReset) {
+            btnReset.addEventListener("click", resetPriorita);
+        }
+        if (filterMatricola) {
+            filterMatricola.addEventListener("input", applyAvailableFilters);
+        }
+        loadOperatori()
+            .then(() => {
+                if (!selectOperatore.value && selectOperatore.options.length > 1) {
+                    selectOperatore.selectedIndex = 1;
+                    return loadOrdiniOperatore();
                 }
-
-                if (typeof Sortable === "undefined") {
-                    showAlert(
-                        "danger",
-                        "Drag & drop non disponibile: file Sortable.min.js non caricato."
-                    );
-                    return;
-                }
-
-
-                document.querySelectorAll(".js-priorita-list").forEach((el) => {
-                    Sortable.create(el, {
-                        group: "priorita-ordini",
-                        animation: 150,
-                        ghostClass: "table-active",
-
-                        onAdd: (evt) => {
-                            dirty = true;
-                            moveExtraRows(evt);
-                        },
-
-                        onUpdate: (evt) => {
-                            dirty = true;
-                            moveExtraRows(evt);
-                        },
-
-                        onEnd: (evt) => {
-                            dirty = true;
-                            moveExtraRows(evt);
-                        },
-                    });
-                });
-            }
-
-            async function loadOperatori() {
-                const response = await fetch("{{ url_for('main.api_priorita_operatori') }}");
-                const data = await response.json();
-
-                for (const op of data.operatori || []) {
-                    const option = document.createElement("option");
-                    option.value = op.id;
-                    option.textContent = op.username;
-                    selectOperatore.appendChild(option);
-                }
-            }
-
-            async function loadOrdiniOperatore() {
-                clearAlert();
-
-                const operatoreId = selectOperatore.value;
-
-                renderRows(bodies.available, []);
-                renderRows(bodies.p1, []);
-                renderRows(bodies.p2, []);
-                renderRows(bodies.p3, []);
-
-                if (!operatoreId) {
-                    return;
-                }
-
-                const url = `/api/priorita/operatori/${encodeURIComponent(operatoreId)}/ordini`;
-                const response = await fetch(url);
-                const data = await response.json();
-
-                if (!response.ok) {
-                    showAlert("danger", data.error || "Errore caricamento priorità.");
-                    return;
-                }
-
-                renderRows(bodies.available, data.available || []);
-                renderRows(bodies.p1, data.p1 || []);
-                renderRows(bodies.p2, data.p2 || []);
-                renderRows(bodies.p3, data.p3 || []);
-
-                moveExtraRows();
-                applyAvailableFilters();
-            }
-
-            function collectItemsFromBody(tbody, priorita) {
-                return Array.from(tbody.children).map((tr, index) => ({
-                    id_documento: tr.dataset.idDocumento,
-                    id_riga: tr.dataset.idRiga,
-                    fase: tr.dataset.fase,
-                    priorita: priorita,
-                    posizione: index + 1,
-                }));
-            }
-
-            async function salvaPriorita() {
-                clearAlert();
-
-                const operatoreId = selectOperatore.value;
-
-                if (!operatoreId) {
-                    showAlert("warning", "Seleziona un operatore.");
-                    return;
-                }
-
-                moveExtraRows();
-
-                const items = [
-                    ...collectItemsFromBody(bodies.p1, 1),
-                    ...collectItemsFromBody(bodies.p2, 2),
-                    ...collectItemsFromBody(bodies.p3, 3),
-                ];
-
-                const response = await fetch(`/api/priorita/operatori/${encodeURIComponent(operatoreId)}/salva`, {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify({items}),
-                });
-
-                const data = await response.json();
-
-                if (!response.ok || !data.ok) {
-                    showAlert("danger", data.error || "Errore salvataggio priorità.");
-                    return;
-                }
-                dirty = false;
-                showAlert("success", "Priorità salvata correttamente.");
-                await loadOrdiniOperatore();
-            }
-
-            selectOperatore.addEventListener("change", loadOrdiniOperatore);
-            if (filterOrdine) {
-                filterOrdine.addEventListener("input", applyAvailableFilters);
-            }
-
-            if (filterCodice) {
-                filterCodice.addEventListener("input", applyAvailableFilters);
-            }
-
-            if (btnSalva) {
-                btnSalva.addEventListener("click", salvaPriorita);
-            }
-            if (btnReset) {
-                btnReset.addEventListener("click", resetPriorita);
-            }
-            if (filterMatricola) {
-                filterMatricola.addEventListener("input", applyAvailableFilters);
-            }
-            loadOperatori()
-                .then(setupSortable)
-                .catch(() => showAlert("danger", "Errore caricamento operatori."));
-            setInterval(() => {
-                if (dirty) return;
-                if (!selectOperatore.value) return;
-                loadOrdiniOperatore();
-            }, 30000);
-        })();
+            })
+            .then(setupSortable)
+            .catch((err) => {
+                console.error(err);
+                showAlert("danger", err.message || "Errore caricamento operatori.");
+            });
     </script>
 {% endblock %}

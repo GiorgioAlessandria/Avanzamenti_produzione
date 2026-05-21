@@ -53,8 +53,8 @@
           id="priorita-page"
           data-can-edit="0"
           data-max-p2="{{ priorita_2_max }}"
-          data-operatore-id="{{ current_user.id }}"
-          data-operatore-username="{{ current_user.username }}">
+          data-operatore-id="{{ current_operator_id }}"
+          data-operatore-username="{{ current_operator_username }}">
 
         <div id="priorita-alert"
              class="alert d-none"
@@ -130,41 +130,40 @@
     </main>
 
     <script>
-        (() => {
-            const page = document.getElementById("priorita-page");
-            const operatoreId = page.dataset.operatoreId;
-            const alertBox = document.getElementById("priorita-alert");
+        const page = document.getElementById("priorita-page");
+        const operatoreId = page.dataset.operatoreId;
+        const alertBox = document.getElementById("priorita-alert");
 
-            const bodies = {
-                p1: document.getElementById("priorita-p1-body"),
-                p2: document.getElementById("priorita-p2-body"),
-                p3: document.getElementById("priorita-p3-body"),
-            };
+        const bodies = {
+            p1: document.getElementById("priorita-p1-body"),
+            p2: document.getElementById("priorita-p2-body"),
+            p3: document.getElementById("priorita-p3-body"),
+        };
 
-            function showAlert(type, message) {
-                alertBox.className = `alert alert-${type}`;
-                alertBox.textContent = message;
-                alertBox.classList.remove("d-none");
-            }
+        function showAlert(type, message) {
+            alertBox.className = `alert alert-${type}`;
+            alertBox.textContent = message;
+            alertBox.classList.remove("d-none");
+        }
 
-            function clearAlert() {
-                alertBox.classList.add("d-none");
-                alertBox.textContent = "";
-            }
+        function clearAlert() {
+            alertBox.classList.add("d-none");
+            alertBox.textContent = "";
+        }
 
-            function escapeHtml(value) {
-                return String(value ?? "")
-                    .replaceAll("&", "&amp;")
-                    .replaceAll("<", "&lt;")
-                    .replaceAll(">", "&gt;")
-                    .replaceAll('"', "&quot;")
-                    .replaceAll("'", "&#039;");
-            }
+        function escapeHtml(value) {
+            return String(value ?? "")
+                .replaceAll("&", "&amp;")
+                .replaceAll("<", "&lt;")
+                .replaceAll(">", "&gt;")
+                .replaceAll('"', "&quot;")
+                .replaceAll("'", "&#039;");
+        }
 
-            function makeRow(item) {
-                const tr = document.createElement("tr");
+        function makeRow(item) {
+            const tr = document.createElement("tr");
 
-                tr.innerHTML = `
+            tr.innerHTML = `
                                 <td>${escapeHtml(item.ordine)}</td>
                                 <td>${escapeHtml(item.codice)}</td>
                                 <td>${escapeHtml(item.descrizione)}</td>
@@ -172,49 +171,48 @@
                                 <td>${escapeHtml(item.fase)}</td>
                                 <td>${escapeHtml(item.risorsa)}</td>
                             `;
-                return tr;
+            return tr;
+        }
+
+        function renderRows(tbody, rows) {
+            tbody.innerHTML = "";
+
+            for (const item of rows || []) {
+                tbody.appendChild(makeRow(item));
+            }
+        }
+
+        async function loadOrdiniOperatore() {
+            clearAlert();
+
+            renderRows(bodies.p1, []);
+            renderRows(bodies.p2, []);
+            renderRows(bodies.p3, []);
+
+            if (!operatoreId) {
+                showAlert("warning", "Utente corrente non valido.");
+                return;
             }
 
-            function renderRows(tbody, rows) {
-                tbody.innerHTML = "";
+            const url = `/api/priorita/operatori/${encodeURIComponent(operatoreId)}/ordini`;
+            const response = await window.avpFetch(url);
+            const data = await response.json();
 
-                for (const item of rows || []) {
-                    tbody.appendChild(makeRow(item));
-                }
+            if (!response.ok) {
+                showAlert("danger", data.error || "Errore caricamento priorità.");
+                return;
             }
 
-            async function loadOrdiniOperatore() {
-                clearAlert();
+            renderRows(bodies.p1, data.p1 || []);
+            renderRows(bodies.p2, data.p2 || []);
+            renderRows(bodies.p3, data.p3 || []);
+        }
 
-                renderRows(bodies.p1, []);
-                renderRows(bodies.p2, []);
-                renderRows(bodies.p3, []);
+        loadOrdiniOperatore()
+            .catch(() => showAlert("danger", "Errore caricamento priorità."));
 
-                if (!operatoreId) {
-                    showAlert("warning", "Utente corrente non valido.");
-                    return;
-                }
-
-                const url = `/api/priorita/operatori/${encodeURIComponent(operatoreId)}/ordini`;
-                const response = await fetch(url);
-                const data = await response.json();
-
-                if (!response.ok) {
-                    showAlert("danger", data.error || "Errore caricamento priorità.");
-                    return;
-                }
-
-                renderRows(bodies.p1, data.p1 || []);
-                renderRows(bodies.p2, data.p2 || []);
-                renderRows(bodies.p3, data.p3 || []);
-            }
-
-            loadOrdiniOperatore()
-                .catch(() => showAlert("danger", "Errore caricamento priorità."));
-
-            setInterval(() => {
-                loadOrdiniOperatore();
-            }, 30000);
-        })();
+        setInterval(() => {
+            loadOrdiniOperatore();
+        }, 30000);
     </script>
 {% endblock %}

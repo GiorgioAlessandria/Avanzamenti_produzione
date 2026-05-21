@@ -634,7 +634,6 @@
         </div>
     </div>
 </div>
-{% block content %}{% endblock %}
 <script>
     window.AVP_TAB_SESSION = "{{ tab_session|default('') }}";
 
@@ -663,6 +662,7 @@
         return fetch(urlValue, options);
     };
 </script>
+{% block content %}{% endblock %}
 
 {% block extra_js %}
     <script>
