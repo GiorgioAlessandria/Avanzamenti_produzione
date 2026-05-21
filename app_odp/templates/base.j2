@@ -52,6 +52,15 @@
                 z-index: 1;
                 background: var(--bs-table-bg, #fff);
             }
+
+            /* Offcanvas sempre sopra al backdrop */
+            .offcanvas {
+                z-index: 1055 !important;
+            }
+
+            .offcanvas-backdrop {
+                z-index: 1050 !important;
+            }
         </style>
     {% endblock %}
 {% endblock head %}
@@ -65,7 +74,7 @@
     {% if has_area_items or has_home_items %}
         <div class="dropdown d-inline-flex"
              style="margin: 10px; position: relative;">
-            <button class="btn btn-secondary btn-lg dropdown-toggle"
+            <button class="btn btn-sm bg-white text-dark border dropdown-toggle px-2 py-1"
                     type="button"
                     data-bs-toggle="dropdown"
                     aria-expanded="false">
