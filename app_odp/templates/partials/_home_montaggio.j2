@@ -779,7 +779,9 @@
     <div class="row text-center align-items-start mx-0 montaggio-main-row">
         <div class="col montaggio-col ms-0 me-0"
              style="border-color: rgb(0,0,0);">
-            <h2 class="w-100 mb-1">Ordini semilavorati da eseguire</h2>
+            <h2 class="w-100 mb-1">
+                {{ home_ui_texts.titolo_semilavorati_da_eseguire or "Ordini semilavorati da eseguire" }}
+            </h2>
             <div class="row mb-1">
                 <div class="col mb-0">
                     <label><input
@@ -838,7 +840,9 @@
             </button>
         </div>
         <div class="col montaggio-col ms-0">
-            <h2 class="w-100 mb-1">Ordini semilavorati attivi</h2>
+            <h2 class="w-100 mb-1">
+                {{ home_ui_texts.titolo_semilavorati_attivi or "Ordini semilavorati attivi" }}
+            </h2>
             <div class="row mb-0">
                 <div class="col mb-0">
                     <label><input
@@ -992,7 +996,7 @@
                     data-use-selected="#ordini_da_eseguire_m"
                     data-fill-target="#toast-1-m"
                     data-bs-toggle="toast">
-                Attiva ordine macchina
+                {{ home_ui_texts.testo_presa_macchina or "Attiva ordine macchina" }}
             </button>
         </div>
         <div class="col montaggio-col mb-1">

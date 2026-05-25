@@ -1914,6 +1914,32 @@
     <script>
         (() => {
             const payload = window.homeConfigSettingsPayload || {};
+            const TAB_SESSION = "{{ tab_session|default('', true)|e }}";
+
+            function withTabSession(url) {
+                if (!TAB_SESSION) return url;
+
+                const parsed = new URL(url, window.location.origin);
+                parsed.searchParams.set("tab_session", TAB_SESSION);
+
+                return parsed.pathname + parsed.search;
+            }
+
+            function fetchOptions(extra = {}) {
+                const headers = {
+                    ...(extra.headers || {}),
+                };
+
+                if (TAB_SESSION) {
+                    headers["X-Tab-Session"] = TAB_SESSION;
+                }
+
+                return {
+                    ...extra,
+                    headers,
+                };
+            }
+
             const section = document.getElementById("home-config-section");
             if (!section) return;
 
@@ -1954,22 +1980,34 @@
             }
 
             async function postJson(url, body) {
-                const resp = await fetch(url, {
-                    method: "POST",
-                    headers: {"Content-Type": "application/json"},
-                    body: JSON.stringify(body),
-                });
+                const resp = await fetch(
+                    withTabSession(url),
+                    fetchOptions({
+                        method: "POST",
+                        headers: {"Content-Type": "application/json"},
+                        body: JSON.stringify(body),
+                    })
+                );
+
                 const data = await resp.json().catch(() => ({}));
+
                 if (!resp.ok || data.ok === false) {
                     throw new Error(data.error || `Errore HTTP ${resp.status}`);
                 }
+
                 return data;
             }
 
             async function reloadPayload() {
-                const resp = await fetch("{{ url_for('main.api_home_config_data') }}");
+                const resp = await fetch(
+                    withTabSession("{{ url_for('main.api_home_config_data') }}"),
+                    fetchOptions()
+                );
+
                 const data = await resp.json();
+
                 if (!data.ok) throw new Error(data.error || "Errore caricamento dati.");
+
                 Object.assign(payload, data.data || {});
                 renderTables();
                 fillFormsOptions();
