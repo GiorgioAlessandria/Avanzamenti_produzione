@@ -50,8 +50,9 @@
             {% set rev = singolo_odp.IndiceModifica %}
             {% set rev_pdf = rev|string|trim if rev is not none else "" %}
             {% set rev_pdf = "" if rev_pdf == "-" or rev_pdf|upper == "X" else rev_pdf %}
-            {% set metodo_key = singolo_odp.CodArt ~ ('.' ~ rev_pdf if rev_pdf else '') %}
-            {% set metodo_doc = metodo_montaggio_lookup.get(metodo_key) if metodo_montaggio_lookup is defined and metodo_key else none %}
+            {% set metodo_prefisso = metodo_documentale_prefisso|default('', true) %}
+            {% set metodo_key = metodo_prefisso ~ singolo_odp.CodArt ~ ('.' ~ rev_pdf if rev_pdf else '') %}
+            {% set metodo_doc = metodo_lookup.get(metodo_key) if metodo_lookup is defined and metodo_key else none %}
 
             <td>
                 {% if metodo_doc and metodo_doc.found %}

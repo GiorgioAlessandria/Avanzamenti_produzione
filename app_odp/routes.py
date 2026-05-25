@@ -22,7 +22,7 @@ from flask import (
     g,
 )
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy import func, select, delete
+from sqlalchemy import func, select, delete, and_, exists
 from app_odp.etichette import gen_etichette
 from app_odp.models import (
     InputOdp,
@@ -61,6 +61,11 @@ from app_odp.models import (
     AcqArticoli,
     AcqGiacenze,
     AcqArticoliLookup,
+    HomeRepartoConfig,
+    HomeVisibilityRule,
+    HomeRepartoConfig,
+    HomeVisibilityRule,
+    ConfigAuditLog,
 )
 from app_odp.ordine_ref import format_ordine_ref_display_from_ordine
 from app_odp.policy.decorator import require_active_perm
@@ -293,62 +298,113 @@ def _finalize_dash_kpi(bucket: dict) -> dict:
     return bucket
 
 
-HOME_TABS = {
-    "10": {
-        "tab": "montaggio",
-        "label_fallback": "Montaggio",
-        "template": "partials/_home_montaggio.j2",
-    },
-    "20": {
-        "tab": "officina",
-        "label_fallback": "Officina",
-        "template": "partials/_home_standard.j2",
-    },
-    "30": {
-        "tab": "carpenteria",
-        "label_fallback": "Carpenteria",
-        "template": "partials/_home_standard.j2",
-    },
-    "40": {
-        "tab": "Magazzino",
-        "label_fallback": "Magazzino",
-        "template": "partials/page_vuota.html",
-    },
-    "50": {
-        "tab": "Fornitori",
-        "label_fallback": "Fornitori",
-        "template": "partials/page_vuota.html",
-    },
-    "60": {
-        "tab": "Ufficio Tecnico",
-        "label_fallback": "Ufficio Tecnico",
-        "template": "partials/page_vuota.html",
-    },
-    "70": {
-        "tab": "collaudo",
-        "label_fallback": "Collaudo",
-        "template": "partials/_home_montaggio.j2",
-    },
-}
+def _normalize_home_tab_code(value) -> str:
+    raw = _norm_text(value)
+    if not raw:
+        return ""
 
-TAB_TO_TEMPLATE = {
-    "montaggio": ("partials/_home_montaggio.j2", {"reparto": "10", "perm": "home"}),
-    "officina": ("partials/_home_standard.j2", {"reparto": "20", "perm": "home"}),
-    "carpenteria": (
-        "partials/_home_standard.j2",
-        {"reparto": "30", "perm": "home"},
-    ),
-    "collaudo": (
-        "partials/_home_montaggio.j2",
-        {"reparto": "70", "perm": "home"},
-    ),
-}
-BRIDGE_CONFIG = {
-    "officina": {"reparto": "20", "perm": "home", "renderer": "officina"},
-    "carpenteria": {"reparto": "30", "perm": "home", "renderer": "carpenteria"},
-    "montaggio": {"reparto": "10", "perm": "home", "renderer": "montaggio"},
-    "collaudo": {"reparto": "70", "perm": "home", "renderer": "collaudo"},
-}
+    raw = unicodedata.normalize("NFKD", raw)
+    raw = raw.encode("ascii", "ignore").decode("ascii")
+    raw = raw.strip().lower()
+    raw = re.sub(r"[\s\-]+", "_", raw)
+    raw = re.sub(r"[^a-z0-9_]+", "", raw)
+    raw = re.sub(r"_+", "_", raw).strip("_")
+
+    return raw
+
+
+def _home_reparto_configs_query():
+    return (
+        HomeRepartoConfig.query.options(
+            selectinload(HomeRepartoConfig.reparto),
+        )
+        .filter(HomeRepartoConfig.attivo.is_(True))
+        .order_by(
+            HomeRepartoConfig.ordine_menu.asc(),
+            func.lower(HomeRepartoConfig.label).asc(),
+            HomeRepartoConfig.id.asc(),
+        )
+    )
+
+
+def _home_reparto_config_by_tab(tab_code: str):
+    tab_norm = _normalize_home_tab_code(tab_code)
+    if not tab_norm:
+        return None
+
+    return (
+        HomeRepartoConfig.query.options(
+            selectinload(HomeRepartoConfig.reparto),
+        )
+        .filter(HomeRepartoConfig.attivo.is_(True))
+        .filter(func.lower(HomeRepartoConfig.tab_code) == tab_norm)
+        .first()
+    )
+
+
+def _home_reparto_code(config: HomeRepartoConfig) -> str:
+    if config is None or config.reparto is None:
+        return ""
+
+    return _norm_text(config.reparto.Codice)
+
+
+def _home_reparto_label(config: HomeRepartoConfig) -> str:
+    if config is None:
+        return ""
+
+    return (
+        _norm_text(config.label)
+        or _norm_text(getattr(config.reparto, "Descrizione", ""))
+        or _norm_text(getattr(config.reparto, "Codice", ""))
+        or _norm_text(config.tab_code)
+    )
+
+
+def _policy_can_access_home_config(
+    policy: RbacPolicy, config: HomeRepartoConfig
+) -> bool:
+    if policy is None or config is None:
+        return False
+
+    reparto_code = _home_reparto_code(config)
+    permesso = _norm_text(config.permesso) or "home"
+
+    if not reparto_code:
+        return False
+
+    if reparto_code not in policy.allowed_reparti:
+        return False
+
+    if not policy.can(permesso):
+        return False
+
+    return True
+
+
+def _allowed_home_reparto_configs(policy: RbacPolicy) -> list[HomeRepartoConfig]:
+    configs = _home_reparto_configs_query().all()
+
+    return [cfg for cfg in configs if _policy_can_access_home_config(policy, cfg)]
+
+
+def _first_allowed_home_reparto_config(policy: RbacPolicy):
+    rows = _allowed_home_reparto_configs(policy)
+    return rows[0] if rows else None
+
+
+def _home_reparto_config_for_ordine(ordine: InputOdp):
+    reparto_codes = set(_extract_codes_from_cell(getattr(ordine, "CodReparto", "")))
+    if not reparto_codes:
+        return None
+
+    configs = _home_reparto_configs_query().all()
+
+    for cfg in configs:
+        if _home_reparto_code(cfg) in reparto_codes:
+            return cfg
+
+    return None
 
 
 def _tab_scoped_odp(policy: RbacPolicy, reparto_code: str):
@@ -356,9 +412,55 @@ def _tab_scoped_odp(policy: RbacPolicy, reparto_code: str):
     return policy.filter_input_odp_for_reparto(q, reparto_code)
 
 
+def _tab_scoped_odp(policy: RbacPolicy, reparto_code: str):
+    q = _base_odp_query()
+    return policy.filter_input_odp_for_reparto(q, reparto_code)
+
+
+def _query_for_home_config(policy: RbacPolicy, config: HomeRepartoConfig):
+    return filter_input_odp_for_home_config(
+        _base_odp_query(),
+        config,
+        policy,
+        active_user(),
+    )
+
+
+def _home_rows_for_config(
+    policy: RbacPolicy,
+    config: HomeRepartoConfig,
+    *,
+    apply_priorita: bool = True,
+    sort_priorita: bool = True,
+) -> list[InputOdp]:
+    odp = list(_query_for_home_config(policy, config).all())
+
+    if apply_priorita:
+        odp = _apply_priorita_to_ordini(
+            list(odp),
+            _current_user_id(),
+            sort_result=sort_priorita,
+        )
+
+    return odp
+
+
 def _base_odp_query():
     return InputOdp.query.options(
         selectinload(InputOdp.runtime_row),
+    )
+
+
+def filter_input_odp_for_home_config(
+    query,
+    config: HomeRepartoConfig,
+    policy: RbacPolicy,
+    user=None,
+):
+    return policy.filter_input_odp_for_home_config(
+        query,
+        config,
+        user=user,
     )
 
 
@@ -991,6 +1093,312 @@ def _normalize_id_list(raw_values) -> list[int]:
             out.append(item_id)
 
     return out
+
+
+HOME_CONFIG_TEMPLATE_OPTIONS = {
+    "partials/_home_montaggio.j2": "Layout montaggio/macchine",
+    "partials/_home_standard.j2": "Layout standard",
+    "partials/page_vuota.html": "Pagina vuota",
+}
+
+HOME_CONFIG_RENDERER_OPTIONS = {
+    "montaggio": "Montaggio/macchine",
+    "standard": "Standard",
+    "empty": "Vuoto",
+}
+
+HOME_CONFIG_METODO_OPTIONS = {
+    "montaggio": "Metodo montaggio",
+    "collaudo": "Metodo collaudo",
+    "nessuno": "Nessuno",
+}
+
+HOME_RULE_APPLY_TO_OPTIONS = {
+    "macchine": "Macchine",
+    "semilavorati": "Semilavorati",
+    "all": "Tutto",
+}
+
+HOME_RULE_PHASE_MODE_OPTIONS = {
+    "all": "Tutte",
+    "exact": "Esatta",
+    "last": "Ultima",
+    "not_first": "Dopo la prima",
+    "list": "Lista",
+}
+
+
+def _home_config_bool(value) -> bool:
+    return _parse_bool_flag(value)
+
+
+def _home_config_int(value, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _home_config_text(value) -> str:
+    return _norm_text(value)
+
+
+def _home_config_json_payload(obj) -> str:
+    return json.dumps(_json_safe(obj), ensure_ascii=False, sort_keys=True)
+
+
+def _home_config_audit(
+    *,
+    entity_type: str,
+    entity_id: str,
+    action: str,
+    old_payload=None,
+    new_payload=None,
+    note: str = "",
+):
+    user = active_user()
+
+    db.session.add(
+        ConfigAuditLog(
+            entity_type=entity_type,
+            entity_id=str(entity_id),
+            action=action,
+            old_payload=_home_config_json_payload(old_payload)
+            if old_payload is not None
+            else None,
+            new_payload=_home_config_json_payload(new_payload)
+            if new_payload is not None
+            else None,
+            changed_by_user_id=getattr(user, "id", None),
+            changed_by_username=getattr(user, "username", None) or "",
+            changed_at=_now_rome_dt().isoformat(timespec="seconds"),
+            note=note,
+        )
+    )
+
+
+def _home_reparto_config_to_dict(row: HomeRepartoConfig) -> dict:
+    return {
+        "id": row.id,
+        "reparto_id": row.reparto_id,
+        "reparto_codice": row.reparto.Codice if row.reparto else "",
+        "reparto_descrizione": row.reparto.Descrizione if row.reparto else "",
+        "tab_code": row.tab_code or "",
+        "label": row.label or "",
+        "template": row.template or "",
+        "renderer": row.renderer or "",
+        "permesso": row.permesso or "home",
+        "ordine_menu": int(row.ordine_menu or 0),
+        "attivo": bool(row.attivo),
+        "titolo_macchine_da_eseguire": row.titolo_macchine_da_eseguire or "",
+        "titolo_macchine_attive": row.titolo_macchine_attive or "",
+        "titolo_semilavorati_da_eseguire": row.titolo_semilavorati_da_eseguire or "",
+        "titolo_semilavorati_attivi": row.titolo_semilavorati_attivi or "",
+        "testo_presa_macchina": row.testo_presa_macchina or "",
+        "testo_sospendi_macchina": row.testo_sospendi_macchina or "",
+        "testo_riattiva_macchina": row.testo_riattiva_macchina or "",
+        "testo_chiudi_macchina": row.testo_chiudi_macchina or "",
+        "metodo_documentale_tipo": row.metodo_documentale_tipo or "nessuno",
+        "metodo_documentale_prefisso": row.metodo_documentale_prefisso or "",
+        "metodo_documentale_path_key": row.metodo_documentale_path_key or "",
+    }
+
+
+def _home_visibility_rule_to_dict(row: HomeVisibilityRule) -> dict:
+    return {
+        "id": row.id,
+        "reparto_id": row.reparto_id,
+        "reparto_codice": row.reparto.Codice if row.reparto else "",
+        "reparto_descrizione": row.reparto.Descrizione if row.reparto else "",
+        "role_id": row.role_id,
+        "role_name": row.role.name if row.role else "",
+        "role_description": row.role.description if row.role else "",
+        "user_id": row.user_id,
+        "username": row.user.username if row.user else "",
+        "apply_to": row.apply_to or "macchine",
+        "phase_mode": row.phase_mode or "all",
+        "phase_values": row.phase_values or "",
+        "attivo": bool(row.attivo),
+        "titolo_macchine_da_eseguire": row.titolo_macchine_da_eseguire or "",
+        "titolo_macchine_attive": row.titolo_macchine_attive or "",
+        "testo_presa_macchina": row.testo_presa_macchina or "",
+        "testo_sospendi_macchina": row.testo_sospendi_macchina or "",
+        "testo_riattiva_macchina": row.testo_riattiva_macchina or "",
+        "testo_chiudi_macchina": row.testo_chiudi_macchina or "",
+        "metodo_documentale_tipo": row.metodo_documentale_tipo or "",
+        "metodo_documentale_prefisso": row.metodo_documentale_prefisso or "",
+        "metodo_documentale_path_key": row.metodo_documentale_path_key or "",
+    }
+
+
+def _home_config_manageable_users(policy: RbacPolicy) -> list[User]:
+    manageable_role_ids = set(policy.descendant_manageable_role_ids)
+
+    if not manageable_role_ids:
+        return []
+
+    ur_allowed = user_roles.alias("home_cfg_ur_allowed")
+    ur_forbidden = user_roles.alias("home_cfg_ur_forbidden")
+
+    allowed_exists = exists(
+        select(1)
+        .select_from(ur_allowed)
+        .where(
+            and_(
+                ur_allowed.c.user_id == User.id,
+                ur_allowed.c.role_id.in_(manageable_role_ids),
+            )
+        )
+    )
+
+    forbidden_exists = exists(
+        select(1)
+        .select_from(ur_forbidden)
+        .where(
+            and_(
+                ur_forbidden.c.user_id == User.id,
+                ~ur_forbidden.c.role_id.in_(manageable_role_ids),
+            )
+        )
+    )
+
+    return (
+        User.query.filter(User.active.is_(True))
+        .filter(User.id != _current_user_id())
+        .filter(allowed_exists)
+        .filter(~forbidden_exists)
+        .order_by(func.lower(User.username))
+        .all()
+    )
+
+
+def _home_config_user_is_manageable(policy: RbacPolicy, user: User | None) -> bool:
+    if user is None:
+        return False
+
+    manageable_role_ids = set(policy.descendant_manageable_role_ids)
+    if not manageable_role_ids:
+        return False
+
+    target_roles = list(user.roles or [])
+    if not target_roles:
+        return False
+
+    return all(int(role.id) in manageable_role_ids for role in target_roles)
+
+
+def _home_config_role_is_manageable(policy: RbacPolicy, role: Roles | None) -> bool:
+    if role is None:
+        return False
+
+    return int(role.id) in set(policy.descendant_manageable_role_ids)
+
+
+def _build_home_config_settings_payload(policy: RbacPolicy) -> dict:
+    reparto_rows = Reparti.query.order_by(
+        func.lower(func.coalesce(Reparti.Descrizione, Reparti.Codice)),
+        func.lower(Reparti.Codice),
+    ).all()
+
+    config_rows = (
+        HomeRepartoConfig.query.options(selectinload(HomeRepartoConfig.reparto))
+        .order_by(HomeRepartoConfig.ordine_menu.asc(), HomeRepartoConfig.id.asc())
+        .all()
+    )
+
+    rule_rows = (
+        HomeVisibilityRule.query.options(
+            selectinload(HomeVisibilityRule.reparto),
+            selectinload(HomeVisibilityRule.role),
+            selectinload(HomeVisibilityRule.user),
+        )
+        .order_by(HomeVisibilityRule.reparto_id.asc(), HomeVisibilityRule.id.asc())
+        .all()
+    )
+
+    manageable_roles = sorted(
+        list(policy.descendant_manageable_roles),
+        key=lambda r: ((r.description or r.name or "").lower(), (r.name or "").lower()),
+    )
+
+    manageable_users = _home_config_manageable_users(policy)
+
+    return {
+        "reparti": [
+            {
+                "id": r.id,
+                "codice": r.Codice or "",
+                "descrizione": r.Descrizione or r.Codice or "",
+            }
+            for r in reparto_rows
+        ],
+        "roles": [
+            {
+                "id": r.id,
+                "name": r.name or "",
+                "description": r.description or r.name or "",
+            }
+            for r in manageable_roles
+        ],
+        "users": [
+            {
+                "id": u.id,
+                "username": u.username or "",
+            }
+            for u in manageable_users
+        ],
+        "home_configs": [_home_reparto_config_to_dict(row) for row in config_rows],
+        "visibility_rules": [_home_visibility_rule_to_dict(row) for row in rule_rows],
+        "template_options": HOME_CONFIG_TEMPLATE_OPTIONS,
+        "renderer_options": HOME_CONFIG_RENDERER_OPTIONS,
+        "metodo_options": HOME_CONFIG_METODO_OPTIONS,
+        "apply_to_options": HOME_RULE_APPLY_TO_OPTIONS,
+        "phase_mode_options": HOME_RULE_PHASE_MODE_OPTIONS,
+    }
+
+
+def _parse_home_rule_phase_values(raw_values, phase_mode: str) -> str | None:
+    phase_mode = _home_config_text(phase_mode).lower()
+
+    if phase_mode in {"all", "last", "not_first"}:
+        return None
+
+    if isinstance(raw_values, str):
+        raw_values = raw_values.strip()
+
+        if raw_values.startswith("["):
+            try:
+                parsed = json.loads(raw_values)
+            except json.JSONDecodeError:
+                parsed = [raw_values]
+        else:
+            parsed = [x.strip() for x in raw_values.split(",")]
+    elif isinstance(raw_values, (list, tuple, set)):
+        parsed = list(raw_values)
+    else:
+        parsed = []
+
+    values = []
+    for item in parsed:
+        value = _home_config_text(item)
+        if not value:
+            continue
+
+        try:
+            phase_int = int(float(value))
+            if phase_int <= 0:
+                raise ValueError
+            value = str(phase_int)
+        except (TypeError, ValueError):
+            raise ValueError("I valori fase devono essere numerici.")
+
+        if value not in values:
+            values.append(value)
+
+    if phase_mode in {"exact", "list"} and not values:
+        raise ValueError("Per fase esatta/lista devi indicare almeno un valore fase.")
+
+    return json.dumps(values, ensure_ascii=False)
 
 
 def _add_input_odp_closure_log(
@@ -1660,6 +2068,121 @@ def _find_montaggio_pdf_path(
     return None
 
 
+_metodo_pdf_index_lock = Lock()
+_metodo_pdf_index_cache = {}
+
+
+def _get_metodo_pdf_dir(path_key: str) -> Path | None:
+    path_key = _norm_text(path_key)
+    if not path_key:
+        return None
+
+    base = _norm_text(current_app.config.get(path_key))
+    if not base:
+        return None
+
+    path = Path(base)
+    return path if path.is_dir() else None
+
+
+def _get_metodo_pdf_index(
+    path_key: str,
+    *,
+    force_refresh: bool = False,
+) -> tuple[Path | None, dict[str, Path]]:
+    pdf_dir = _get_metodo_pdf_dir(path_key)
+    if pdf_dir is None:
+        return None, {}
+
+    directory_key = f"{path_key}:{str(pdf_dir).lower()}"
+    now_monotonic = monotonic()
+
+    with _metodo_pdf_index_lock:
+        cache = _metodo_pdf_index_cache.get(directory_key)
+
+        if (
+            cache
+            and not force_refresh
+            and float(cache.get("expires_at") or 0) > now_monotonic
+        ):
+            return pdf_dir, dict(cache.get("files") or {})
+
+        files = _scan_montaggio_pdf_directory(pdf_dir)
+
+        _metodo_pdf_index_cache[directory_key] = {
+            "expires_at": now_monotonic + MONTAGGIO_PDF_INDEX_TTL_SECONDS,
+            "files": files,
+        }
+
+        return pdf_dir, dict(files)
+
+
+def _build_metodo_pdf_key(
+    cod_art: str,
+    indice_modifica: str = "",
+    *,
+    prefisso: str = "",
+) -> str:
+    cod_art = _norm_text(cod_art)
+    indice_modifica = _normalize_indice_modifica_for_pdf(indice_modifica)
+    prefisso = _norm_text(prefisso)
+
+    if not cod_art:
+        return ""
+
+    return (
+        f"{prefisso}{cod_art}.{indice_modifica}"
+        if indice_modifica
+        else f"{prefisso}{cod_art}"
+    )
+
+
+def _find_metodo_pdf_path(
+    *,
+    cod_art: str,
+    indice_modifica: str = "",
+    path_key: str,
+    prefisso: str = "",
+    force_refresh: bool = False,
+) -> Path | None:
+    lookup_key = _build_metodo_pdf_key(
+        cod_art,
+        indice_modifica,
+        prefisso=prefisso,
+    )
+
+    if not lookup_key:
+        return None
+
+    pdf_dir, pdf_index = _get_metodo_pdf_index(
+        path_key,
+        force_refresh=force_refresh,
+    )
+
+    if pdf_dir is None:
+        return None
+
+    candidate = pdf_index.get(lookup_key.lower())
+
+    if candidate is not None and candidate.exists() and candidate.is_file():
+        try:
+            candidate.relative_to(pdf_dir)
+        except ValueError:
+            return None
+        return candidate
+
+    if not force_refresh:
+        return _find_metodo_pdf_path(
+            cod_art=cod_art,
+            indice_modifica=indice_modifica,
+            path_key=path_key,
+            prefisso=prefisso,
+            force_refresh=True,
+        )
+
+    return None
+
+
 def _build_metodo_montaggio_lookup(odp_rows) -> dict[str, dict]:
     lookup = {}
 
@@ -1944,20 +2467,17 @@ def inject_policy_and_nav():
 
     items = []
 
-    for cod, descr in policy.allowed_reparti_menu:
-        cfg = HOME_TABS.get(str(cod))
-        if not cfg:
-            continue
-
-        url_kwargs = {"tab": cfg["tab"]}
+    for cfg in _allowed_home_reparto_configs(policy):
+        url_kwargs = {"tab": cfg.tab_code}
         if operator_token:
             url_kwargs["tab_session"] = operator_token
 
         items.append(
             {
-                "label": descr or cfg["label_fallback"],
+                "label": _home_reparto_label(cfg),
                 "url": url_for(".home", **url_kwargs),
-                "tab": cfg["tab"],
+                "tab": cfg.tab_code,
+                "reparto": _home_reparto_code(cfg),
             }
         )
 
@@ -2036,29 +2556,24 @@ def metodo_utilizzo_pdf():
 def home():
     policy = _current_policy()
     user = active_user()
-    tab = request.args.get("tab")
 
-    # default: prima tab consentita
-    if not tab:
-        for t, (_, req) in TAB_TO_TEMPLATE.items():
-            if req.get("reparto") in policy.allowed_reparti and policy.can(req["perm"]):
-                tab = t
-                break
+    tab_raw = request.args.get("tab")
+    config = _home_reparto_config_by_tab(tab_raw) if tab_raw else None
 
-    cfg = TAB_TO_TEMPLATE.get(tab)
-    if not cfg:
+    # Default: prima home reparto consentita dal DB.
+    if config is None and not tab_raw:
+        config = _first_allowed_home_reparto_config(policy)
+
+    if config is None:
         abort(404)
 
-    template, req = cfg
-    if req.get("reparto") not in policy.allowed_reparti:
-        abort(403)
-    if not policy.can(req["perm"]):
+    if not _policy_can_access_home_config(policy, config):
         abort(403)
 
-    q = _tab_scoped_odp(policy, req["reparto"])
-    odp = list(q.all())
-    if tab == "montaggio":
-        odp = policy.filter_montaggio_macchine_famiglia_rows(odp)
+    active_tab = config.tab_code
+    template = config.template
+
+    odp = _home_rows_for_config(policy, config, apply_priorita=True, sort_priorita=True)
 
     causali = (
         db.session.execute(
@@ -2069,21 +2584,18 @@ def home():
         .scalars()
         .all()
     )
-    odp = _apply_priorita_to_ordini(
-        list(odp),
-        _current_user_id(),
-        sort_result=True,
-    )
+
     return render_template(
         "home.j2",
         active_partial=template,
-        active_tab=tab,
+        active_tab=active_tab,
+        home_config=config,
         policy=policy,
         odp=odp,
         causali_attivita=causali,
         bridge_url=url_for(
             "main.api_home_bridge",
-            tab=tab,
+            tab=active_tab,
             tab_session=active_token(),
         ),
         bridge_last_event_id=_last_log_token(),
@@ -2126,8 +2638,67 @@ def _render_bridge_standard(odp):
     }
 
 
-def _render_bridge_montaggio(odp):
-    metodo_montaggio_lookup = _build_metodo_montaggio_lookup(odp)
+def _home_method_settings_for_user(
+    config: HomeRepartoConfig,
+    policy: RbacPolicy,
+    user=None,
+) -> dict:
+    user = user or active_user()
+
+    settings = {
+        "tipo": _norm_text(getattr(config, "metodo_documentale_tipo", ""))
+        or "montaggio",
+        "prefisso": _norm_text(getattr(config, "metodo_documentale_prefisso", "")),
+        "path_key": _norm_text(getattr(config, "metodo_documentale_path_key", ""))
+        or "MONTAGGIO_PDF_DIR",
+    }
+
+    rules = (
+        HomeVisibilityRule.query.filter(
+            HomeVisibilityRule.attivo.is_(True),
+            HomeVisibilityRule.reparto_id == config.reparto_id,
+        )
+        .filter(
+            or_(
+                HomeVisibilityRule.role_id.in_(policy.role_ids),
+                HomeVisibilityRule.user_id == getattr(user, "id", None),
+            )
+        )
+        .order_by(
+            HomeVisibilityRule.user_id.isnot(None).desc(),
+            HomeVisibilityRule.id.asc(),
+        )
+        .all()
+    )
+
+    for rule in rules:
+        if _norm_text(rule.metodo_documentale_tipo):
+            settings["tipo"] = _norm_text(rule.metodo_documentale_tipo)
+        if _norm_text(rule.metodo_documentale_prefisso):
+            settings["prefisso"] = _norm_text(rule.metodo_documentale_prefisso)
+        if _norm_text(rule.metodo_documentale_path_key):
+            settings["path_key"] = _norm_text(rule.metodo_documentale_path_key)
+
+    return settings
+
+
+def _render_bridge_montaggio(
+    odp,
+    *,
+    metodo_path_key: str = "MONTAGGIO_PDF_DIR",
+    metodo_prefisso: str = "",
+):
+    metodo_lookup = _build_metodo_lookup(
+        odp,
+        path_key=metodo_path_key,
+        prefisso=metodo_prefisso,
+    )
+
+    ctx = {
+        "odp": odp,
+        "metodo_lookup": metodo_lookup,
+        "metodo_documentale_prefisso": metodo_prefisso,
+    }
 
     return {
         "tbody_ordini_da_eseguire_sl": render_template(
@@ -2136,8 +2707,7 @@ def _render_bridge_montaggio(odp):
         ),
         "tbody_ordini_in_corso_sl": render_template(
             "partials/_home_montaggio_sl_rows_in_corso.j2",
-            odp=odp,
-            metodo_montaggio_lookup=metodo_montaggio_lookup,
+            **ctx,
         ),
         "tbody_ordini_da_eseguire_m": render_template(
             "partials/_home_montaggio_m_rows_da_eseguire.j2",
@@ -2145,43 +2715,51 @@ def _render_bridge_montaggio(odp):
         ),
         "tbody_ordini_in_corso_m": render_template(
             "partials/_home_montaggio_m_rows_in_corso.j2",
-            odp=odp,
-            metodo_montaggio_lookup=metodo_montaggio_lookup,
+            **ctx,
         ),
     }
 
 
-def _render_bridge_collaudo(odp):
-    metodo_montaggio_lookup = _build_metodo_montaggio_lookup(odp)
-
-    return {
-        "tbody_tbl_da_eseguire_sl": render_template(
-            "partials/_home_montaggio_sl_rows_da_eseguire.j2",
-            odp=odp,
-        ),
-        "tbody_ordini_in_corso_sl": render_template(
-            "partials/_home_montaggio_sl_rows_in_corso.j2",
-            odp=odp,
-            metodo_montaggio_lookup=metodo_montaggio_lookup,
-        ),
-        "tbody_tbl_da_eseguire_m": render_template(
-            "partials/_home_montaggio_m_rows_da_eseguire.j2",
-            odp=odp,
-        ),
-        "tbody_ordini_in_corso_m": render_template(
-            "partials/_home_montaggio_m_rows_in_corso.j2",
-            odp=odp,
-            metodo_montaggio_lookup=metodo_montaggio_lookup,
-        ),
-    }
+def _render_bridge_empty(odp):
+    return {}
 
 
 RENDERERS = {
-    "officina": _render_bridge_standard,
-    "carpenteria": _render_bridge_standard,
+    "standard": _render_bridge_standard,
     "montaggio": _render_bridge_montaggio,
-    "collaudo": _render_bridge_collaudo,
+    "empty": _render_bridge_empty,
 }
+
+
+def _render_fragments_for_home_config(
+    config: HomeRepartoConfig,
+    odp: list[InputOdp],
+) -> dict:
+    renderer_key = _norm_text(getattr(config, "renderer", "")) or "empty"
+
+    if renderer_key == "montaggio":
+        method_settings = _home_method_settings_for_user(
+            config,
+            _current_policy(),
+            active_user(),
+        )
+
+        return _render_bridge_montaggio(
+            odp,
+            metodo_path_key=method_settings["path_key"],
+            metodo_prefisso=method_settings["prefisso"],
+        )
+
+    renderer = RENDERERS.get(renderer_key)
+    if renderer is None:
+        current_app.logger.warning(
+            "Renderer home non valido: tab_code=%s renderer=%s",
+            getattr(config, "tab_code", ""),
+            renderer_key,
+        )
+        return {}
+
+    return renderer(odp)
 
 
 def _first_code_from_cell(value) -> str:
@@ -2195,39 +2773,129 @@ def _first_code_from_cell(value) -> str:
 @main_bp.get("/api/home/<tab>/bridge")
 @operator_perm_required("home")
 def api_home_bridge(tab):
-    cfg = BRIDGE_CONFIG.get(tab)
-    if not cfg:
+    config = _home_reparto_config_by_tab(tab)
+    if config is None:
         abort(404)
 
     policy = _current_policy()
 
-    if cfg["reparto"] not in policy.allowed_reparti:
-        abort(403)
-    if not policy.can(cfg["perm"]):
+    if not _policy_can_access_home_config(policy, config):
         abort(403)
 
-    after = _norm_text(request.args.get("after"))
-    last_event_id = _last_log_token()
+    client_last_event_id = _norm_text(request.args.get("last_event_id"))
+    server_last_event_id = _last_log_token()
 
-    if after and after == last_event_id:
-        return {"changed": False, "last_event_id": last_event_id}
+    if client_last_event_id and client_last_event_id == server_last_event_id:
+        return jsonify(
+            {
+                "ok": True,
+                "changed": False,
+                "last_event_id": server_last_event_id,
+                "fragments": {},
+            }
+        )
 
-    odp = list(_query_for_tab(policy, cfg["reparto"]).all())
+    odp = _home_rows_for_config(policy, config, apply_priorita=True, sort_priorita=True)
+    fragments = _render_fragments_for_home_config(config, odp)
 
-    if tab == "montaggio":
-        odp = policy.filter_montaggio_macchine_famiglia_rows(odp)
-
-    odp = _apply_priorita_to_ordini(
-        list(odp),
-        _current_user_id(),
-        sort_result=True,
+    return jsonify(
+        {
+            "ok": True,
+            "changed": True,
+            "active_tab": config.tab_code,
+            "last_event_id": server_last_event_id,
+            "fragments": fragments,
+        }
     )
-    fragments = RENDERERS[tab](odp)
-    return {
-        "changed": True,
-        "last_event_id": last_event_id,
-        "fragments": fragments,
-    }
+
+
+@main_bp.get("/api/documenti/metodo")
+@operator_perm_required("home")
+def api_metodo_pdf():
+    cod_art = _norm_text(request.args.get("cod_art"))
+    indice_modifica = _normalize_indice_modifica_for_pdf(
+        request.args.get("indice_modifica")
+    )
+    path_key = _norm_text(request.args.get("path_key")) or "MONTAGGIO_PDF_DIR"
+    prefisso = _norm_text(request.args.get("prefisso"))
+
+    allowed_path_keys = {"MONTAGGIO_PDF_DIR", "COLLAUDO_PDF_DIR"}
+    if path_key not in allowed_path_keys:
+        abort(404)
+
+    pdf_path = _find_metodo_pdf_path(
+        cod_art=cod_art,
+        indice_modifica=indice_modifica,
+        path_key=path_key,
+        prefisso=prefisso,
+        force_refresh=True,
+    )
+
+    if pdf_path is None:
+        current_app.logger.warning(
+            "PDF metodo non trovato cod_art=%s indice_modifica=%s path_key=%s prefisso=%s",
+            cod_art,
+            indice_modifica,
+            path_key,
+            prefisso,
+        )
+        abort(404)
+
+    return send_file(
+        pdf_path,
+        mimetype="application/pdf",
+        as_attachment=False,
+        download_name=pdf_path.name,
+    )
+
+
+def _build_metodo_lookup(
+    odp_rows,
+    *,
+    path_key: str = "MONTAGGIO_PDF_DIR",
+    prefisso: str = "",
+) -> dict[str, dict]:
+    lookup = {}
+
+    for ordine in odp_rows or []:
+        cod_art = _norm_text(getattr(ordine, "CodArt", ""))
+        indice_modifica = _normalize_indice_modifica_for_pdf(
+            getattr(ordine, "IndiceModifica", "")
+        )
+
+        key = _build_metodo_pdf_key(
+            cod_art,
+            indice_modifica,
+            prefisso=prefisso,
+        )
+
+        if not key or key in lookup:
+            continue
+
+        pdf_path = _find_metodo_pdf_path(
+            cod_art=cod_art,
+            indice_modifica=indice_modifica,
+            path_key=path_key,
+            prefisso=prefisso,
+        )
+
+        lookup[key] = {
+            "found": pdf_path is not None,
+            "url": (
+                url_for(
+                    "main.api_metodo_pdf",
+                    cod_art=cod_art,
+                    indice_modifica=indice_modifica,
+                    path_key=path_key,
+                    prefisso=prefisso,
+                    tab_session=active_token(),
+                )
+                if pdf_path is not None
+                else ""
+            ),
+        }
+
+    return lookup
 
 
 @main_bp.get("/api/documenti/metodo-montaggio")
@@ -3209,23 +3877,16 @@ def _extract_codes_from_cell(value) -> list[str]:
     return list(dict.fromkeys(walk(parsed)))
 
 
+def _tab_from_ordine(ordine: InputOdp) -> str | None:
+    config = _home_reparto_config_for_ordine(ordine)
+    return config.tab_code if config else None
+
+
 def _get_visible_odp_by_key(
-    policy: RbacPolicy, id_documento: str, id_riga: str
+    policy: RbacPolicy,
+    id_documento: str,
+    id_riga: str,
 ) -> InputOdp:
-    ordine = (
-        policy.filter_input_odp(_base_odp_query())
-        .filter_by(IdDocumento=id_documento, IdRiga=id_riga)
-        .first()
-    )
-
-    if ordine:
-        if _tab_from_ordine(ordine) == "montaggio":
-            visible_rows = policy.filter_montaggio_macchine_famiglia_rows([ordine])
-            if not visible_rows:
-                abort(403)
-
-        return ordine
-
     exists_anyway = (
         _base_odp_query()
         .filter_by(
@@ -3238,32 +3899,49 @@ def _get_visible_odp_by_key(
     if exists_anyway is None:
         abort(404)
 
-    abort(403)
+    config = _home_reparto_config_for_ordine(exists_anyway)
 
+    if config is None:
+        abort(403)
 
-def _tab_from_ordine(ordine: InputOdp) -> str | None:
-    reparto_codes = set(_extract_codes_from_cell(ordine.CodReparto))
-    for tab, cfg in BRIDGE_CONFIG.items():
-        if cfg["reparto"] in reparto_codes:
-            return tab
-    return None
+    if not _policy_can_access_home_config(policy, config):
+        abort(403)
+
+    ordine = (
+        filter_input_odp_for_home_config(
+            _base_odp_query(),
+            config,
+            policy,
+            active_user(),
+        )
+        .filter_by(
+            IdDocumento=id_documento,
+            IdRiga=id_riga,
+        )
+        .first()
+    )
+
+    if ordine is None:
+        abort(403)
+
+    return ordine
 
 
 def _fragments_for_ordine_tab(
-    policy: RbacPolicy, ordine: InputOdp
+    policy: RbacPolicy,
+    ordine: InputOdp,
 ) -> tuple[str | None, dict]:
-    tab = _tab_from_ordine(ordine)
-    if not tab:
+    config = _home_reparto_config_for_ordine(ordine)
+    if config is None:
         return None, {}
 
-    reparto_code = BRIDGE_CONFIG[tab]["reparto"]
-    odp = list(_query_for_tab(policy, reparto_code).all())
+    if not _policy_can_access_home_config(policy, config):
+        return None, {}
 
-    if tab == "montaggio":
-        odp = policy.filter_montaggio_macchine_famiglia_rows(odp)
+    odp = _home_rows_for_config(policy, config, apply_priorita=True, sort_priorita=True)
+    fragments = _render_fragments_for_home_config(config, odp)
 
-    fragments = RENDERERS[tab](odp)
-    return tab, fragments
+    return config.tab_code, fragments
 
 
 def _append_operazione_log(
@@ -5287,13 +5965,16 @@ def api_chiudi_ordine():
         qty_da_lavorare_response = "0"
     fragments = {}
     if tab:
-        reparto_code = BRIDGE_CONFIG[tab]["reparto"]
-        odp = list(_query_for_tab(policy, reparto_code).all())
+        config = _home_reparto_config_by_tab(tab)
 
-        if tab == "montaggio":
-            odp = policy.filter_montaggio_macchine_famiglia_rows(odp)
-
-        fragments = RENDERERS[tab](odp)
+        if config is not None and _policy_can_access_home_config(policy, config):
+            odp = _home_rows_for_config(
+                policy,
+                config,
+                apply_priorita=True,
+                sort_priorita=True,
+            )
+            fragments = _render_fragments_for_home_config(config, odp)
 
     db.session.commit()
     label_url = (
@@ -5894,6 +6575,10 @@ def api_export_avp_txt():
 def impostazioni():
     user = active_user()
     policy = _current_policy()
+    show_home_config_section = policy.can_view_home_config_section
+    home_config_payload = (
+        _build_home_config_settings_payload(policy) if show_home_config_section else {}
+    )
 
     show_role_assignment_section = policy.can_view_role_assignment_section
     show_user_abac_section = policy.can_view_user_abac_section
@@ -6262,6 +6947,235 @@ def _prepare_login_code_or_response(
         return None, _login_code_error_response(LOGIN_CODE_DUPLICATO_MSG, 409)
 
     return code, None
+
+
+@main_bp.get("/api/impostazioni/home-config")
+@require_active_perm("configurazione_home")
+def api_home_config_data():
+    policy = _current_policy()
+
+    if not policy.can_view_home_config_section:
+        return jsonify({"ok": False, "error": "Permesso insufficiente."}), 403
+
+    return jsonify(
+        {
+            "ok": True,
+            "data": _build_home_config_settings_payload(policy),
+        }
+    ), 200
+
+
+@main_bp.post("/api/impostazioni/home-visibility-rule")
+@require_active_perm("configurazione_home")
+def api_save_home_visibility_rule():
+    policy = _current_policy()
+
+    if not policy.can_view_home_config_section:
+        return jsonify({"ok": False, "error": "Permesso insufficiente."}), 403
+
+    data = request.get_json(silent=True) or {}
+
+    rule_id = _home_config_int(data.get("id"), 0)
+    reparto_id = _home_config_int(data.get("reparto_id"), 0)
+
+    reparto = Reparti.query.get(reparto_id)
+    if reparto is None:
+        return jsonify({"ok": False, "error": "Reparto non valido."}), 400
+
+    scope_type = _home_config_text(data.get("scope_type")).lower()
+    role_id = _home_config_int(data.get("role_id"), 0)
+    user_id = _home_config_int(data.get("user_id"), 0)
+
+    role = None
+    utente = None
+
+    if scope_type == "role":
+        if not role_id:
+            return jsonify({"ok": False, "error": "Ruolo obbligatorio."}), 400
+
+        role = Roles.query.get(role_id)
+        if not _home_config_role_is_manageable(policy, role):
+            return jsonify({"ok": False, "error": "Ruolo non gestibile."}), 403
+
+        user_id = None
+
+    elif scope_type == "user":
+        if not user_id:
+            return jsonify({"ok": False, "error": "Utente obbligatorio."}), 400
+
+        utente = User.query.get(user_id)
+        if not _home_config_user_is_manageable(policy, utente):
+            return jsonify({"ok": False, "error": "Utente non gestibile."}), 403
+
+        role_id = None
+
+    else:
+        return jsonify({"ok": False, "error": "Tipo regola non valido."}), 400
+
+    apply_to = _home_config_text(data.get("apply_to")).lower() or "macchine"
+    phase_mode = _home_config_text(data.get("phase_mode")).lower() or "all"
+
+    if apply_to not in HOME_RULE_APPLY_TO_OPTIONS:
+        return jsonify({"ok": False, "error": "Campo 'applica a' non valido."}), 400
+
+    if phase_mode not in HOME_RULE_PHASE_MODE_OPTIONS:
+        return jsonify({"ok": False, "error": "Modalità fase non valida."}), 400
+
+    try:
+        phase_values = _parse_home_rule_phase_values(
+            data.get("phase_values"),
+            phase_mode,
+        )
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+    if rule_id:
+        row = HomeVisibilityRule.query.get(rule_id)
+        if row is None:
+            return jsonify({"ok": False, "error": "Regola non trovata."}), 404
+        action = "update"
+        old_payload = _home_visibility_rule_to_dict(row)
+    else:
+        row = HomeVisibilityRule()
+        db.session.add(row)
+        action = "create"
+        old_payload = None
+
+    row.reparto_id = reparto.id
+    row.role_id = role_id or None
+    row.user_id = user_id or None
+    row.apply_to = apply_to
+    row.phase_mode = phase_mode
+    row.phase_values = phase_values
+    row.attivo = _home_config_bool(data.get("attivo"))
+
+    row.titolo_macchine_da_eseguire = (
+        _home_config_text(data.get("titolo_macchine_da_eseguire")) or None
+    )
+    row.titolo_macchine_attive = (
+        _home_config_text(data.get("titolo_macchine_attive")) or None
+    )
+
+    row.testo_presa_macchina = (
+        _home_config_text(data.get("testo_presa_macchina")) or None
+    )
+    row.testo_sospendi_macchina = (
+        _home_config_text(data.get("testo_sospendi_macchina")) or None
+    )
+    row.testo_riattiva_macchina = (
+        _home_config_text(data.get("testo_riattiva_macchina")) or None
+    )
+    row.testo_chiudi_macchina = (
+        _home_config_text(data.get("testo_chiudi_macchina")) or None
+    )
+
+    metodo_tipo = _home_config_text(data.get("metodo_documentale_tipo"))
+    if metodo_tipo and metodo_tipo not in HOME_CONFIG_METODO_OPTIONS:
+        return jsonify(
+            {"ok": False, "error": "Tipo metodo documentale non valido."}
+        ), 400
+
+    row.metodo_documentale_tipo = metodo_tipo or None
+    row.metodo_documentale_prefisso = (
+        _home_config_text(data.get("metodo_documentale_prefisso")) or None
+    )
+    row.metodo_documentale_path_key = (
+        _home_config_text(data.get("metodo_documentale_path_key")) or None
+    )
+
+    row.updated_at = _now_rome_dt().isoformat(timespec="seconds")
+    row.updated_by = _current_username()
+
+    try:
+        db.session.flush()
+        new_payload = _home_visibility_rule_to_dict(row)
+
+        _home_config_audit(
+            entity_type="home_visibility_rules",
+            entity_id=row.id,
+            action=action,
+            old_payload=old_payload,
+            new_payload=new_payload,
+            note="Salvataggio regola visibilità home da impostazioni.",
+        )
+
+        db.session.commit()
+
+    except Exception as exc:
+        db.session.rollback()
+        current_app.logger.exception("Errore salvataggio home_visibility_rules")
+        return jsonify({"ok": False, "error": f"Errore salvataggio: {exc}"}), 500
+
+    return jsonify(
+        {
+            "ok": True,
+            "message": "Regola visibilità home salvata.",
+            "row": _home_visibility_rule_to_dict(row),
+        }
+    ), 200
+
+
+@main_bp.get("/api/impostazioni/home-config")
+@require_active_perm("configurazione_home")
+def api_home_config_data():
+    policy = _current_policy()
+
+    if not policy.can_view_home_config_section:
+        return jsonify({"ok": False, "error": "Permesso insufficiente."}), 403
+
+    return jsonify(
+        {
+            "ok": True,
+            "data": _build_home_config_settings_payload(policy),
+        }
+    ), 200
+
+
+@main_bp.post("/api/impostazioni/home-visibility-rule/<int:rule_id>/toggle")
+@require_active_perm("configurazione_home")
+def api_toggle_home_visibility_rule(rule_id: int):
+    policy = _current_policy()
+
+    if not policy.can_view_home_config_section:
+        return jsonify({"ok": False, "error": "Permesso insufficiente."}), 403
+
+    row = HomeVisibilityRule.query.get(rule_id)
+    if row is None:
+        return jsonify({"ok": False, "error": "Regola non trovata."}), 404
+
+    old_payload = _home_visibility_rule_to_dict(row)
+
+    row.attivo = not bool(row.attivo)
+    row.updated_at = _now_rome_dt().isoformat(timespec="seconds")
+    row.updated_by = _current_username()
+
+    action = "enable" if row.attivo else "disable"
+
+    try:
+        db.session.flush()
+
+        _home_config_audit(
+            entity_type="home_visibility_rules",
+            entity_id=row.id,
+            action=action,
+            old_payload=old_payload,
+            new_payload=_home_visibility_rule_to_dict(row),
+            note="Cambio stato regola visibilità home.",
+        )
+
+        db.session.commit()
+
+    except Exception as exc:
+        db.session.rollback()
+        return jsonify({"ok": False, "error": f"Errore aggiornamento: {exc}"}), 500
+
+    return jsonify(
+        {
+            "ok": True,
+            "message": "Stato regola aggiornato.",
+            "row": _home_visibility_rule_to_dict(row),
+        }
+    ), 200
 
 
 @main_bp.post("/api/impostazioni/crea-utente")

@@ -1,9 +1,9 @@
 # app_odp/rbac/policy.py
 from __future__ import annotations
-from sqlalchemy import false, select, and_, or_, func, exists, cast, String
+from sqlalchemy import false, select, and_, or_, func, exists, cast, String, case
 from dataclasses import dataclass
 from functools import cached_property
-
+import json
 from app_odp.models import (
     Famiglia,
     InputOdp,
@@ -27,6 +27,8 @@ from app_odp.models import (
     users_famiglia,
     Roles,
     User,
+    HomeRepartoConfig,
+    HomeVisibilityRule,
 )
 
 
@@ -125,6 +127,103 @@ def _norm_role_name(value) -> str:
 PROTECTED_ROLE_NAMES = {
     "responsabile_produzione",
 }
+
+
+def _phase_text(value) -> str:
+    raw = _norm_text(value)
+    if not raw:
+        return ""
+
+    try:
+        n = int(float(raw))
+        if n > 0:
+            return str(n)
+    except (TypeError, ValueError):
+        pass
+
+    return raw
+
+
+def _json_text_list(value) -> list[str]:
+    raw = _norm_text(value)
+    if not raw:
+        return []
+
+    try:
+        parsed = json.loads(raw)
+    except Exception:
+        parsed = raw
+
+    if not isinstance(parsed, list):
+        parsed = [parsed]
+
+    out = []
+    for item in parsed:
+        value = _phase_text(item)
+        if value:
+            out.append(value)
+
+    return list(dict.fromkeys(out))
+
+
+def _home_config_reparto_code(config) -> str:
+    reparto = getattr(config, "reparto", None)
+    return _norm_text(getattr(reparto, "Codice", ""))
+
+
+def _runtime_join_condition():
+    return and_(
+        InputOdp.IdDocumento == InputOdpRuntime.IdDocumento,
+        InputOdp.IdRiga == InputOdpRuntime.IdRiga,
+    )
+
+
+def _stato_ordine_expr():
+    return func.lower(
+        func.coalesce(
+            InputOdpRuntime.Stato_odp,
+            InputOdp.StatoOrdineErp,
+            "Pianificata",
+        )
+    )
+
+
+def _fase_attiva_expr():
+    return cast(func.coalesce(InputOdpRuntime.FaseAttiva, "1"), String)
+
+
+def _first_phase_expr():
+    return cast(
+        case(
+            (
+                func.json_valid(InputOdp.NumFase) == 1,
+                func.json_extract(InputOdp.NumFase, "$[0]"),
+            ),
+            else_="1",
+        ),
+        String,
+    )
+
+
+def _last_phase_expr():
+    return cast(
+        case(
+            (
+                func.json_valid(InputOdp.NumFase) == 1,
+                func.json_extract(InputOdp.NumFase, "$[#-1]"),
+            ),
+            else_=InputOdp.NumFase,
+        ),
+        String,
+    )
+
+
+def _machine_row_predicate():
+    return func.lower(func.coalesce(InputOdp.GestioneMatricola, "")) == "si"
+
+
+def _semilavorato_row_predicate():
+    return func.lower(func.coalesce(InputOdp.GestioneMatricola, "")) == "no"
 
 
 @dataclass(frozen=True)
@@ -397,6 +496,16 @@ class RbacPolicy:
         return self.can("impostazioni_utente") and self.user.has_management_scope()
 
     @cached_property
+    def can_view_home_config_section(self) -> bool:
+        """
+        Sezione configurazione home reparti.
+
+        Non usa nomi ruolo hardcoded.
+        Il controllo passa dal permesso RBAC 'configurazione_home'.
+        """
+        return self.can("configurazione_home")
+
+    @cached_property
     def can_view_role_assignment_section(self) -> bool:
         """
         Sezione assegnazione ruoli:
@@ -616,3 +725,242 @@ class RbacPolicy:
             return False
 
         return int(target_role.id) in self.descendant_manageable_role_ids
+
+    def _home_visibility_rules_for_config(
+        self,
+        config: HomeRepartoConfig,
+        user=None,
+    ) -> tuple[list[HomeVisibilityRule], list[HomeVisibilityRule]]:
+        """
+        Restituisce:
+        - regole di ruolo compatibili con i ruoli effettivi dell'utente;
+        - regole specifiche utente.
+
+        Le regole utente sono sempre ulteriormente restrittive.
+        """
+
+        user = user or self.user
+        user_id = getattr(user, "id", None)
+
+        base = HomeVisibilityRule.query.filter(
+            HomeVisibilityRule.attivo.is_(True),
+            HomeVisibilityRule.reparto_id == config.reparto_id,
+        )
+
+        role_rules = (
+            base.filter(
+                HomeVisibilityRule.role_id.in_(self.role_ids),
+                HomeVisibilityRule.user_id.is_(None),
+            )
+            .order_by(HomeVisibilityRule.id.asc())
+            .all()
+        )
+
+        user_rules = []
+        if user_id is not None:
+            user_rules = (
+                base.filter(HomeVisibilityRule.user_id == int(user_id))
+                .order_by(HomeVisibilityRule.id.asc())
+                .all()
+            )
+
+        return role_rules, user_rules
+
+    def _phase_condition_for_home_rule(self, rule: HomeVisibilityRule):
+        mode = _norm_text(rule.phase_mode).lower() or "all"
+
+        if mode == "all":
+            return None
+
+        fase_expr = _fase_attiva_expr()
+
+        if mode == "exact":
+            values = _json_text_list(rule.phase_values)
+            if not values:
+                return None
+            return fase_expr.in_(values)
+
+        if mode == "list":
+            values = _json_text_list(rule.phase_values)
+            if not values:
+                return None
+            return fase_expr.in_(values)
+
+        if mode == "last":
+            return fase_expr == _last_phase_expr()
+
+        if mode == "not_first":
+            return fase_expr != _first_phase_expr()
+
+        return None
+
+    def _apply_to_predicate_for_home_rule(self, apply_to: str):
+        apply_to = _norm_text(apply_to).lower() or "macchine"
+
+        if apply_to == "macchine":
+            return _machine_row_predicate()
+
+        if apply_to == "semilavorati":
+            return _semilavorato_row_predicate()
+
+        return None
+
+    def _predicate_for_home_rules(self, rules: list[HomeVisibilityRule]):
+        """
+        Combina le regole per scope.
+
+        Esempio:
+        - apply_to='macchine', phase_mode='exact', phase_values='["2"]'
+          significa:
+          lascia passare i semilavorati,
+          ma sulle macchine richiede FaseAttiva = 2.
+        """
+
+        grouped: dict[str, list] = {}
+
+        for rule in rules or []:
+            phase_cond = self._phase_condition_for_home_rule(rule)
+            if phase_cond is None:
+                continue
+
+            apply_to = _norm_text(rule.apply_to).lower() or "macchine"
+            grouped.setdefault(apply_to, []).append(phase_cond)
+
+        if not grouped:
+            return None
+
+        final_conds = []
+
+        for apply_to, phase_conds in grouped.items():
+            if not phase_conds:
+                continue
+
+            phase_predicate = (
+                or_(*phase_conds) if len(phase_conds) > 1 else phase_conds[0]
+            )
+
+            target_predicate = self._apply_to_predicate_for_home_rule(apply_to)
+
+            if target_predicate is None:
+                final_conds.append(phase_predicate)
+            else:
+                final_conds.append(
+                    or_(
+                        ~target_predicate,
+                        phase_predicate,
+                    )
+                )
+
+        if not final_conds:
+            return None
+
+        return and_(*final_conds)
+
+    def filter_input_odp_for_home_config(
+        self,
+        q,
+        config: HomeRepartoConfig,
+        user=None,
+    ):
+        """
+        Filtro unico per home reparto.
+
+        Applica:
+        - reparto da HomeRepartoConfig;
+        - stato diverso da Chiusa;
+        - RBAC ruolo su risorse/lavorazioni/famiglia/macrofamiglia/magazzini;
+        - ABAC utente restrittivo su risorse/lavorazioni;
+        - ABAC famiglia macchina se permission filtro_macchine;
+        - HomeVisibilityRule per fase attiva.
+        """
+
+        user = user or self.user
+        reparto_code = _home_config_reparto_code(config)
+
+        if not reparto_code:
+            return q.filter(false())
+
+        # La home deve sempre restare nello scope dei reparti consentiti.
+        # Anche se l'utente ha permessi larghi, la vista reparto resta vincolata al config.
+        if reparto_code not in self.allowed_reparti and not self.can("odp.read_all"):
+            return q.filter(false())
+
+        q = q.outerjoin(
+            InputOdpRuntime,
+            _runtime_join_condition(),
+        )
+
+        # Reparto della home.
+        q = q.filter(_match(InputOdp.CodReparto, {reparto_code}))
+
+        # Stato: la home deve mostrare tutto tranne Chiusa.
+        q = q.filter(_stato_ordine_expr() != "chiusa")
+
+        # RBAC puro su dimensioni operative.
+        base_filters = [
+            (InputOdpRuntime.RisorsaAttiva, self.allowed_risorse),
+            (InputOdpRuntime.LavorazioneAttiva, self.allowed_lavorazioni),
+            (InputOdp.CodFamiglia, self.allowed_famiglia),
+            (InputOdp.CodMacrofamiglia, self.allowed_macrofamiglia),
+            (InputOdp.CodMagPrincipale, self.allowed_magazzini),
+        ]
+
+        for col, allowed in base_filters:
+            if allowed:
+                q = q.filter(_match(col, allowed))
+
+        # ABAC utente restrittivo: risorse.
+        effective_risorse, enforce_risorse = _effective_user_subset(
+            self.allowed_risorse,
+            self.user_allowed_risorse,
+        )
+        if enforce_risorse:
+            if not effective_risorse:
+                return q.filter(false())
+            q = q.filter(_match(InputOdpRuntime.RisorsaAttiva, effective_risorse))
+
+        # ABAC utente restrittivo: lavorazioni.
+        effective_lavorazioni, enforce_lavorazioni = _effective_user_subset(
+            self.allowed_lavorazioni,
+            self.user_allowed_lavorazioni,
+        )
+        if enforce_lavorazioni:
+            if not effective_lavorazioni:
+                return q.filter(false())
+            q = q.filter(
+                _match(InputOdpRuntime.LavorazioneAttiva, effective_lavorazioni)
+            )
+
+        # ABAC famiglia macchina.
+        # Mantiene la regola attuale: si applica solo a GestioneMatricola = si
+        # e solo se l'utente ha permission filtro_macchine.
+        if self.can("filtro_macchine"):
+            user_famiglie = {
+                _norm_text(x) for x in self.user_allowed_famiglia if _norm_text(x)
+            }
+
+            if user_famiglie:
+                q = q.filter(
+                    or_(
+                        ~_machine_row_predicate(),
+                        _match(InputOdp.CodFamiglia, user_famiglie),
+                    )
+                )
+
+        # HomeVisibilityRule:
+        # 1. prima regole ruolo;
+        # 2. poi regole utente, che restringono ulteriormente.
+        role_rules, user_rules = self._home_visibility_rules_for_config(
+            config,
+            user=user,
+        )
+
+        role_predicate = self._predicate_for_home_rules(role_rules)
+        if role_predicate is not None:
+            q = q.filter(role_predicate)
+
+        user_predicate = self._predicate_for_home_rules(user_rules)
+        if user_predicate is not None:
+            q = q.filter(user_predicate)
+
+        return q

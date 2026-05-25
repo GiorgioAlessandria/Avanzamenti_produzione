@@ -26,6 +26,7 @@
         {% if show_role_delete_section %}
             {% include "partials/_impostazioni_elimina_ruolo.j2" %}
         {% endif %}
+        {% include "partials/_impostazioni_home_config.j2" %}
 
         {% if not show_role_assignment_section
               and not show_user_abac_section
@@ -1908,6 +1909,225 @@
             });
 
             renderDetail();
+        })();
+    </script>
+    <script>
+        (() => {
+            const payload = window.homeConfigSettingsPayload || {};
+            const section = document.getElementById("home-config-section");
+            if (!section) return;
+
+            const alertBox = document.getElementById("home-config-alert");
+
+            function showAlert(type, message) {
+                alertBox.className = `alert alert-${type}`;
+                alertBox.textContent = message;
+                alertBox.classList.remove("d-none");
+            }
+
+            function opt(value, label) {
+                return `<option value="${String(value ?? "").replaceAll('"', '&quot;')}">${label ?? ""}</option>`;
+            }
+
+            function fillSelect(select, rows, valueKey, labelFn, emptyLabel = "") {
+                if (!select) return;
+                let html = emptyLabel ? opt("", emptyLabel) : "";
+                html += (rows || []).map(row => opt(row[valueKey], labelFn(row))).join("");
+                select.innerHTML = html;
+            }
+
+            function fillOptionsFromObject(select, obj, emptyLabel = "") {
+                if (!select) return;
+                let html = emptyLabel ? opt("", emptyLabel) : "";
+                html += Object.entries(obj || {}).map(([k, v]) => opt(k, v)).join("");
+                select.innerHTML = html;
+            }
+
+            function formToPayload(form) {
+                const out = {};
+                for (const el of form.elements) {
+                    if (!el.name) continue;
+                    if (el.type === "checkbox") out[el.name] = el.checked;
+                    else out[el.name] = el.value;
+                }
+                return out;
+            }
+
+            async function postJson(url, body) {
+                const resp = await fetch(url, {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify(body),
+                });
+                const data = await resp.json().catch(() => ({}));
+                if (!resp.ok || data.ok === false) {
+                    throw new Error(data.error || `Errore HTTP ${resp.status}`);
+                }
+                return data;
+            }
+
+            async function reloadPayload() {
+                const resp = await fetch("{{ url_for('main.api_home_config_data') }}");
+                const data = await resp.json();
+                if (!data.ok) throw new Error(data.error || "Errore caricamento dati.");
+                Object.assign(payload, data.data || {});
+                renderTables();
+                fillFormsOptions();
+            }
+
+            const formCfg = document.getElementById("form-home-config");
+            const formRule = document.getElementById("form-home-rule");
+
+            function fillFormsOptions() {
+                fillSelect(formCfg.elements.reparto_id, payload.reparti, "id", r => `${r.codice} - ${r.descrizione}`);
+                fillOptionsFromObject(formCfg.elements.template, payload.template_options);
+                fillOptionsFromObject(formCfg.elements.renderer, payload.renderer_options);
+                fillOptionsFromObject(formCfg.elements.metodo_documentale_tipo, payload.metodo_options);
+
+                fillSelect(formRule.elements.reparto_id, payload.reparti, "id", r => `${r.codice} - ${r.descrizione}`);
+                fillSelect(formRule.elements.role_id, payload.roles, "id", r => `${r.description || r.name}`);
+                fillSelect(formRule.elements.user_id, payload.users, "id", u => u.username, "-- Seleziona utente --");
+                fillOptionsFromObject(formRule.elements.apply_to, payload.apply_to_options);
+                fillOptionsFromObject(formRule.elements.phase_mode, payload.phase_mode_options);
+                fillOptionsFromObject(formRule.elements.metodo_documentale_tipo, payload.metodo_options, "Nessun override");
+            }
+
+            function setFormValues(form, row) {
+                for (const el of form.elements) {
+                    if (!el.name) continue;
+                    if (el.type === "checkbox") el.checked = Boolean(row[el.name]);
+                    else el.value = row[el.name] ?? "";
+                }
+            }
+
+            function clearConfigForm() {
+                formCfg.reset();
+                formCfg.elements.id.value = "";
+                formCfg.elements.permesso.value = "home";
+                formCfg.elements.ordine_menu.value = "100";
+                formCfg.elements.attivo.checked = true;
+            }
+
+            function clearRuleForm() {
+                formRule.reset();
+                formRule.elements.id.value = "";
+                formRule.elements.scope_type.value = "role";
+                formRule.elements.apply_to.value = "macchine";
+                formRule.elements.phase_mode.value = "all";
+                formRule.elements.attivo.checked = true;
+            }
+
+            function renderTables() {
+                const tbodyCfg = document.querySelector("#tbl-home-config tbody");
+                tbodyCfg.innerHTML = (payload.home_configs || []).map(row => `
+            <tr>
+                <td>${row.ordine_menu ?? ""}</td>
+                <td>${row.reparto_codice ?? ""} - ${row.reparto_descrizione ?? ""}</td>
+                <td>${row.label ?? ""}</td>
+                <td>${row.tab_code ?? ""}</td>
+                <td>${row.template ?? ""}</td>
+                <td>${row.renderer ?? ""}</td>
+                <td>${row.attivo ? "Sì" : "No"}</td>
+                <td>
+                    <button class="btn btn-sm btn-outline-primary" data-edit-home-config="${row.id}">
+                        Modifica
+                    </button>
+                </td>
+            </tr>
+        `).join("");
+
+                const tbodyRules = document.querySelector("#tbl-home-rules tbody");
+                tbodyRules.innerHTML = (payload.visibility_rules || []).map(row => {
+                    const scope = row.role_id
+                        ? `Ruolo: ${row.role_description || row.role_name}`
+                        : `Utente: ${row.username}`;
+                    return `
+                <tr>
+                    <td>${row.reparto_codice ?? ""} - ${row.reparto_descrizione ?? ""}</td>
+                    <td>${scope}</td>
+                    <td>${row.apply_to ?? ""}</td>
+                    <td>${row.phase_mode ?? ""}</td>
+                    <td>${row.phase_values ?? ""}</td>
+                    <td>${row.attivo ? "Sì" : "No"}</td>
+                    <td class="d-flex gap-1">
+                        <button class="btn btn-sm btn-outline-primary" data-edit-home-rule="${row.id}">
+                            Modifica
+                        </button>
+                        <button class="btn btn-sm btn-outline-secondary" data-toggle-home-rule="${row.id}">
+                            ${row.attivo ? "Disattiva" : "Attiva"}
+                        </button>
+                    </td>
+                </tr>
+            `;
+                }).join("");
+            }
+
+            document.addEventListener("click", async (e) => {
+                const cfgId = e.target.closest("[data-edit-home-config]")?.dataset.editHomeConfig;
+                if (cfgId) {
+                    const row = (payload.home_configs || []).find(x => String(x.id) === String(cfgId));
+                    if (row) setFormValues(formCfg, row);
+                    return;
+                }
+
+                const ruleId = e.target.closest("[data-edit-home-rule]")?.dataset.editHomeRule;
+                if (ruleId) {
+                    const row = (payload.visibility_rules || []).find(x => String(x.id) === String(ruleId));
+                    if (row) {
+                        setFormValues(formRule, {
+                            ...row,
+                            scope_type: row.user_id ? "user" : "role",
+                        });
+                    }
+                    return;
+                }
+
+                const toggleId = e.target.closest("[data-toggle-home-rule]")?.dataset.toggleHomeRule;
+                if (toggleId) {
+                    try {
+                        await postJson(`/api/impostazioni/home-visibility-rule/${toggleId}/toggle`, {});
+                        await reloadPayload();
+                        showAlert("success", "Stato regola aggiornato.");
+                    } catch (err) {
+                        showAlert("danger", err.message);
+                    }
+                }
+            });
+
+            document.getElementById("btn-home-config-new")?.addEventListener("click", clearConfigForm);
+            document.getElementById("btn-home-rule-new")?.addEventListener("click", clearRuleForm);
+
+            formCfg.addEventListener("submit", async (e) => {
+                e.preventDefault();
+                try {
+                    await postJson("{{ url_for('main.api_save_home_reparto_config') }}", formToPayload(formCfg));
+                    await reloadPayload();
+                    clearConfigForm();
+                    showAlert("success", "Configurazione reparto salvata.");
+                } catch (err) {
+                    showAlert("danger", err.message);
+                }
+            });
+
+            formRule.addEventListener("submit", async (e) => {
+                e.preventDefault();
+                const body = formToPayload(formRule);
+
+                if (body.scope_type === "role") body.user_id = "";
+                if (body.scope_type === "user") body.role_id = "";
+
+                try {
+                    await postJson("{{ url_for('main.api_save_home_visibility_rule') }}", body);
+                    await reloadPayload();
+                    clearRuleForm();
+                    showAlert("success", "Regola visibilità salvata.");
+                } catch (err) {
+                    showAlert("danger", err.message);
+                }
+            });
+
+            fillFormsOptions();
+            renderTables();
         })();
     </script>
 {% endblock %}

@@ -792,6 +792,302 @@ class User(UserMixin, db.Model):
         return f"<Users {self.__dict__}>"
 
 
+class HomeRepartoConfig(db.Model):
+    """
+    Configurazione dinamica delle home operative per reparto.
+
+    Sostituisce la logica hardcoded tipo:
+    - HOME_TABS
+    - TAB_TO_TEMPLATE
+    - BRIDGE_CONFIG
+
+    Una riga = una voce reparto nel menu/home.
+    """
+
+    __tablename__ = "home_reparto_config"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+
+    reparto_id = db.Column(
+        db.Integer,
+        db.ForeignKey("reparti.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    tab_code = db.Column(db.Text, nullable=False, unique=True, index=True)
+    label = db.Column(db.Text, nullable=False)
+
+    template = db.Column(db.Text, nullable=False)
+    renderer = db.Column(db.Text, nullable=False)
+
+    permesso = db.Column(db.Text, nullable=False, default="home", server_default="home")
+
+    ordine_menu = db.Column(
+        db.Integer, nullable=False, default=100, server_default="100"
+    )
+    attivo = db.Column(
+        db.Boolean, nullable=False, default=True, server_default=db.text("1")
+    )
+
+    # Titoli standard del layout. Possono essere sovrascritti da home_visibility_rules per ruolo/utente.
+    titolo_macchine_da_eseguire = db.Column(db.Text)
+    titolo_macchine_attive = db.Column(db.Text)
+    titolo_semilavorati_da_eseguire = db.Column(db.Text)
+    titolo_semilavorati_attivi = db.Column(db.Text)
+
+    # Testi standard dei pulsanti. Possono essere sovrascritti da home_visibility_rules.
+    testo_presa_macchina = db.Column(db.Text)
+    testo_sospendi_macchina = db.Column(db.Text)
+    testo_riattiva_macchina = db.Column(db.Text)
+    testo_chiudi_macchina = db.Column(db.Text)
+
+    # Gestione documentale/metodi.
+    metodo_documentale_tipo = db.Column(
+        db.Text,
+        nullable=False,
+        default="montaggio",
+        server_default="montaggio",
+    )
+    metodo_documentale_prefisso = db.Column(db.Text)
+    metodo_documentale_path_key = db.Column(db.Text)
+
+    created_at = db.Column(
+        db.Text,
+        nullable=False,
+        default=lambda: datetime.now(ZoneInfo("Europe/Rome")).isoformat(
+            timespec="seconds"
+        ),
+    )
+    updated_at = db.Column(db.Text)
+    updated_by = db.Column(db.Text)
+
+    reparto = db.relationship("Reparti", lazy="selectin")
+
+    __table_args__ = (
+        db.CheckConstraint(
+            "renderer IN ('montaggio', 'standard', 'empty')",
+            name="ck_home_reparto_config_renderer",
+        ),
+        db.CheckConstraint(
+            "metodo_documentale_tipo IN ('montaggio', 'collaudo', 'nessuno')",
+            name="ck_home_reparto_config_metodo_tipo",
+        ),
+        db.Index("ix_home_reparto_config_attivo_ordine", "attivo", "ordine_menu"),
+    )
+
+    def __repr__(self):
+        return f"<HomeRepartoConfig {self.tab_code} reparto_id={self.reparto_id}>"
+
+
+class HomeVisibilityRule(db.Model):
+    """
+    Regole di visibilità aggiuntive per ruolo o utente.
+
+    Non sostituisce roles_reparti / roles_risorse / roles_lavorazioni:
+    aggiunge solo regole più specifiche, soprattutto sulla fase attiva e sugli override UI.
+
+    Regola scelta:
+    - role_id valorizzato = regola per ruolo
+    - user_id valorizzato = regola per utente
+    - se esistono entrambe, l'utente può solo restringere ulteriormente
+    """
+
+    __tablename__ = "home_visibility_rules"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+
+    reparto_id = db.Column(
+        db.Integer,
+        db.ForeignKey("reparti.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    role_id = db.Column(
+        db.Integer,
+        db.ForeignKey("roles.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+
+    apply_to = db.Column(
+        db.Text,
+        nullable=False,
+        default="macchine",
+        server_default="macchine",
+    )
+    # valori: all, macchine, semilavorati
+
+    phase_mode = db.Column(
+        db.Text,
+        nullable=False,
+        default="all",
+        server_default="all",
+    )
+    # valori:
+    # all         -> nessun filtro fase
+    # exact       -> una fase esatta, es. ["2"]
+    # list        -> lista di fasi, es. ["2", "3"]
+    # last        -> ultima fase secondo NumFase
+    # not_first   -> tutte tranne la prima
+
+    phase_values = db.Column(db.Text)
+    # JSON testuale, es. ["2"] oppure ["2", "3"]
+
+    attivo = db.Column(
+        db.Boolean, nullable=False, default=True, server_default=db.text("1")
+    )
+
+    # Override UI per ruolo/utente.
+    titolo_macchine_da_eseguire = db.Column(db.Text)
+    titolo_macchine_attive = db.Column(db.Text)
+    testo_presa_macchina = db.Column(db.Text)
+    testo_sospendi_macchina = db.Column(db.Text)
+    testo_riattiva_macchina = db.Column(db.Text)
+    testo_chiudi_macchina = db.Column(db.Text)
+
+    # Override documentale per ruolo/utente.
+    # Per collaudo: metodo_documentale_tipo='collaudo', metodo_documentale_prefisso='COLLAUDO_'
+    metodo_documentale_tipo = db.Column(db.Text)
+    metodo_documentale_prefisso = db.Column(db.Text)
+    metodo_documentale_path_key = db.Column(db.Text)
+
+    created_at = db.Column(
+        db.Text,
+        nullable=False,
+        default=lambda: datetime.now(ZoneInfo("Europe/Rome")).isoformat(
+            timespec="seconds"
+        ),
+    )
+    updated_at = db.Column(db.Text)
+    updated_by = db.Column(db.Text)
+
+    reparto = db.relationship("Reparti", lazy="selectin")
+    role = db.relationship("Roles", lazy="selectin")
+    user = db.relationship("User", lazy="selectin")
+
+    __table_args__ = (
+        db.CheckConstraint(
+            "(role_id IS NOT NULL OR user_id IS NOT NULL)",
+            name="ck_home_visibility_rules_role_or_user",
+        ),
+        db.CheckConstraint(
+            "apply_to IN ('all', 'macchine', 'semilavorati')",
+            name="ck_home_visibility_rules_apply_to",
+        ),
+        db.CheckConstraint(
+            "phase_mode IN ('all', 'exact', 'list', 'last', 'not_first')",
+            name="ck_home_visibility_rules_phase_mode",
+        ),
+        db.CheckConstraint(
+            "metodo_documentale_tipo IS NULL OR metodo_documentale_tipo IN ('montaggio', 'collaudo', 'nessuno')",
+            name="ck_home_visibility_rules_metodo_tipo",
+        ),
+        db.Index(
+            "ix_home_visibility_rules_scope",
+            "reparto_id",
+            "role_id",
+            "user_id",
+            "attivo",
+        ),
+    )
+
+    @property
+    def phase_values_list(self) -> list[str]:
+        if not self.phase_values:
+            return []
+
+        try:
+            parsed = json.loads(self.phase_values)
+        except json.JSONDecodeError:
+            parsed = [self.phase_values]
+
+        if not isinstance(parsed, list):
+            parsed = [parsed]
+
+        out = []
+        for item in parsed:
+            value = str(item or "").strip()
+            if value:
+                out.append(value)
+
+        return out
+
+    @phase_values_list.setter
+    def phase_values_list(self, values):
+        clean = []
+        for item in values or []:
+            value = str(item or "").strip()
+            if value:
+                clean.append(value)
+        self.phase_values = json.dumps(clean, ensure_ascii=False)
+
+    def __repr__(self):
+        scope = f"role_id={self.role_id}" if self.role_id else f"user_id={self.user_id}"
+        return f"<HomeVisibilityRule reparto_id={self.reparto_id} {scope} {self.phase_mode}>"
+
+
+class ConfigAuditLog(db.Model):
+    """
+    Log modifiche configurazioni amministrative.
+    Da usare quando si modificheranno da UI:
+    - home_reparto_config
+    - home_visibility_rules
+    - collegamenti RBAC/ABAC rilevanti
+    """
+
+    __tablename__ = "config_audit_log"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+
+    entity_type = db.Column(db.Text, nullable=False, index=True)
+    entity_id = db.Column(db.Text, nullable=False, index=True)
+
+    action = db.Column(db.Text, nullable=False, index=True)
+    old_payload = db.Column(db.Text)
+    new_payload = db.Column(db.Text)
+
+    changed_by_user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    changed_by_username = db.Column(db.Text)
+
+    changed_at = db.Column(
+        db.Text,
+        nullable=False,
+        default=lambda: datetime.now(ZoneInfo("Europe/Rome")).isoformat(
+            timespec="seconds"
+        ),
+        index=True,
+    )
+
+    note = db.Column(db.Text)
+
+    changed_by_user = db.relationship("User", lazy="selectin")
+
+    __table_args__ = (
+        db.CheckConstraint(
+            "action IN ('create', 'update', 'delete', 'seed', 'enable', 'disable')",
+            name="ck_config_audit_log_action",
+        ),
+        db.Index("ix_config_audit_log_entity", "entity_type", "entity_id"),
+    )
+
+    def __repr__(self):
+        return f"<ConfigAuditLog {self.action} {self.entity_type}:{self.entity_id}>"
+
+
 class BrowserTabSession(db.Model):
     __tablename__ = "browser_tab_sessions"
 
