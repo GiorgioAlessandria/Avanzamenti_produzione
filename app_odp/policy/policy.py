@@ -79,7 +79,6 @@ def _codes(allowed):
         return set()
 
     first = allowed[0]
-    # oggetti Reparti/Risorse/... (hanno attributo Codice)
     if hasattr(first, "Codice"):
         return {
             str(x.Codice) for x in allowed if getattr(x, "Codice", None) is not None
