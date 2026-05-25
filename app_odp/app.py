@@ -99,6 +99,10 @@ def create_app():
     app.config["MONTAGGIO_PDF_DIR"] = configurazione["Percorsi"][
         "percorso_metodi_montaggio"
     ]
+    app.config["COLLAUDO_PDF_DIR"] = configurazione["Percorsi"].get(
+        "percorso_metodi_collaudo",
+        "",
+    )
     app.config["FOTOGRAFIE_MATERIALE"] = configurazione["Percorsi"][
         "percorso_fotografie_materiale"
     ]
