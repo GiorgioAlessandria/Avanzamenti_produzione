@@ -2,8 +2,10 @@
     {% if singolo_odp.StatoOrdine != "Pianificata" and singolo_odp.StatoOrdine != "Chiusa" %}
         {% set operatore = singolo_odp.runtime_row.Utente_operazione if singolo_odp.runtime_row else "" %}
         {% set runtime = singolo_odp.runtime_row %}
-        {% set pr_visible = runtime and runtime.PrioritaOperatoreIdInCarico|string == current_user.id|string %}
-        {% set pr = runtime.PrioritaInCarico if pr_visible else none %}
+        {% set pr_raw = singolo_odp.PrioritaNumero|default(none) %}
+        {% set pr_runtime = runtime.PrioritaInCarico if runtime else none %}
+        {% set pr_value = pr_raw if pr_raw else pr_runtime %}
+        {% set pr = pr_value|int if pr_value|string in ["1", "2", "3"] else none %}
         {% set pr_class = 'table-danger'
         if pr == 1 else 'table-warning'
                 if pr == 2 else'table-success'
