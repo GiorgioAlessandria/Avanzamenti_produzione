@@ -24,7 +24,6 @@ from app_odp.models import (
     roles_reparti,
     roles_risorse,
     user_roles,
-    users_famiglia,
     Roles,
     User,
     HomeRepartoConfig,
