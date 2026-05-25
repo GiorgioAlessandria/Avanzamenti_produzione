@@ -22,7 +22,7 @@ from flask import (
     g,
 )
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy import func, select, delete, and_, exists
+from sqlalchemy import func, select, delete, and_, exists, or_
 from app_odp.etichette import gen_etichette
 from app_odp.models import (
     InputOdp,
@@ -61,8 +61,6 @@ from app_odp.models import (
     AcqArticoli,
     AcqGiacenze,
     AcqArticoliLookup,
-    HomeRepartoConfig,
-    HomeVisibilityRule,
     HomeRepartoConfig,
     HomeVisibilityRule,
     ConfigAuditLog,
@@ -405,16 +403,6 @@ def _home_reparto_config_for_ordine(ordine: InputOdp):
             return cfg
 
     return None
-
-
-def _tab_scoped_odp(policy: RbacPolicy, reparto_code: str):
-    q = _base_odp_query()
-    return policy.filter_input_odp_for_reparto(q, reparto_code)
-
-
-def _tab_scoped_odp(policy: RbacPolicy, reparto_code: str):
-    q = _base_odp_query()
-    return policy.filter_input_odp_for_reparto(q, reparto_code)
 
 
 def _query_for_home_config(policy: RbacPolicy, config: HomeRepartoConfig):
@@ -7111,22 +7099,6 @@ def api_save_home_visibility_rule():
             "ok": True,
             "message": "Regola visibilità home salvata.",
             "row": _home_visibility_rule_to_dict(row),
-        }
-    ), 200
-
-
-@main_bp.get("/api/impostazioni/home-config")
-@require_active_perm("configurazione_home")
-def api_home_config_data():
-    policy = _current_policy()
-
-    if not policy.can_view_home_config_section:
-        return jsonify({"ok": False, "error": "Permesso insufficiente."}), 403
-
-    return jsonify(
-        {
-            "ok": True,
-            "data": _build_home_config_settings_payload(policy),
         }
     ), 200
 
