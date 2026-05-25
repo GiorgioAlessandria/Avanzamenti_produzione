@@ -84,6 +84,7 @@ from app_odp.operator_session import (
     operator_or_login_required,
 )
 
+
 main_bp = Blueprint("main", __name__)
 ROME_TZ = ZoneInfo("Europe/Rome")
 MIN_SECONDS_BEFORE_CLOSE_WITHOUT_TIME_PERMISSION = 180
@@ -2572,12 +2573,15 @@ def home():
         .scalars()
         .all()
     )
+    method_settings = _home_method_settings_for_user(config, policy, user)
+    home_ui_texts = _home_ui_texts_for_user(config, policy, user)
 
     return render_template(
         "home.j2",
         active_partial=template,
         active_tab=active_tab,
         home_config=config,
+        home_ui_texts=home_ui_texts,
         policy=policy,
         odp=odp,
         causali_attivita=causali,
@@ -2587,7 +2591,14 @@ def home():
             tab_session=active_token(),
         ),
         bridge_last_event_id=_last_log_token(),
-        metodo_montaggio_lookup=_build_metodo_montaggio_lookup(odp),
+        method_settings=method_settings,
+        metodo_lookup=_build_metodo_lookup(
+            odp,
+            path_key=method_settings["path_key"],
+            prefisso=method_settings["prefisso"],
+        ),
+        metodo_documentale_prefisso=method_settings["prefisso"],
+        metodo_documentale_tipo=method_settings["tipo"],
         operator_user=user,
         operator_policy=policy,
         tab_session=active_token(),
@@ -2626,6 +2637,100 @@ def _render_bridge_standard(odp):
     }
 
 
+def _home_ui_texts_for_user(
+    config: HomeRepartoConfig,
+    policy: RbacPolicy,
+    user=None,
+) -> dict:
+    user = user or active_user()
+
+    texts = {
+        "titolo_macchine_da_eseguire": "Ordini macchina da eseguire",
+        "titolo_macchine_attive": "Ordini macchina attivi",
+        "titolo_semilavorati_da_eseguire": "Ordini semilavorati da eseguire",
+        "titolo_semilavorati_attivi": "Ordini semilavorati attivi",
+        "testo_presa_macchina": "Attiva ordine macchina",
+        "testo_sospendi_macchina": "Sospendi ordine",
+        "testo_riattiva_macchina": "Riattiva ordine",
+        "testo_chiudi_macchina": "Chiudi ordine",
+        "toast_presa_macchina": "Presa in carico ordine macchina",
+        "toast_sospendi_macchina": "Sospensione ordine macchina",
+        "toast_riattiva_macchina": "Riattivazione ordine macchina",
+        "toast_chiudi_macchina": "Chiusura ordine macchina",
+    }
+
+    config_map = {
+        "titolo_macchine_da_eseguire": getattr(
+            config, "titolo_macchine_da_eseguire", None
+        ),
+        "titolo_macchine_attive": getattr(config, "titolo_macchine_attive", None),
+        "titolo_semilavorati_da_eseguire": getattr(
+            config, "titolo_semilavorati_da_eseguire", None
+        ),
+        "titolo_semilavorati_attivi": getattr(
+            config, "titolo_semilavorati_attivi", None
+        ),
+        "testo_presa_macchina": getattr(config, "testo_presa_macchina", None),
+        "testo_sospendi_macchina": getattr(config, "testo_sospendi_macchina", None),
+        "testo_riattiva_macchina": getattr(config, "testo_riattiva_macchina", None),
+        "testo_chiudi_macchina": getattr(config, "testo_chiudi_macchina", None),
+    }
+
+    for key, value in config_map.items():
+        value = _norm_text(value)
+        if value:
+            texts[key] = value
+
+    rules = (
+        HomeVisibilityRule.query.filter(
+            HomeVisibilityRule.attivo.is_(True),
+            HomeVisibilityRule.reparto_id == config.reparto_id,
+        )
+        .filter(
+            or_(
+                HomeVisibilityRule.role_id.in_(policy.role_ids),
+                HomeVisibilityRule.user_id == getattr(user, "id", None),
+            )
+        )
+        .order_by(
+            HomeVisibilityRule.user_id.isnot(None).asc(),
+            HomeVisibilityRule.id.asc(),
+        )
+        .all()
+    )
+
+    for rule in rules:
+        rule_map = {
+            "titolo_macchine_da_eseguire": rule.titolo_macchine_da_eseguire,
+            "titolo_macchine_attive": rule.titolo_macchine_attive,
+            "testo_presa_macchina": rule.testo_presa_macchina,
+            "testo_sospendi_macchina": rule.testo_sospendi_macchina,
+            "testo_riattiva_macchina": rule.testo_riattiva_macchina,
+            "testo_chiudi_macchina": rule.testo_chiudi_macchina,
+        }
+
+        for key, value in rule_map.items():
+            value = _norm_text(value)
+            if value:
+                texts[key] = value
+
+    # Toast: se non hai un campo dedicato, riuso gli stessi testi azione.
+    texts["toast_presa_macchina"] = (
+        texts.get("testo_presa_macchina") or texts["toast_presa_macchina"]
+    )
+    texts["toast_sospendi_macchina"] = (
+        texts.get("testo_sospendi_macchina") or texts["toast_sospendi_macchina"]
+    )
+    texts["toast_riattiva_macchina"] = (
+        texts.get("testo_riattiva_macchina") or texts["toast_riattiva_macchina"]
+    )
+    texts["toast_chiudi_macchina"] = (
+        texts.get("testo_chiudi_macchina") or texts["toast_chiudi_macchina"]
+    )
+
+    return texts
+
+
 def _home_method_settings_for_user(
     config: HomeRepartoConfig,
     policy: RbacPolicy,
@@ -2653,7 +2758,7 @@ def _home_method_settings_for_user(
             )
         )
         .order_by(
-            HomeVisibilityRule.user_id.isnot(None).desc(),
+            HomeVisibilityRule.user_id.isnot(None).asc(),
             HomeVisibilityRule.id.asc(),
         )
         .all()
@@ -3902,9 +4007,9 @@ def _get_visible_odp_by_key(
             policy,
             active_user(),
         )
-        .filter_by(
-            IdDocumento=id_documento,
-            IdRiga=id_riga,
+        .filter(
+            InputOdp.IdDocumento == id_documento,
+            InputOdp.IdRiga == id_riga,
         )
         .first()
     )
@@ -6372,13 +6477,16 @@ def api_chiudi_ordine_montaggio_macchina():
         )
     fragments = {}
     if tab:
-        reparto_code = BRIDGE_CONFIG[tab]["reparto"]
-        odp = list(_query_for_tab(policy, reparto_code).all())
+        config = _home_reparto_config_by_tab(tab)
 
-        if tab == "montaggio":
-            odp = policy.filter_montaggio_macchine_famiglia_rows(odp)
-
-        fragments = RENDERERS[tab](odp)
+        if config is not None and _policy_can_access_home_config(policy, config):
+            odp = _home_rows_for_config(
+                policy,
+                config,
+                apply_priorita=True,
+                sort_priorita=True,
+            )
+            fragments = _render_fragments_for_home_config(config, odp)
 
     db.session.commit()
 
@@ -6888,10 +6996,149 @@ def impostazioni():
         registry_role_options=registry_role_options,
         registry_users=registry_users,
         registry_reparti_options=registry_reparti_options,
+        show_home_config_section=show_home_config_section,
+        home_config_payload=home_config_payload,
     )
 
 
 LOGIN_CODE_DUPLICATO_MSG = "Il codice di login è già utilizzato"
+
+
+@main_bp.post("/api/impostazioni/home-reparto-config")
+@require_active_perm("configurazione_home")
+def api_save_home_reparto_config():
+    policy = _current_policy()
+
+    if not policy.can_view_home_config_section:
+        return jsonify({"ok": False, "error": "Permesso insufficiente."}), 403
+
+    data = request.get_json(silent=True) or {}
+
+    config_id = _home_config_int(data.get("id"), 0)
+    reparto_id = _home_config_int(data.get("reparto_id"), 0)
+
+    reparto = Reparti.query.get(reparto_id)
+    if reparto is None:
+        return jsonify({"ok": False, "error": "Reparto non valido."}), 400
+
+    tab_code = _normalize_home_tab_code(data.get("tab_code"))
+    if not tab_code:
+        return jsonify({"ok": False, "error": "Tab code obbligatorio."}), 400
+
+    label = _home_config_text(data.get("label"))
+    if not label:
+        return jsonify({"ok": False, "error": "Label menu obbligatoria."}), 400
+
+    template = _home_config_text(data.get("template"))
+    renderer = _home_config_text(data.get("renderer"))
+    metodo_tipo = _home_config_text(data.get("metodo_documentale_tipo")) or "nessuno"
+
+    if template not in HOME_CONFIG_TEMPLATE_OPTIONS:
+        return jsonify({"ok": False, "error": "Template non valido."}), 400
+
+    if renderer not in HOME_CONFIG_RENDERER_OPTIONS:
+        return jsonify({"ok": False, "error": "Renderer non valido."}), 400
+
+    if metodo_tipo not in HOME_CONFIG_METODO_OPTIONS:
+        return jsonify(
+            {"ok": False, "error": "Tipo metodo documentale non valido."}
+        ), 400
+
+    duplicate = HomeRepartoConfig.query.filter(
+        func.lower(HomeRepartoConfig.tab_code) == tab_code
+    )
+
+    if config_id:
+        duplicate = duplicate.filter(HomeRepartoConfig.id != config_id)
+
+    if duplicate.first() is not None:
+        return jsonify({"ok": False, "error": "Tab code già utilizzato."}), 409
+
+    if config_id:
+        row = HomeRepartoConfig.query.get(config_id)
+        if row is None:
+            return jsonify({"ok": False, "error": "Configurazione non trovata."}), 404
+        action = "update"
+        old_payload = _home_reparto_config_to_dict(row)
+    else:
+        row = HomeRepartoConfig()
+        db.session.add(row)
+        action = "create"
+        old_payload = None
+
+    row.reparto_id = reparto.id
+    row.tab_code = tab_code
+    row.label = label
+    row.template = template
+    row.renderer = renderer
+    row.permesso = _home_config_text(data.get("permesso")) or "home"
+    row.ordine_menu = _home_config_int(data.get("ordine_menu"), 100)
+    row.attivo = _home_config_bool(data.get("attivo"))
+
+    row.titolo_macchine_da_eseguire = (
+        _home_config_text(data.get("titolo_macchine_da_eseguire")) or None
+    )
+    row.titolo_macchine_attive = (
+        _home_config_text(data.get("titolo_macchine_attive")) or None
+    )
+    row.titolo_semilavorati_da_eseguire = (
+        _home_config_text(data.get("titolo_semilavorati_da_eseguire")) or None
+    )
+    row.titolo_semilavorati_attivi = (
+        _home_config_text(data.get("titolo_semilavorati_attivi")) or None
+    )
+
+    row.testo_presa_macchina = (
+        _home_config_text(data.get("testo_presa_macchina")) or None
+    )
+    row.testo_sospendi_macchina = (
+        _home_config_text(data.get("testo_sospendi_macchina")) or None
+    )
+    row.testo_riattiva_macchina = (
+        _home_config_text(data.get("testo_riattiva_macchina")) or None
+    )
+    row.testo_chiudi_macchina = (
+        _home_config_text(data.get("testo_chiudi_macchina")) or None
+    )
+
+    row.metodo_documentale_tipo = metodo_tipo
+    row.metodo_documentale_prefisso = (
+        _home_config_text(data.get("metodo_documentale_prefisso")) or None
+    )
+    row.metodo_documentale_path_key = (
+        _home_config_text(data.get("metodo_documentale_path_key")) or None
+    )
+
+    row.updated_at = _now_rome_dt().isoformat(timespec="seconds")
+    row.updated_by = _current_username()
+
+    try:
+        db.session.flush()
+        new_payload = _home_reparto_config_to_dict(row)
+
+        _home_config_audit(
+            entity_type="home_reparto_config",
+            entity_id=row.id,
+            action=action,
+            old_payload=old_payload,
+            new_payload=new_payload,
+            note="Salvataggio configurazione home reparto da impostazioni.",
+        )
+
+        db.session.commit()
+
+    except Exception as exc:
+        db.session.rollback()
+        current_app.logger.exception("Errore salvataggio home_reparto_config")
+        return jsonify({"ok": False, "error": f"Errore salvataggio: {exc}"}), 500
+
+    return jsonify(
+        {
+            "ok": True,
+            "message": "Configurazione home reparto salvata.",
+            "row": _home_reparto_config_to_dict(row),
+        }
+    ), 200
 
 
 def _login_code_error_response(message: str, status_code: int = 400):

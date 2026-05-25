@@ -1,5 +1,6 @@
 {% set has_modifica_data_chiusura_permission = policy and policy.can('modifica_data_chiusura') %}
 {% set has_export_senza_tempo_permission = policy and policy.can('export_avp_senza_riga_tempo') %}
+{% set home_ui_texts = home_ui_texts|default({}, true) %}
 <!--toast nuovo ordine in carico SL -->
 <div class="toast lh-lg hide"
      role="alert"
@@ -64,7 +65,7 @@
      style="width: max-content;height: max-content;position: fixed; top: 1rem; right: 1rem; z-index: 2000;opacity: 1;filter: blur(0px);">
     <div class="toast-header">
         <strong class="me-auto"
-                style="font-size: 25px;">Presa in carico ordine macchina
+                style="font-size: 25px;">{{ home_ui_texts.toast_presa_macchina or "Presa in carico ordine macchina" }}
             <span data-bind-text="ordine"></span></strong>
         <button class="btn-close ms-2 mb-1 close"
                 type="button"
@@ -441,7 +442,7 @@
      style="width: max-content;height: max-content;position: fixed; top: 1rem; right: 1rem; z-index: 2000;opacity: 1;filter: blur(0px);">
     <div class="toast-header">
         <strong class="me-auto"
-                style="font-size: 25px;">Sospensione ordine macchina
+                style="font-size: 25px;">{{ home_ui_texts.toast_sospendi_macchina or "Sospensione ordine macchina" }}
             <span data-bind-text="ordine"></span></strong>
         <button class="btn-close ms-2 mb-1 close"
                 type="button"
@@ -501,7 +502,7 @@
      style="width: max-content;height: max-content;position: fixed; top: 1rem; right: 1rem; z-index: 2000;opacity: 1;filter: blur(0px);">
     <div class="toast-header">
         <strong class="me-auto"
-                style="font-size: 25px;">Riattivazione dell'ordine
+                style="font-size: 25px;">{{ home_ui_texts.toast_riattiva_macchina or "Riattivazione ordine macchina" }}
             <span data-bind-text="ordine"></span></strong>
         <button class="btn-close ms-2 mb-1 close"
                 type="button"
@@ -554,7 +555,7 @@
     <div class="toast-header">
         <strong class="me-auto"
                 style="font-size: 25px;">
-            Chiusura ordine macchina
+            {{ home_ui_texts.toast_chiudi_macchina or "Chiusura ordine macchina" }}
             <span data-bind-text="ordine"></span>
         </strong>
         <button class="btn-close ms-2 mb-1"
@@ -926,7 +927,9 @@
     </div>
     <div class="row text-center align-items-start mx-0 montaggio-main-row">
         <div class="col montaggio-col ms-0">
-            <h2 class="w-100 mb-1">Ordini macchina da eseguire</h2>
+            <h2 class="w-100 mb-1">
+                {{ home_ui_texts.titolo_macchine_da_eseguire or "Ordini macchina da eseguire" }}
+            </h2>
             <div class="row mb-1">
                 <div class="col mb-1">
                     <label><input
@@ -993,7 +996,9 @@
             </button>
         </div>
         <div class="col montaggio-col mb-1">
-            <h2 class="w-100 mb-1">Ordini macchina attivi</h2>
+            <h2 class="w-100 mb-1">
+                {{ home_ui_texts.titolo_macchine_attive or "Ordini macchina attivi" }}
+            </h2>
             <div class="row mb-1">
                 <div class="col mb-1">
                     <label><input
@@ -1064,7 +1069,7 @@
                             data-fill-target="#toast-5"
                             data-bs-toggle="toast"
                             disabled>
-                        Sospendi ordine
+                        {{ home_ui_texts.testo_sospendi_macchina or "Sospendi ordine" }}
                     </button>
                     <button class="btn btn-primary m-2 btn-success"
                             id="riattivazione_ordine_m"
@@ -1073,7 +1078,7 @@
                             data-use-selected="#ordini_in_corso_m"
                             data-fill-target="#toast-6"
                             data-bs-toggle="toast"
-                            disabled>Riattiva ordine
+                            disabled>{{ home_ui_texts.testo_riattiva_macchina or "Riattiva ordine" }}
                     </button>
                 </section>
                 <section class="text-end d-flex flex-grow-1 justify-content-end m-2"
@@ -1083,7 +1088,7 @@
                             data-bs-target="#toast-7"
                             data-use-selected="#ordini_in_corso_m"
                             data-fill-target="#toast-7"
-                            data-bs-toggle="toast">Chiudi ordine
+                            data-bs-toggle="toast">{{ home_ui_texts.testo_chiudi_macchina or "Chiudi ordine" }}
                     </button>
                 </section>
             </section>

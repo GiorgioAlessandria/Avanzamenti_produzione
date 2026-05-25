@@ -976,8 +976,9 @@ class HomeVisibilityRule(db.Model):
 
     __table_args__ = (
         db.CheckConstraint(
-            "(role_id IS NOT NULL OR user_id IS NOT NULL)",
-            name="ck_home_visibility_rules_role_or_user",
+            "((role_id IS NOT NULL AND user_id IS NULL) OR "
+            "(role_id IS NULL AND user_id IS NOT NULL))",
+            name="ck_home_visibility_rules_role_xor_user",
         ),
         db.CheckConstraint(
             "apply_to IN ('all', 'macchine', 'semilavorati')",

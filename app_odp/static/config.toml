@@ -47,6 +47,7 @@ percorso_metodi_montaggio = "//Serverspring02/PythonDB/materiale_avanzamenti_pro
 percorso_fotografie_materiale = "//Serverspring02/PythonDB/materiale_avanzamenti_produzione/fotografie_materiale"
 percorso_etichette_generate = "//Serverspring02/PythonDB/materiale_avanzamenti_produzione/"
 percorso_metodo_utilizzo = "//Serverspring02/PythonDB/materiale_avanzamenti_produzione/metodo_utilizzo"
+percorso_metodi_collaudo = "//Serverspring02/PythonDB/materiale_avanzamenti_produzione/metodi_collaudo"
 [sync_config]
 tempo_polling = 2
 counter_righe = 0
