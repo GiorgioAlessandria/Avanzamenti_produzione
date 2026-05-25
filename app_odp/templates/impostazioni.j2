@@ -356,7 +356,7 @@
                 if (btnSave) btnSave.disabled = true;
 
                 try {
-                    const resp = await fetch("/api/impostazioni/utente-abac", {
+                    const resp = await window.avpFetch("/api/impostazioni/utente-abac", {
                         method: "POST",
                         headers: {
                             "Content-Type": "application/json",
@@ -670,7 +670,7 @@
                 showFeedback("info", "Salvataggio in corso...");
 
                 try {
-                    const resp = await fetch("/api/impostazioni/assegna-ruolo", {
+                    const resp = await window.avpFetch("/api/impostazioni/assegna-ruolo", {
                         method: "POST",
                         headers: {
                             "Content-Type": "application/json",
@@ -884,7 +884,7 @@
                     selected_ids: collectCheckedIds(),
                 };
 
-                const resp = await fetch("/api/impostazioni/ruolo-link", {
+                const resp = await window.avpFetch("/api/impostazioni/ruolo-link", {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
@@ -1113,7 +1113,7 @@
                 showFeedback("info", "Salvataggio in corso...");
 
                 try {
-                    const resp = await fetch("/api/impostazioni/crea-ruolo", {
+                    const resp = await window.avpFetch("/api/impostazioni/crea-ruolo", {
                         method: "POST",
                         headers: {
                             "Content-Type": "application/json",
@@ -1263,7 +1263,7 @@
                 showFeedback("info", "Eliminazione in corso...");
 
                 try {
-                    const resp = await fetch("/api/impostazioni/elimina-ruolo", {
+                    const resp = await window.avpFetch("/api/impostazioni/elimina-ruolo", {
                         method: "POST",
                         headers: {
                             "Content-Type": "application/json",
@@ -1454,7 +1454,7 @@
                 }
 
                 try {
-                    const resp = await fetch("/api/impostazioni/crea-utente", {
+                    const resp = await window.avpFetch("/api/impostazioni/crea-utente", {
                         method: "POST",
                         headers: {
                             "Content-Type": "application/json",
@@ -1494,7 +1494,7 @@
                 if (!confirmed) return;
 
                 try {
-                    const resp = await fetch("/api/impostazioni/utente-attivo", {
+                    const resp = await window.avpFetch("/api/impostazioni/utente-attivo", {
                         method: "POST",
                         headers: {
                             "Content-Type": "application/json",
@@ -1666,7 +1666,7 @@
                 showFeedback("info", "Salvataggio in corso...");
 
                 try {
-                    const resp = await fetch("/api/impostazioni/reset-login-code", {
+                    const resp = await window.avpFetch("/api/impostazioni/reset-login-code", {
                         method: "POST",
                         headers: {
                             "Content-Type": "application/json",
@@ -1851,7 +1851,7 @@
                 showFeedback("info", "Salvataggio in corso...");
 
                 try {
-                    const resp = await fetch("/api/impostazioni/reset-login-code", {
+                    const resp = await window.avpFetch("/api/impostazioni/reset-login-code", {
                         method: "POST",
                         headers: {
                             "Content-Type": "application/json",

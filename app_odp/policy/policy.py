@@ -95,6 +95,16 @@ def _match(col, allowed):
     return or_(col.in_(allowed), _json_leaf_any_in(col, allowed))
 
 
+def _match_any(cols, allowed):
+    allowed = _codes(allowed)
+    if not allowed:
+        return false()
+
+    return or_(
+        *[or_(col.in_(allowed), _json_leaf_any_in(col, allowed)) for col in cols]
+    )
+
+
 def _effective_user_subset(role_allowed, user_allowed) -> tuple[set[str], bool]:
     """
     Restituisce:
@@ -395,17 +405,17 @@ class RbacPolicy:
 
         # --- RBAC puro ---
         base_filters = [
-            (InputOdp.CodReparto, self.allowed_reparti),
-            (InputOdpRuntime.RisorsaAttiva, self.allowed_risorse),
-            (InputOdpRuntime.LavorazioneAttiva, self.allowed_lavorazioni),
-            (InputOdp.CodFamiglia, self.allowed_famiglia),
-            (InputOdp.CodMacrofamiglia, self.allowed_macrofamiglia),
-            (InputOdp.CodMagPrincipale, self.allowed_magazzini),
+            ([InputOdp.CodReparto], self.allowed_reparti),
+            ([InputOdpRuntime.RisorsaAttiva], self.allowed_risorse),
+            ([InputOdpRuntime.LavorazioneAttiva], self.allowed_lavorazioni),
+            ([InputOdp.CodFamiglia], self.allowed_famiglia),
+            ([InputOdp.CodMacrofamiglia], self.allowed_macrofamiglia),
+            ([InputOdp.CodMagPrincipale], self.allowed_magazzini),
         ]
 
-        for col, allowed in base_filters:
+        for cols, allowed in base_filters:
             if allowed:
-                conds.append(_match(col, allowed))
+                conds.append(_match_any(cols, allowed))
 
         # --- RBAC + ABAC utente: RISORSE ---
         effective_risorse, enforce_risorse = _effective_user_subset(
@@ -415,7 +425,12 @@ class RbacPolicy:
         if enforce_risorse:
             if not effective_risorse:
                 return q.filter(false())
-            conds.append(_match(InputOdpRuntime.RisorsaAttiva, effective_risorse))
+            conds.append(
+                _match_any(
+                    [InputOdpRuntime.RisorsaAttiva],
+                    effective_risorse,
+                )
+            )
 
         # --- RBAC + ABAC utente: LAVORAZIONI ---
         effective_lavorazioni, enforce_lavorazioni = _effective_user_subset(
@@ -426,7 +441,10 @@ class RbacPolicy:
             if not effective_lavorazioni:
                 return q.filter(false())
             conds.append(
-                _match(InputOdpRuntime.LavorazioneAttiva, effective_lavorazioni)
+                _match_any(
+                    [InputOdpRuntime.LavorazioneAttiva],
+                    effective_lavorazioni,
+                )
             )
 
         if not conds:
