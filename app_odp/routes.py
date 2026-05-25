@@ -3243,40 +3243,6 @@ def _priorita_map_for_operatore(
     }
 
 
-def _runtime_priorita_snapshot(ordine) -> int | None:
-    """
-    Priorità storica salvata al momento della presa in carico.
-    Serve per continuare a mostrare la PR su ordini Attivo/In Sospeso,
-    anche dopo che la priorità è stata rimossa dalla coda OdpPriorita.
-    """
-    stato = getattr(ordine, "runtime_row", None)
-
-    if stato is None:
-        return None
-
-    try:
-        priorita = int(getattr(stato, "PrioritaInCarico", 0) or 0)
-    except (TypeError, ValueError):
-        return None
-
-    if priorita in (1, 2, 3):
-        return priorita
-
-    return None
-
-
-def _ordine_is_attivo_o_sospeso(ordine) -> bool:
-    stato_runtime = _norm_text(
-        getattr(getattr(ordine, "runtime_row", None), "Stato_odp", "")
-    ).lower()
-
-    stato_ordine = _norm_text(getattr(ordine, "StatoOrdine", "")).lower()
-
-    stato = stato_runtime or stato_ordine
-
-    return "attiv" in stato or "sospes" in stato
-
-
 def _apply_priorita_to_ordini(
     ordini: list[InputOdp],
     operatore_id: int,
@@ -3288,25 +3254,12 @@ def _apply_priorita_to_ordini(
     for ordine in ordini:
         row = priorita_map.get(_ordine_fase_key(ordine))
 
-        if row is not None:
-            # Ordine ancora Pianificata: priorità modificabile dalla coda.
+        if row is None:
+            ordine.PrioritaNumero = None
+            ordine.PrioritaPosizione = None
+        else:
             ordine.PrioritaNumero = row.Priorita
             ordine.PrioritaPosizione = row.Posizione
-            ordine.PrioritaFonte = "coda"
-            continue
-
-        snapshot_priorita = _runtime_priorita_snapshot(ordine)
-
-        if _ordine_is_attivo_o_sospeso(ordine) and snapshot_priorita is not None:
-            # Ordine già preso in carico: priorità storica non modificabile.
-            ordine.PrioritaNumero = snapshot_priorita
-            ordine.PrioritaPosizione = None
-            ordine.PrioritaFonte = "runtime"
-            continue
-
-        ordine.PrioritaNumero = None
-        ordine.PrioritaPosizione = None
-        ordine.PrioritaFonte = ""
 
     if sort_result:
         return sorted(ordini, key=_priority_sort_key)
