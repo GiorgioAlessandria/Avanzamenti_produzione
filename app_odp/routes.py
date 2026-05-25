@@ -6889,15 +6889,50 @@ def api_save_user_abac():
 
     role_id_raw = data.get("role_id")
     user_id_raw = data.get("user_id")
-    lavorazioni_ids_raw = data.get("lavorazioni_ids") or []
-    risorse_ids_raw = data.get("risorse_ids") or []
+
+    required_keys = {
+        "role_id",
+        "user_id",
+        "lavorazioni_ids",
+        "risorse_ids",
+        "famiglia_ids",
+    }
+
+    missing_keys = sorted(key for key in required_keys if key not in data)
+    if missing_keys:
+        return jsonify(
+            {
+                "ok": False,
+                "error": "Payload incompleto: salvataggio annullato per evitare cancellazioni involontarie.",
+                "missing_keys": missing_keys,
+            }
+        ), 400
+
+    lavorazioni_ids_raw = data.get("lavorazioni_ids")
+    risorse_ids_raw = data.get("risorse_ids")
+    famiglia_ids_raw = data.get("famiglia_ids")
+
+    if not isinstance(lavorazioni_ids_raw, list):
+        return jsonify(
+            {"ok": False, "error": "lavorazioni_ids deve essere una lista."}
+        ), 400
+
+    if not isinstance(risorse_ids_raw, list):
+        return jsonify(
+            {"ok": False, "error": "risorse_ids deve essere una lista."}
+        ), 400
+
+    if not isinstance(famiglia_ids_raw, list):
+        return jsonify(
+            {"ok": False, "error": "famiglia_ids deve essere una lista."}
+        ), 400
 
     try:
         role_id = int(role_id_raw)
         user_id = int(user_id_raw)
         lavorazioni_ids = {int(x) for x in lavorazioni_ids_raw}
         risorse_ids = {int(x) for x in risorse_ids_raw}
-        famiglia_ids = _normalize_id_list(data.get("famiglia_ids", []))
+        famiglia_ids = _normalize_id_list(famiglia_ids_raw)
     except (TypeError, ValueError):
         return jsonify({"ok": False, "error": "Parametri non validi."}), 400
 
@@ -6946,6 +6981,29 @@ def api_save_user_abac():
 
     lavorazioni_to_add = lavorazioni_ids - current_lavorazioni_in_scope
     lavorazioni_to_remove = current_lavorazioni_in_scope - lavorazioni_ids
+    clear_all_requested = not lavorazioni_ids and not risorse_ids and not famiglia_ids
+
+    has_existing_assignments = (
+        bool(current_lavorazioni_in_scope)
+        or bool(current_risorse_in_scope)
+        or bool(getattr(utente, "famiglie", []))
+    )
+
+    if (
+        clear_all_requested
+        and has_existing_assignments
+        and not data.get("confirm_clear_all")
+    ):
+        return jsonify(
+            {
+                "ok": False,
+                "error": (
+                    "Il salvataggio rimuoverebbe tutte le spunte. "
+                    "Operazione annullata per sicurezza."
+                ),
+                "requires_confirm_clear_all": True,
+            }
+        ), 409
 
     risorse_to_add = risorse_ids - current_risorse_in_scope
     risorse_to_remove = current_risorse_in_scope - risorse_ids
