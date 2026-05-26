@@ -66,7 +66,33 @@
             type="application/json">
         {{ registry_users|tojson }}</script>
     <script>
+        function getTabSession() {
+            const params = new URLSearchParams(window.location.search);
+            return params.get("tab_session") || "";
+        }
+
+        function apiUrl(path) {
+            const token = getTabSession();
+            if (!token) return path;
+
+            const url = new URL(path, window.location.origin);
+            url.searchParams.set("tab_session", token);
+            return url.pathname + url.search;
+        }
+
+        function apiHeaders(extra = {}) {
+            const token = getTabSession();
+
+            return {
+                "Content-Type": "application/json",
+                "X-Requested-With": "XMLHttpRequest",
+                ...(token ? {"X-Tab-Session": token} : {}),
+                ...extra
+            };
+        }
+
         (() => {
+
             const selectRuolo = document.getElementById("select-ruolo-impostazioni");
             const placeholder = document.getElementById("placeholder-utenti-ruolo");
             const gruppiUtenti = document.querySelectorAll("[data-role-users]");
@@ -356,7 +382,7 @@
                 if (btnSave) btnSave.disabled = true;
 
                 try {
-                    const resp = await fetch("/api/impostazioni/utente-abac", {
+                    const resp = await fetch(apiUrl("/api/impostazioni/utente-abac"), {
                         method: "POST",
                         headers: {
                             "Content-Type": "application/json",
@@ -670,12 +696,9 @@
                 showFeedback("info", "Salvataggio in corso...");
 
                 try {
-                    const resp = await fetch("/api/impostazioni/assegna-ruolo", {
+                    const resp = await fetch(apiUrl("/api/impostazioni/assegna-ruolo"), {
                         method: "POST",
-                        headers: {
-                            "Content-Type": "application/json",
-                            "X-Requested-With": "XMLHttpRequest"
-                        },
+                        headers: apiHeaders(),
                         credentials: "same-origin",
                         body: JSON.stringify({
                             user_id: Number(user.id),
@@ -699,7 +722,7 @@
                     user.current_role_name = selectedRole.name || "";
                     user.current_role_description = selectedRole.description || selectedRole.name || "";
                     showFeedback("success", data.message || "Ruolo aggiornato correttamente.");
-                    window.location.reload();
+                    window.location.href = apiUrl(window.location.pathname);
                     return;
 
                     renderUsersDropdown();
@@ -884,7 +907,7 @@
                     selected_ids: collectCheckedIds(),
                 };
 
-                const resp = await fetch("/api/impostazioni/ruolo-link", {
+                const resp = await fetch(apiUrl("/api/impostazioni/ruolo-link"), {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
@@ -1113,7 +1136,7 @@
                 showFeedback("info", "Salvataggio in corso...");
 
                 try {
-                    const resp = await fetch("/api/impostazioni/crea-ruolo", {
+                    const resp = await fetch(apiUrl("/api/impostazioni/crea-ruolo"), {
                         method: "POST",
                         headers: {
                             "Content-Type": "application/json",
@@ -1263,7 +1286,7 @@
                 showFeedback("info", "Eliminazione in corso...");
 
                 try {
-                    const resp = await fetch("/api/impostazioni/elimina-ruolo", {
+                    const resp = await fetch(apiUrl("/api/impostazioni/elimina-ruolo"), {
                         method: "POST",
                         headers: {
                             "Content-Type": "application/json",
@@ -1454,7 +1477,7 @@
                 }
 
                 try {
-                    const resp = await fetch("/api/impostazioni/crea-utente", {
+                    const resp = await fetch(apiUrl("/api/impostazioni/crea-utente"), {
                         method: "POST",
                         headers: {
                             "Content-Type": "application/json",
@@ -1494,7 +1517,7 @@
                 if (!confirmed) return;
 
                 try {
-                    const resp = await fetch("/api/impostazioni/utente-attivo", {
+                    const resp = await fetch(apiUrl("/api/impostazioni/utente-attivo"), {
                         method: "POST",
                         headers: {
                             "Content-Type": "application/json",
@@ -1666,7 +1689,7 @@
                 showFeedback("info", "Salvataggio in corso...");
 
                 try {
-                    const resp = await fetch("/api/impostazioni/reset-login-code", {
+                    const resp = await fetch(apiUrl("/api/impostazioni/reset-login-code"), {
                         method: "POST",
                         headers: {
                             "Content-Type": "application/json",
@@ -1851,7 +1874,7 @@
                 showFeedback("info", "Salvataggio in corso...");
 
                 try {
-                    const resp = await fetch("/api/impostazioni/reset-login-code", {
+                    const resp = await fetch(apiUrl("/api/impostazioni/reset-login-code"), {
                         method: "POST",
                         headers: {
                             "Content-Type": "application/json",
