@@ -27,12 +27,16 @@
             {% include "partials/_impostazioni_elimina_ruolo.j2" %}
         {% endif %}
         {% include "partials/_impostazioni_home_config.j2" %}
+        {% include "partials/_impostazioni_capacity_config.j2" %}
 
         {% if not show_role_assignment_section
               and not show_user_abac_section
               and not show_role_links_section
               and not show_role_creation_section
-              and not show_role_delete_section %}
+              and not show_role_delete_section
+              and not show_user_registry_section
+              and not show_home_config_section
+              and not show_capacity_config_section %}
             <div class="alert alert-warning mb-0">
                 Non hai permessi per visualizzare le sezioni di configurazione.
             </div>
@@ -40,7 +44,7 @@
     </main>
 {% endblock %}
 {% block extra_js %}
-
+    {{ super() }}
     <script id="ruolo-details-data"
             type="application/json">
         {{ ruolo_details|tojson }}</script>

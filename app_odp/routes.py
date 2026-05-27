@@ -6,6 +6,7 @@ import unicodedata
 from io import BytesIO
 from openpyxl import Workbook
 from openpyxl.styles import Font
+from openpyxl.utils import get_column_letter
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 from sqlalchemy.orm import selectinload
@@ -64,6 +65,8 @@ from app_odp.models import (
     HomeRepartoConfig,
     HomeVisibilityRule,
     ConfigAuditLog,
+    ProductionCapacityCalendar,
+    ProductionKpiSnapshot,
 )
 from app_odp.ordine_ref import format_ordine_ref_display_from_ordine
 from app_odp.policy.decorator import require_active_perm
@@ -84,7 +87,7 @@ from app_odp.operator_session import (
     operator_or_login_required,
 )
 
-
+DASHBOARD_PRODUZIONE_FUTURE_DAYS = 31
 main_bp = Blueprint("main", __name__)
 ROME_TZ = ZoneInfo("Europe/Rome")
 MIN_SECONDS_BEFORE_CLOSE_WITHOUT_TIME_PERMISSION = 180
@@ -614,6 +617,44 @@ def _get_phase_transition(ordine, fase_corrente: str) -> tuple[bool, str | None]
     return is_last, next_phase
 
 
+def _reset_runtime_for_next_phase(
+    stato,
+    ordine,
+    username: str,
+    next_phase: str,
+):
+    """
+    Prepara il runtime per la fase successiva.
+
+    Il tempo deve ripartire da zero, perché Tempo_funzionamento
+    deve rappresentare il tempo della fase corrente, non il cumulato ordine.
+    """
+    if stato is None:
+        return
+
+    next_phase = _norm_text(next_phase)
+
+    stato.Stato_odp = "Pianificata"
+    stato.Utente_operazione = username
+    stato.FaseAttiva = next_phase
+
+    # Punto centrale della modifica:
+    # azzera il tempo al cambio fase.
+    stato.Tempo_funzionamento = "0"
+
+    # La fase successiva non è ancora presa in carico.
+    stato.data_ultima_attivazione = None
+    stato.Data_in_carico = None
+
+    stato.QtyDaLavorare = _norm_text(getattr(ordine, "QtyDaLavorare", ""))
+
+    stato.RisorsaAttiva = _norm_text(getattr(ordine, "RisorsaAttiva", ""))
+    stato.LavorazioneAttiva = _norm_text(getattr(ordine, "LavorazioneAttiva", ""))
+    stato.AttrezzaggioAttivo = _norm_text(getattr(ordine, "AttrezzaggioAttivo", ""))
+
+    stato.VarianteArt = _norm_text(getattr(ordine, "VarianteArt", ""))
+
+
 def _set_runtime_pianificata(stato, username: str):
     if stato is None:
         return
@@ -792,8 +833,18 @@ def _advance_or_finalize_phase(
     ordine.StatoOrdine = "Pianificata"
     ordine.FaseAttiva = next_phase
     ordine.QtyDaLavorare = _decimal_to_text(q_ok)
+
+    # Aggiorna RisorsaAttiva, LavorazioneAttiva, AttrezzaggioAttivo
+    # in base alla nuova fase.
     _sync_active_fields_for_phase(ordine, next_phase)
-    _set_runtime_pianificata(stato, username)
+
+    # Azzera il runtime per la nuova fase.
+    _reset_runtime_for_next_phase(
+        stato=stato,
+        ordine=ordine,
+        username=username,
+        next_phase=next_phase,
+    )
 
     return {
         "tipo": "avanzata",
@@ -1659,6 +1710,31 @@ def _add_lotto_generato_log(
     )
 
 
+def _phase_export_flags(
+    ordine,
+    fase_corrente: str,
+    *,
+    chiusura_parziale: bool = False,
+) -> dict:
+    """
+    Determina se questa fase deve generare product_line nel TXT ERP.
+
+    Regola:
+    - chiusura parziale: mai product_line
+    - monofase: product_line
+    - multifase: product_line solo sull'ultima fase
+    """
+    is_last_phase, next_phase = _get_phase_transition(ordine, fase_corrente)
+    phase_sequence = _phase_sequence_for_ordine(ordine)
+
+    return {
+        "is_last_phase": bool(is_last_phase),
+        "fase_successiva": next_phase or "",
+        "phase_sequence": phase_sequence,
+        "emit_product_line": bool(is_last_phase and not chiusura_parziale),
+    }
+
+
 def _build_phase_payload(
     ordine,
     distinta_base,
@@ -1677,8 +1753,29 @@ def _build_phase_payload(
     magazzino: str = "",
     variante: str = "",
     include_time_line: bool = True,
+    emit_product_line: bool | None = None,
+    is_last_phase: bool | None = None,
+    fase_successiva: str | None = None,
+    phase_sequence: list[str] | None = None,
 ) -> dict:
     salda_riga = 0 if chiusura_parziale is True else 1
+    if is_last_phase is None or fase_successiva is None:
+        calc_is_last_phase, calc_next_phase = _get_phase_transition(
+            ordine,
+            fase_corrente,
+        )
+
+        if is_last_phase is None:
+            is_last_phase = calc_is_last_phase
+
+        if fase_successiva is None:
+            fase_successiva = calc_next_phase or ""
+
+    if phase_sequence is None:
+        phase_sequence = _phase_sequence_for_ordine(ordine)
+
+    if emit_product_line is None:
+        emit_product_line = bool(is_last_phase and not chiusura_parziale)
     return {
         "kind": "consuntivo_fase",
         "id_documento": ordine.IdDocumento,
@@ -1704,6 +1801,11 @@ def _build_phase_payload(
         "variante": variante,
         "num_progr_riga": ordine.NumProgrRiga,
         "include_time_line": bool(include_time_line),
+        "emit_product_line": bool(emit_product_line),
+        "is_last_phase": bool(is_last_phase),
+        "fase_successiva": _norm_text(fase_successiva),
+        "phase_sequence": phase_sequence,
+        "num_fase": ordine.NumFase,
     }
 
 
@@ -3770,7 +3872,15 @@ def _ensure_stato_attivo(
 
     stato.Stato_odp = "Attivo"
     stato.Utente_operazione = username
+
+    fase_precedente = _norm_text(getattr(stato, "FaseAttiva", ""))
+
     if fase_corrente:
+        if fase_precedente and fase_precedente != _norm_text(fase_corrente):
+            stato.Tempo_funzionamento = "0"
+            stato.Data_in_carico = None
+            stato.data_ultima_attivazione = None
+
         stato.FaseAttiva = fase_corrente
     if not _norm_text(stato.Data_in_carico):
         stato.Data_in_carico = now_iso
@@ -5413,6 +5523,43 @@ def api_riattiva_ordine_montaggio_macchina():
     )
 
 
+def _dashboard_text_filter(value) -> str:
+    return _norm_text(value).lower()
+
+
+def _dashboard_cruscotto_filters_from_request() -> dict:
+    return {
+        "reparto": _dashboard_text_filter(request.args.get("reparto")),
+        "risorsa": _dashboard_text_filter(request.args.get("risorsa")),
+        "lavorazione": _dashboard_text_filter(request.args.get("lavorazione")),
+        "operatore": _dashboard_text_filter(request.args.get("operatore")),
+        "articolo": _dashboard_text_filter(request.args.get("articolo")),
+        "stato": _dashboard_text_filter(request.args.get("stato")),
+    }
+
+
+def _dashboard_row_matches_filters(row: dict, filters: dict) -> bool:
+    for key in ("reparto", "risorsa", "lavorazione", "operatore", "articolo", "stato"):
+        expected = _dashboard_text_filter(filters.get(key))
+        if not expected:
+            continue
+
+        if key == "articolo":
+            current = " ".join(
+                [
+                    _norm_text(row.get("cod_art")),
+                    _norm_text(row.get("descrizione")),
+                ]
+            ).lower()
+        else:
+            current = _norm_text(row.get(key)).lower()
+
+        if expected not in current:
+            return False
+
+    return True
+
+
 @main_bp.get("/etichette/<path:filename>")
 @operator_or_login_required
 def etichetta_png(filename):
@@ -5811,6 +5958,11 @@ def api_chiudi_ordine():
     )
 
     fase_corrente = _fase_corrente_for_export(ordine, stato=stato)
+    phase_export_flags = _phase_export_flags(
+        ordine,
+        fase_corrente,
+        chiusura_parziale=chiusura_parziale,
+    )
 
     if _norm_text(ordine.GestioneLotto).lower() == "si" and q_ok > 0:
         rif_lotto_prodotto = generazione_lotti(registration_dt)
@@ -5890,6 +6042,7 @@ def api_chiudi_ordine():
             magazzino=ordine.CodMagPrincipale,
             variante=ordine.VarianteArt,
             include_time_line=include_time_line,
+            **phase_export_flags,
         )
         outbox = _queue_phase_export(
             ordine=ordine,
@@ -5915,6 +6068,7 @@ def api_chiudi_ordine():
             magazzino=ordine.CodMagPrincipale,
             variante=ordine.VarianteArt,
             include_time_line=include_time_line,
+            **phase_export_flags,
         )
         outbox = _queue_phase_export(
             ordine=ordine,
@@ -6024,6 +6178,10 @@ def api_chiudi_ordine():
             "outbox_id": outbox.outbox_id if outbox else None,
             "export_status": outbox.status if outbox else None,
             "lotto_prodotto": lotto_prodotto,
+            "emit_product_line": phase_export_flags["emit_product_line"],
+            "is_last_phase": phase_export_flags["is_last_phase"],
+            "fase_successiva": phase_export_flags["fase_successiva"],
+            "phase_sequence": phase_export_flags["phase_sequence"],
         },
     )
 
@@ -6331,6 +6489,11 @@ def api_chiudi_ordine_montaggio_macchina():
         tempo_finale = _norm_text(stato.Tempo_funzionamento) or "0"
 
     fase_corrente = _fase_corrente_for_export(ordine, stato=stato, fase_override=fase)
+    phase_export_flags = _phase_export_flags(
+        ordine,
+        fase_corrente,
+        chiusura_parziale=False,
+    )
     distinta_base_export = _build_export_distinta_base(
         ordine=ordine,
         fase_corrente=fase_corrente,
@@ -6354,6 +6517,7 @@ def api_chiudi_ordine_montaggio_macchina():
         magazzino=ordine.CodMagPrincipale,
         variante=ordine.VarianteArt,
         include_time_line=include_time_line,
+        **phase_export_flags,
     )
 
     outbox = _queue_phase_export(
@@ -6418,6 +6582,10 @@ def api_chiudi_ordine_montaggio_macchina():
             "lotti_count": len(lotti_input),
             "outbox_id": outbox.outbox_id if outbox else None,
             "export_status": outbox.status if outbox else None,
+            "emit_product_line": phase_export_flags["emit_product_line"],
+            "is_last_phase": phase_export_flags["is_last_phase"],
+            "fase_successiva": phase_export_flags["fase_successiva"],
+            "phase_sequence": phase_export_flags["phase_sequence"],
         },
     )
 
@@ -6678,6 +6846,7 @@ def impostazioni():
 
     show_role_assignment_section = policy.can_view_role_assignment_section
     show_user_abac_section = policy.can_view_user_abac_section
+    show_capacity_config_section = policy.can("kpi_config")
 
     ruolo_options = []
     utenti_per_ruolo = {}
@@ -6998,6 +7167,7 @@ def impostazioni():
         registry_reparti_options=registry_reparti_options,
         show_home_config_section=show_home_config_section,
         home_config_payload=home_config_payload,
+        show_capacity_config_section=show_capacity_config_section,
     )
 
 
@@ -8382,6 +8552,1760 @@ def _hours_to_work_days(total_hours: float, hours_per_day: float = 8.0) -> float
     if total <= 0:
         return 0.0
     return round(total / hours_per_day, 2)
+
+
+def _dashboard_produzione_default_section(policy: RbacPolicy) -> str:
+    if policy.can("dashboard_produzione"):
+        return "cruscotto"
+
+    if policy.can("kpi_produzione"):
+        return "kpi"
+
+    return ""
+
+
+def _dashboard_produzione_allowed_sections(policy: RbacPolicy) -> dict:
+    return {
+        "cruscotto": bool(policy.can("dashboard_produzione")),
+        "kpi": bool(policy.can("kpi_produzione")),
+        "export": bool(policy.can("kpi_export")),
+        "config": bool(policy.can("kpi_config")),
+    }
+
+
+def _capacity_calendar_payload() -> list[dict]:
+    rows = (
+        ProductionCapacityCalendar.query.filter(
+            ProductionCapacityCalendar.active.is_(True)
+        )
+        .order_by(
+            ProductionCapacityCalendar.scope_type.asc(),
+            ProductionCapacityCalendar.scope_code.asc(),
+            ProductionCapacityCalendar.weekday.asc(),
+        )
+        .all()
+    )
+
+    return [
+        {
+            "id": row.id,
+            "scope_type": row.scope_type,
+            "scope_code": row.scope_code,
+            "weekday": row.weekday,
+            "hours_capacity": float(row.hours_capacity or 0),
+        }
+        for row in rows
+    ]
+
+
+def _dashboard_produzione_initial_payload(policy: RbacPolicy) -> dict:
+    return {
+        "allowed_sections": _dashboard_produzione_allowed_sections(policy),
+        "capacity_calendar": _capacity_calendar_payload(),
+        "cruscotto": {
+            "cards": {},
+            "charts": {},
+            "criticita": [],
+        },
+        "kpi": {
+            "cards": {},
+            "charts": {},
+            "details": [],
+        },
+    }
+
+
+def _dashboard_parse_date(value):
+    raw = _norm_text(value)
+    if not raw:
+        return None
+
+    for fmt in ("%Y-%m-%d", "%Y-%m-%d %H:%M:%S", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(raw[:19], fmt).date()
+        except ValueError:
+            pass
+
+    return None
+
+
+def _dashboard_today() -> date:
+    return datetime.now(ROME_TZ).date()
+
+
+def _dashboard_stato_norm(ordine: InputOdp) -> str:
+    runtime = getattr(ordine, "runtime_row", None)
+
+    stato = (
+        _norm_text(getattr(runtime, "Stato_odp", ""))
+        or _norm_text(getattr(ordine, "StatoOrdine", ""))
+        or _norm_text(getattr(ordine, "StatoOrdineErp", ""))
+    )
+
+    return stato.strip()
+
+
+def _dashboard_is_chiusa(ordine: InputOdp) -> bool:
+    stato = _dashboard_stato_norm(ordine).lower()
+    return "chius" in stato or "terminat" in stato
+
+
+def _dashboard_fase_attiva(ordine: InputOdp) -> str:
+    runtime = getattr(ordine, "runtime_row", None)
+
+    return (
+        _norm_text(getattr(runtime, "FaseAttiva", ""))
+        or _norm_text(getattr(ordine, "FaseAttiva", ""))
+        or "1"
+    )
+
+
+def _dashboard_active_value(ordine: InputOdp, attr_name: str) -> str:
+    fase_attiva = _dashboard_fase_attiva(ordine)
+
+    return _active_value_for_phase(
+        getattr(ordine, attr_name, ""),
+        getattr(ordine, "NumFase", ""),
+        fase_attiva,
+    )
+
+
+def _dashboard_reparto_attivo(ordine: InputOdp) -> str:
+    raw = _dashboard_active_value(ordine, "CodReparto")
+    return _first_code_from_cell(raw) or _first_code_from_cell(
+        getattr(ordine, "CodReparto", "")
+    )
+
+
+def _dashboard_risorsa_attiva(ordine: InputOdp) -> str:
+    runtime = getattr(ordine, "runtime_row", None)
+
+    return (
+        _norm_text(getattr(runtime, "RisorsaAttiva", ""))
+        or _norm_text(getattr(ordine, "RisorsaAttiva", ""))
+        or _first_code_from_cell(_dashboard_active_value(ordine, "CodRisorsaProd"))
+    )
+
+
+def _dashboard_lavorazione_attiva(ordine: InputOdp) -> str:
+    runtime = getattr(ordine, "runtime_row", None)
+
+    return (
+        _norm_text(getattr(runtime, "LavorazioneAttiva", ""))
+        or _norm_text(getattr(ordine, "LavorazioneAttiva", ""))
+        or _first_code_from_cell(_dashboard_active_value(ordine, "CodLavorazione"))
+    )
+
+
+def _dashboard_data_fine_prevista(ordine: InputOdp):
+    return _dashboard_parse_date(
+        getattr(ordine, "DataFinePrevista", "") or getattr(ordine, "DataFineSched", "")
+    )
+
+
+def _dashboard_tempo_previsto_ore(ordine: InputOdp) -> float:
+    """
+    Regola richiesta:
+    1. TempoPrevistoFase
+    2. fallback TempoPrevisto
+    3. fallback TempoPrevistoLavoraz della fase attiva
+    """
+
+    runtime = getattr(ordine, "runtime_row", None)
+
+    raw_values = [
+        getattr(ordine, "TempoPrevistoFase", ""),
+        getattr(runtime, "TempoPrevistoFase", "") if runtime else "",
+        getattr(ordine, "TempoPrevisto", ""),
+        getattr(runtime, "TempoPrevisto", "") if runtime else "",
+        InputOdp._active_value_from_phase_list(
+            getattr(ordine, "TempoPrevistoLavoraz", ""),
+            _dashboard_fase_attiva(ordine),
+        ),
+    ]
+
+    for raw in raw_values:
+        value = _safe_float(raw)
+        if value > 0:
+            return value
+
+    return 0.0
+
+
+def _dashboard_attrezzaggio_ore(ordine: InputOdp) -> float:
+    raw = getattr(ordine, "AttrezzaggioAttivo", "") or getattr(
+        ordine, "TempoAttrezzaggio", ""
+    )
+
+    value = _safe_float(raw)
+
+    # Attrezzaggio nel tuo codice storico era gestito come minuti.
+    return value / 60.0 if value > 0 else 0.0
+
+
+def _dashboard_carico_ore(ordine: InputOdp) -> float:
+    return round(
+        _dashboard_tempo_previsto_ore(ordine) + _dashboard_attrezzaggio_ore(ordine),
+        2,
+    )
+
+
+def _dashboard_order_key(ordine: InputOdp) -> str:
+    return f"{_norm_text(ordine.IdDocumento)}|{_norm_text(ordine.IdRiga)}|{_dashboard_fase_attiva(ordine)}"
+
+
+def _dashboard_order_label(ordine: InputOdp) -> str:
+    try:
+        return _ordine_ref_label(ordine)
+    except Exception:
+        return _norm_text(getattr(ordine, "NumProgrRiga", "")) or _norm_text(
+            getattr(ordine, "IdDocumento", "")
+        )
+
+
+def _dashboard_order_payload(ordine: InputOdp, tipo_criticita: str = "") -> dict:
+    runtime = getattr(ordine, "runtime_row", None)
+    data_fine = _dashboard_data_fine_prevista(ordine)
+    today = _dashboard_today()
+    ritardo_giorni = 0
+
+    if data_fine and data_fine < today:
+        ritardo_giorni = (today - data_fine).days
+
+    return {
+        "key": _dashboard_order_key(ordine),
+        "tipo": tipo_criticita,
+        "ordine": _dashboard_order_label(ordine),
+        "cod_art": _norm_text(getattr(ordine, "CodArt", "")),
+        "descrizione": _norm_text(getattr(ordine, "DesArt", "")),
+        "reparto": _dashboard_reparto_attivo(ordine),
+        "risorsa": _dashboard_risorsa_attiva(ordine),
+        "lavorazione": _dashboard_lavorazione_attiva(ordine),
+        "stato": _dashboard_stato_norm(ordine),
+        "fase": _dashboard_fase_attiva(ordine),
+        "operatore": _norm_text(getattr(runtime, "Utente_operazione", ""))
+        if runtime
+        else "",
+        "data_fine_prevista": data_fine.isoformat() if data_fine else "",
+        "ritardo_giorni": ritardo_giorni,
+        "tempo_previsto_ore": _dashboard_carico_ore(ordine),
+        "priorita": "",
+    }
+
+
+def _dashboard_capacity_by_weekday(
+    *,
+    scope_type: str = "global",
+    scope_code: str = "*",
+) -> dict[int, float]:
+    rows = (
+        ProductionCapacityCalendar.query.filter(
+            ProductionCapacityCalendar.active.is_(True)
+        )
+        .filter(ProductionCapacityCalendar.scope_type == scope_type)
+        .filter(ProductionCapacityCalendar.scope_code == scope_code)
+        .all()
+    )
+
+    out = {i: 0.0 for i in range(7)}
+
+    for row in rows:
+        out[int(row.weekday)] = float(row.hours_capacity or 0.0)
+
+    if scope_type != "global" and not rows:
+        return _dashboard_capacity_by_weekday(scope_type="global", scope_code="*")
+
+    return out
+
+
+def _dashboard_next_month_days() -> list[date]:
+    today = _dashboard_today()
+    return [today + timedelta(days=i) for i in range(DASHBOARD_PRODUZIONE_FUTURE_DAYS)]
+
+
+def _dashboard_carico_prossimo_mese(ordini: list[InputOdp]) -> list[dict]:
+    capacity = _dashboard_capacity_by_weekday()
+
+    by_day = {
+        day.isoformat(): {
+            "date": day.isoformat(),
+            "label": day.strftime("%d/%m"),
+            "ore_pianificate": 0.0,
+            "ore_attive": 0.0,
+            "ore_sospese": 0.0,
+            "capacita": float(capacity.get(day.weekday(), 0.0) or 0.0),
+        }
+        for day in _dashboard_next_month_days()
+    }
+
+    today = _dashboard_today()
+    end_day = today + timedelta(days=DASHBOARD_PRODUZIONE_FUTURE_DAYS - 1)
+
+    for ordine in ordini:
+        stato = _dashboard_stato_norm(ordine).lower()
+        data_fine = _dashboard_data_fine_prevista(ordine)
+
+        if not data_fine:
+            continue
+
+        if data_fine < today or data_fine > end_day:
+            continue
+
+        day_key = data_fine.isoformat()
+        if day_key not in by_day:
+            continue
+
+        ore = _dashboard_carico_ore(ordine)
+
+        if "pianificat" in stato:
+            by_day[day_key]["ore_pianificate"] += ore
+        elif "attiv" in stato:
+            by_day[day_key]["ore_attive"] += ore
+        elif "sospes" in stato:
+            by_day[day_key]["ore_sospese"] += ore
+
+    for row in by_day.values():
+        row["ore_pianificate"] = round(row["ore_pianificate"], 2)
+        row["ore_attive"] = round(row["ore_attive"], 2)
+        row["ore_sospese"] = round(row["ore_sospese"], 2)
+        row["ore_totali"] = round(
+            row["ore_pianificate"] + row["ore_attive"] + row["ore_sospese"],
+            2,
+        )
+        row["sovraccarico"] = bool(
+            row["capacita"] > 0 and row["ore_totali"] > row["capacita"]
+        )
+
+    return list(by_day.values())
+
+
+def _dashboard_cruscotto_empty_payload() -> dict:
+    return {
+        "cards": {
+            "ordini_attivi": 0,
+            "ordini_sospesi": 0,
+            "ordini_pianificati": 0,
+            "tempo_previsto_residuo": 0.0,
+            "operatori_impegnati": 0,
+            "ordini_in_ritardo": 0,
+            "ordini_scadenza_oggi": 0,
+            "ordini_senza_tempo_previsto": 0,
+            "ordini_collaudo": 0,
+        },
+        "charts": {
+            "carico_prossimi_giorni": [],
+            "stati_ordine": [],
+        },
+        "criticita": [],
+        "details": [],
+        "operatori": [],
+        "carico_risorsa": [],
+        "collaudo": [],
+        "capacity_calendar": [],
+        "filters": {},
+    }
+
+
+def _dashboard_is_collaudo(ordine: InputOdp) -> bool:
+    reparto = _dashboard_reparto_attivo(ordine)
+    risorsa = _dashboard_risorsa_attiva(ordine).lower()
+    lavorazione = _dashboard_lavorazione_attiva(ordine).lower()
+
+    return reparto == "70" or "coll" in risorsa or "coll" in lavorazione
+
+
+def _dashboard_build_cruscotto_payload(policy: RbacPolicy) -> dict:
+    payload = _dashboard_cruscotto_empty_payload()
+    filters = _dashboard_cruscotto_filters_from_request()
+    payload["filters"] = filters
+
+    ordini = list(policy.filter_input_odp(_base_odp_query()).all())
+
+    today = _dashboard_today()
+
+    operatori = {}
+    carico_risorsa = {}
+    criticita = []
+    collaudo_rows = []
+    filtered_ordini = []
+
+    stati_chart = {
+        "Pianificata": 0,
+        "Attivo": 0,
+        "In Sospeso": 0,
+    }
+
+    for ordine in ordini:
+        if _dashboard_is_chiusa(ordine):
+            continue
+
+        stato_raw = _dashboard_stato_norm(ordine)
+        stato = stato_raw.lower()
+        ore = _dashboard_carico_ore(ordine)
+        data_fine = _dashboard_data_fine_prevista(ordine)
+        runtime = getattr(ordine, "runtime_row", None)
+        base_row = _dashboard_order_payload(ordine)
+
+        if not _dashboard_row_matches_filters(base_row, filters):
+            continue
+
+        filtered_ordini.append(ordine)
+
+        is_attivo = "attiv" in stato
+        is_sospeso = "sospes" in stato
+        is_pianificata = "pianificat" in stato
+
+        if not (is_attivo or is_sospeso or is_pianificata):
+            continue
+        payload["details"].append(base_row)
+
+        if is_attivo:
+            payload["cards"]["ordini_attivi"] += 1
+            payload["cards"]["tempo_previsto_residuo"] += ore
+            stati_chart["Attivo"] += 1
+
+        elif is_sospeso:
+            payload["cards"]["ordini_sospesi"] += 1
+            stati_chart["In Sospeso"] += 1
+
+        elif is_pianificata:
+            payload["cards"]["ordini_pianificati"] += 1
+            stati_chart["Pianificata"] += 1
+
+        if ore <= 0:
+            payload["cards"]["ordini_senza_tempo_previsto"] += 1
+            criticita.append(_dashboard_order_payload(ordine, "Senza tempo previsto"))
+
+        if data_fine:
+            if data_fine == today:
+                payload["cards"]["ordini_scadenza_oggi"] += 1
+                criticita.append(_dashboard_order_payload(ordine, "Scade oggi"))
+
+            elif data_fine < today:
+                payload["cards"]["ordini_in_ritardo"] += 1
+                criticita.append(_dashboard_order_payload(ordine, "In ritardo"))
+
+        if is_attivo and runtime is not None:
+            operatore = _norm_text(getattr(runtime, "Utente_operazione", ""))
+            if operatore:
+                operatori.setdefault(
+                    operatore,
+                    {
+                        "operatore": operatore,
+                        "ordini_attivi": 0,
+                        "ore_attive": 0.0,
+                        "ordini": [],
+                    },
+                )
+                operatori[operatore]["ordini_attivi"] += 1
+                operatori[operatore]["ore_attive"] += ore
+                operatori[operatore]["ordini"].append(_dashboard_order_payload(ordine))
+
+        risorsa = _dashboard_risorsa_attiva(ordine) or "-"
+        carico_risorsa.setdefault(
+            risorsa,
+            {
+                "risorsa": risorsa,
+                "ordini_attivi": 0,
+                "ordini_sospesi": 0,
+                "ordini_pianificati": 0,
+                "ore_attive": 0.0,
+                "ore_sospese": 0.0,
+                "ore_pianificate": 0.0,
+            },
+        )
+
+        if is_attivo:
+            carico_risorsa[risorsa]["ordini_attivi"] += 1
+            carico_risorsa[risorsa]["ore_attive"] += ore
+        elif is_sospeso:
+            carico_risorsa[risorsa]["ordini_sospesi"] += 1
+            carico_risorsa[risorsa]["ore_sospese"] += ore
+        elif is_pianificata:
+            carico_risorsa[risorsa]["ordini_pianificati"] += 1
+            carico_risorsa[risorsa]["ore_pianificate"] += ore
+
+        if _dashboard_is_collaudo(ordine):
+            payload["cards"]["ordini_collaudo"] += 1
+            collaudo_rows.append(_dashboard_order_payload(ordine, "Collaudo"))
+
+        # Criticità: attivo da troppo tempo rispetto al previsto.
+        if is_attivo and runtime is not None:
+            last_activation = getattr(runtime, "data_ultima_attivazione", None)
+            started_at = None
+
+            if last_activation:
+                try:
+                    started_at = datetime.fromisoformat(
+                        str(last_activation)
+                    ).astimezone(ROME_TZ)
+                except Exception:
+                    started_at = None
+
+            if started_at and ore > 0:
+                elapsed_hours = (
+                    datetime.now(ROME_TZ) - started_at
+                ).total_seconds() / 3600.0
+
+                if elapsed_hours > ore:
+                    record = _dashboard_order_payload(ordine, "Attivo oltre previsto")
+                    record["ore_attive_effettive"] = round(elapsed_hours, 2)
+                    criticita.append(record)
+
+    payload["cards"]["tempo_previsto_residuo"] = round(
+        payload["cards"]["tempo_previsto_residuo"],
+        2,
+    )
+    payload["cards"]["operatori_impegnati"] = len(operatori)
+
+    payload["charts"]["stati_ordine"] = [
+        {"label": key, "value": value} for key, value in stati_chart.items()
+    ]
+
+    payload["charts"]["carico_prossimi_giorni"] = _dashboard_carico_prossimo_mese(
+        filtered_ordini
+    )
+
+    payload["operatori"] = sorted(
+        [
+            {
+                **row,
+                "ore_attive": round(float(row["ore_attive"] or 0.0), 2),
+            }
+            for row in operatori.values()
+        ],
+        key=lambda x: (-x["ordini_attivi"], x["operatore"].lower()),
+    )
+
+    payload["carico_risorsa"] = sorted(
+        [
+            {
+                **row,
+                "ore_attive": round(float(row["ore_attive"] or 0.0), 2),
+                "ore_sospese": round(float(row["ore_sospese"] or 0.0), 2),
+                "ore_pianificate": round(float(row["ore_pianificate"] or 0.0), 2),
+                "ore_totali": round(
+                    float(row["ore_attive"] or 0.0)
+                    + float(row["ore_sospese"] or 0.0)
+                    + float(row["ore_pianificate"] or 0.0),
+                    2,
+                ),
+            }
+            for row in carico_risorsa.values()
+        ],
+        key=lambda x: (-x["ore_totali"], x["risorsa"].lower()),
+    )
+
+    payload["criticita"] = sorted(
+        criticita,
+        key=lambda x: (
+            0 if x["tipo"] == "In ritardo" else 1,
+            -int(x.get("ritardo_giorni") or 0),
+            x.get("data_fine_prevista") or "9999-12-31",
+        ),
+    )[:100]
+
+    payload["collaudo"] = collaudo_rows[:100]
+    payload["capacity_calendar"] = _capacity_calendar_payload()
+    payload["details"] = sorted(
+        payload["details"],
+        key=lambda x: (
+            x.get("data_fine_prevista") or "9999-12-31",
+            x.get("stato") or "",
+            x.get("ordine") or "",
+        ),
+    )[:500]
+
+    return payload
+
+
+def _kpi_parse_date(value) -> date | None:
+    raw = _norm_text(value)
+    if not raw:
+        return None
+
+    raw = raw[:19]
+
+    for fmt in ("%Y-%m-%d", "%Y-%m-%d %H:%M:%S", "%d/%m/%Y", "%d/%m/%Y %H:%M:%S"):
+        try:
+            return datetime.strptime(raw, fmt).date()
+        except ValueError:
+            pass
+
+    return None
+
+
+def _kpi_parse_datetime(value) -> datetime | None:
+    raw = _norm_text(value)
+    if not raw:
+        return None
+
+    try:
+        dt = datetime.fromisoformat(raw)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=ROME_TZ)
+        return dt.astimezone(ROME_TZ)
+    except Exception:
+        pass
+
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%d/%m/%Y %H:%M:%S", "%Y-%m-%d", "%d/%m/%Y"):
+        try:
+            dt = datetime.strptime(raw[:19], fmt)
+            return dt.replace(tzinfo=ROME_TZ)
+        except ValueError:
+            pass
+
+    return None
+
+
+def _kpi_date_range_from_request() -> tuple[date, date]:
+    today = _dashboard_today()
+
+    default_from = today - timedelta(days=365)
+    default_to = today
+
+    date_from = _kpi_parse_date(request.args.get("date_from")) or default_from
+    date_to = _kpi_parse_date(request.args.get("date_to")) or default_to
+
+    if date_to < date_from:
+        date_from, date_to = date_to, date_from
+
+    return date_from, date_to
+
+
+def _kpi_event_is_eligible(rt: OdpRuntimeLog, il: InputOdpLog | None = None) -> bool:
+    azione = _norm_text(getattr(rt, "Azione", "")).lower()
+    topic = _norm_text(getattr(rt, "Topic", "")).lower()
+    motivo = _norm_text(getattr(rt, "Motivo", "")).lower()
+    payload = _norm_text(getattr(rt, "PayloadJson", "")).lower()
+
+    if azione not in {"chiusura_finale", "chiusura_macchina"}:
+        return False
+
+    if "eliminato_gestionale" in azione:
+        return False
+
+    if "eliminato_gestionale" in topic:
+        return False
+
+    if "eliminato dal gestionale" in motivo:
+        return False
+
+    if "eliminato_gestionale" in payload:
+        return False
+
+    if il is not None:
+        chiusura_parziale = _norm_text(getattr(il, "ChiusuraParziale", "")).lower()
+        if chiusura_parziale in {"1", "true", "si", "sì", "yes"}:
+            return False
+
+    return True
+
+
+def _kpi_jsonish_list(value) -> list[str]:
+    raw = _norm_text(value)
+    if not raw:
+        return []
+
+    try:
+        parsed = json.loads(raw)
+    except Exception:
+        return [raw]
+
+    if not isinstance(parsed, list):
+        parsed = [parsed]
+
+    out = []
+    for item in parsed:
+        value = _norm_text(item)
+        if value:
+            out.append(value)
+
+    return out
+
+
+def _kpi_active_value_from_list(raw_values, raw_phases, fase: str) -> str:
+    values = _kpi_jsonish_list(raw_values)
+    phases = _parse_phase_list(raw_phases)
+    fase = _norm_text(fase)
+
+    if not values:
+        return ""
+
+    if phases and len(phases) == len(values):
+        for phase, value in zip(phases, values):
+            if _norm_text(phase) == fase:
+                return _norm_text(value)
+
+    fase_int = _fase_to_int(fase)
+    if fase_int is not None:
+        idx = fase_int - 1
+        if 0 <= idx < len(values):
+            return _norm_text(values[idx])
+
+    if len(values) == 1:
+        return _norm_text(values[0])
+
+    return ""
+
+
+def _kpi_reparto_for_log(rt: OdpRuntimeLog, il: InputOdpLog | None) -> str:
+    if il is not None:
+        fase = _norm_text(getattr(il, "FaseConsuntivata", "")) or _norm_text(
+            getattr(il, "FaseAttiva", "")
+        )
+        value = _kpi_active_value_from_list(
+            getattr(il, "CodReparto", ""),
+            getattr(il, "NumFase", ""),
+            fase,
+        )
+        return _first_code_from_cell(value) or _first_code_from_cell(
+            getattr(il, "CodReparto", "")
+        )
+
+    return _first_code_from_cell(getattr(rt, "CodReparto", ""))
+
+
+def _kpi_risorsa_for_log(il: InputOdpLog | None) -> str:
+    if il is None:
+        return ""
+
+    if _norm_text(getattr(il, "RisorsaAttiva", "")):
+        return _norm_text(getattr(il, "RisorsaAttiva", ""))
+
+    fase = _norm_text(getattr(il, "FaseConsuntivata", "")) or _norm_text(
+        getattr(il, "FaseAttiva", "")
+    )
+
+    value = _kpi_active_value_from_list(
+        getattr(il, "CodRisorsaProd", ""),
+        getattr(il, "NumFase", ""),
+        fase,
+    )
+
+    return _first_code_from_cell(value)
+
+
+def _kpi_lavorazione_for_log(il: InputOdpLog | None) -> str:
+    if il is None:
+        return ""
+
+    if _norm_text(getattr(il, "LavorazioneAttiva", "")):
+        return _norm_text(getattr(il, "LavorazioneAttiva", ""))
+
+    fase = _norm_text(getattr(il, "FaseConsuntivata", "")) or _norm_text(
+        getattr(il, "FaseAttiva", "")
+    )
+
+    value = _kpi_active_value_from_list(
+        getattr(il, "CodLavorazione", ""),
+        getattr(il, "NumFase", ""),
+        fase,
+    )
+
+    return _first_code_from_cell(value)
+
+
+def _kpi_tempo_previsto_ore(il: InputOdpLog | None) -> float:
+    if il is None:
+        return 0.0
+
+    fase = _norm_text(getattr(il, "FaseConsuntivata", "")) or _norm_text(
+        getattr(il, "FaseAttiva", "")
+    )
+
+    raw = _kpi_active_value_from_list(
+        getattr(il, "TempoPrevistoLavoraz", ""),
+        getattr(il, "NumFase", ""),
+        fase,
+    )
+
+    value = _safe_float(raw)
+
+    if value > 0:
+        return value
+
+    return _safe_float(getattr(il, "TempoPrevistoLavoraz", ""))
+
+
+def _kpi_tempo_reale_ore(rt: OdpRuntimeLog, il: InputOdpLog | None) -> float:
+    if il is not None:
+        value = _safe_float(getattr(il, "TempoFunzionamentoFinale", ""))
+        if value > 0:
+            return value
+
+    value = _safe_float(getattr(rt, "TempoFunzionamentoPost", ""))
+    if value > 0:
+        return value
+
+    elapsed_seconds = _safe_float(getattr(rt, "ElapsedSeconds", ""))
+    if elapsed_seconds > 0:
+        return elapsed_seconds / 3600.0
+
+    return 0.0
+
+
+def _kpi_closed_at(rt: OdpRuntimeLog, il: InputOdpLog | None) -> datetime | None:
+    if il is not None:
+        dt = _kpi_parse_datetime(getattr(il, "ClosedAt", ""))
+        if dt is not None:
+            return dt
+
+    return _kpi_parse_datetime(getattr(rt, "EventAt", ""))
+
+
+def _kpi_data_fine_prevista(il: InputOdpLog | None) -> date | None:
+    if il is None:
+        return None
+
+    return _kpi_parse_date(getattr(il, "DataFineSched", ""))
+
+
+def _kpi_is_collaudo(reparto: str, risorsa: str, lavorazione: str) -> bool:
+    return (
+        _norm_text(reparto) == "70"
+        or "coll" in _norm_text(risorsa).lower()
+        or "coll" in _norm_text(lavorazione).lower()
+    )
+
+
+def _kpi_matches_filters(row: dict, filters: dict) -> bool:
+    for key in ("reparto", "risorsa", "lavorazione", "operatore", "articolo", "stato"):
+        expected = _norm_text(filters.get(key)).lower()
+        if not expected:
+            continue
+
+        current = _norm_text(row.get(key)).lower()
+
+        if expected not in current:
+            return False
+
+    return True
+
+
+def _dashboard_kpi_empty_payload() -> dict:
+    return {
+        "cards": {
+            "ordini_chiusi": 0,
+            "ordini_in_ritardo": 0,
+            "percentuale_ritardo": 0.0,
+            "giorni_medi_ritardo": 0.0,
+            "tempo_previsto_totale": 0.0,
+            "tempo_reale_totale": 0.0,
+            "scostamento_totale": 0.0,
+            "scostamento_medio": 0.0,
+            "tempo_medio_ordine": 0.0,
+            "tempo_medio_fase": 0.0,
+            "tempo_medio_collaudo": 0.0,
+            "collaudi_chiusi_oggi": 0,
+        },
+        "charts": {
+            "tempo_reale_vs_previsto": [],
+            "ritardo_medio_reparto": [],
+            "ritardo_medio_risorsa": [],
+        },
+        "details": [],
+        "aggregati": {
+            "reparti": [],
+            "risorse": [],
+            "lavorazioni": [],
+            "operatori": [],
+            "articoli": [],
+        },
+    }
+
+
+def _new_kpi_group_bucket(key: str) -> dict:
+    return {
+        "key": key,
+        "ordini": 0,
+        "ritardi": 0,
+        "giorni_ritardo_totali": 0.0,
+        "tempo_previsto": 0.0,
+        "tempo_reale": 0.0,
+        "scostamento": 0.0,
+    }
+
+
+def _apply_kpi_group(bucket: dict, row: dict) -> None:
+    bucket["ordini"] += 1
+    bucket["tempo_previsto"] += float(row.get("tempo_previsto_ore") or 0.0)
+    bucket["tempo_reale"] += float(row.get("tempo_reale_ore") or 0.0)
+    bucket["scostamento"] += float(row.get("scostamento_ore") or 0.0)
+
+    ritardo_giorni = float(row.get("ritardo_giorni") or 0.0)
+    if ritardo_giorni > 0:
+        bucket["ritardi"] += 1
+        bucket["giorni_ritardo_totali"] += ritardo_giorni
+
+
+def _finalize_kpi_group(bucket: dict) -> dict:
+    ordini = int(bucket.get("ordini") or 0)
+    ritardi = int(bucket.get("ritardi") or 0)
+
+    tempo_previsto = float(bucket.get("tempo_previsto") or 0.0)
+    tempo_reale = float(bucket.get("tempo_reale") or 0.0)
+    scostamento = float(bucket.get("scostamento") or 0.0)
+
+    return {
+        "key": bucket["key"],
+        "ordini": ordini,
+        "ritardi": ritardi,
+        "percentuale_ritardo": round((ritardi / ordini) * 100, 2) if ordini else 0.0,
+        "giorni_medi_ritardo": round((bucket["giorni_ritardo_totali"] / ritardi), 2)
+        if ritardi
+        else 0.0,
+        "tempo_previsto": round(tempo_previsto, 2),
+        "tempo_reale": round(tempo_reale, 2),
+        "scostamento": round(scostamento, 2),
+        "scostamento_percentuale": round((scostamento / tempo_previsto) * 100, 2)
+        if tempo_previsto > 0
+        else 0.0,
+    }
+
+
+def _build_dashboard_kpi_payload(*, detail_limit: int | None = 500) -> dict:
+    payload = _dashboard_kpi_empty_payload()
+
+    date_from, date_to = _kpi_date_range_from_request()
+    date_from_dt = datetime.combine(date_from, datetime.min.time()).replace(
+        tzinfo=ROME_TZ
+    )
+    date_to_dt = datetime.combine(date_to, datetime.max.time()).replace(tzinfo=ROME_TZ)
+
+    filters = {
+        "reparto": request.args.get("reparto"),
+        "risorsa": request.args.get("risorsa"),
+        "lavorazione": request.args.get("lavorazione"),
+        "operatore": request.args.get("operatore"),
+        "articolo": request.args.get("articolo"),
+        "stato": request.args.get("stato"),
+    }
+
+    rows = (
+        db.session.query(OdpRuntimeLog, InputOdpLog)
+        .outerjoin(
+            InputOdpLog,
+            and_(
+                InputOdpLog.OperationGroupId == OdpRuntimeLog.OperationGroupId,
+                InputOdpLog.IdDocumento == OdpRuntimeLog.IdDocumento,
+                InputOdpLog.IdRiga == OdpRuntimeLog.IdRiga,
+            ),
+        )
+        .filter(OdpRuntimeLog.Azione.in_(["chiusura_finale", "chiusura_macchina"]))
+        .order_by(OdpRuntimeLog.EventAt.desc(), OdpRuntimeLog.log_id.desc())
+        .all()
+    )
+
+    detail_rows = []
+    today = _dashboard_today()
+
+    groups = {
+        "reparti": {},
+        "risorse": {},
+        "lavorazioni": {},
+        "operatori": {},
+        "articoli": {},
+    }
+
+    collaudo_tempi = []
+    collaudi_chiusi_oggi = 0
+
+    for rt, il in rows:
+        if not _kpi_event_is_eligible(rt, il):
+            continue
+
+        closed_at = _kpi_closed_at(rt, il)
+        if closed_at is None:
+            continue
+
+        if closed_at < date_from_dt or closed_at > date_to_dt:
+            continue
+
+        reparto = _kpi_reparto_for_log(rt, il)
+        risorsa = _kpi_risorsa_for_log(il)
+        lavorazione = _kpi_lavorazione_for_log(il)
+
+        tempo_previsto = _kpi_tempo_previsto_ore(il)
+        tempo_reale = _kpi_tempo_reale_ore(rt, il)
+        scostamento = tempo_reale - tempo_previsto
+
+        data_fine_prevista = _kpi_data_fine_prevista(il)
+        ritardo_giorni = 0
+
+        if data_fine_prevista and closed_at.date() > data_fine_prevista:
+            ritardo_giorni = (closed_at.date() - data_fine_prevista).days
+
+        articolo = (
+            _norm_text(getattr(il, "CodArt", ""))
+            if il
+            else _norm_text(getattr(rt, "CodArt", ""))
+        )
+        descrizione = _norm_text(getattr(il, "DesArt", "")) if il else ""
+        operatore = _norm_text(getattr(rt, "UtenteOperazione", ""))
+        stato = _norm_text(getattr(rt, "StatoOrdinePost", "")) or _norm_text(
+            getattr(rt, "StatoOdpPost", "")
+        )
+
+        row = {
+            "operation_group_id": _norm_text(getattr(rt, "OperationGroupId", "")),
+            "id_documento": _norm_text(getattr(rt, "IdDocumento", "")),
+            "id_riga": _norm_text(getattr(rt, "IdRiga", "")),
+            "rif_registraz": _norm_text(getattr(rt, "RifRegistraz", "")),
+            "ordine": f"{_norm_text(getattr(rt, 'IdDocumento', ''))}/{_norm_text(getattr(rt, 'IdRiga', ''))}",
+            "event_at": closed_at.isoformat(timespec="seconds"),
+            "data_chiusura": closed_at.date().isoformat(),
+            "azione": _norm_text(getattr(rt, "Azione", "")),
+            "reparto": reparto,
+            "risorsa": risorsa,
+            "lavorazione": lavorazione,
+            "operatore": operatore,
+            "articolo": articolo,
+            "descrizione": descrizione,
+            "stato": stato,
+            "fase": _norm_text(getattr(il, "FaseConsuntivata", ""))
+            if il
+            else _norm_text(getattr(rt, "FasePost", "")),
+            "tempo_previsto_ore": round(tempo_previsto, 2),
+            "tempo_reale_ore": round(tempo_reale, 2),
+            "scostamento_ore": round(scostamento, 2),
+            "scostamento_percentuale": round((scostamento / tempo_previsto) * 100, 2)
+            if tempo_previsto > 0
+            else None,
+            "data_fine_prevista": data_fine_prevista.isoformat()
+            if data_fine_prevista
+            else "",
+            "ritardo_giorni": ritardo_giorni,
+            "is_ritardo": ritardo_giorni > 0,
+            "is_collaudo": _kpi_is_collaudo(reparto, risorsa, lavorazione),
+        }
+
+        if not _kpi_matches_filters(row, filters):
+            continue
+
+        detail_rows.append(row)
+
+        for group_name, group_key in (
+            ("reparti", reparto or "-"),
+            ("risorse", risorsa or "-"),
+            ("lavorazioni", lavorazione or "-"),
+            ("operatori", operatore or "-"),
+            ("articoli", articolo or "-"),
+        ):
+            groups[group_name].setdefault(group_key, _new_kpi_group_bucket(group_key))
+            _apply_kpi_group(groups[group_name][group_key], row)
+
+        if row["is_collaudo"]:
+            collaudo_tempi.append(tempo_reale)
+            if closed_at.date() == today:
+                collaudi_chiusi_oggi += 1
+
+    ordini = len(detail_rows)
+    ritardi = sum(1 for row in detail_rows if row["is_ritardo"])
+
+    tempo_previsto_totale = sum(
+        float(row["tempo_previsto_ore"] or 0.0) for row in detail_rows
+    )
+    tempo_reale_totale = sum(
+        float(row["tempo_reale_ore"] or 0.0) for row in detail_rows
+    )
+    scostamento_totale = tempo_reale_totale - tempo_previsto_totale
+
+    giorni_ritardo_totali = sum(
+        float(row["ritardo_giorni"] or 0.0) for row in detail_rows if row["is_ritardo"]
+    )
+
+    payload["cards"] = {
+        "ordini_chiusi": ordini,
+        "ordini_in_ritardo": ritardi,
+        "percentuale_ritardo": round((ritardi / ordini) * 100, 2) if ordini else 0.0,
+        "giorni_medi_ritardo": round(giorni_ritardo_totali / ritardi, 2)
+        if ritardi
+        else 0.0,
+        "tempo_previsto_totale": round(tempo_previsto_totale, 2),
+        "tempo_reale_totale": round(tempo_reale_totale, 2),
+        "tempo_reale_vs_previsto": round(tempo_reale_totale - tempo_previsto_totale, 2),
+        "scostamento_totale": round(scostamento_totale, 2),
+        "scostamento_percentuale": round(
+            (scostamento_totale / tempo_previsto_totale) * 100, 2
+        )
+        if tempo_previsto_totale > 0
+        else 0.0,
+        "scostamento_medio": round(scostamento_totale / ordini, 2) if ordini else 0.0,
+        "tempo_medio_ordine": round(tempo_reale_totale / ordini, 2) if ordini else 0.0,
+        "tempo_medio_fase": round(tempo_reale_totale / ordini, 2) if ordini else 0.0,
+        "tempo_medio_collaudo": round(sum(collaudo_tempi) / len(collaudo_tempi), 2)
+        if collaudo_tempi
+        else 0.0,
+        "collaudi_chiusi_oggi": collaudi_chiusi_oggi,
+    }
+
+    payload["charts"]["tempo_reale_vs_previsto"] = [
+        {
+            "label": "Previsto",
+            "value": round(tempo_previsto_totale, 2),
+        },
+        {
+            "label": "Reale",
+            "value": round(tempo_reale_totale, 2),
+        },
+    ]
+
+    payload["aggregati"] = {
+        name: sorted(
+            [_finalize_kpi_group(bucket) for bucket in group.values()],
+            key=lambda x: (-x["ordini"], x["key"].lower()),
+        )[:50]
+        for name, group in groups.items()
+    }
+
+    payload["charts"]["ritardo_medio_reparto"] = [
+        {
+            "label": row["key"],
+            "value": row["giorni_medi_ritardo"],
+        }
+        for row in payload["aggregati"]["reparti"]
+        if row["giorni_medi_ritardo"] > 0
+    ]
+
+    payload["charts"]["ritardo_medio_risorsa"] = [
+        {
+            "label": row["key"],
+            "value": row["giorni_medi_ritardo"],
+        }
+        for row in payload["aggregati"]["risorse"]
+        if row["giorni_medi_ritardo"] > 0
+    ]
+
+    sorted_details = sorted(
+        detail_rows,
+        key=lambda x: x["event_at"],
+        reverse=True,
+    )
+
+    if detail_limit is not None:
+        sorted_details = sorted_details[:detail_limit]
+
+    payload["details"] = sorted_details
+
+    payload["filters"] = {
+        "date_from": date_from.isoformat(),
+        "date_to": date_to.isoformat(),
+        **{k: _norm_text(v) for k, v in filters.items()},
+    }
+
+    return payload
+
+
+def _excel_safe(value):
+    if value is None:
+        return ""
+
+    if isinstance(value, bool):
+        return "Sì" if value else "No"
+
+    return value
+
+
+def _autosize_worksheet(ws):
+    for column_cells in ws.columns:
+        max_length = 0
+        column_letter = get_column_letter(column_cells[0].column)
+
+        for cell in column_cells:
+            value = cell.value
+            if value is None:
+                continue
+
+            max_length = max(max_length, len(str(value)))
+
+        ws.column_dimensions[column_letter].width = min(max_length + 2, 45)
+
+
+def _write_sheet_from_rows(ws, headers: list[tuple[str, str]], rows: list[dict]):
+    for col_idx, (_, label) in enumerate(headers, start=1):
+        cell = ws.cell(row=1, column=col_idx, value=label)
+        cell.font = Font(bold=True)
+
+    for row_idx, row in enumerate(rows or [], start=2):
+        for col_idx, (key, _) in enumerate(headers, start=1):
+            ws.cell(
+                row=row_idx,
+                column=col_idx,
+                value=_excel_safe(row.get(key)),
+            )
+
+    ws.freeze_panes = "A2"
+    _autosize_worksheet(ws)
+
+
+def _write_kpi_summary_sheet(ws, data: dict):
+    ws.title = "Riepilogo"
+
+    cards = data.get("cards") or {}
+    filters = data.get("filters") or {}
+
+    rows = [
+        ("Periodo da", filters.get("date_from", "")),
+        ("Periodo a", filters.get("date_to", "")),
+        ("Filtro reparto", filters.get("reparto", "")),
+        ("Filtro risorsa", filters.get("risorsa", "")),
+        ("Filtro lavorazione", filters.get("lavorazione", "")),
+        ("Filtro operatore", filters.get("operatore", "")),
+        ("Filtro articolo", filters.get("articolo", "")),
+        ("Filtro stato", filters.get("stato", "")),
+        ("", ""),
+        ("Ordini chiusi", cards.get("ordini_chiusi", 0)),
+        ("Ordini in ritardo", cards.get("ordini_in_ritardo", 0)),
+        ("% ritardo", cards.get("percentuale_ritardo", 0)),
+        ("Giorni medi ritardo", cards.get("giorni_medi_ritardo", 0)),
+        ("Tempo previsto totale", cards.get("tempo_previsto_totale", 0)),
+        ("Tempo reale totale", cards.get("tempo_reale_totale", 0)),
+        ("Scostamento totale", cards.get("scostamento_totale", 0)),
+        ("% scostamento", cards.get("scostamento_percentuale", 0)),
+        ("Scostamento medio", cards.get("scostamento_medio", 0)),
+        ("Tempo medio ordine", cards.get("tempo_medio_ordine", 0)),
+        ("Tempo medio fase", cards.get("tempo_medio_fase", 0)),
+        ("Tempo medio collaudo", cards.get("tempo_medio_collaudo", 0)),
+        ("Collaudi chiusi oggi", cards.get("collaudi_chiusi_oggi", 0)),
+    ]
+
+    ws.cell(row=1, column=1, value="Parametro").font = Font(bold=True)
+    ws.cell(row=1, column=2, value="Valore").font = Font(bold=True)
+
+    for idx, (label, value) in enumerate(rows, start=2):
+        ws.cell(row=idx, column=1, value=label)
+        ws.cell(row=idx, column=2, value=_excel_safe(value))
+
+    ws.freeze_panes = "A2"
+    _autosize_worksheet(ws)
+
+
+def _add_aggregate_sheet(wb, title: str, rows: list[dict]):
+    ws = wb.create_sheet(title=title)
+
+    headers = [
+        ("key", "Voce"),
+        ("ordini", "Ordini"),
+        ("ritardi", "Ordini in ritardo"),
+        ("percentuale_ritardo", "% ritardo"),
+        ("giorni_medi_ritardo", "Giorni medi ritardo"),
+        ("tempo_previsto", "Tempo previsto"),
+        ("tempo_reale", "Tempo reale"),
+        ("scostamento", "Scostamento"),
+        ("scostamento_percentuale", "% scostamento"),
+    ]
+
+    _write_sheet_from_rows(ws, headers, rows)
+
+
+@main_bp.get("/dashboard-produzione")
+@operator_or_login_required
+def dashboard_produzione():
+    policy = _current_policy()
+
+    allowed_sections = _dashboard_produzione_allowed_sections(policy)
+
+    if not allowed_sections["cruscotto"] and not allowed_sections["kpi"]:
+        abort(403)
+
+    requested_section = _norm_text(request.args.get("section")).lower()
+    default_section = _dashboard_produzione_default_section(policy)
+
+    if requested_section not in {"cruscotto", "kpi"}:
+        active_section = default_section
+    elif requested_section == "cruscotto" and not allowed_sections["cruscotto"]:
+        active_section = default_section
+    elif requested_section == "kpi" and not allowed_sections["kpi"]:
+        active_section = default_section
+    else:
+        active_section = requested_section
+
+    if not active_section:
+        abort(403)
+
+    return render_template(
+        "dashboard_produzione.j2",
+        active_section=active_section,
+        dashboard_payload=_dashboard_produzione_initial_payload(policy),
+        allowed_sections=allowed_sections,
+        tab_session=active_token(),
+        operator_user=active_user(),
+        operator_policy=policy,
+        policy=policy,
+    )
+
+
+@main_bp.get("/api/dashboard-produzione/cruscotto")
+@require_active_perm("dashboard_produzione")
+def api_dashboard_produzione_cruscotto():
+    policy = _current_policy()
+
+    data = _dashboard_build_cruscotto_payload(policy)
+
+    return jsonify(
+        {
+            "ok": True,
+            "data": _json_safe(data),
+        }
+    ), 200
+
+
+@main_bp.get("/api/dashboard-produzione/kpi")
+@require_active_perm("kpi_produzione")
+def api_dashboard_produzione_kpi():
+    data = _build_dashboard_kpi_payload()
+
+    return jsonify(
+        {
+            "ok": True,
+            "data": _json_safe(data),
+        }
+    ), 200
+
+
+@main_bp.get("/api/dashboard-produzione/kpi/export")
+@require_active_perm("kpi_export")
+def api_dashboard_produzione_kpi_export():
+    data = _build_dashboard_kpi_payload(detail_limit=None)
+
+    wb = Workbook()
+
+    ws_summary = wb.active
+    _write_kpi_summary_sheet(ws_summary, data)
+
+    ws_detail = wb.create_sheet(title="Dettaglio")
+    detail_headers = [
+        ("data_chiusura", "Data chiusura"),
+        ("azione", "Azione"),
+        ("ordine", "Ordine"),
+        ("id_documento", "IdDocumento"),
+        ("id_riga", "IdRiga"),
+        ("rif_registraz", "RifRegistraz"),
+        ("articolo", "CodArt"),
+        ("descrizione", "Descrizione"),
+        ("reparto", "Reparto"),
+        ("risorsa", "Risorsa"),
+        ("lavorazione", "Lavorazione"),
+        ("operatore", "Operatore"),
+        ("fase", "Fase"),
+        ("stato", "Stato"),
+        ("tempo_previsto_ore", "Tempo previsto ore"),
+        ("tempo_reale_ore", "Tempo reale ore"),
+        ("scostamento_ore", "Scostamento ore"),
+        ("scostamento_percentuale", "% scostamento"),
+        ("data_fine_prevista", "Data fine prevista"),
+        ("ritardo_giorni", "Ritardo giorni"),
+        ("is_collaudo", "Collaudo"),
+        ("operation_group_id", "OperationGroupId"),
+    ]
+    _write_sheet_from_rows(ws_detail, detail_headers, data.get("details") or [])
+
+    aggregati = data.get("aggregati") or {}
+    _add_aggregate_sheet(wb, "Reparti", aggregati.get("reparti") or [])
+    _add_aggregate_sheet(wb, "Risorse", aggregati.get("risorse") or [])
+    _add_aggregate_sheet(wb, "Lavorazioni", aggregati.get("lavorazioni") or [])
+    _add_aggregate_sheet(wb, "Operatori", aggregati.get("operatori") or [])
+    _add_aggregate_sheet(wb, "Articoli", aggregati.get("articoli") or [])
+
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    filters = data.get("filters") or {}
+    date_from = filters.get("date_from", "")
+    date_to = filters.get("date_to", "")
+
+    filename = f"kpi_produzione_{date_from}_{date_to}.xlsx"
+
+    return send_file(
+        output,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name=filename,
+    )
+
+
+def _snapshot_float(value) -> float:
+    try:
+        return float(value or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _snapshot_int(value) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _snapshot_row_to_dict(row: ProductionKpiSnapshot) -> dict:
+    return {
+        "id": row.id,
+        "snapshot_month": row.snapshot_month,
+        "scope_type": row.scope_type,
+        "scope_code": row.scope_code,
+        "period_start": row.period_start,
+        "period_end": row.period_end,
+        "ordini_chiusi": _snapshot_int(row.ordini_chiusi),
+        "ordini_in_ritardo": _snapshot_int(row.ordini_in_ritardo),
+        "percentuale_ritardo": round(_snapshot_float(row.percentuale_ritardo), 2),
+        "giorni_medi_ritardo": round(_snapshot_float(row.giorni_medi_ritardo), 2),
+        "tempo_previsto_totale": round(_snapshot_float(row.tempo_previsto_totale), 2),
+        "tempo_reale_totale": round(_snapshot_float(row.tempo_reale_totale), 2),
+        "scostamento_totale": round(_snapshot_float(row.scostamento_totale), 2),
+        "scostamento_percentuale": round(
+            _snapshot_float(row.scostamento_percentuale), 2
+        ),
+        "tempo_medio_ordine": round(_snapshot_float(row.tempo_medio_ordine), 2),
+        "tempo_medio_fase": round(_snapshot_float(row.tempo_medio_fase), 2),
+        "created_at": row.created_at or "",
+        "created_by": row.created_by or "",
+    }
+
+
+def _snapshot_change(current_value, previous_value) -> dict:
+    current_value = _snapshot_float(current_value)
+    previous_value = _snapshot_float(previous_value)
+
+    delta = current_value - previous_value
+
+    if previous_value:
+        delta_percent = (delta / previous_value) * 100
+    else:
+        delta_percent = 0.0
+
+    return {
+        "current": round(current_value, 2),
+        "previous": round(previous_value, 2),
+        "delta": round(delta, 2),
+        "delta_percent": round(delta_percent, 2),
+    }
+
+
+def _build_kpi_snapshot_payload() -> dict:
+    scope_type = _norm_text(request.args.get("scope_type")) or "global"
+    scope_code = _norm_text(request.args.get("scope_code")) or "*"
+    months_limit = _home_config_int(request.args.get("months"), 12)
+
+    if months_limit <= 0:
+        months_limit = 12
+
+    if months_limit > 60:
+        months_limit = 60
+
+    query = ProductionKpiSnapshot.query
+
+    if scope_type:
+        query = query.filter(ProductionKpiSnapshot.scope_type == scope_type)
+
+    if scope_code:
+        query = query.filter(ProductionKpiSnapshot.scope_code == scope_code)
+
+    rows = (
+        query.order_by(ProductionKpiSnapshot.snapshot_month.desc())
+        .limit(months_limit)
+        .all()
+    )
+
+    rows_sorted = sorted(rows, key=lambda r: r.snapshot_month)
+
+    data_rows = [_snapshot_row_to_dict(row) for row in rows_sorted]
+
+    latest = data_rows[-1] if data_rows else None
+    previous = data_rows[-2] if len(data_rows) >= 2 else None
+
+    comparison = {}
+
+    if latest:
+        comparison = {
+            "ordini_chiusi": _snapshot_change(
+                latest.get("ordini_chiusi"),
+                previous.get("ordini_chiusi") if previous else 0,
+            ),
+            "ordini_in_ritardo": _snapshot_change(
+                latest.get("ordini_in_ritardo"),
+                previous.get("ordini_in_ritardo") if previous else 0,
+            ),
+            "percentuale_ritardo": _snapshot_change(
+                latest.get("percentuale_ritardo"),
+                previous.get("percentuale_ritardo") if previous else 0,
+            ),
+            "tempo_reale_totale": _snapshot_change(
+                latest.get("tempo_reale_totale"),
+                previous.get("tempo_reale_totale") if previous else 0,
+            ),
+            "scostamento_totale": _snapshot_change(
+                latest.get("scostamento_totale"),
+                previous.get("scostamento_totale") if previous else 0,
+            ),
+        }
+
+    available_scopes = (
+        db.session.query(
+            ProductionKpiSnapshot.scope_type,
+            ProductionKpiSnapshot.scope_code,
+        )
+        .distinct()
+        .order_by(
+            ProductionKpiSnapshot.scope_type.asc(),
+            ProductionKpiSnapshot.scope_code.asc(),
+        )
+        .all()
+    )
+
+    return {
+        "filters": {
+            "scope_type": scope_type,
+            "scope_code": scope_code,
+            "months": months_limit,
+        },
+        "available_scopes": [
+            {
+                "scope_type": st,
+                "scope_code": sc,
+                "label": f"{st}: {sc}",
+            }
+            for st, sc in available_scopes
+        ],
+        "latest": latest,
+        "previous": previous,
+        "comparison": comparison,
+        "series": {
+            "ordini_chiusi": [
+                {
+                    "month": row["snapshot_month"],
+                    "value": row["ordini_chiusi"],
+                }
+                for row in data_rows
+            ],
+            "ordini_in_ritardo": [
+                {
+                    "month": row["snapshot_month"],
+                    "value": row["ordini_in_ritardo"],
+                }
+                for row in data_rows
+            ],
+            "percentuale_ritardo": [
+                {
+                    "month": row["snapshot_month"],
+                    "value": row["percentuale_ritardo"],
+                }
+                for row in data_rows
+            ],
+            "tempo_previsto_reale": [
+                {
+                    "month": row["snapshot_month"],
+                    "tempo_previsto": row["tempo_previsto_totale"],
+                    "tempo_reale": row["tempo_reale_totale"],
+                    "scostamento": row["scostamento_totale"],
+                }
+                for row in data_rows
+            ],
+        },
+        "rows": data_rows,
+    }
+
+
+WEEKDAY_LABELS = {
+    0: "Lunedì",
+    1: "Martedì",
+    2: "Mercoledì",
+    3: "Giovedì",
+    4: "Venerdì",
+    5: "Sabato",
+    6: "Domenica",
+}
+
+
+def _capacity_float(value, default: float = 0.0) -> float:
+    raw = _norm_text(value).replace(",", ".")
+    if not raw:
+        return default
+
+    try:
+        out = float(raw)
+    except (TypeError, ValueError):
+        return default
+
+    return max(out, 0.0)
+
+
+def _capacity_scope_code_is_valid(scope_type: str, scope_code: str) -> bool:
+    scope_type = _norm_text(scope_type)
+    scope_code = _norm_text(scope_code)
+
+    if scope_type == "global":
+        return scope_code == "*"
+
+    if scope_type == "reparto":
+        return (
+            Reparti.query.filter(
+                func.lower(Reparti.Codice) == scope_code.lower()
+            ).first()
+            is not None
+        )
+
+    if scope_type == "risorsa":
+        return (
+            Risorse.query.filter(
+                func.lower(Risorse.Codice) == scope_code.lower()
+            ).first()
+            is not None
+        )
+
+    return False
+
+
+def _capacity_row_to_dict(row: ProductionCapacityCalendar) -> dict:
+    return {
+        "id": row.id,
+        "scope_type": row.scope_type,
+        "scope_code": row.scope_code,
+        "weekday": int(row.weekday),
+        "weekday_label": WEEKDAY_LABELS.get(int(row.weekday), str(row.weekday)),
+        "hours_capacity": float(row.hours_capacity or 0.0),
+        "active": bool(row.active),
+        "updated_at": row.updated_at or "",
+        "updated_by": row.updated_by or "",
+    }
+
+
+def _capacity_settings_payload() -> dict:
+    rows = ProductionCapacityCalendar.query.order_by(
+        ProductionCapacityCalendar.scope_type.asc(),
+        ProductionCapacityCalendar.scope_code.asc(),
+        ProductionCapacityCalendar.weekday.asc(),
+    ).all()
+
+    reparti = Reparti.query.order_by(func.lower(Reparti.Codice)).all()
+
+    risorse = Risorse.query.order_by(func.lower(Risorse.Codice)).all()
+
+    return {
+        "weekdays": [
+            {"weekday": key, "label": label} for key, label in WEEKDAY_LABELS.items()
+        ],
+        "capacity_rows": [_capacity_row_to_dict(row) for row in rows],
+        "reparti": [
+            {
+                "codice": r.Codice or "",
+                "descrizione": r.Descrizione or r.Codice or "",
+            }
+            for r in reparti
+        ],
+        "risorse": [
+            {
+                "codice": r.Codice or "",
+                "descrizione": r.Descrizione or r.Codice or "",
+            }
+            for r in risorse
+        ],
+    }
+
+
+@main_bp.get("/api/impostazioni/production-capacity")
+@require_active_perm("kpi_config")
+def api_production_capacity_data():
+    return jsonify(
+        {
+            "ok": True,
+            "data": _capacity_settings_payload(),
+        }
+    ), 200
+
+
+@main_bp.post("/api/impostazioni/production-capacity")
+@require_active_perm("kpi_config")
+def api_save_production_capacity():
+    data = request.get_json(silent=True) or {}
+
+    scope_type = _norm_text(data.get("scope_type")).lower() or "global"
+
+    if scope_type not in {"global", "reparto", "risorsa"}:
+        return jsonify({"ok": False, "error": "Tipo scope non valido."}), 400
+
+    scope_code = _norm_text(data.get("scope_code"))
+
+    if scope_type == "global":
+        scope_code = "*"
+
+    if not scope_code:
+        return jsonify({"ok": False, "error": "Codice scope obbligatorio."}), 400
+
+    if not _capacity_scope_code_is_valid(scope_type, scope_code):
+        return jsonify({"ok": False, "error": "Scope non valido o non esistente."}), 400
+
+    rows = data.get("rows") or []
+
+    if not isinstance(rows, list):
+        return jsonify({"ok": False, "error": "Formato righe non valido."}), 400
+
+    if not rows:
+        return jsonify({"ok": False, "error": "Nessuna riga capacità ricevuta."}), 400
+
+    now = _now_rome_dt().isoformat(timespec="seconds")
+    username = _current_username()
+
+    try:
+        for item in rows:
+            weekday = _home_config_int(item.get("weekday"), -1)
+
+            if weekday < 0 or weekday > 6:
+                return jsonify(
+                    {"ok": False, "error": "Giorno settimana non valido."}
+                ), 400
+
+            hours = _capacity_float(item.get("hours_capacity"), 0.0)
+            active = _parse_bool_flag(item.get("active", True))
+
+            row = ProductionCapacityCalendar.query.filter_by(
+                scope_type=scope_type,
+                scope_code=scope_code,
+                weekday=weekday,
+            ).first()
+
+            if row is None:
+                row = ProductionCapacityCalendar(
+                    scope_type=scope_type,
+                    scope_code=scope_code,
+                    weekday=weekday,
+                )
+                db.session.add(row)
+
+            row.hours_capacity = hours
+            row.active = active
+            row.updated_at = now
+            row.updated_by = username
+
+        db.session.commit()
+
+    except Exception as exc:
+        db.session.rollback()
+        current_app.logger.exception("Errore salvataggio production_capacity_calendar")
+        return jsonify({"ok": False, "error": f"Errore salvataggio: {exc}"}), 500
+
+    return jsonify(
+        {
+            "ok": True,
+            "message": "Capacità produttiva salvata.",
+            "data": _capacity_settings_payload(),
+        }
+    ), 200
+
+
+@main_bp.get("/api/dashboard-produzione/kpi/snapshots")
+@require_active_perm("kpi_produzione")
+def api_dashboard_produzione_kpi_snapshots():
+    data = _build_kpi_snapshot_payload()
+
+    return jsonify(
+        {
+            "ok": True,
+            "data": _json_safe(data),
+        }
+    ), 200
 
 
 @main_bp.get("/api/dash-complessiva")

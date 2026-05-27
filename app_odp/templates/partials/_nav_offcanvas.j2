@@ -265,6 +265,28 @@
                     </div>
                 {% endif %}
             {% endif %}
+            {% if nav_policy and (nav_policy.can('dashboard_produzione') or nav_policy.can('kpi_produzione')) %}
+                <div class="row d-flex w-100 h-100 justify-content-start align-items-center ms-0 me-0 mb-0"
+                     style="width: auto;height: auto;font-size: 25px;">
+                    <div class="col-md-12 text-start d-flex justify-content-start align-items-center ps-0 pe-0"
+                         style="width: auto;height: auto;font-size: 25px;">
+                        <svg xmlns="http://www.w3.org/2000/svg"
+                             width="1em"
+                             height="1em"
+                             fill="currentColor"
+                             viewBox="0 0 16 16"
+                             class="bi bi-speedometer2"
+                             style="font-size: 25px;">
+                            <path d="M8 4a.5.5 0 0 1 .5.5V8a.5.5 0 0 1-1 0V4.5A.5.5 0 0 1 8 4z"/>
+                            <path d="M6.664 15.889A8 8 0 1 1 9.336.11a8 8 0 0 1-2.672 15.78zm-4.665-4.283A7 7 0 1 0 14.001 11.606A11.945 11.945 0 0 0 8 10c-2.186 0-4.236.585-6.001 1.606z"/>
+                        </svg>
+                        <a href="{{ operator_url_for('main.dashboard_produzione') }}"
+                           style="color: rgb(0,0,0);font-size: 25px;">
+                            Dashboard produzione
+                        </a>
+                    </div>
+                </div>
+            {% endif %}
             {% if nav_policy and nav_policy.can('dash_complessiva') %}
                 {% if is_dash_complessiva %}
                     <div class="row d-flex w-100 h-100 justify-content-start align-items-center ms-0 me-0 mb-0"

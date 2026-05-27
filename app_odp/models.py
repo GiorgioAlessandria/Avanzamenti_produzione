@@ -1587,3 +1587,116 @@ class OdpPriorita(db.Model):
         db.CheckConstraint("Priorita IN (1, 2, 3)", name="ck_odp_priorita_valore"),
         db.CheckConstraint("Posizione >= 0", name="ck_odp_priorita_posizione"),
     )
+
+
+class ProductionCapacityCalendar(db.Model):
+    __tablename__ = "production_capacity_calendar"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+
+    scope_type = db.Column(
+        db.Text, nullable=False, default="global", server_default="global"
+    )
+    # global / reparto / risorsa
+
+    scope_code = db.Column(db.Text, nullable=False, default="*", server_default="*")
+    # "*" oppure CodReparto / CodRisorsa
+
+    weekday = db.Column(db.Integer, nullable=False)
+    # 0 = lunedì, 6 = domenica
+
+    hours_capacity = db.Column(
+        db.Float, nullable=False, default=0.0, server_default="0"
+    )
+
+    active = db.Column(
+        db.Boolean, nullable=False, default=True, server_default=db.text("1")
+    )
+
+    created_at = db.Column(
+        db.Text,
+        nullable=False,
+        default=lambda: datetime.now(ZoneInfo("Europe/Rome")).isoformat(
+            timespec="seconds"
+        ),
+    )
+    updated_at = db.Column(db.Text)
+    updated_by = db.Column(db.Text)
+
+    __table_args__ = (
+        db.CheckConstraint(
+            "scope_type IN ('global', 'reparto', 'risorsa')",
+            name="ck_production_capacity_calendar_scope_type",
+        ),
+        db.CheckConstraint(
+            "weekday >= 0 AND weekday <= 6",
+            name="ck_production_capacity_calendar_weekday",
+        ),
+        db.CheckConstraint(
+            "hours_capacity >= 0",
+            name="ck_production_capacity_calendar_hours_capacity",
+        ),
+        db.UniqueConstraint(
+            "scope_type",
+            "scope_code",
+            "weekday",
+            name="uq_production_capacity_calendar_scope_weekday",
+        ),
+    )
+
+
+class ProductionKpiSnapshot(db.Model):
+    __tablename__ = "production_kpi_snapshot"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+
+    snapshot_month = db.Column(db.Text, nullable=False, index=True)
+    # YYYY-MM
+
+    scope_type = db.Column(
+        db.Text, nullable=False, default="global", server_default="global"
+    )
+    scope_code = db.Column(db.Text, nullable=False, default="*", server_default="*")
+
+    period_start = db.Column(db.Text, nullable=False)
+    period_end = db.Column(db.Text, nullable=False)
+
+    ordini_chiusi = db.Column(db.Integer, nullable=False, default=0, server_default="0")
+    ordini_in_ritardo = db.Column(
+        db.Integer, nullable=False, default=0, server_default="0"
+    )
+    percentuale_ritardo = db.Column(db.Float)
+
+    giorni_medi_ritardo = db.Column(db.Float)
+
+    tempo_previsto_totale = db.Column(db.Float)
+    tempo_reale_totale = db.Column(db.Float)
+    scostamento_totale = db.Column(db.Float)
+    scostamento_percentuale = db.Column(db.Float)
+
+    tempo_medio_ordine = db.Column(db.Float)
+    tempo_medio_fase = db.Column(db.Float)
+
+    payload_json = db.Column(db.Text)
+
+    created_at = db.Column(
+        db.Text,
+        nullable=False,
+        default=lambda: datetime.now(ZoneInfo("Europe/Rome")).isoformat(
+            timespec="seconds"
+        ),
+    )
+    created_by = db.Column(db.Text)
+
+    __table_args__ = (
+        db.CheckConstraint(
+            "scope_type IN ('global', 'reparto', 'risorsa', 'lavorazione', 'operatore', 'articolo')",
+            name="ck_production_kpi_snapshot_scope_type",
+        ),
+        db.UniqueConstraint(
+            "snapshot_month",
+            "scope_type",
+            "scope_code",
+            name="uq_production_kpi_snapshot_month_scope",
+        ),
+    )

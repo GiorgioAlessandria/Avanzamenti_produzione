@@ -1,0 +1,362 @@
+{% if show_capacity_config_section %}
+    <section class="card mt-4"
+             id="production-capacity-section">
+        <div class="card-header">
+            <h3 class="mb-0">Capacità produttiva</h3>
+            <div class="text-muted small">
+                Configurazione ore disponibili per globale, reparto o risorsa.
+            </div>
+        </div>
+
+        <div class="card-body">
+            <div id="production-capacity-alert"
+                 class="alert d-none"
+                 role="alert"></div>
+
+            <form id="form-production-capacity"
+                  class="border rounded p-3 mb-3">
+                <div class="row g-2 align-items-end">
+                    <div class="col-12 col-md-3">
+                        <label class="form-label">Tipo</label>
+                        <select class="form-select"
+                                name="scope_type"
+                                id="capacity-scope-type">
+                            <option value="global">Globale</option>
+                            <option value="reparto">Reparto</option>
+                            <option value="risorsa">Risorsa</option>
+                        </select>
+                    </div>
+
+                    <div class="col-12 col-md-5">
+                        <label class="form-label">Scope</label>
+                        <select class="form-select"
+                                name="scope_code"
+                                id="capacity-scope-code">
+                            <option value="*">Globale</option>
+                        </select>
+                    </div>
+
+                    <div class="col-12 col-md-4">
+                        <button type="submit"
+                                class="btn btn-primary w-100">
+                            Salva capacità
+                        </button>
+                    </div>
+                </div>
+
+                <div class="table-responsive mt-3">
+                    <table class="table table-sm table-bordered align-middle mb-0">
+                        <thead class="table-light">
+                        <tr>
+                            <th>Giorno</th>
+                            <th class="text-end">Ore capacità</th>
+                            <th class="text-center">Attivo</th>
+                        </tr>
+                        </thead>
+                        <tbody id="capacity-weekday-body">
+                        {% for weekday, label in {
+                        0: "Lunedì",
+                        1: "Martedì",
+                        2: "Mercoledì",
+                        3: "Giovedì",
+                        4: "Venerdì",
+                        5: "Sabato",
+                        6: "Domenica"
+                    }.items() %}
+                            <tr data-weekday="{{ weekday }}">
+                                <td>{{ label }}</td>
+                                <td>
+                                    <input class="form-control form-control-sm text-end"
+                                           type="number"
+                                           step="0.25"
+                                           min="0"
+                                           name="hours_capacity_{{ weekday }}"
+                                           value="{{ 9 if weekday in [0,1,2,3] else 4 if weekday == 4 else 0 }}">
+                                </td>
+                                <td class="text-center">
+                                    <input class="form-check-input"
+                                           type="checkbox"
+                                           name="active_{{ weekday }}"
+                                           checked>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </form>
+
+            <h4 class="mt-4">Configurazioni salvate</h4>
+
+            <div class="table-responsive">
+                <table class="table table-sm table-hover align-middle">
+                    <thead class="table-light">
+                    <tr>
+                        <th>Tipo</th>
+                        <th>Codice</th>
+                        <th>Giorno</th>
+                        <th class="text-end">Ore</th>
+                        <th class="text-center">Attivo</th>
+                        <th>Aggiornato da</th>
+                        <th></th>
+                    </tr>
+                    </thead>
+                    <tbody id="capacity-existing-body">
+                    <tr>
+                        <td colspan="7"
+                            class="text-center text-muted py-3">
+                            Dati non caricati.
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <script>
+        (() => {
+            const section = document.getElementById("production-capacity-section");
+            if (!section) return;
+
+            const tabSession = "{{ tab_session|default('', true)|e }}";
+            const apiUrl = "{{ url_for('main.api_production_capacity_data') }}";
+            const saveUrl = "{{ url_for('main.api_save_production_capacity') }}";
+
+            let payload = {
+                weekdays: [],
+                capacity_rows: [],
+                reparti: [],
+                risorse: [],
+            };
+
+            function withTabSession(url) {
+                if (!tabSession) return url;
+
+                const parsed = new URL(url, window.location.origin);
+                parsed.searchParams.set("tab_session", tabSession);
+                return parsed.pathname + parsed.search;
+            }
+
+            function fetchOptions(extra = {}) {
+                const headers = {
+                    ...(extra.headers || {}),
+                };
+
+                if (tabSession) {
+                    headers["X-Tab-Session"] = tabSession;
+                }
+
+                return {
+                    ...extra,
+                    headers,
+                };
+            }
+
+            function escapeHtml(value) {
+                return String(value ?? "")
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;")
+                    .replace(/"/g, "&quot;")
+                    .replace(/'/g, "&#039;");
+            }
+
+            function showAlert(type, message) {
+                const box = document.getElementById("production-capacity-alert");
+                if (!box) return;
+
+                box.className = `alert alert-${type}`;
+                box.textContent = message;
+                box.classList.remove("d-none");
+            }
+
+            async function loadCapacity() {
+                const resp = await fetch(withTabSession(apiUrl), fetchOptions());
+                const data = await resp.json();
+
+                if (!resp.ok || data.ok === false) {
+                    throw new Error(data.error || `Errore HTTP ${resp.status}`);
+                }
+
+                payload = data.data || payload;
+
+                renderScopeCodes();
+                renderExistingRows();
+                applyRowsToForm();
+            }
+
+            function renderScopeCodes() {
+                const typeSelect = document.getElementById("capacity-scope-type");
+                const codeSelect = document.getElementById("capacity-scope-code");
+                if (!typeSelect || !codeSelect) return;
+
+                const scopeType = typeSelect.value;
+
+                if (scopeType === "global") {
+                    codeSelect.innerHTML = `<option value="*">Globale</option>`;
+                    codeSelect.value = "*";
+                    return;
+                }
+
+                const rows = scopeType === "reparto" ? payload.reparti : payload.risorse;
+
+                codeSelect.innerHTML = (rows || []).map(row => `
+            <option value="${escapeHtml(row.codice)}">
+                ${escapeHtml(row.codice)} - ${escapeHtml(row.descrizione)}
+            </option>
+        `).join("");
+            }
+
+            function currentScope() {
+                return {
+                    scope_type: document.getElementById("capacity-scope-type")?.value || "global",
+                    scope_code: document.getElementById("capacity-scope-code")?.value || "*",
+                };
+            }
+
+            function rowsForCurrentScope() {
+                const scope = currentScope();
+
+                return (payload.capacity_rows || []).filter(row =>
+                    row.scope_type === scope.scope_type &&
+                    row.scope_code === scope.scope_code
+                );
+            }
+
+            function applyRowsToForm() {
+                const rows = rowsForCurrentScope();
+                const byWeekday = new Map(rows.map(row => [Number(row.weekday), row]));
+
+                for (let weekday = 0; weekday <= 6; weekday++) {
+                    const row = byWeekday.get(weekday);
+
+                    const hoursInput = document.querySelector(`[name="hours_capacity_${weekday}"]`);
+                    const activeInput = document.querySelector(`[name="active_${weekday}"]`);
+
+                    if (!hoursInput || !activeInput) continue;
+
+                    if (row) {
+                        hoursInput.value = Number(row.hours_capacity || 0);
+                        activeInput.checked = Boolean(row.active);
+                    } else {
+                        hoursInput.value = [0, 1, 2, 3].includes(weekday) ? "9" : weekday === 4 ? "4" : "0";
+                        activeInput.checked = true;
+                    }
+                }
+            }
+
+            function renderExistingRows() {
+                const tbody = document.getElementById("capacity-existing-body");
+                if (!tbody) return;
+
+                const rows = payload.capacity_rows || [];
+
+                if (!rows.length) {
+                    tbody.innerHTML = `
+                <tr>
+                    <td colspan="7" class="text-center text-muted py-3">
+                        Nessuna configurazione salvata.
+                    </td>
+                </tr>
+            `;
+                    return;
+                }
+
+                tbody.innerHTML = rows.map(row => `
+            <tr>
+                <td>${escapeHtml(row.scope_type)}</td>
+                <td>${escapeHtml(row.scope_code)}</td>
+                <td>${escapeHtml(row.weekday_label)}</td>
+                <td class="text-end">${Number(row.hours_capacity || 0).toFixed(2)}</td>
+                <td class="text-center">${row.active ? "Sì" : "No"}</td>
+                <td>${escapeHtml(row.updated_by || "")}</td>
+                <td class="text-end">
+                    <button type="button"
+                            class="btn btn-sm btn-outline-primary"
+                            data-capacity-load="${escapeHtml(row.scope_type)}|${escapeHtml(row.scope_code)}">
+                        Carica
+                    </button>
+                </td>
+            </tr>
+        `).join("");
+            }
+
+            function collectFormRows() {
+                const rows = [];
+
+                for (let weekday = 0; weekday <= 6; weekday++) {
+                    const hoursInput = document.querySelector(`[name="hours_capacity_${weekday}"]`);
+                    const activeInput = document.querySelector(`[name="active_${weekday}"]`);
+
+                    rows.push({
+                        weekday,
+                        hours_capacity: hoursInput?.value || "0",
+                        active: Boolean(activeInput?.checked),
+                    });
+                }
+
+                return rows;
+            }
+
+            document.getElementById("capacity-scope-type")?.addEventListener("change", () => {
+                renderScopeCodes();
+                applyRowsToForm();
+            });
+
+            document.getElementById("capacity-scope-code")?.addEventListener("change", () => {
+                applyRowsToForm();
+            });
+
+            document.addEventListener("click", (event) => {
+                const button = event.target.closest("[data-capacity-load]");
+                if (!button) return;
+
+                const [scopeType, scopeCode] = button.dataset.capacityLoad.split("|");
+
+                document.getElementById("capacity-scope-type").value = scopeType;
+                renderScopeCodes();
+                document.getElementById("capacity-scope-code").value = scopeCode;
+                applyRowsToForm();
+            });
+
+            document.getElementById("form-production-capacity")?.addEventListener("submit", async (event) => {
+                event.preventDefault();
+
+                const scope = currentScope();
+
+                try {
+                    const resp = await fetch(
+                        withTabSession(saveUrl),
+                        fetchOptions({
+                            method: "POST",
+                            headers: {"Content-Type": "application/json"},
+                            body: JSON.stringify({
+                                ...scope,
+                                rows: collectFormRows(),
+                            }),
+                        })
+                    );
+
+                    const data = await resp.json();
+
+                    if (!resp.ok || data.ok === false) {
+                        throw new Error(data.error || `Errore HTTP ${resp.status}`);
+                    }
+
+                    payload = data.data || payload;
+                    renderExistingRows();
+                    applyRowsToForm();
+                    showAlert("success", "Capacità produttiva salvata.");
+
+                } catch (err) {
+                    showAlert("danger", err.message);
+                }
+            });
+
+            loadCapacity().catch(err => {
+                showAlert("danger", err.message);
+            });
+        })();
+    </script>
+{% endif %}

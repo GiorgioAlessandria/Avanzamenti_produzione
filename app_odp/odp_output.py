@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import Literal
 
 from datetime import datetime
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from decimal import Decimal, InvalidOperation
 import json
 from app_odp.ordine_ref import format_ordine_ref_export
 
@@ -93,6 +93,138 @@ def row_writer(
     )
 
 
+def _bool_from_payload(value) -> bool | None:
+    if isinstance(value, bool):
+        return value
+
+    raw = _text(value).lower()
+
+    if raw in {"1", "true", "si", "sì", "yes", "on"}:
+        return True
+
+    if raw in {"0", "false", "no", "off"}:
+        return False
+
+    return None
+
+
+def _to_int(value) -> int | None:
+    raw = _text(value)
+
+    if not raw:
+        return None
+
+    try:
+        return int(float(raw))
+    except (TypeError, ValueError):
+        return None
+
+
+def _jsonish_list(value) -> list[str]:
+    if isinstance(value, list):
+        return [_text(x) for x in value if _text(x)]
+
+    raw = _text(value)
+
+    if not raw:
+        return []
+
+    try:
+        parsed = json.loads(raw)
+    except Exception:
+        return [raw]
+
+    if isinstance(parsed, list):
+        return [_text(x) for x in parsed if _text(x)]
+
+    return [_text(parsed)] if _text(parsed) else []
+
+
+def _phase_sequence_from_payload(payload: dict) -> list[str]:
+    for key in ("phase_sequence", "num_fase", "num_fasi", "fasi"):
+        values = _jsonish_list(payload.get(key))
+        if values:
+            return values
+
+    totale_fasi = _to_int(payload.get("totale_fasi"))
+
+    if totale_fasi and totale_fasi > 0:
+        return [str(i) for i in range(1, totale_fasi + 1)]
+
+    return []
+
+
+def _should_emit_product_line(payload: dict) -> bool:
+    explicit_emit = _bool_from_payload(payload.get("emit_product_line"))
+
+    if explicit_emit is not None:
+        return explicit_emit
+
+    is_last_phase = _bool_from_payload(payload.get("is_last_phase"))
+
+    if is_last_phase is not None:
+        return is_last_phase
+
+    fase_corrente = _text(payload.get("fase"))
+    fasi = _phase_sequence_from_payload(payload)
+
+    if not fasi:
+        return True
+
+    if len(fasi) == 1:
+        return True
+
+    return fase_corrente == _text(fasi[-1])
+
+
+def _is_multiphase_payload(payload: dict) -> bool:
+    return len(_phase_sequence_from_payload(payload)) > 1
+
+
+def _normal_phase_suffix(value) -> str:
+    value_int = _to_int(value)
+
+    if value_int is not None:
+        return str(value_int)
+
+    return _text(value)
+
+
+def _ref_with_suffix(base_ref: str, suffix_value) -> str:
+    suffix = _normal_phase_suffix(suffix_value)
+
+    if not suffix:
+        return base_ref
+
+    return f"{base_ref}.{suffix},00"
+
+
+def _phase_ref_for_export(base_ref: str, payload: dict) -> str:
+    if not _is_multiphase_payload(payload):
+        return base_ref
+
+    return _ref_with_suffix(base_ref, payload.get("fase"))
+
+
+def _component_is_phase_managed(component: dict) -> bool:
+    return bool(_text(component.get("NumFase")))
+
+
+def _component_ref_for_export(
+    base_ref: str,
+    payload: dict,
+    component: dict,
+    progressive_index: int,
+) -> str:
+    if not _is_multiphase_payload(payload):
+        return base_ref
+
+    if not _component_is_phase_managed(component):
+        return base_ref
+
+    return _ref_with_suffix(base_ref, progressive_index)
+
+
 def txt_generator(
     export_rows: list[dict],
     *,
@@ -130,17 +262,16 @@ def txt_generator(
     distinta_base = _load_distinta_base(payload.get("distinta_base"))
     lotti_components = payload.get("lotti") or []
 
-    riferimento_ordine = format_ordine_ref_export(
+    riferimento_ordine_base = format_ordine_ref_export(
         rif_registraz,
         num_progr_riga=num_progr_riga,
         id_riga=id_riga,
+        fase="",
     )
 
-    riferimento_ordine_time = format_ordine_ref_export(
-        rif_registraz,
-        num_progr_riga=num_progr_riga,
-        id_riga=id_riga,
-        fase=fase,
+    riferimento_ordine_fase = _phase_ref_for_export(
+        riferimento_ordine_base,
+        payload,
     )
 
     lines = []
@@ -153,27 +284,30 @@ def txt_generator(
     )
     lines.append(head_line)
 
-    product_line = row_writer(
-        tipo_record="RIG",
-        tipo_documento=710,
-        registrazione_data=registrazione_data,
-        codice_documento=id_documento,
-        operazione_avanzamento="701",
-        riferimento_ordine=riferimento_ordine,
-        codice_articolo=codice_articolo,
-        variante=variante_articolo,
-        quantita_principale=str(q_ok),
-        quantita_scarti_prima=str(q_ko),
-        quantita_scarti_seconda=0,
-        riga_saldata=salda_riga,
-        riferimento_lotto_padre=lotto_articolo,
-        riferimento_lotto_pf=lotto_articolo,
-        magazzino_principale=magazzino,
-        codice_risorsa=risorsa,
-        causale_prestazione="",
-        ore_lavorate=str(tempo_funzionamento),
-    )
-    lines.append(product_line)
+    emit_product_line = _should_emit_product_line(payload)
+
+    if emit_product_line:
+        product_line = row_writer(
+            tipo_record="RIG",
+            tipo_documento=710,
+            registrazione_data=registrazione_data,
+            codice_documento=id_documento,
+            operazione_avanzamento="701",
+            riferimento_ordine=riferimento_ordine_fase,
+            codice_articolo=codice_articolo,
+            variante=variante_articolo,
+            quantita_principale=str(q_ok),
+            quantita_scarti_prima=str(q_ko),
+            quantita_scarti_seconda=0,
+            riga_saldata=salda_riga,
+            riferimento_lotto_padre=lotto_articolo,
+            riferimento_lotto_pf=lotto_articolo,
+            magazzino_principale=magazzino,
+            codice_risorsa=risorsa,
+            causale_prestazione="",
+            ore_lavorate=str(tempo_funzionamento),
+        )
+        lines.append(product_line)
 
     if include_time_line:
         product_time_line = row_writer(
@@ -182,7 +316,7 @@ def txt_generator(
             registrazione_data=registrazione_data,
             codice_documento=id_documento,
             operazione_avanzamento="709",
-            riferimento_ordine=riferimento_ordine_time,
+            riferimento_ordine=riferimento_ordine_fase,
             codice_articolo=codice_articolo,
             variante=variante_articolo,
             quantita_principale=0,
@@ -197,13 +331,16 @@ def txt_generator(
             ore_lavorate=str(tempo_funzionamento),
         )
         lines.append(product_time_line)
-
+    component_progressive_index = 1
     for component in distinta_base:
         if not isinstance(component, dict):
             continue
 
         cod_art_component = _text(component.get("CodArt"))
         variante_component = _text(component.get("VarianteArt"))
+        component_uses_progressive_ref = _is_multiphase_payload(
+            payload
+        ) and _component_is_phase_managed(component)
 
         righe_lotto_component = [
             riga
@@ -218,13 +355,20 @@ def txt_generator(
                 quantita_lotto = _text(riga_lotto_component.get("Quantita"))
                 magazzino_lotto = _text(riga_lotto_component.get("CodMag")) or magazzino
 
+                riferimento_ordine_component = _component_ref_for_export(
+                    riferimento_ordine_base,
+                    payload,
+                    component,
+                    component_progressive_index,
+                )
+
                 component_line = row_writer(
                     tipo_record="RIG",
                     tipo_documento=710,
                     registrazione_data=registrazione_data,
                     codice_documento=id_documento,
                     operazione_avanzamento="703",
-                    riferimento_ordine=riferimento_ordine,
+                    riferimento_ordine=riferimento_ordine_component,
                     codice_articolo=component.get("CodArt", ""),
                     variante=component.get("VarianteArt", ""),
                     quantita_principale=quantita_lotto,
@@ -237,14 +381,23 @@ def txt_generator(
                     ore_lavorate=str(tempo_funzionamento),
                 )
                 lines.append(component_line)
+
+                if component_uses_progressive_ref:
+                    component_progressive_index += 1
         else:
+            riferimento_ordine_component = _component_ref_for_export(
+                riferimento_ordine_base,
+                payload,
+                component,
+                component_progressive_index,
+            )
             component_line = row_writer(
                 tipo_record="RIG",
                 tipo_documento=710,
                 registrazione_data=registrazione_data,
                 codice_documento=id_documento,
                 operazione_avanzamento="703",
-                riferimento_ordine=riferimento_ordine,
+                riferimento_ordine=riferimento_ordine_component,
                 codice_articolo=component.get("CodArt", ""),
                 variante=component.get("VarianteArt", ""),
                 quantita_principale=component.get("Quantita", ""),
@@ -257,5 +410,8 @@ def txt_generator(
                 ore_lavorate=str(tempo_funzionamento),
             )
             lines.append(component_line)
+
+            if component_uses_progressive_ref:
+                component_progressive_index += 1
 
     return lines
