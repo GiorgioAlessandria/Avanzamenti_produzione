@@ -293,7 +293,7 @@ def txt_generator(
             registrazione_data=registrazione_data,
             codice_documento=id_documento,
             operazione_avanzamento="701",
-            riferimento_ordine=riferimento_ordine_fase,
+            riferimento_ordine=riferimento_ordine_base,
             codice_articolo=codice_articolo,
             variante=variante_articolo,
             quantita_principale=str(q_ok),
