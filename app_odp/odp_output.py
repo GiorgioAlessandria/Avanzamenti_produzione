@@ -7,6 +7,28 @@ import json
 from app_odp.ordine_ref import format_ordine_ref_export
 
 
+def _component_matches_payload_phase(component: dict, payload: dict) -> bool:
+    """
+    Esporta solo componenti assegnati alla fase corrente.
+
+    Se il componente non ha NumFase in un ordine multifase, non va esportato
+    come componente di fase.
+    """
+    if not _is_multiphase_payload(payload):
+        return True
+
+    fase_payload = _to_int(payload.get("fase"))
+    fase_component = _to_int(component.get("NumFase"))
+
+    if fase_payload is None:
+        return False
+
+    if fase_component is None:
+        return False
+
+    return fase_component == fase_payload
+
+
 def _text(value) -> str:
     return str(value or "").strip()
 
@@ -259,7 +281,14 @@ def txt_generator(
     q_ko = _to_decimal(payload["quantita_ko"])
     tempo_funzionamento = _to_decimal(payload["tempo_funzionamento"])
 
-    distinta_base = _load_distinta_base(payload.get("distinta_base"))
+    distinta_base_raw = _load_distinta_base(payload.get("distinta_base"))
+
+    distinta_base = [
+        component
+        for component in distinta_base_raw
+        if _component_matches_payload_phase(component, payload)
+    ]
+
     lotti_components = payload.get("lotti") or []
 
     riferimento_ordine_base = format_ordine_ref_export(

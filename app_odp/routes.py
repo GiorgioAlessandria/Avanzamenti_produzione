@@ -5681,7 +5681,11 @@ def api_ricerca_etichette():
                 "quantita": _norm_text(row.Quantita),
                 "filename": filename if file_exists else "",
                 "label_url": (
-                    url_for("main.etichetta_png", filename=filename)
+                    url_for(
+                        "main.etichetta_png",
+                        filename=filename,
+                        tab_session=active_token(),
+                    )
                     if file_exists
                     else ""
                 ),
@@ -6229,7 +6233,11 @@ def api_chiudi_ordine():
 
     db.session.commit()
     label_url = (
-        url_for("main.etichetta_png", filename=label_filename)
+        url_for(
+            "main.etichetta_png",
+            filename=label_filename,
+            tab_session=active_token(),
+        )
         if label_filename
         else None
     )
@@ -6494,10 +6502,12 @@ def api_chiudi_ordine_montaggio_macchina():
         fase_corrente,
         chiusura_parziale=False,
     )
+    q_lavorata = q_ok + q_nok
+
     distinta_base_export = _build_export_distinta_base(
         ordine=ordine,
         fase_corrente=fase_corrente,
-        q_lavorata=q_tot,
+        q_lavorata=q_lavorata,
         q_tot=q_tot,
     )
     payload = _build_phase_payload(
