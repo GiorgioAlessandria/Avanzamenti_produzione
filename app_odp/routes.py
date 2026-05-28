@@ -2009,6 +2009,11 @@ def _build_export_distinta_base(
 ) -> str:
     distinta = _parse_distinta_materiale(ordine)
     fase_corrente_int = _fase_to_int(fase_corrente)
+    phase_sequence = _phase_sequence_for_ordine(ordine)
+    is_multifase = len(phase_sequence) > 1
+
+    if is_multifase and fase_corrente_int is None:
+        return json.dumps([], ensure_ascii=False)
 
     out = []
 
@@ -2017,8 +2022,17 @@ def _build_export_distinta_base(
             continue
 
         comp_fase = _fase_to_int(comp.get("NumFase"))
-        if fase_corrente_int is not None and comp_fase != fase_corrente_int:
-            continue
+
+        if is_multifase:
+            if comp_fase is None:
+                continue
+
+            if comp_fase != fase_corrente_int:
+                continue
+
+        elif fase_corrente_int is not None and comp_fase is not None:
+            if comp_fase != fase_corrente_int:
+                continue
 
         qty_scalata = _scaled_component_qty(
             comp.get("Quantita"),
@@ -5278,8 +5292,6 @@ def api_riattiva_ordine():
                 409,
             )
 
-        _sync_active_fields_for_phase(ordine, fase_corrente)
-
         stato_ordine_pre = _norm_text(stato_attuale)
         qty_pre = _qty_da_lavorare_text(ordine, stato=stato)
         now_iso = now_dt.isoformat(timespec="seconds")
@@ -5741,13 +5753,38 @@ def api_chiudi_ordine():
 
     if can_choose_time_line:
         include_time_line = _parse_bool_flag(data.get("include_time_line", True))
+    stato = InputOdpRuntime.query.filter_by(
+        IdDocumento=ordine.IdDocumento,
+        IdRiga=ordine.IdRiga,
+    ).first()
 
-    fase_corrente = _fase_corrente_for_export(ordine)
+    fase_corrente = _fase_corrente_for_export(ordine, stato=stato)
+
+    if not fase_corrente:
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": (
+                        "Fase corrente non determinabile. "
+                        "Verificare FaseAttiva su input_odp_runtime/input_odp."
+                    ),
+                    "id_documento": ordine.IdDocumento,
+                    "id_riga": ordine.IdRiga,
+                }
+            ),
+            409,
+        )
+
+    ordine.FaseAttiva = fase_corrente
+    _sync_active_fields_for_phase(ordine, fase_corrente)
+
     blocking_outbox = _get_blocking_outbox_for_phase(
         id_documento=ordine.IdDocumento,
         id_riga=ordine.IdRiga,
         fase=fase_corrente,
     )
+
     if blocking_outbox is not None:
         return (
             jsonify(
@@ -5763,11 +5800,6 @@ def api_chiudi_ordine():
             ),
             409,
         )
-
-    stato = InputOdpRuntime.query.filter_by(
-        IdDocumento=ordine.IdDocumento,
-        IdRiga=ordine.IdRiga,
-    ).first()
     closure_error = _ensure_ordine_attivo_per_chiusura(ordine, stato=stato)
     if closure_error:
         return closure_error
@@ -5960,8 +5992,6 @@ def api_chiudi_ordine():
         action=action_name,
         when_iso=now_iso,
     )
-
-    fase_corrente = _fase_corrente_for_export(ordine, stato=stato)
     phase_export_flags = _phase_export_flags(
         ordine,
         fase_corrente,
@@ -6332,12 +6362,42 @@ def api_chiudi_ordine_montaggio_macchina():
             400,
         )
 
-    fase_corrente = _fase_corrente_for_export(ordine, fase_override=fase)
+    stato = InputOdpRuntime.query.filter_by(
+        IdDocumento=ordine.IdDocumento,
+        IdRiga=ordine.IdRiga,
+    ).first()
+
+    fase_corrente = _fase_corrente_for_export(
+        ordine,
+        stato=stato,
+        fase_override=fase,
+    )
+
+    if not fase_corrente:
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": (
+                        "Fase corrente non determinabile. "
+                        "Verificare FaseAttiva su input_odp_runtime/input_odp."
+                    ),
+                    "id_documento": ordine.IdDocumento,
+                    "id_riga": ordine.IdRiga,
+                }
+            ),
+            409,
+        )
+
+    ordine.FaseAttiva = fase_corrente
+    _sync_active_fields_for_phase(ordine, fase_corrente)
+
     blocking_outbox = _get_blocking_outbox_for_phase(
         id_documento=ordine.IdDocumento,
         id_riga=ordine.IdRiga,
         fase=fase_corrente,
     )
+
     if blocking_outbox is not None:
         return (
             jsonify(
@@ -6353,11 +6413,6 @@ def api_chiudi_ordine_montaggio_macchina():
             ),
             409,
         )
-
-    stato = InputOdpRuntime.query.filter_by(
-        IdDocumento=ordine.IdDocumento,
-        IdRiga=ordine.IdRiga,
-    ).first()
 
     closure_error = _ensure_ordine_attivo_per_chiusura(ordine, stato=stato)
     if closure_error:
@@ -6495,8 +6550,6 @@ def api_chiudi_ordine_montaggio_macchina():
         if _norm_text(stato.Stato_odp).lower().startswith("attiv"):
             elapsed_seconds = _accumulate_runtime_until(stato, now_dt)
         tempo_finale = _norm_text(stato.Tempo_funzionamento) or "0"
-
-    fase_corrente = _fase_corrente_for_export(ordine, stato=stato, fase_override=fase)
     phase_export_flags = _phase_export_flags(
         ordine,
         fase_corrente,
