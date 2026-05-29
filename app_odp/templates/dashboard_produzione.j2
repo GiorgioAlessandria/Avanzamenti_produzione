@@ -2,7 +2,77 @@
 
 {% block title %}Dashboard produzione{% endblock %}
 
+{% block styles %}
+    {{ super() }}
+    <style>
+        .kpi-card-value {
+            font-size: 2rem;
+            font-weight: 700;
+            line-height: 1.1;
+        }
+
+        .kpi-card-subtitle {
+            min-height: 1.25rem;
+        }
+
+        .dashboard-chart-box {
+            position: relative;
+            height: 330px;
+            min-height: 330px;
+        }
+
+        .dashboard-chart-box-sm {
+            position: relative;
+            height: 260px;
+            min-height: 260px;
+        }
+
+        .dashboard-empty {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--bs-secondary-color);
+            text-align: center;
+            padding: 1rem;
+        }
+
+        .dashboard-empty.d-none {
+            display: none !important;
+        }
+
+        .dashboard-list {
+            max-height: 390px;
+            overflow-y: auto;
+        }
+
+        .dashboard-list-item {
+            border-bottom: 1px solid var(--bs-border-color);
+            padding: .75rem 0;
+        }
+
+        .dashboard-list-item:last-child {
+            border-bottom: 0;
+        }
+    </style>
+{% endblock %}
+
 {% block content %}
+    {% macro dashboard_filter_select(id, key, label, options) %}
+        <div class="col-12 col-md-2">
+            <label class="form-label"
+                   for="{{ id }}">{{ label }}</label>
+            <select class="form-select js-dashboard-filter"
+                    id="{{ id }}"
+                    data-filter-key="{{ key }}">
+                <option value="">Tutti</option>
+                {% for item in options.get(key, []) %}
+                    <option value="{{ item.value }}">{{ item.label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    {% endmacro %}
     <main class="container-fluid mt-4 mb-4">
         <div class="d-flex justify-content-between align-items-center mb-3">
             <div>
@@ -37,48 +107,17 @@
         {% if active_section == 'cruscotto' %}
             <section id="dashboard-produzione-cruscotto"
                      data-api-url="{{ operator_url_for('main.api_dashboard_produzione_cruscotto') }}">
+                {% set cruscotto_filter_options = dashboard_payload.cruscotto.filter_options|default({}) %}
                 <div class="card shadow-sm mb-3">
-                    <div class="card-header">
-                        Filtri cruscotto
-                    </div>
-
+                    <div class="card-header">Filtri cruscotto</div>
                     <div class="card-body">
                         <div class="row g-2">
-                            <div class="col-12 col-md-2">
-                                <label class="form-label">Reparto</label>
-                                <input class="form-control"
-                                       id="cruscotto-reparto">
-                            </div>
-
-                            <div class="col-12 col-md-2">
-                                <label class="form-label">Risorsa</label>
-                                <input class="form-control"
-                                       id="cruscotto-risorsa">
-                            </div>
-
-                            <div class="col-12 col-md-2">
-                                <label class="form-label">Lavorazione</label>
-                                <input class="form-control"
-                                       id="cruscotto-lavorazione">
-                            </div>
-
-                            <div class="col-12 col-md-2">
-                                <label class="form-label">Operatore</label>
-                                <input class="form-control"
-                                       id="cruscotto-operatore">
-                            </div>
-
-                            <div class="col-12 col-md-2">
-                                <label class="form-label">Articolo</label>
-                                <input class="form-control"
-                                       id="cruscotto-articolo">
-                            </div>
-
-                            <div class="col-12 col-md-2">
-                                <label class="form-label">Stato</label>
-                                <input class="form-control"
-                                       id="cruscotto-stato">
-                            </div>
+                            {{ dashboard_filter_select("cruscotto-reparto", "reparto", "Reparto", cruscotto_filter_options) }}
+                            {{ dashboard_filter_select("cruscotto-risorsa", "risorsa", "Risorsa", cruscotto_filter_options) }}
+                            {{ dashboard_filter_select("cruscotto-lavorazione", "lavorazione", "Lavorazione", cruscotto_filter_options) }}
+                            {{ dashboard_filter_select("cruscotto-operatore", "operatore", "Operatore", cruscotto_filter_options) }}
+                            {{ dashboard_filter_select("cruscotto-articolo", "articolo", "Articolo", cruscotto_filter_options) }}
+                            {{ dashboard_filter_select("cruscotto-stato", "stato", "Stato", cruscotto_filter_options) }}
 
                             <div class="col-12 col-md-2 d-flex align-items-end">
                                 <button class="btn btn-primary w-100"
@@ -103,54 +142,66 @@
                     <div class="col-12 col-md-2">
                         <div class="card shadow-sm h-100">
                             <div class="card-body">
-                                <div class="text-muted small">Ordini attivi</div>
-                                <div class="fs-3 fw-bold"
+                                <div class="text-muted small">Attivi</div>
+                                <div class="kpi-card-value"
                                      data-dashboard-card="ordini_attivi">0
                                 </div>
+                                <div class="small text-muted kpi-card-subtitle">carico reale</div>
                             </div>
                         </div>
                     </div>
-
                     <div class="col-12 col-md-2">
                         <div class="card shadow-sm h-100">
                             <div class="card-body">
-                                <div class="text-muted small">Ordini sospesi</div>
-                                <div class="fs-3 fw-bold"
+                                <div class="text-muted small">Sospesi</div>
+                                <div class="kpi-card-value"
                                      data-dashboard-card="ordini_sospesi">0
                                 </div>
+                                <div class="small text-muted kpi-card-subtitle">carico bloccato</div>
                             </div>
                         </div>
                     </div>
-
                     <div class="col-12 col-md-2">
                         <div class="card shadow-sm h-100">
                             <div class="card-body">
-                                <div class="text-muted small">Ordini pianificati</div>
-                                <div class="fs-3 fw-bold"
+                                <div class="text-muted small">Pianificati</div>
+                                <div class="kpi-card-value"
                                      data-dashboard-card="ordini_pianificati">0
                                 </div>
+                                <div class="small text-muted kpi-card-subtitle">carico futuro</div>
                             </div>
                         </div>
                     </div>
-
-                    <div class="col-12 col-md-3">
+                    <div class="col-12 col-md-2">
                         <div class="card shadow-sm h-100">
                             <div class="card-body">
-                                <div class="text-muted small">Tempo previsto residuo</div>
-                                <div class="fs-3 fw-bold"
+                                <div class="text-muted small">Ore residue</div>
+                                <div class="kpi-card-value"
                                      data-dashboard-card="tempo_previsto_residuo">0 h
                                 </div>
+                                <div class="small text-muted kpi-card-subtitle">solo ordini attivi</div>
                             </div>
                         </div>
                     </div>
-
-                    <div class="col-12 col-md-3">
+                    <div class="col-12 col-md-2">
                         <div class="card shadow-sm h-100">
                             <div class="card-body">
-                                <div class="text-muted small">Operatori impegnati</div>
-                                <div class="fs-3 fw-bold"
-                                     data-dashboard-card="operatori_impegnati">0
+                                <div class="text-muted small">Criticità</div>
+                                <div class="kpi-card-value text-danger"
+                                     data-dashboard-card="ordini_critici">0
                                 </div>
+                                <div class="small text-muted kpi-card-subtitle">ritardi, sospesi, senza tempi</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12 col-md-2">
+                        <div class="card shadow-sm h-100">
+                            <div class="card-body">
+                                <div class="text-muted small">Risorse sovraccariche</div>
+                                <div class="kpi-card-value"
+                                     data-dashboard-card="risorse_sovraccariche">0
+                                </div>
+                                <div class="small text-muted kpi-card-subtitle">oltre 110%</div>
                             </div>
                         </div>
                     </div>
@@ -161,135 +212,80 @@
                         <div class="card shadow-sm h-100">
                             <div class="card-header">Carico prossimo mese</div>
                             <div class="card-body">
-                                <div id="dashboard-chart-carico">
-                                    <div class="text-muted">Dati non caricati.</div>
+                                <div class="dashboard-chart-box">
+                                    <canvas id="chart-cruscotto-carico"></canvas>
+                                    <div class="dashboard-empty"
+                                         data-empty-for="chart-cruscotto-carico">Dati non caricati.
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
-
                     <div class="col-12 col-xl-4">
                         <div class="card shadow-sm h-100">
                             <div class="card-header">Stati ordine</div>
                             <div class="card-body">
-                                <div id="dashboard-chart-stati">
-                                    <div class="text-muted">Dati non caricati.</div>
+                                <div class="dashboard-chart-box">
+                                    <canvas id="chart-cruscotto-stati"></canvas>
+                                    <div class="dashboard-empty"
+                                         data-empty-for="chart-cruscotto-stati">Dati non caricati.
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <div class="card shadow-sm">
-                    <div class="card-header">Criticità</div>
-                    <div class="card-body p-0">
-                        <table class="table table-sm table-hover mb-0">
-                            <thead>
-                            <tr>
-                                <th>Tipo</th>
-                                <th>Ordine</th>
-                                <th>Articolo</th>
-                                <th>Reparto</th>
-                                <th>Risorsa</th>
-                                <th>Stato</th>
-                                <th>Scadenza</th>
-                            </tr>
-                            </thead>
-                            <tbody id="dashboard-criticita-body">
-                            <tr>
-                                <td colspan="7"
-                                    class="text-center text-muted py-3">
-                                    Nessuna criticità caricata.
-                                </td>
-                            </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <div class="row g-3 mt-3">
-                    <div class="col-12 col-xl-5">
+                <div class="row g-3 mb-3">
+                    <div class="col-12 col-xl-6">
                         <div class="card shadow-sm h-100">
-                            <div class="card-header">Operatori impegnati</div>
-                            <div class="card-body p-0">
-                                <table class="table table-sm table-hover mb-0">
-                                    <thead>
-                                    <tr>
-                                        <th>Operatore</th>
-                                        <th class="text-end">Ordini attivi</th>
-                                        <th class="text-end">Ore previste</th>
-                                    </tr>
-                                    </thead>
-                                    <tbody id="dashboard-operatori-body">
-                                    <tr>
-                                        <td colspan="3"
-                                            class="text-center text-muted py-3">
-                                            Dati non caricati.
-                                        </td>
-                                    </tr>
-                                    </tbody>
-                                </table>
+                            <div class="card-header">Saturazione risorse</div>
+                            <div class="card-body">
+                                <div class="dashboard-chart-box">
+                                    <canvas id="chart-cruscotto-saturazione"></canvas>
+                                    <div class="dashboard-empty"
+                                         data-empty-for="chart-cruscotto-saturazione">Dati non caricati.
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
+                    <div class="col-12 col-xl-6">
+                        <div class="card shadow-sm h-100">
+                            <div class="card-header">Carico per reparto</div>
+                            <div class="card-body">
+                                <div class="dashboard-chart-box">
+                                    <canvas id="chart-cruscotto-reparti"></canvas>
+                                    <div class="dashboard-empty"
+                                         data-empty-for="chart-cruscotto-reparti">Dati non caricati.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
 
+                <div class="row g-3">
                     <div class="col-12 col-xl-7">
                         <div class="card shadow-sm h-100">
                             <div class="card-header">Carico per risorsa</div>
-                            <div class="card-body p-0">
-                                <table class="table table-sm table-hover mb-0">
-                                    <thead>
-                                    <tr>
-                                        <th>Risorsa</th>
-                                        <th class="text-end">Attivo</th>
-                                        <th class="text-end">Sospeso</th>
-                                        <th class="text-end">Pianificato</th>
-                                        <th class="text-end">Totale</th>
-                                    </tr>
-                                    </thead>
-                                    <tbody id="dashboard-carico-risorsa-body">
-                                    <tr>
-                                        <td colspan="5"
-                                            class="text-center text-muted py-3">
-                                            Dati non caricati.
-                                        </td>
-                                    </tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                            <div class="card shadow-sm mt-3">
-                                <div class="card-header">
-                                    Dettaglio ordini cruscotto
-                                </div>
-
-                                <div class="card-body p-0">
-                                    <div class="table-responsive">
-                                        <table class="table table-sm table-hover align-middle mb-0">
-                                            <thead>
-                                            <tr>
-                                                <th>Ordine</th>
-                                                <th>Articolo</th>
-                                                <th>Reparto</th>
-                                                <th>Risorsa</th>
-                                                <th>Lavorazione</th>
-                                                <th>Operatore</th>
-                                                <th>Stato</th>
-                                                <th>Fase</th>
-                                                <th class="text-end">Ore</th>
-                                                <th>Scadenza</th>
-                                            </tr>
-                                            </thead>
-
-                                            <tbody id="dashboard-detail-body">
-                                            <tr>
-                                                <td colspan="10"
-                                                    class="text-center text-muted py-3">
-                                                    Dati non caricati.
-                                                </td>
-                                            </tr>
-                                            </tbody>
-                                        </table>
+                            <div class="card-body">
+                                <div class="dashboard-chart-box">
+                                    <canvas id="chart-cruscotto-risorse"></canvas>
+                                    <div class="dashboard-empty"
+                                         data-empty-for="chart-cruscotto-risorse">Dati non caricati.
                                     </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12 col-xl-5">
+                        <div class="card shadow-sm h-100">
+                            <div class="card-header">Top criticità operative</div>
+                            <div class="card-body">
+                                <div id="dashboard-criticita-list"
+                                     class="dashboard-list">
+                                    <div class="text-muted">Dati non caricati.</div>
                                 </div>
                             </div>
                         </div>
@@ -303,53 +299,34 @@
                      data-api-url="{{ operator_url_for('main.api_dashboard_produzione_kpi') }}"
                      data-export-url="{{ operator_url_for('main.api_dashboard_produzione_kpi_export') }}"
                      data-snapshot-url="{{ operator_url_for('main.api_dashboard_produzione_kpi_snapshots') }}">
-
+                {% set kpi_filter_options = dashboard_payload.kpi.filter_options|default({}) %}
                 <div class="card shadow-sm mb-3">
                     <div class="card-header">Filtri KPI</div>
                     <div class="card-body">
                         <div class="row g-2">
                             <div class="col-12 col-md-2">
-                                <label class="form-label">Da</label>
+                                <label class="form-label"
+                                       for="kpi-date-from">Da</label>
                                 <input class="form-control"
                                        type="date"
                                        id="kpi-date-from">
                             </div>
+
                             <div class="col-12 col-md-2">
-                                <label class="form-label">A</label>
+                                <label class="form-label"
+                                       for="kpi-date-to">A</label>
                                 <input class="form-control"
                                        type="date"
                                        id="kpi-date-to">
                             </div>
-                            <div class="col-12 col-md-2">
-                                <label class="form-label">Reparto</label>
-                                <input class="form-control"
-                                       id="kpi-reparto">
-                            </div>
-                            <div class="col-12 col-md-2">
-                                <label class="form-label">Risorsa</label>
-                                <input class="form-control"
-                                       id="kpi-risorsa">
-                            </div>
-                            <div class="col-12 col-md-2">
-                                <label class="form-label">Lavorazione</label>
-                                <input class="form-control"
-                                       id="kpi-lavorazione">
-                            </div>
-                            <div class="col-12 col-md-2">
-                                <label class="form-label">Articolo</label>
-                                <input class="form-control"
-                                       id="kpi-articolo">
-                            </div>
-                            <div class="col-12 col-md-2">
-                                <label class="form-label">Operatore</label>
-                                <input class="form-control"
-                                       id="kpi-operatore">
-                            </div>
-                            <div class="col-12 col-md-2">
-                                <label class="form-label">Stato</label>
-                                <input class="form-control"
-                                       id="kpi-stato">
-                            </div>
+
+                            {{ dashboard_filter_select("kpi-reparto", "reparto", "Reparto", kpi_filter_options) }}
+                            {{ dashboard_filter_select("kpi-risorsa", "risorsa", "Risorsa", kpi_filter_options) }}
+                            {{ dashboard_filter_select("kpi-lavorazione", "lavorazione", "Lavorazione", kpi_filter_options) }}
+                            {{ dashboard_filter_select("kpi-articolo", "articolo", "Articolo", kpi_filter_options) }}
+                            {{ dashboard_filter_select("kpi-operatore", "operatore", "Operatore", kpi_filter_options) }}
+                            {{ dashboard_filter_select("kpi-stato", "stato", "Stato", kpi_filter_options) }}
+
                             <div class="col-12 col-md-2 d-flex align-items-end">
                                 <button class="btn btn-primary w-100"
                                         type="button"
@@ -357,6 +334,15 @@
                                     Applica filtri
                                 </button>
                             </div>
+
+                            <div class="col-12 col-md-2 d-flex align-items-end">
+                                <button class="btn btn-outline-secondary w-100"
+                                        type="button"
+                                        id="btn-kpi-reset">
+                                    Reset
+                                </button>
+                            </div>
+
                             {% if allowed_sections.export %}
                                 <div class="col-12 col-md-2 d-flex align-items-end">
                                     <button class="btn btn-success w-100"
@@ -375,78 +361,151 @@
                         <div class="card shadow-sm h-100">
                             <div class="card-body">
                                 <div class="text-muted small">Ordini chiusi</div>
-                                <div class="fs-3 fw-bold"
+                                <div class="kpi-card-value"
                                      data-kpi-card="ordini_chiusi">0
                                 </div>
+                                <div class="small text-muted kpi-card-subtitle">nel periodo</div>
                             </div>
                         </div>
                     </div>
-
-                    <div class="col-12 col-md-2">
-                        <div class="card shadow-sm h-100">
-                            <div class="card-body">
-                                <div class="text-muted small">Ordini in ritardo</div>
-                                <div class="fs-3 fw-bold"
-                                     data-kpi-card="ordini_in_ritardo">0
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
                     <div class="col-12 col-md-2">
                         <div class="card shadow-sm h-100">
                             <div class="card-body">
                                 <div class="text-muted small">% ritardo</div>
-                                <div class="fs-3 fw-bold"
+                                <div class="kpi-card-value"
                                      data-kpi-card="percentuale_ritardo">0%
                                 </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="col-12 col-md-2">
-                        <div class="card shadow-sm h-100">
-                            <div class="card-body">
-                                <div class="text-muted small">Tempo medio fase</div>
-                                <div class="fs-3 fw-bold"
-                                     data-kpi-card="tempo_medio_fase">0 h
+                                <div class="small text-muted kpi-card-subtitle"
+                                     data-kpi-card-sub="ordini_in_ritardo">0 ordini
                                 </div>
                             </div>
                         </div>
                     </div>
-
                     <div class="col-12 col-md-2">
                         <div class="card shadow-sm h-100">
                             <div class="card-body">
-                                <div class="text-muted small">Tempo reale vs previsto</div>
-                                <div class="fs-3 fw-bold"
-                                     data-kpi-card="tempo_reale_vs_previsto">0 h
+                                <div class="text-muted small">Ritardo medio</div>
+                                <div class="kpi-card-value"
+                                     data-kpi-card="giorni_medi_ritardo">0 g
+                                </div>
+                                <div class="small text-muted kpi-card-subtitle">solo ordini in ritardo</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12 col-md-2">
+                        <div class="card shadow-sm h-100">
+                            <div class="card-body">
+                                <div class="text-muted small">Scostamento</div>
+                                <div class="kpi-card-value"
+                                     data-kpi-card="scostamento_percentuale">0%
+                                </div>
+                                <div class="small text-muted kpi-card-subtitle"
+                                     data-kpi-card-sub="scostamento_totale">0 h
                                 </div>
                             </div>
                         </div>
                     </div>
-
                     <div class="col-12 col-md-2">
                         <div class="card shadow-sm h-100">
                             <div class="card-body">
-                                <div class="text-muted small">Scostamento medio</div>
-                                <div class="fs-3 fw-bold"
-                                     data-kpi-card="scostamento_medio">0 h
+                                <div class="text-muted small">Affidabilità tempi</div>
+                                <div class="kpi-card-value"
+                                     data-kpi-card="affidabilita_tempi">0%
+                                </div>
+                                <div class="small text-muted kpi-card-subtitle">entro +10%</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12 col-md-2">
+                        <div class="card shadow-sm h-100">
+                            <div class="card-body">
+                                <div class="text-muted small">Macchine prodotte</div>
+                                <div class="kpi-card-value"
+                                     data-kpi-card="macchine_prodotte">0
+                                </div>
+                                <div class="small text-muted kpi-card-subtitle">nel periodo</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row g-3 mb-3">
+                    <div class="col-12 col-xl-4">
+                        <div class="card shadow-sm h-100">
+                            <div class="card-header">Tempo reale vs previsto</div>
+                            <div class="card-body">
+                                <div class="dashboard-chart-box-sm">
+                                    <canvas id="chart-kpi-tempi"></canvas>
+                                    <div class="dashboard-empty"
+                                         data-empty-for="chart-kpi-tempi">Dati non caricati.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12 col-xl-4">
+                        <div class="card shadow-sm h-100">
+                            <div class="card-header">Affidabilità tempi</div>
+                            <div class="card-body">
+                                <div class="dashboard-chart-box-sm">
+                                    <canvas id="chart-kpi-affidabilita"></canvas>
+                                    <div class="dashboard-empty"
+                                         data-empty-for="chart-kpi-affidabilita">Dati non caricati.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12 col-xl-4">
+                        <div class="card shadow-sm h-100">
+                            <div class="card-header">Ritardo medio per reparto</div>
+                            <div class="card-body">
+                                <div class="dashboard-chart-box-sm">
+                                    <canvas id="chart-kpi-ritardo-reparto"></canvas>
+                                    <div class="dashboard-empty"
+                                         data-empty-for="chart-kpi-ritardo-reparto">Dati non caricati.
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <div class="card shadow-sm mb-3">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <div>
-                            <strong>Snapshot mensili KPI</strong>
-                            <div class="small text-muted">
-                                Storico generato automaticamente il primo giorno del mese
+                <div class="row g-3 mb-3">
+                    <div class="col-12 col-xl-6">
+                        <div class="card shadow-sm h-100">
+                            <div class="card-header">Top risorse per scostamento</div>
+                            <div class="card-body">
+                                <div class="dashboard-chart-box">
+                                    <canvas id="chart-kpi-risorse-scostamento"></canvas>
+                                    <div class="dashboard-empty"
+                                         data-empty-for="chart-kpi-risorse-scostamento">Dati non caricati.
+                                    </div>
+                                </div>
                             </div>
                         </div>
+                    </div>
+                    <div class="col-12 col-xl-6">
+                        <div class="card shadow-sm h-100">
+                            <div class="card-header">Top lavorazioni per scostamento</div>
+                            <div class="card-body">
+                                <div class="dashboard-chart-box">
+                                    <canvas id="chart-kpi-lavorazioni-scostamento"></canvas>
+                                    <div class="dashboard-empty"
+                                         data-empty-for="chart-kpi-lavorazioni-scostamento">Dati non caricati.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
 
+                <div class="card shadow-sm">
+                    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <div>
+                            <strong>Snapshot mensili KPI</strong>
+                            <div class="small text-muted">Storico generato dal task mensile</div>
+                        </div>
                         <div class="d-flex gap-2 align-items-end">
                             <div>
                                 <label class="form-label small mb-1">Scope</label>
@@ -455,7 +514,6 @@
                                     <option value="global|*">Globale</option>
                                 </select>
                             </div>
-
                             <div>
                                 <label class="form-label small mb-1">Mesi</label>
                                 <select class="form-select form-select-sm"
@@ -465,10 +523,8 @@
                                             selected>12
                                     </option>
                                     <option value="24">24</option>
-                                    <option value="36">36</option>
                                 </select>
                             </div>
-
                             <button class="btn btn-sm btn-outline-primary"
                                     type="button"
                                     id="btn-kpi-snapshot-load">
@@ -476,31 +532,26 @@
                             </button>
                         </div>
                     </div>
-
                     <div class="card-body">
                         <div class="row g-3 mb-3">
                             <div class="col-12 col-md-3">
                                 <div class="border rounded p-2 h-100">
-                                    <div class="text-muted small">Ordini chiusi ultimo mese</div>
+                                    <div class="text-muted small">Ultimo mese</div>
                                     <div class="fs-4 fw-bold"
-                                         data-snapshot-card="ordini_chiusi">0
+                                         data-snapshot-card="snapshot_month">-
                                     </div>
-                                    <div class="small"
-                                         data-snapshot-delta="ordini_chiusi"></div>
                                 </div>
                             </div>
-
                             <div class="col-12 col-md-3">
                                 <div class="border rounded p-2 h-100">
-                                    <div class="text-muted small">Ordini in ritardo</div>
+                                    <div class="text-muted small">Macchine prodotte</div>
                                     <div class="fs-4 fw-bold"
-                                         data-snapshot-card="ordini_in_ritardo">0
+                                         data-snapshot-card="macchine_prodotte">0
                                     </div>
                                     <div class="small"
-                                         data-snapshot-delta="ordini_in_ritardo"></div>
+                                         data-snapshot-delta="macchine_prodotte"></div>
                                 </div>
                             </div>
-
                             <div class="col-12 col-md-3">
                                 <div class="border rounded p-2 h-100">
                                     <div class="text-muted small">% ritardo</div>
@@ -511,7 +562,6 @@
                                          data-snapshot-delta="percentuale_ritardo"></div>
                                 </div>
                             </div>
-
                             <div class="col-12 col-md-3">
                                 <div class="border rounded p-2 h-100">
                                     <div class="text-muted small">Scostamento totale</div>
@@ -527,147 +577,26 @@
                         <div class="row g-3">
                             <div class="col-12 col-xl-6">
                                 <div class="border rounded p-2 h-100">
-                                    <div class="fw-semibold mb-2">Andamento ordini chiusi / ritardi</div>
-                                    <div id="kpi-snapshot-chart-ordini">
-                                        <div class="text-muted">Dati non caricati.</div>
+                                    <div class="fw-semibold mb-2">Andamento produzione mensile</div>
+                                    <div class="dashboard-chart-box-sm">
+                                        <canvas id="chart-snapshot-ordini"></canvas>
+                                        <div class="dashboard-empty"
+                                             data-empty-for="chart-snapshot-ordini">Dati non caricati.
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-
                             <div class="col-12 col-xl-6">
                                 <div class="border rounded p-2 h-100">
                                     <div class="fw-semibold mb-2">Andamento tempi</div>
-                                    <div id="kpi-snapshot-chart-tempi">
-                                        <div class="text-muted">Dati non caricati.</div>
+                                    <div class="dashboard-chart-box-sm">
+                                        <canvas id="chart-snapshot-tempi"></canvas>
+                                        <div class="dashboard-empty"
+                                             data-empty-for="chart-snapshot-tempi">Dati non caricati.
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
-
-                        <div class="table-responsive mt-3">
-                            <table class="table table-sm table-hover align-middle mb-0">
-                                <thead>
-                                <tr>
-                                    <th>Mese</th>
-                                    <th>Scope</th>
-                                    <th class="text-end">Chiusi</th>
-                                    <th class="text-end">Ritardo</th>
-                                    <th class="text-end">% ritardo</th>
-                                    <th class="text-end">Previsto</th>
-                                    <th class="text-end">Reale</th>
-                                    <th class="text-end">Scost.</th>
-                                    <th class="text-end">Medio ordine</th>
-                                </tr>
-                                </thead>
-                                <tbody id="kpi-snapshot-body">
-                                <tr>
-                                    <td colspan="9"
-                                        class="text-center text-muted py-3">
-                                        Dati non caricati.
-                                    </td>
-                                </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="row g-3 mb-3">
-                    <div class="col-12 col-xl-6">
-                        <div class="card shadow-sm h-100">
-                            <div class="card-header">Tempo reale vs previsto</div>
-                            <div class="card-body"
-                                 id="dashboard-kpi-chart-tempi">
-                                <div class="text-muted">Dati non caricati.</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="col-12 col-xl-6">
-                        <div class="card shadow-sm h-100">
-                            <div class="card-header">Aggregato per reparto</div>
-                            <div class="card-body"
-                                 id="dashboard-kpi-agg-reparti">
-                                <div class="text-muted">Dati non caricati.</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="row g-3 mb-3">
-                    <div class="col-12 col-xl-6">
-                        <div class="card shadow-sm h-100">
-                            <div class="card-header">Aggregato per risorsa</div>
-                            <div class="card-body"
-                                 id="dashboard-kpi-agg-risorse">
-                                <div class="text-muted">Dati non caricati.</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="col-12 col-xl-6">
-                        <div class="card shadow-sm h-100">
-                            <div class="card-header">Aggregato per lavorazione</div>
-                            <div class="card-body"
-                                 id="dashboard-kpi-agg-lavorazioni">
-                                <div class="text-muted">Dati non caricati.</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="row g-3 mb-3">
-                    <div class="col-12 col-xl-6">
-                        <div class="card shadow-sm h-100">
-                            <div class="card-header">Aggregato per operatore</div>
-                            <div class="card-body"
-                                 id="dashboard-kpi-agg-operatori">
-                                <div class="text-muted">Dati non caricati.</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="col-12 col-xl-6">
-                        <div class="card shadow-sm h-100">
-                            <div class="card-header">Aggregato per articolo</div>
-                            <div class="card-body"
-                                 id="dashboard-kpi-agg-articoli">
-                                <div class="text-muted">Dati non caricati.</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="card shadow-sm">
-                    <div class="card-header">Dettaglio chiusure</div>
-                    <div class="card-body p-0">
-                        <div class="table-responsive">
-                            <table class="table table-sm table-hover align-middle mb-0">
-                                <thead>
-                                <tr>
-                                    <th>Data</th>
-                                    <th>Ordine</th>
-                                    <th>Articolo</th>
-                                    <th>Rep.</th>
-                                    <th>Risorsa</th>
-                                    <th>Lavorazione</th>
-                                    <th>Operatore</th>
-                                    <th class="text-end">Prev.</th>
-                                    <th class="text-end">Reale</th>
-                                    <th class="text-end">Scost.</th>
-                                    <th class="text-end">Ritardo</th>
-                                    <th>Tipo</th>
-                                </tr>
-                                </thead>
-                                <tbody id="dashboard-kpi-detail-body">
-                                <tr>
-                                    <td colspan="12"
-                                        class="text-center text-muted py-3">
-                                        Dati non caricati.
-                                    </td>
-                                </tr>
-                                </tbody>
-                            </table>
                         </div>
                     </div>
                 </div>
@@ -678,129 +607,97 @@
 
 {% block extra_js %}
     {{ super() }}
+    <script src="{{ url_for('static', filename='vendor/chartjs/chart.umd.min.js') }}"></script>
 
     <script>
         (() => {
-            function setDefaultKpiDates() {
-                const fromInput = document.getElementById("kpi-date-from");
-                const toInput = document.getElementById("kpi-date-to");
+            function updateFilterSelects(rootId, options) {
+                const root = document.getElementById(rootId);
+                if (!root || !options) return;
 
-                if (!fromInput || !toInput) return;
+                root.querySelectorAll("select.js-dashboard-filter[data-filter-key]").forEach(select => {
+                    const key = select.dataset.filterKey;
+                    const selectedValue = select.value || "";
+                    const rows = Array.isArray(options[key]) ? options[key] : [];
+                    const seen = new Set([""]);
+                    let html = `<option value="">Tutti</option>`;
 
-                const today = new Date();
-                const from = new Date(today);
-                from.setFullYear(today.getFullYear() - 1);
+                    rows.forEach(row => {
+                        const value = String(row?.value ?? "").trim();
+                        if (!value || seen.has(value)) return;
 
-                if (!fromInput.value) {
-                    fromInput.value = from.toISOString().slice(0, 10);
-                }
+                        seen.add(value);
 
-                if (!toInput.value) {
-                    toInput.value = today.toISOString().slice(0, 10);
-                }
-            }
+                        const label = String(row?.label || value);
 
-            document.getElementById("btn-cruscotto-filtra")?.addEventListener("click", () => {
-                loadCruscotto().catch(console.error);
-            });
+                        html += `<option value="${escapeHtml(value)}">${escapeHtml(label)}</option>`;
+                    });
 
-            document.getElementById("btn-cruscotto-reset")?.addEventListener("click", () => {
-                resetCruscottoFilters();
-                loadCruscotto().catch(console.error);
-            });
+                    if (selectedValue && !seen.has(selectedValue)) {
+                        html += `<option value="${escapeHtml(selectedValue)}">${escapeHtml(selectedValue)}</option>`;
+                    }
 
-            function getCruscottoFilters() {
-                return {
-                    reparto: document.getElementById("cruscotto-reparto")?.value || "",
-                    risorsa: document.getElementById("cruscotto-risorsa")?.value || "",
-                    lavorazione: document.getElementById("cruscotto-lavorazione")?.value || "",
-                    operatore: document.getElementById("cruscotto-operatore")?.value || "",
-                    articolo: document.getElementById("cruscotto-articolo")?.value || "",
-                    stato: document.getElementById("cruscotto-stato")?.value || "",
-                };
+                    select.innerHTML = html;
+                    select.value = selectedValue;
+                });
             }
 
 
-            function resetCruscottoFilters() {
-                for (const id of [
-                    "cruscotto-reparto",
-                    "cruscotto-risorsa",
-                    "cruscotto-lavorazione",
-                    "cruscotto-operatore",
-                    "cruscotto-articolo",
-                    "cruscotto-stato",
-                ]) {
-                    const el = document.getElementById(id);
-                    if (el) el.value = "";
-                }
-            }
+            function bindFilterAutoReload(rootId, loader) {
+                const root = document.getElementById(rootId);
+                if (!root) return;
 
-
-            function renderDashboardDetails(rows) {
-                const tbody = document.getElementById("dashboard-detail-body");
-                if (!tbody) return;
-
-                if (!rows?.length) {
-                    tbody.innerHTML = `
-            <tr>
-                <td colspan="10" class="text-center text-muted py-3">
-                    Nessun ordine trovato.
-                </td>
-            </tr>
-        `;
-                    return;
-                }
-
-                tbody.innerHTML = rows.map(row => `
-        <tr>
-            <td>${escapeHtml(row.ordine)}</td>
-            <td>
-                <div class="fw-semibold">${escapeHtml(row.cod_art)}</div>
-                <div class="small text-muted">${escapeHtml(row.descrizione)}</div>
-            </td>
-            <td>${escapeHtml(row.reparto)}</td>
-            <td>${escapeHtml(row.risorsa)}</td>
-            <td>${escapeHtml(row.lavorazione)}</td>
-            <td>${escapeHtml(row.operatore)}</td>
-            <td>${escapeHtml(row.stato)}</td>
-            <td>${escapeHtml(row.fase)}</td>
-            <td class="text-end">${formatHours(row.tempo_previsto_ore)}</td>
-            <td>
-                ${escapeHtml(row.data_fine_prevista)}
-                ${
-                    Number(row.ritardo_giorni || 0) > 0
-                        ? `<span class="badge text-bg-danger ms-1">${escapeHtml(row.ritardo_giorni)}g</span>`
-                        : ""
-                }
-            </td>
-        </tr>
-    `).join("");
+                root.querySelectorAll("select.js-dashboard-filter").forEach(select => {
+                    select.addEventListener("change", () => loader().catch(console.error));
+                });
             }
 
             const tabSession = "{{ tab_session|default('', true)|e }}";
+            const dashboardCharts = {};
+
+            const COLORS = {
+                blue: "rgba(13, 110, 253, 0.85)",
+                green: "rgba(25, 135, 84, 0.85)",
+                yellow: "rgba(255, 193, 7, 0.85)",
+                orange: "rgba(253, 126, 20, 0.85)",
+                red: "rgba(220, 53, 69, 0.85)",
+                gray: "rgba(108, 117, 125, 0.55)",
+                cyan: "rgba(13, 202, 240, 0.85)",
+                purple: "rgba(111, 66, 193, 0.85)",
+            };
+
+            const BORDER_COLORS = {
+                blue: "rgba(13, 110, 253, 1)",
+                green: "rgba(25, 135, 84, 1)",
+                yellow: "rgba(255, 193, 7, 1)",
+                orange: "rgba(253, 126, 20, 1)",
+                red: "rgba(220, 53, 69, 1)",
+                gray: "rgba(108, 117, 125, 1)",
+                cyan: "rgba(13, 202, 240, 1)",
+                purple: "rgba(111, 66, 193, 1)",
+            };
 
             function withTabSession(url) {
                 if (!tabSession) return url;
-
                 const parsed = new URL(url, window.location.origin);
                 parsed.searchParams.set("tab_session", tabSession);
-
                 return parsed.pathname + parsed.search;
             }
 
             function fetchOptions(extra = {}) {
-                const headers = {
-                    ...(extra.headers || {}),
-                };
+                const headers = {...(extra.headers || {})};
+                if (tabSession) headers["X-Tab-Session"] = tabSession;
+                return {...extra, headers};
+            }
 
-                if (tabSession) {
-                    headers["X-Tab-Session"] = tabSession;
+            function buildUrlWithParams(url, params) {
+                const parsed = new URL(withTabSession(url), window.location.origin);
+                for (const [key, value] of Object.entries(params || {})) {
+                    if (value !== undefined && value !== null && String(value).trim() !== "") {
+                        parsed.searchParams.set(key, value);
+                    }
                 }
-
-                return {
-                    ...extra,
-                    headers,
-                };
+                return parsed.pathname + parsed.search;
             }
 
             function escapeHtml(value) {
@@ -817,174 +714,307 @@
                 return `${n.toFixed(2)} h`;
             }
 
-            function setCard(name, value) {
-                const el = document.querySelector(`[data-dashboard-card="${name}"]`);
+            function formatPercent(value) {
+                const n = Number(value || 0);
+                return `${n.toFixed(2)}%`;
+            }
+
+            function setCard(selectorName, name, value) {
+                const el = document.querySelector(`[${selectorName}="${name}"]`);
                 if (el) el.textContent = value;
             }
 
-            function renderCriticita(rows) {
-                const tbody = document.getElementById("dashboard-criticita-body");
-                if (!tbody) return;
-
-                if (!rows?.length) {
-                    tbody.innerHTML = `
-                <tr>
-                    <td colspan="7" class="text-center text-muted py-3">
-                        Nessuna criticità.
-                    </td>
-                </tr>
-            `;
-                    return;
+            function setEmpty(canvasId, visible, message = "Dati non disponibili.") {
+                const empty = document.querySelector(`[data-empty-for="${canvasId}"]`);
+                const canvas = document.getElementById(canvasId);
+                if (empty) {
+                    empty.textContent = message;
+                    empty.classList.toggle("d-none", !visible);
                 }
-
-                tbody.innerHTML = rows.map(row => `
-            <tr>
-                <td>${escapeHtml(row.tipo)}</td>
-                <td>${escapeHtml(row.ordine)}</td>
-                <td>
-                    <div class="fw-semibold">${escapeHtml(row.cod_art)}</div>
-                    <div class="small text-muted">${escapeHtml(row.descrizione)}</div>
-                </td>
-                <td>${escapeHtml(row.reparto)}</td>
-                <td>${escapeHtml(row.risorsa)}</td>
-                <td>${escapeHtml(row.stato)}</td>
-                <td>
-                    ${escapeHtml(row.data_fine_prevista)}
-                    ${
-                    Number(row.ritardo_giorni || 0) > 0
-                        ? `<span class="badge text-bg-danger ms-1">${escapeHtml(row.ritardo_giorni)}g</span>`
-                        : ""
-                }
-                </td>
-            </tr>
-        `).join("");
+                if (canvas) canvas.classList.toggle("d-none", visible);
             }
 
-            function renderOperatori(rows) {
-                const target = document.getElementById("dashboard-operatori-body");
-                if (!target) return;
-
-                if (!rows?.length) {
-                    target.innerHTML = `
-                <tr>
-                    <td colspan="3" class="text-center text-muted py-3">
-                        Nessun operatore attualmente impegnato.
-                    </td>
-                </tr>
-            `;
-                    return;
+            function destroyChart(key) {
+                if (dashboardCharts[key]) {
+                    dashboardCharts[key].destroy();
+                    delete dashboardCharts[key];
                 }
-
-                target.innerHTML = rows.map(row => `
-            <tr>
-                <td>${escapeHtml(row.operatore)}</td>
-                <td class="text-end">${escapeHtml(row.ordini_attivi)}</td>
-                <td class="text-end">${formatHours(row.ore_attive)}</td>
-            </tr>
-        `).join("");
             }
 
-            function renderCaricoRisorsa(rows) {
-                const target = document.getElementById("dashboard-carico-risorsa-body");
-                if (!target) return;
-
-                if (!rows?.length) {
-                    target.innerHTML = `
-                <tr>
-                    <td colspan="5" class="text-center text-muted py-3">
-                        Nessun carico risorsa disponibile.
-                    </td>
-                </tr>
-            `;
+            function renderChart(key, canvasId, config, hasData = true) {
+                destroyChart(key);
+                const canvas = document.getElementById(canvasId);
+                if (!canvas) return;
+                if (typeof Chart === "undefined") {
+                    setEmpty(canvasId, true, "Chart.js non caricato.");
                     return;
                 }
-
-                target.innerHTML = rows.map(row => `
-            <tr>
-                <td>${escapeHtml(row.risorsa)}</td>
-                <td class="text-end">${formatHours(row.ore_attive)}</td>
-                <td class="text-end">${formatHours(row.ore_sospese)}</td>
-                <td class="text-end">${formatHours(row.ore_pianificate)}</td>
-                <td class="text-end fw-semibold">${formatHours(row.ore_totali)}</td>
-            </tr>
-        `).join("");
+                if (!hasData) {
+                    setEmpty(canvasId, true);
+                    return;
+                }
+                setEmpty(canvasId, false);
+                dashboardCharts[key] = new Chart(canvas, config);
             }
 
-            function renderCaricoProssimiGiorni(rows) {
-                const target = document.getElementById("dashboard-chart-carico");
-                if (!target) return;
-
-                if (!rows?.length) {
-                    target.innerHTML = `<div class="text-muted">Nessun dato carico disponibile.</div>`;
-                    return;
-                }
-
-                target.innerHTML = `
-            <div class="table-responsive">
-                <table class="table table-sm align-middle mb-0">
-                    <thead>
-                    <tr>
-                        <th>Giorno</th>
-                        <th class="text-end">Attivo</th>
-                        <th class="text-end">Sospeso</th>
-                        <th class="text-end">Pianificato</th>
-                        <th class="text-end">Totale</th>
-                        <th class="text-end">Capacità</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    ${rows.map(row => `
-                        <tr class="${row.sovraccarico ? "table-danger" : ""}">
-                            <td>${escapeHtml(row.label)}</td>
-                            <td class="text-end">${formatHours(row.ore_attive)}</td>
-                            <td class="text-end">${formatHours(row.ore_sospese)}</td>
-                            <td class="text-end">${formatHours(row.ore_pianificate)}</td>
-                            <td class="text-end fw-semibold">${formatHours(row.ore_totali)}</td>
-                            <td class="text-end">${formatHours(row.capacita)}</td>
-                        </tr>
-                    `).join("")}
-                    </tbody>
-                </table>
-            </div>
-        `;
+            function baseOptions(extra = {}) {
+                return {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {position: "bottom"},
+                        tooltip: {mode: "index", intersect: false},
+                    },
+                    ...extra,
+                };
             }
 
-            function renderStatiOrdine(rows) {
-                const target = document.getElementById("dashboard-chart-stati");
-                if (!target) return;
+            function colorByPercent(value) {
+                const n = Number(value || 0);
+                if (n > 110) return COLORS.red;
+                if (n >= 90) return COLORS.orange;
+                if (n >= 70) return COLORS.green;
+                return COLORS.gray;
+            }
 
+            function renderCruscottoCarico(rows) {
+                rows = rows || [];
+                const labels = rows.map(x => x.label);
+                const hasLoad = rows.some(x => Number(x.ore_totali || 0) > 0);
+
+                renderChart("cruscotto_carico", "chart-cruscotto-carico", {
+                    type: "bar",
+                    data: {
+                        labels,
+                        datasets: [
+                            {
+                                label: "Arretrato",
+                                data: rows.map(x => Number(x.ore_arretrate || 0)),
+                                backgroundColor: COLORS.red,
+                                stack: "carico"
+                            },
+                            {
+                                label: "Senza scadenza",
+                                data: rows.map(x => Number(x.ore_senza_scadenza || 0)),
+                                backgroundColor: COLORS.gray,
+                                stack: "carico"
+                            },
+                            {
+                                label: "Attivo",
+                                data: rows.map(x => Number(x.ore_attive || 0)),
+                                backgroundColor: COLORS.green,
+                                stack: "carico"
+                            },
+                            {
+                                label: "Sospeso",
+                                data: rows.map(x => Number(x.ore_sospese || 0)),
+                                backgroundColor: COLORS.yellow,
+                                stack: "carico"
+                            },
+                            {
+                                label: "Pianificato",
+                                data: rows.map(x => Number(x.ore_pianificate || 0)),
+                                backgroundColor: COLORS.blue,
+                                stack: "carico"
+                            },
+                            {
+                                label: "Capacità",
+                                type: "line",
+                                data: rows.map(x => Number(x.capacita || 0)),
+                                borderColor: BORDER_COLORS.red,
+                                backgroundColor: COLORS.red,
+                                tension: .25,
+                                pointRadius: 2,
+                                fill: false
+                            },
+                        ],
+                    },
+                    options: baseOptions({
+                        scales: {
+                            x: {stacked: true},
+                            y: {beginAtZero: true, title: {display: true, text: "Ore"}}
+                        }
+                    }),
+                }, hasLoad);
+            }
+
+            function renderCruscottoStati(rows) {
+                renderChart("cruscotto_stati", "chart-cruscotto-stati", {
+                    type: "doughnut",
+                    data: {
+                        labels: (rows || []).map(x => x.label),
+                        datasets: [{
+                            data: (rows || []).map(x => Number(x.value || 0)),
+                            backgroundColor: [COLORS.blue, COLORS.green, COLORS.yellow],
+                        }],
+                    },
+                    options: baseOptions(),
+                }, rows?.some(x => Number(x.value || 0) > 0));
+            }
+
+            function renderCruscottoSaturazione(rows) {
+                renderChart("cruscotto_saturazione", "chart-cruscotto-saturazione", {
+                    type: "bar",
+                    data: {
+                        labels: (rows || []).map(x => x.label),
+                        datasets: [{
+                            label: "Saturazione",
+                            data: (rows || []).map(x => Number(x.saturazione || 0)),
+                            backgroundColor: (rows || []).map(x => colorByPercent(x.saturazione)),
+                        }],
+                    },
+                    options: baseOptions({
+                        indexAxis: "y",
+                        scales: {x: {beginAtZero: true, title: {display: true, text: "%"}}},
+                        plugins: {legend: {display: false}},
+                    }),
+                }, rows?.length > 0);
+            }
+
+            function renderCruscottoReparti(rows) {
+                renderChart("cruscotto_reparti", "chart-cruscotto-reparti", {
+                    type: "bar",
+                    data: {
+                        labels: (rows || []).map(x => x.label),
+                        datasets: [
+                            {
+                                label: "Attivo",
+                                data: rows.map(x => Number(x.ore_attive || 0)),
+                                backgroundColor: COLORS.green,
+                                stack: "reparto"
+                            },
+                            {
+                                label: "Sospeso",
+                                data: rows.map(x => Number(x.ore_sospese || 0)),
+                                backgroundColor: COLORS.yellow,
+                                stack: "reparto"
+                            },
+                            {
+                                label: "Pianificato",
+                                data: rows.map(x => Number(x.ore_pianificate || 0)),
+                                backgroundColor: COLORS.blue,
+                                stack: "reparto"
+                            },
+                        ],
+                    },
+                    options: baseOptions({
+                        scales: {
+                            x: {stacked: true},
+                            y: {stacked: true, beginAtZero: true, title: {display: true, text: "Ore"}}
+                        }
+                    }),
+                }, rows?.length > 0);
+            }
+
+            function renderCruscottoRisorse(rows) {
+                renderChart("cruscotto_risorse", "chart-cruscotto-risorse", {
+                    type: "bar",
+                    data: {
+                        labels: (rows || []).map(x => x.label),
+                        datasets: [
+                            {
+                                label: "Attivo",
+                                data: rows.map(x => Number(x.ore_attive || 0)),
+                                backgroundColor: COLORS.green,
+                                stack: "risorsa"
+                            },
+                            {
+                                label: "Sospeso",
+                                data: rows.map(x => Number(x.ore_sospese || 0)),
+                                backgroundColor: COLORS.yellow,
+                                stack: "risorsa"
+                            },
+                            {
+                                label: "Pianificato",
+                                data: rows.map(x => Number(x.ore_pianificate || 0)),
+                                backgroundColor: COLORS.blue,
+                                stack: "risorsa"
+                            },
+                        ],
+                    },
+                    options: baseOptions({
+                        indexAxis: "y",
+                        scales: {
+                            x: {stacked: true, beginAtZero: true, title: {display: true, text: "Ore"}},
+                            y: {stacked: true}
+                        }
+                    }),
+                }, rows?.length > 0);
+            }
+
+            function renderCriticitaList(rows) {
+                const target = document.getElementById("dashboard-criticita-list");
+                if (!target) return;
                 if (!rows?.length) {
-                    target.innerHTML = `<div class="text-muted">Nessun dato stati disponibile.</div>`;
+                    target.innerHTML = `<div class="text-muted">Nessuna criticità.</div>`;
                     return;
                 }
-
-                const total = rows.reduce((acc, row) => acc + Number(row.value || 0), 0);
-
-                target.innerHTML = rows.map(row => {
-                    const value = Number(row.value || 0);
-                    const pct = total > 0 ? (value / total) * 100 : 0;
-
-                    return `
-                <div class="mb-2">
-                    <div class="d-flex justify-content-between">
-                        <span>${escapeHtml(row.label)}</span>
-                        <strong>${value}</strong>
+                target.innerHTML = rows.slice(0, 15).map(row => `
+                    <div class="dashboard-list-item">
+                        <div class="d-flex justify-content-between gap-2">
+                            <div>
+                                <div class="fw-semibold">${escapeHtml(row.tipo)} · ${escapeHtml(row.ordine)}</div>
+                                <div class="small text-muted">${escapeHtml(row.cod_art)} ${escapeHtml(row.descrizione)}</div>
+                                <div class="small">${escapeHtml(row.reparto)} · ${escapeHtml(row.risorsa)} · ${escapeHtml(row.stato)}</div>
+                            </div>
+                            <div class="text-end small">
+                                <div>${escapeHtml(row.data_fine_prevista || "-")}</div>
+                                ${Number(row.ritardo_giorni || 0) > 0 ? `<span class="badge text-bg-danger">${escapeHtml(row.ritardo_giorni)}g</span>` : ""}
+                            </div>
+                        </div>
                     </div>
-                    <div class="progress" style="height: 10px;">
-                        <div class="progress-bar" style="width: ${pct.toFixed(2)}%;"></div>
-                    </div>
-                </div>
-            `;
-                }).join("");
+                `).join("");
+            }
+
+            function getCruscottoFilters() {
+                return {
+                    reparto: document.getElementById("cruscotto-reparto")?.value || "",
+                    risorsa: document.getElementById("cruscotto-risorsa")?.value || "",
+                    lavorazione: document.getElementById("cruscotto-lavorazione")?.value || "",
+                    operatore: document.getElementById("cruscotto-operatore")?.value || "",
+                    articolo: document.getElementById("cruscotto-articolo")?.value || "",
+                    stato: document.getElementById("cruscotto-stato")?.value || "",
+                };
+            }
+
+            function resetCruscottoFilters() {
+                ["cruscotto-reparto", "cruscotto-risorsa", "cruscotto-lavorazione", "cruscotto-operatore", "cruscotto-articolo", "cruscotto-stato"].forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) el.value = "";
+                });
+            }
+
+            function resetKpiFilters() {
+                [
+                    "kpi-reparto",
+                    "kpi-risorsa",
+                    "kpi-lavorazione",
+                    "kpi-articolo",
+                    "kpi-operatore",
+                    "kpi-stato",
+                ].forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) el.value = "";
+                });
+
+                const fromInput = document.getElementById("kpi-date-from");
+                const toInput = document.getElementById("kpi-date-to");
+
+                if (fromInput) fromInput.value = "";
+                if (toInput) toInput.value = "";
+
+                setDefaultKpiDates();
             }
 
             async function loadCruscotto() {
                 const section = document.getElementById("dashboard-produzione-cruscotto");
                 if (!section) return;
 
-                const apiUrl = section.dataset.apiUrl;
-                const finalUrl = buildUrlWithParams(apiUrl, getCruscottoFilters());
-                const resp = await fetch(finalUrl, fetchOptions());
+                const resp = await fetch(
+                    buildUrlWithParams(section.dataset.apiUrl, getCruscottoFilters()),
+                    fetchOptions()
+                );
+
                 const payload = await resp.json();
 
                 if (!resp.ok || payload.ok === false) {
@@ -992,25 +1022,38 @@
                 }
 
                 const data = payload.data || {};
+
+                updateFilterSelects(
+                    "dashboard-produzione-cruscotto",
+                    data.filter_options || {}
+                );
+
                 const cards = data.cards || {};
 
-                setCard("ordini_attivi", cards.ordini_attivi ?? 0);
-                setCard("ordini_sospesi", cards.ordini_sospesi ?? 0);
-                setCard("ordini_pianificati", cards.ordini_pianificati ?? 0);
-                setCard("tempo_previsto_residuo", formatHours(cards.tempo_previsto_residuo));
-                setCard("operatori_impegnati", cards.operatori_impegnati ?? 0);
+                setCard("data-dashboard-card", "ordini_attivi", cards.ordini_attivi ?? 0);
+                setCard("data-dashboard-card", "ordini_sospesi", cards.ordini_sospesi ?? 0);
+                setCard("data-dashboard-card", "ordini_pianificati", cards.ordini_pianificati ?? 0);
+                setCard("data-dashboard-card", "tempo_previsto_residuo", formatHours(cards.tempo_previsto_residuo));
+                setCard("data-dashboard-card", "ordini_critici", cards.ordini_critici ?? 0);
+                setCard("data-dashboard-card", "risorse_sovraccariche", cards.risorse_sovraccariche ?? 0);
 
-                renderCaricoProssimiGiorni(data.charts?.carico_prossimi_giorni || []);
-                renderStatiOrdine(data.charts?.stati_ordine || []);
-                renderCriticita(data.criticita || []);
-                renderOperatori(data.operatori || []);
-                renderCaricoRisorsa(data.carico_risorsa || []);
-                renderDashboardDetails(data.details || []);
+                renderCruscottoCarico(data.charts?.carico_prossimi_giorni || []);
+                renderCruscottoStati(data.charts?.stati_ordine || []);
+                renderCruscottoSaturazione(data.charts?.saturazione_risorse || []);
+                renderCruscottoReparti(data.charts?.carico_per_reparto || []);
+                renderCruscottoRisorse(data.charts?.carico_per_risorsa || []);
+                renderCriticitaList(data.criticita || []);
             }
 
-            function setKpiCard(name, value) {
-                const el = document.querySelector(`[data-kpi-card="${name}"]`);
-                if (el) el.textContent = value;
+            function setDefaultKpiDates() {
+                const fromInput = document.getElementById("kpi-date-from");
+                const toInput = document.getElementById("kpi-date-to");
+                if (!fromInput || !toInput) return;
+                const today = new Date();
+                const from = new Date(today);
+                from.setFullYear(today.getFullYear() - 1);
+                if (!fromInput.value) fromInput.value = from.toISOString().slice(0, 10);
+                if (!toInput.value) toInput.value = today.toISOString().slice(0, 10);
             }
 
             function getKpiFilters() {
@@ -1026,132 +1069,85 @@
                 };
             }
 
-            function buildUrlWithParams(url, params) {
-                const parsed = new URL(withTabSession(url), window.location.origin);
-
-                for (const [key, value] of Object.entries(params || {})) {
-                    if (value !== undefined && value !== null && String(value).trim() !== "") {
-                        parsed.searchParams.set(key, value);
-                    }
-                }
-
-                return parsed.pathname + parsed.search;
-            }
-
-            function renderKpiDetails(rows) {
-                const tbody = document.getElementById("dashboard-kpi-detail-body");
-                if (!tbody) return;
-
-                if (!rows?.length) {
-                    tbody.innerHTML = `
-                <tr>
-                    <td colspan="12" class="text-center text-muted py-3">
-                        Nessun dato KPI disponibile.
-                    </td>
-                </tr>
-            `;
-                    return;
-                }
-
-                tbody.innerHTML = rows.map(row => `
-            <tr>
-                <td>${escapeHtml(row.data_chiusura)}</td>
-                <td>${escapeHtml(row.ordine)}</td>
-                <td>
-                    <div class="fw-semibold">${escapeHtml(row.articolo)}</div>
-                    <div class="small text-muted">${escapeHtml(row.descrizione)}</div>
-                </td>
-                <td>${escapeHtml(row.reparto)}</td>
-                <td>${escapeHtml(row.risorsa)}</td>
-                <td>${escapeHtml(row.lavorazione)}</td>
-                <td>${escapeHtml(row.operatore)}</td>
-                <td class="text-end">${formatHours(row.tempo_previsto_ore)}</td>
-                <td class="text-end">${formatHours(row.tempo_reale_ore)}</td>
-                <td class="text-end">${formatHours(row.scostamento_ore)}</td>
-                <td class="text-end">${escapeHtml(row.ritardo_giorni || 0)}</td>
-                <td>${row.is_collaudo ? '<span class="badge text-bg-info">Collaudo</span>' : ''}</td>
-            </tr>
-        `).join("");
-            }
-
-            function renderKpiAggregati(rows, targetId) {
-                const target = document.getElementById(targetId);
-                if (!target) return;
-
-                if (!rows?.length) {
-                    target.innerHTML = `<div class="text-muted">Nessun dato disponibile.</div>`;
-                    return;
-                }
-
-                target.innerHTML = `
-            <div class="table-responsive">
-                <table class="table table-sm align-middle mb-0">
-                    <thead>
-                    <tr>
-                        <th>Voce</th>
-                        <th class="text-end">Ordini</th>
-                        <th class="text-end">Reale</th>
-                        <th class="text-end">Previsto</th>
-                        <th class="text-end">Scost.</th>
-                        <th class="text-end">Ritardo medio</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    ${rows.map(row => `
-                        <tr>
-                            <td>${escapeHtml(row.key)}</td>
-                            <td class="text-end">${escapeHtml(row.ordini)}</td>
-                            <td class="text-end">${formatHours(row.tempo_reale)}</td>
-                            <td class="text-end">${formatHours(row.tempo_previsto)}</td>
-                            <td class="text-end">${formatHours(row.scostamento)}</td>
-                            <td class="text-end">${escapeHtml(row.giorni_medi_ritardo)} g</td>
-                        </tr>
-                    `).join("")}
-                    </tbody>
-                </table>
-            </div>
-        `;
-            }
-
             function renderKpiTempoRealeVsPrevisto(rows) {
-                const target = document.getElementById("dashboard-kpi-chart-tempi");
-                if (!target) return;
-
-                if (!rows?.length) {
-                    target.innerHTML = `<div class="text-muted">Nessun dato tempi disponibile.</div>`;
-                    return;
-                }
-
-                const max = Math.max(...rows.map(x => Number(x.value || 0)), 1);
-
-                target.innerHTML = rows.map(row => {
-                    const value = Number(row.value || 0);
-                    const pct = (value / max) * 100;
-
-                    return `
-                <div class="mb-2">
-                    <div class="d-flex justify-content-between">
-                        <span>${escapeHtml(row.label)}</span>
-                        <strong>${formatHours(value)}</strong>
-                    </div>
-                    <div class="progress" style="height: 10px;">
-                        <div class="progress-bar" style="width: ${pct.toFixed(2)}%;"></div>
-                    </div>
-                </div>
-            `;
-                }).join("");
+                renderChart("kpi_tempi", "chart-kpi-tempi", {
+                    type: "bar",
+                    data: {
+                        labels: (rows || []).map(x => x.label),
+                        datasets: [{
+                            label: "Ore",
+                            data: rows.map(x => Number(x.value || 0)),
+                            backgroundColor: [COLORS.blue, COLORS.orange]
+                        }],
+                    },
+                    options: baseOptions({
+                        plugins: {legend: {display: false}},
+                        scales: {y: {beginAtZero: true, title: {display: true, text: "Ore"}}}
+                    }),
+                }, rows?.some(x => Number(x.value || 0) > 0));
             }
 
-            setDefaultKpiDates();
+            function renderKpiAffidabilita(rows) {
+                renderChart("kpi_affidabilita", "chart-kpi-affidabilita", {
+                    type: "doughnut",
+                    data: {
+                        labels: (rows || []).map(x => x.label),
+                        datasets: [{
+                            data: rows.map(x => Number(x.value || 0)),
+                            backgroundColor: [COLORS.green, COLORS.red]
+                        }],
+                    },
+                    options: baseOptions(),
+                }, rows?.some(x => Number(x.value || 0) > 0));
+            }
+
+            function renderKpiHorizontalPercent(key, canvasId, rows, label) {
+                renderChart(key, canvasId, {
+                    type: "bar",
+                    data: {
+                        labels: (rows || []).map(x => x.label),
+                        datasets: [{
+                            label,
+                            data: rows.map(x => Number(x.value || 0)),
+                            backgroundColor: rows.map(x => Number(x.value || 0) > 25 ? COLORS.red : Number(x.value || 0) > 10 ? COLORS.orange : COLORS.yellow),
+                        }],
+                    },
+                    options: baseOptions({
+                        indexAxis: "y",
+                        plugins: {legend: {display: false}},
+                        scales: {x: {beginAtZero: true, title: {display: true, text: "%"}}}
+                    }),
+                }, rows?.length > 0);
+            }
+
+            function renderKpiRitardoReparto(rows) {
+                renderChart("kpi_ritardo_reparto", "chart-kpi-ritardo-reparto", {
+                    type: "bar",
+                    data: {
+                        labels: (rows || []).map(x => x.label),
+                        datasets: [{
+                            label: "Giorni",
+                            data: rows.map(x => Number(x.value || 0)),
+                            backgroundColor: COLORS.red
+                        }],
+                    },
+                    options: baseOptions({
+                        indexAxis: "y",
+                        plugins: {legend: {display: false}},
+                        scales: {x: {beginAtZero: true, title: {display: true, text: "Giorni"}}}
+                    }),
+                }, rows?.length > 0);
+            }
 
             async function loadKpi() {
                 const section = document.getElementById("dashboard-produzione-kpi");
                 if (!section) return;
 
-                const apiUrl = section.dataset.apiUrl;
-                const finalUrl = buildUrlWithParams(apiUrl, getKpiFilters());
+                const resp = await fetch(
+                    buildUrlWithParams(section.dataset.apiUrl, getKpiFilters()),
+                    fetchOptions()
+                );
 
-                const resp = await fetch(finalUrl, fetchOptions());
                 const payload = await resp.json();
 
                 if (!resp.ok || payload.ok === false) {
@@ -1159,34 +1155,44 @@
                 }
 
                 const data = payload.data || {};
+
+                updateFilterSelects(
+                    "dashboard-produzione-kpi",
+                    data.filter_options || {}
+                );
+
                 const cards = data.cards || {};
 
-                setKpiCard("ordini_chiusi", cards.ordini_chiusi ?? 0);
-                setKpiCard("ordini_in_ritardo", cards.ordini_in_ritardo ?? 0);
-                setKpiCard("percentuale_ritardo", `${Number(cards.percentuale_ritardo || 0).toFixed(2)}%`);
-                setKpiCard("tempo_reale_vs_previsto", formatHours(cards.tempo_reale_vs_previsto));
-                setKpiCard("scostamento_medio", formatHours(cards.scostamento_medio));
-                setKpiCard("tempo_medio_fase", formatHours(cards.tempo_medio_fase));
+                setCard("data-kpi-card", "ordini_chiusi", cards.ordini_chiusi ?? 0);
+                setCard("data-kpi-card", "percentuale_ritardo", formatPercent(cards.percentuale_ritardo));
+                setCard("data-kpi-card", "giorni_medi_ritardo", `${Number(cards.giorni_medi_ritardo || 0).toFixed(2)} g`);
+                setCard("data-kpi-card", "scostamento_percentuale", formatPercent(cards.scostamento_percentuale));
+                setCard("data-kpi-card", "affidabilita_tempi", formatPercent(cards.affidabilita_tempi));
+                setCard("data-kpi-card-sub", "ordini_in_ritardo", `${cards.ordini_in_ritardo ?? 0} ordini`);
+                setCard("data-kpi-card-sub", "scostamento_totale", formatHours(cards.scostamento_totale));
+                setCard("data-kpi-card", "macchine_prodotte", Number(cards.macchine_prodotte || 0).toFixed(0));
 
                 renderKpiTempoRealeVsPrevisto(data.charts?.tempo_reale_vs_previsto || []);
-                renderKpiDetails(data.details || []);
-
-                renderKpiAggregati(data.aggregati?.reparti || [], "dashboard-kpi-agg-reparti");
-                renderKpiAggregati(data.aggregati?.risorse || [], "dashboard-kpi-agg-risorse");
-                renderKpiAggregati(data.aggregati?.lavorazioni || [], "dashboard-kpi-agg-lavorazioni");
-                renderKpiAggregati(data.aggregati?.operatori || [], "dashboard-kpi-agg-operatori");
-                renderKpiAggregati(data.aggregati?.articoli || [], "dashboard-kpi-agg-articoli");
+                renderKpiAffidabilita(data.charts?.affidabilita_tempi || []);
+                renderKpiRitardoReparto((data.charts?.ritardo_medio_reparto || []).slice(0, 8));
+                renderKpiHorizontalPercent(
+                    "kpi_risorse_scostamento",
+                    "chart-kpi-risorse-scostamento",
+                    data.charts?.top_risorse_scostamento || [],
+                    "% scostamento"
+                );
+                renderKpiHorizontalPercent(
+                    "kpi_lavorazioni_scostamento",
+                    "chart-kpi-lavorazioni-scostamento",
+                    data.charts?.top_lavorazioni_scostamento || [],
+                    "% scostamento"
+                );
             }
 
             function exportKpi() {
                 const section = document.getElementById("dashboard-produzione-kpi");
-                if (!section) return;
-
-                const exportUrl = section.dataset.exportUrl;
-                if (!exportUrl) return;
-
-                const finalUrl = buildUrlWithParams(exportUrl, getKpiFilters());
-                window.location.href = finalUrl;
+                if (!section?.dataset.exportUrl) return;
+                window.location.href = buildUrlWithParams(section.dataset.exportUrl, getKpiFilters());
             }
 
             function setSnapshotCard(name, value) {
@@ -1194,281 +1200,156 @@
                 if (el) el.textContent = value;
             }
 
-            function setSnapshotDelta(name, change) {
+            function setSnapshotDelta(name, comparison, suffix = "") {
                 const el = document.querySelector(`[data-snapshot-delta="${name}"]`);
                 if (!el) return;
-
-                if (!change) {
+                if (!comparison) {
                     el.textContent = "";
                     return;
                 }
-
-                const delta = Number(change.delta || 0);
-                const pct = Number(change.delta_percent || 0);
-
+                const delta = Number(comparison.delta || 0);
                 const sign = delta > 0 ? "+" : "";
-                const tone = delta > 0 ? "text-danger" : delta < 0 ? "text-success" : "text-muted";
-
-                el.className = `small ${tone}`;
-                el.textContent = `${sign}${delta.toFixed(2)} (${sign}${pct.toFixed(2)}%) vs mese precedente`;
+                el.textContent = `${sign}${delta.toFixed(2)}${suffix} vs precedente`;
+                el.classList.toggle("text-danger", delta > 0);
+                el.classList.toggle("text-success", delta < 0);
             }
 
             function renderSnapshotScopeOptions(scopes, selectedValue) {
                 const select = document.getElementById("kpi-snapshot-scope");
                 if (!select) return;
-
-                const current = selectedValue || select.value || "global|*";
-                const options = [`<option value="global|*">Globale</option>`];
-
-                for (const row of scopes || []) {
+                const rows = scopes?.length ? scopes : [{scope_type: "global", scope_code: "*", label: "global: *"}];
+                select.innerHTML = rows.map(row => {
                     const value = `${row.scope_type}|${row.scope_code}`;
-                    if (value === "global|*") continue;
-                    options.push(`<option value="${escapeHtml(value)}">${escapeHtml(row.label)}</option>`);
-                }
-
-                select.innerHTML = options.join("");
-
-                if ([...select.options].some(opt => opt.value === current)) {
-                    select.value = current;
-                }
-            }
-
-            function renderSnapshotOrdiniChart(seriesOrdini, seriesRitardi) {
-                const target = document.getElementById("kpi-snapshot-chart-ordini");
-                if (!target) return;
-
-                const rows = seriesOrdini || [];
-                const ritardiByMonth = new Map((seriesRitardi || []).map(row => [row.month, row.value]));
-
-                if (!rows.length) {
-                    target.innerHTML = `<div class="text-muted">Nessuno snapshot disponibile.</div>`;
-                    return;
-                }
-
-                const max = Math.max(
-                    ...rows.map(row => Number(row.value || 0)),
-                    ...[...ritardiByMonth.values()].map(v => Number(v || 0)),
-                    1
-                );
-
-                target.innerHTML = rows.map(row => {
-                    const chiusi = Number(row.value || 0);
-                    const ritardi = Number(ritardiByMonth.get(row.month) || 0);
-                    const pctChiusi = (chiusi / max) * 100;
-                    const pctRitardi = (ritardi / max) * 100;
-
-                    return `
-                <div class="mb-2">
-                    <div class="d-flex justify-content-between">
-                        <span>${escapeHtml(row.month)}</span>
-                        <span>${chiusi} chiusi / ${ritardi} ritardo</span>
-                    </div>
-                    <div class="progress mb-1" style="height: 8px;">
-                        <div class="progress-bar" style="width: ${pctChiusi.toFixed(2)}%;"></div>
-                    </div>
-                    <div class="progress" style="height: 8px;">
-                        <div class="progress-bar bg-warning" style="width: ${pctRitardi.toFixed(2)}%;"></div>
-                    </div>
-                </div>
-            `;
+                    return `<option value="${escapeHtml(value)}">${escapeHtml(row.label || value)}</option>`;
                 }).join("");
+                if (selectedValue) select.value = selectedValue;
             }
 
-            function renderSnapshotTempiChart(rows) {
-                const target = document.getElementById("kpi-snapshot-chart-tempi");
-                if (!target) return;
+            function renderSnapshotCharts(rows) {
+                renderChart("snapshot_ordini", "chart-snapshot-ordini", {
+                    type: "line",
+                    data: {
+                        labels: rows.map(x => x.snapshot_month),
+                        datasets: [
+                            {
+                                label: "Andamento produzione mensile",
+                                data: rows.map(x => Number(x.ordini_chiusi || 0)),
+                                borderColor: BORDER_COLORS.blue,
+                                backgroundColor: COLORS.blue,
+                                tension: .25
+                            },
+                            {
+                                label: "In ritardo",
+                                data: rows.map(x => Number(x.ordini_in_ritardo || 0)),
+                                borderColor: BORDER_COLORS.red,
+                                backgroundColor: COLORS.red,
+                                tension: .25
+                            },
+                        ],
+                    },
+                    options: baseOptions({scales: {y: {beginAtZero: true}}}),
+                }, rows?.length > 0);
 
-                if (!rows?.length) {
-                    target.innerHTML = `<div class="text-muted">Nessuno snapshot disponibile.</div>`;
-                    return;
-                }
-
-                const max = Math.max(
-                    ...rows.map(row => Number(row.tempo_previsto || 0)),
-                    ...rows.map(row => Number(row.tempo_reale || 0)),
-                    1
-                );
-
-                target.innerHTML = rows.map(row => {
-                    const previsto = Number(row.tempo_previsto || 0);
-                    const reale = Number(row.tempo_reale || 0);
-                    const pctPrevisto = (previsto / max) * 100;
-                    const pctReale = (reale / max) * 100;
-
-                    return `
-                <div class="mb-2">
-                    <div class="d-flex justify-content-between">
-                        <span>${escapeHtml(row.month)}</span>
-                        <span>${formatHours(reale)} / ${formatHours(previsto)}</span>
-                    </div>
-                    <div class="progress mb-1" style="height: 8px;">
-                        <div class="progress-bar" style="width: ${pctPrevisto.toFixed(2)}%;"></div>
-                    </div>
-                    <div class="progress" style="height: 8px;">
-                        <div class="progress-bar bg-success" style="width: ${pctReale.toFixed(2)}%;"></div>
-                    </div>
-                </div>
-            `;
-                }).join("");
-            }
-
-            function renderSnapshotTable(rows) {
-                const tbody = document.getElementById("kpi-snapshot-body");
-                if (!tbody) return;
-
-                if (!rows?.length) {
-                    tbody.innerHTML = `
-                <tr>
-                    <td colspan="9" class="text-center text-muted py-3">
-                        Nessuno snapshot disponibile.
-                    </td>
-                </tr>
-            `;
-                    return;
-                }
-
-                tbody.innerHTML = rows.slice().reverse().map(row => `
-            <tr>
-                <td>${escapeHtml(row.snapshot_month)}</td>
-                <td>${escapeHtml(row.scope_type)}: ${escapeHtml(row.scope_code)}</td>
-                <td class="text-end">${escapeHtml(row.ordini_chiusi)}</td>
-                <td class="text-end">${escapeHtml(row.ordini_in_ritardo)}</td>
-                <td class="text-end">${Number(row.percentuale_ritardo || 0).toFixed(2)}%</td>
-                <td class="text-end">${formatHours(row.tempo_previsto_totale)}</td>
-                <td class="text-end">${formatHours(row.tempo_reale_totale)}</td>
-                <td class="text-end">${formatHours(row.scostamento_totale)}</td>
-                <td class="text-end">${formatHours(row.tempo_medio_ordine)}</td>
-            </tr>
-        `).join("");
-            }
-
-            function getSnapshotFilters() {
-                const scopeValue = document.getElementById("kpi-snapshot-scope")?.value || "global|*";
-                const [scopeType, scopeCode] = scopeValue.split("|");
-
-                return {
-                    scope_type: scopeType || "global",
-                    scope_code: scopeCode || "*",
-                    months: document.getElementById("kpi-snapshot-months")?.value || "12",
-                };
+                renderChart("snapshot_ordini", "chart-snapshot-ordini", {
+                    type: "line",
+                    data: {
+                        labels: rows.map(x => x.snapshot_month),
+                        datasets: [
+                            {
+                                label: "Macchine prodotte",
+                                data: rows.map(x => Number(x.macchine_prodotte || 0)),
+                                borderColor: BORDER_COLORS.green,
+                                backgroundColor: COLORS.green,
+                                tension: .25
+                            },
+                            {
+                                label: "Ordini chiusi",
+                                data: rows.map(x => Number(x.ordini_chiusi || 0)),
+                                borderColor: BORDER_COLORS.blue,
+                                backgroundColor: COLORS.blue,
+                                tension: .25
+                            },
+                            {
+                                label: "Ordini in ritardo",
+                                data: rows.map(x => Number(x.ordini_in_ritardo || 0)),
+                                borderColor: BORDER_COLORS.red,
+                                backgroundColor: COLORS.red,
+                                tension: .25
+                            },
+                        ],
+                    },
+                    options: baseOptions({
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: "Quantità"
+                                }
+                            }
+                        }
+                    }),
+                }, rows?.length > 0);
             }
 
             async function loadSnapshots() {
                 const section = document.getElementById("dashboard-produzione-kpi");
-                if (!section) return;
-
-                const snapshotUrl = section.dataset.snapshotUrl;
-                if (!snapshotUrl) return;
-
-                const filters = getSnapshotFilters();
-                const finalUrl = buildUrlWithParams(snapshotUrl, filters);
-
-                const resp = await fetch(finalUrl, fetchOptions());
+                if (!section?.dataset.snapshotUrl) return;
+                const scopeSelect = document.getElementById("kpi-snapshot-scope");
+                const monthsSelect = document.getElementById("kpi-snapshot-months");
+                const [scope_type, scope_code] = String(scopeSelect?.value || "global|*").split("|");
+                const params = {
+                    scope_type: scope_type || "global",
+                    scope_code: scope_code || "*",
+                    months: monthsSelect?.value || "12"
+                };
+                const resp = await fetch(buildUrlWithParams(section.dataset.snapshotUrl, params), fetchOptions());
                 const payload = await resp.json();
-
-                if (!resp.ok || payload.ok === false) {
-                    throw new Error(payload.error || `Errore HTTP ${resp.status}`);
-                }
+                if (!resp.ok || payload.ok === false) throw new Error(payload.error || `Errore HTTP ${resp.status}`);
 
                 const data = payload.data || {};
-                const latest = data.latest || {};
-                const comparison = data.comparison || {};
+                renderSnapshotScopeOptions(data.available_scopes || [], `${params.scope_type}|${params.scope_code}`);
+                const rows = data.rows || [];
+                const latest = rows.length ? rows[rows.length - 1] : null;
 
-                renderSnapshotScopeOptions(
-                    data.available_scopes || [],
-                    `${filters.scope_type}|${filters.scope_code}`
+                setSnapshotCard("ordini_chiusi", latest?.ordini_chiusi ?? 0);
+
+                setSnapshotCard("snapshot_month", latest?.snapshot_month || "-");
+
+                setSnapshotCard(
+                    "macchine_prodotte",
+                    Number(latest?.macchine_prodotte || 0).toFixed(0)
                 );
 
-                setSnapshotCard("ordini_chiusi", latest.ordini_chiusi ?? 0);
-                setSnapshotCard("ordini_in_ritardo", latest.ordini_in_ritardo ?? 0);
-                setSnapshotCard("percentuale_ritardo", `${Number(latest.percentuale_ritardo || 0).toFixed(2)}%`);
-                setSnapshotCard("scostamento_totale", formatHours(latest.scostamento_totale));
-
-                setSnapshotDelta("ordini_chiusi", comparison.ordini_chiusi);
-                setSnapshotDelta("ordini_in_ritardo", comparison.ordini_in_ritardo);
-                setSnapshotDelta("percentuale_ritardo", comparison.percentuale_ritardo);
-                setSnapshotDelta("scostamento_totale", comparison.scostamento_totale);
-
-                renderSnapshotOrdiniChart(
-                    data.series?.ordini_chiusi || [],
-                    data.series?.ordini_in_ritardo || []
-                );
-
-                renderSnapshotTempiChart(data.series?.tempo_previsto_reale || []);
-                renderSnapshotTable(data.rows || []);
+                setSnapshotCard("percentuale_ritardo", formatPercent(latest?.percentuale_ritardo));
+                setSnapshotCard("scostamento_totale", formatHours(latest?.scostamento_totale));
+                setSnapshotDelta("ordini_chiusi", data.comparison?.ordini_chiusi, "");
+                setSnapshotDelta("macchine_prodotte", data.comparison?.macchine_prodotte, "");
+                setSnapshotDelta("percentuale_ritardo", data.comparison?.percentuale_ritardo, "%");
+                setSnapshotDelta("scostamento_totale", data.comparison?.scostamento_totale, " h");
+                renderSnapshotCharts(rows);
             }
 
-            document.getElementById("btn-kpi-filtra")?.addEventListener("click", () => {
-                loadKpi().catch(err => {
-                    console.error(err);
-                    const tbody = document.getElementById("dashboard-kpi-detail-body");
-                    if (tbody) {
-                        tbody.innerHTML = `
-                    <tr>
-                        <td colspan="12" class="text-danger text-center py-3">
-                            ${escapeHtml(err.message)}
-                        </td>
-                    </tr>
-                `;
-                    }
-                });
+            bindFilterAutoReload("dashboard-produzione-cruscotto", loadCruscotto);
+            bindFilterAutoReload("dashboard-produzione-kpi", loadKpi);
+            document.getElementById("btn-kpi-reset")?.addEventListener("click", () => {
+                resetKpiFilters();
+                loadKpi().catch(console.error);
             });
-
+            document.getElementById("btn-cruscotto-filtra")?.addEventListener("click", () => loadCruscotto().catch(console.error));
+            document.getElementById("btn-cruscotto-reset")?.addEventListener("click", () => {
+                resetCruscottoFilters();
+                loadCruscotto().catch(console.error);
+            });
+            document.getElementById("btn-kpi-filtra")?.addEventListener("click", () => loadKpi().catch(console.error));
             document.getElementById("btn-kpi-export")?.addEventListener("click", exportKpi);
+            document.getElementById("btn-kpi-snapshot-load")?.addEventListener("click", () => loadSnapshots().catch(console.error));
+            document.getElementById("kpi-snapshot-scope")?.addEventListener("change", () => loadSnapshots().catch(console.error));
+            document.getElementById("kpi-snapshot-months")?.addEventListener("change", () => loadSnapshots().catch(console.error));
 
-            document.getElementById("btn-kpi-snapshot-load")?.addEventListener("click", () => {
-                loadSnapshots().catch(console.error);
-            });
-
-            document.getElementById("kpi-snapshot-scope")?.addEventListener("change", () => {
-                loadSnapshots().catch(console.error);
-            });
-
-            document.getElementById("kpi-snapshot-months")?.addEventListener("change", () => {
-                loadSnapshots().catch(console.error);
-            });
-
-            loadCruscotto().catch(err => {
-                console.error(err);
-                const body = document.getElementById("dashboard-criticita-body");
-                if (body) {
-                    body.innerHTML = `
-                <tr>
-                    <td colspan="7" class="text-danger text-center py-3">
-                        ${escapeHtml(err.message)}
-                    </td>
-                </tr>
-            `;
-                }
-            });
-
-            loadKpi().catch(err => {
-                console.error(err);
-                const tbody = document.getElementById("dashboard-kpi-detail-body");
-                if (tbody) {
-                    tbody.innerHTML = `
-                <tr>
-                    <td colspan="12" class="text-danger text-center py-3">
-                        ${escapeHtml(err.message)}
-                    </td>
-                </tr>
-            `;
-                }
-            });
-
-            loadSnapshots().catch(err => {
-                console.error(err);
-                const tbody = document.getElementById("kpi-snapshot-body");
-                if (tbody) {
-                    tbody.innerHTML = `
-                <tr>
-                    <td colspan="9" class="text-danger text-center py-3">
-                        ${escapeHtml(err.message)}
-                    </td>
-                </tr>
-            `;
-                }
-            });
+            setDefaultKpiDates();
+            loadCruscotto().catch(console.error);
+            loadKpi().then(() => loadSnapshots()).catch(console.error);
         })();
     </script>
 {% endblock %}

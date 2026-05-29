@@ -690,21 +690,6 @@ def _safe_float(value) -> float:
         return 0.0
 
 
-def _order_hours_snapshot_complessiva(ordine: InputOdp) -> tuple[float, float]:
-    fase_attiva = _norm_text(getattr(ordine, "FaseAttiva", "")) or "1"
-    ore_lavorazione = InputOdp._active_value_from_phase_list(
-        getattr(ordine, "TempoPrevistoLavoraz", ""),
-        fase_attiva,
-    )
-    minuti_attrezzaggio = getattr(ordine, "AttrezzaggioAttivo", "")
-
-    ore_lavorazione_val = _safe_float(ore_lavorazione)
-    minuti_attrezzaggio_val = _safe_float(minuti_attrezzaggio)
-    ore_attrezzaggio_val = minuti_attrezzaggio_val / 60.0
-
-    return ore_lavorazione_val, ore_attrezzaggio_val
-
-
 def _order_hours_snapshot_reparto(ordine: InputOdp) -> float:
     fase_attiva = _norm_text(getattr(ordine, "FaseAttiva", "")) or "1"
     ore_lavorazione = InputOdp._active_value_from_phase_list(
@@ -714,81 +699,6 @@ def _order_hours_snapshot_reparto(ordine: InputOdp) -> float:
     ore_lavorazione_val = _safe_float(ore_lavorazione)
 
     return ore_lavorazione_val
-
-
-def _dash_complessiva_new_bucket() -> dict:
-    return {
-        "totali": 0,
-        "pianificati": 0,
-        "sospesi": 0,
-        "attivi": 0,
-        "ore_ordini_pianificati": 0.0,
-        "ore_ordini_attivi": 0.0,
-        "ore_ordini_sospesi": 0.0,
-        "ore_attrezzaggio_ordini_pianificati": 0.0,
-        "ore_attrezzaggio_ordini_attivi": 0.0,
-        "ore_attrezzaggio_ordini_sospesi": 0.0,
-        "giorni_impegno_attivi": 0.0,
-        "giorni_impegno_sospesi": 0.0,
-    }
-
-
-def _dash_complessiva_finalize_bucket(bucket: dict) -> dict:
-    bucket["ore_ordini_pianificati"] = round(
-        float(bucket.get("ore_ordini_pianificati", 0.0) or 0.0),
-        2,
-    )
-    bucket["ore_ordini_attivi"] = round(
-        float(bucket.get("ore_ordini_attivi", 0.0) or 0.0),
-        2,
-    )
-    bucket["ore_ordini_sospesi"] = round(
-        float(bucket.get("ore_ordini_sospesi", 0.0) or 0.0),
-        2,
-    )
-    bucket["ore_attrezzaggio_ordini_pianificati"] = round(
-        float(bucket.get("ore_attrezzaggio_ordini_pianificati", 0.0) or 0.0),
-        2,
-    )
-    bucket["ore_attrezzaggio_ordini_attivi"] = round(
-        float(bucket.get("ore_attrezzaggio_ordini_attivi", 0.0) or 0.0),
-        2,
-    )
-    bucket["ore_attrezzaggio_ordini_sospesi"] = round(
-        float(bucket.get("ore_attrezzaggio_ordini_sospesi", 0.0) or 0.0),
-        2,
-    )
-    ore_tot_attivi = float(bucket.get("ore_ordini_attivi", 0.0) or 0.0) + float(
-        bucket.get("ore_attrezzaggio_ordini_attivi", 0.0) or 0.0
-    )
-    ore_tot_sospesi = float(bucket.get("ore_ordini_sospesi", 0.0) or 0.0) + float(
-        bucket.get("ore_attrezzaggio_ordini_sospesi", 0.0) or 0.0
-    )
-    bucket["giorni_impegno_attivi"] = _hours_to_work_days(ore_tot_attivi)
-    bucket["giorni_impegno_sospesi"] = _hours_to_work_days(ore_tot_sospesi)
-    return bucket
-
-
-def _dash_complessiva_apply_order(
-    bucket: dict,
-    stato: str,
-    ore_lavorazione: float,
-    ore_attrezzaggio: float,
-) -> None:
-    bucket["totali"] += 1
-
-    if "pianificat" in stato:
-        bucket["pianificati"] += 1
-        bucket["ore_ordini_pianificati"] += ore_lavorazione
-        bucket["ore_attrezzaggio_ordini_pianificati"] += ore_attrezzaggio
-    elif "sospes" in stato:
-        bucket["sospesi"] += 1
-        bucket["ore_ordini_sospesi"] += ore_lavorazione
-        bucket["ore_attrezzaggio_ordini_sospesi"] += ore_attrezzaggio
-    elif "attiv" in stato:
-        bucket["attivi"] += 1
-        bucket["ore_ordini_attivi"] += ore_lavorazione
-        bucket["ore_attrezzaggio_ordini_attivi"] += ore_attrezzaggio
 
 
 def _advance_or_finalize_phase(
@@ -2009,11 +1919,6 @@ def _build_export_distinta_base(
 ) -> str:
     distinta = _parse_distinta_materiale(ordine)
     fase_corrente_int = _fase_to_int(fase_corrente)
-    phase_sequence = _phase_sequence_for_ordine(ordine)
-    is_multifase = len(phase_sequence) > 1
-
-    if is_multifase and fase_corrente_int is None:
-        return json.dumps([], ensure_ascii=False)
 
     out = []
 
@@ -2022,17 +1927,8 @@ def _build_export_distinta_base(
             continue
 
         comp_fase = _fase_to_int(comp.get("NumFase"))
-
-        if is_multifase:
-            if comp_fase is None:
-                continue
-
-            if comp_fase != fase_corrente_int:
-                continue
-
-        elif fase_corrente_int is not None and comp_fase is not None:
-            if comp_fase != fase_corrente_int:
-                continue
+        if fase_corrente_int is not None and comp_fase != fase_corrente_int:
+            continue
 
         qty_scalata = _scaled_component_qty(
             comp.get("Quantita"),
@@ -5292,6 +5188,8 @@ def api_riattiva_ordine():
                 409,
             )
 
+        _sync_active_fields_for_phase(ordine, fase_corrente)
+
         stato_ordine_pre = _norm_text(stato_attuale)
         qty_pre = _qty_da_lavorare_text(ordine, stato=stato)
         now_iso = now_dt.isoformat(timespec="seconds")
@@ -5535,6 +5433,149 @@ def api_riattiva_ordine_montaggio_macchina():
     )
 
 
+DASHBOARD_FILTER_KEYS = (
+    "reparto",
+    "risorsa",
+    "lavorazione",
+    "operatore",
+    "articolo",
+    "stato",
+)
+
+
+def _dashboard_empty_filter_options() -> dict:
+    return {key: [] for key in DASHBOARD_FILTER_KEYS}
+
+
+def _dashboard_new_filter_options_bucket() -> dict:
+    return {key: {} for key in DASHBOARD_FILTER_KEYS}
+
+
+def _dashboard_filter_label(value: str, description: str = "") -> str:
+    value = _norm_text(value)
+    description = _norm_text(description)
+
+    if not value:
+        return ""
+
+    if description and description.lower() != value.lower():
+        return f"{description} ({value})"
+
+    return value
+
+
+def _dashboard_model_label_map(model) -> dict[str, str]:
+    rows = model.query.order_by(
+        func.lower(func.coalesce(model.Descrizione, model.Codice)),
+        func.lower(model.Codice),
+    ).all()
+
+    out = {}
+
+    for row in rows:
+        codice = _norm_text(getattr(row, "Codice", ""))
+        descrizione = _norm_text(getattr(row, "Descrizione", ""))
+
+        if codice:
+            out[codice] = _dashboard_filter_label(codice, descrizione)
+
+    return out
+
+
+def _dashboard_filter_label_maps() -> dict:
+    return {
+        "reparto": _dashboard_model_label_map(Reparti),
+        "risorsa": _dashboard_model_label_map(Risorse),
+        "lavorazione": _dashboard_model_label_map(Lavorazioni),
+    }
+
+
+def _dashboard_add_filter_option(
+    options: dict,
+    key: str,
+    value,
+    label: str = "",
+) -> None:
+    if key not in options:
+        return
+
+    value = _norm_text(value)
+    if not value:
+        return
+
+    options[key].setdefault(
+        value,
+        {
+            "value": value,
+            "label": _norm_text(label) or value,
+        },
+    )
+
+
+def _dashboard_seed_user_filter_options(options: dict) -> None:
+    """
+    Inserisce nel filtro Operatore tutti gli utenti presenti in users,
+    senza filtrare per active, ruolo, reparto, policy o capacità.
+    """
+    users = User.query.order_by(func.lower(User.username)).all()
+
+    for user in users:
+        username = _norm_text(getattr(user, "username", ""))
+
+        if not username:
+            continue
+
+        _dashboard_add_filter_option(
+            options,
+            "operatore",
+            username,
+            username,
+        )
+
+
+def _dashboard_article_filter_label(cod_art: str, descrizione: str = "") -> str:
+    cod_art = _norm_text(cod_art)
+    descrizione = _norm_text(descrizione)
+
+    if cod_art and descrizione:
+        return f"{cod_art} - {descrizione}"
+
+    return cod_art or descrizione
+
+
+def _dashboard_collect_filter_options_from_row(
+    options: dict,
+    row: dict,
+    label_maps: dict,
+) -> None:
+    articolo = _norm_text(row.get("cod_art") or row.get("articolo"))
+
+    _dashboard_add_filter_option(
+        options,
+        "articolo",
+        articolo,
+        _dashboard_article_filter_label(articolo, row.get("descrizione")),
+    )
+
+
+def _dashboard_finalize_filter_options(options: dict) -> dict:
+    out = {}
+
+    for key in DASHBOARD_FILTER_KEYS:
+        rows = list((options.get(key) or {}).values())
+
+        rows.sort(
+            key=lambda row: (
+                _norm_text(row.get("label")).lower(),
+                _norm_text(row.get("value")).lower(),
+            )
+        )
+
+        out[key] = rows
+
+    return out
+
+
 def _dashboard_text_filter(value) -> str:
     return _norm_text(value).lower()
 
@@ -5753,38 +5794,13 @@ def api_chiudi_ordine():
 
     if can_choose_time_line:
         include_time_line = _parse_bool_flag(data.get("include_time_line", True))
-    stato = InputOdpRuntime.query.filter_by(
-        IdDocumento=ordine.IdDocumento,
-        IdRiga=ordine.IdRiga,
-    ).first()
 
-    fase_corrente = _fase_corrente_for_export(ordine, stato=stato)
-
-    if not fase_corrente:
-        return (
-            jsonify(
-                {
-                    "ok": False,
-                    "error": (
-                        "Fase corrente non determinabile. "
-                        "Verificare FaseAttiva su input_odp_runtime/input_odp."
-                    ),
-                    "id_documento": ordine.IdDocumento,
-                    "id_riga": ordine.IdRiga,
-                }
-            ),
-            409,
-        )
-
-    ordine.FaseAttiva = fase_corrente
-    _sync_active_fields_for_phase(ordine, fase_corrente)
-
+    fase_corrente = _fase_corrente_for_export(ordine)
     blocking_outbox = _get_blocking_outbox_for_phase(
         id_documento=ordine.IdDocumento,
         id_riga=ordine.IdRiga,
         fase=fase_corrente,
     )
-
     if blocking_outbox is not None:
         return (
             jsonify(
@@ -5800,6 +5816,11 @@ def api_chiudi_ordine():
             ),
             409,
         )
+
+    stato = InputOdpRuntime.query.filter_by(
+        IdDocumento=ordine.IdDocumento,
+        IdRiga=ordine.IdRiga,
+    ).first()
     closure_error = _ensure_ordine_attivo_per_chiusura(ordine, stato=stato)
     if closure_error:
         return closure_error
@@ -5992,6 +6013,8 @@ def api_chiudi_ordine():
         action=action_name,
         when_iso=now_iso,
     )
+
+    fase_corrente = _fase_corrente_for_export(ordine, stato=stato)
     phase_export_flags = _phase_export_flags(
         ordine,
         fase_corrente,
@@ -6362,42 +6385,12 @@ def api_chiudi_ordine_montaggio_macchina():
             400,
         )
 
-    stato = InputOdpRuntime.query.filter_by(
-        IdDocumento=ordine.IdDocumento,
-        IdRiga=ordine.IdRiga,
-    ).first()
-
-    fase_corrente = _fase_corrente_for_export(
-        ordine,
-        stato=stato,
-        fase_override=fase,
-    )
-
-    if not fase_corrente:
-        return (
-            jsonify(
-                {
-                    "ok": False,
-                    "error": (
-                        "Fase corrente non determinabile. "
-                        "Verificare FaseAttiva su input_odp_runtime/input_odp."
-                    ),
-                    "id_documento": ordine.IdDocumento,
-                    "id_riga": ordine.IdRiga,
-                }
-            ),
-            409,
-        )
-
-    ordine.FaseAttiva = fase_corrente
-    _sync_active_fields_for_phase(ordine, fase_corrente)
-
+    fase_corrente = _fase_corrente_for_export(ordine, fase_override=fase)
     blocking_outbox = _get_blocking_outbox_for_phase(
         id_documento=ordine.IdDocumento,
         id_riga=ordine.IdRiga,
         fase=fase_corrente,
     )
-
     if blocking_outbox is not None:
         return (
             jsonify(
@@ -6413,6 +6406,11 @@ def api_chiudi_ordine_montaggio_macchina():
             ),
             409,
         )
+
+    stato = InputOdpRuntime.query.filter_by(
+        IdDocumento=ordine.IdDocumento,
+        IdRiga=ordine.IdRiga,
+    ).first()
 
     closure_error = _ensure_ordine_attivo_per_chiusura(ordine, stato=stato)
     if closure_error:
@@ -6550,6 +6548,8 @@ def api_chiudi_ordine_montaggio_macchina():
         if _norm_text(stato.Stato_odp).lower().startswith("attiv"):
             elapsed_seconds = _accumulate_runtime_until(stato, now_dt)
         tempo_finale = _norm_text(stato.Tempo_funzionamento) or "0"
+
+    fase_corrente = _fase_corrente_for_export(ordine, stato=stato, fase_override=fase)
     phase_export_flags = _phase_export_flags(
         ordine,
         fase_corrente,
@@ -8669,11 +8669,13 @@ def _dashboard_produzione_initial_payload(policy: RbacPolicy) -> dict:
             "cards": {},
             "charts": {},
             "criticita": [],
+            "filter_options": _dashboard_empty_filter_options(),
         },
         "kpi": {
             "cards": {},
             "charts": {},
             "details": [],
+            "filter_options": _dashboard_empty_filter_options(),
         },
     }
 
@@ -8721,6 +8723,36 @@ def _dashboard_fase_attiva(ordine: InputOdp) -> str:
         or _norm_text(getattr(ordine, "FaseAttiva", ""))
         or "1"
     )
+
+
+def _dashboard_reparti_label_map() -> dict[str, str]:
+    rows = Reparti.query.order_by(Reparti.Codice.asc()).all()
+    out: dict[str, str] = {}
+
+    for row in rows:
+        codice = _norm_text(getattr(row, "Codice", ""))
+        descrizione = _norm_text(getattr(row, "Descrizione", ""))
+
+        if not codice:
+            continue
+
+        if descrizione and descrizione.lower() != codice.lower():
+            out[codice] = f"{descrizione} ({codice})"
+        else:
+            out[codice] = codice
+
+    return out
+
+
+def _dashboard_reparto_label(
+    codice: str, label_map: dict[str, str] | None = None
+) -> str:
+    codice = _first_code_from_cell(codice)
+    if not codice:
+        return "-"
+
+    label_map = label_map if label_map is not None else _dashboard_reparti_label_map()
+    return label_map.get(codice, codice)
 
 
 def _dashboard_active_value(ordine: InputOdp, attr_name: str) -> str:
@@ -8860,6 +8892,7 @@ def _dashboard_capacity_by_weekday(
     *,
     scope_type: str = "global",
     scope_code: str = "*",
+    fallback_to_global: bool = True,
 ) -> dict[int, float]:
     rows = (
         ProductionCapacityCalendar.query.filter(
@@ -8875,8 +8908,11 @@ def _dashboard_capacity_by_weekday(
     for row in rows:
         out[int(row.weekday)] = float(row.hours_capacity or 0.0)
 
-    if scope_type != "global" and not rows:
-        return _dashboard_capacity_by_weekday(scope_type="global", scope_code="*")
+    if fallback_to_global and scope_type != "global" and not rows:
+        return _dashboard_capacity_by_weekday(
+            scope_type="global",
+            scope_code="*",
+        )
 
     return out
 
@@ -8886,39 +8922,59 @@ def _dashboard_next_month_days() -> list[date]:
     return [today + timedelta(days=i) for i in range(DASHBOARD_PRODUZIONE_FUTURE_DAYS)]
 
 
-def _dashboard_carico_prossimo_mese(ordini: list[InputOdp]) -> list[dict]:
-    capacity = _dashboard_capacity_by_weekday()
+def _dashboard_carico_prossimo_mese(
+    ordini: list[InputOdp],
+    *,
+    capacity_by_weekday: dict[int, float] | None = None,
+    capacity_operator_count: int = 0,
+) -> list[dict]:
+    capacity = capacity_by_weekday or _dashboard_capacity_by_weekday()
 
     by_day = {
         day.isoformat(): {
             "date": day.isoformat(),
             "label": day.strftime("%d/%m"),
+            "ore_arretrate": 0.0,
+            "ore_senza_scadenza": 0.0,
             "ore_pianificate": 0.0,
             "ore_attive": 0.0,
             "ore_sospese": 0.0,
             "capacita": float(capacity.get(day.weekday(), 0.0) or 0.0),
+            "operatori_capacita": int(capacity_operator_count or 0),
         }
         for day in _dashboard_next_month_days()
     }
 
     today = _dashboard_today()
     end_day = today + timedelta(days=DASHBOARD_PRODUZIONE_FUTURE_DAYS - 1)
+    today_key = today.isoformat()
 
     for ordine in ordini:
         stato = _dashboard_stato_norm(ordine).lower()
         data_fine = _dashboard_data_fine_prevista(ordine)
+        ore = _dashboard_carico_ore(ordine)
 
-        if not data_fine:
+        if not ore:
             continue
 
-        if data_fine < today or data_fine > end_day:
+        if not data_fine:
+            # Gli ordini aperti senza data schedulata sono comunque carico reale:
+            # li evidenziamo sul primo giorno del cruscotto.
+            by_day[today_key]["ore_senza_scadenza"] += ore
+            continue
+
+        if data_fine < today:
+            # Gli ordini aperti già scaduti non devono sparire dal grafico:
+            # sono arretrato da gestire subito.
+            by_day[today_key]["ore_arretrate"] += ore
+            continue
+
+        if data_fine > end_day:
             continue
 
         day_key = data_fine.isoformat()
         if day_key not in by_day:
             continue
-
-        ore = _dashboard_carico_ore(ordine)
 
         if "pianificat" in stato:
             by_day[day_key]["ore_pianificate"] += ore
@@ -8928,11 +8984,17 @@ def _dashboard_carico_prossimo_mese(ordini: list[InputOdp]) -> list[dict]:
             by_day[day_key]["ore_sospese"] += ore
 
     for row in by_day.values():
+        row["ore_arretrate"] = round(row["ore_arretrate"], 2)
+        row["ore_senza_scadenza"] = round(row["ore_senza_scadenza"], 2)
         row["ore_pianificate"] = round(row["ore_pianificate"], 2)
         row["ore_attive"] = round(row["ore_attive"], 2)
         row["ore_sospese"] = round(row["ore_sospese"], 2)
         row["ore_totali"] = round(
-            row["ore_pianificate"] + row["ore_attive"] + row["ore_sospese"],
+            row["ore_arretrate"]
+            + row["ore_senza_scadenza"]
+            + row["ore_pianificate"]
+            + row["ore_attive"]
+            + row["ore_sospese"],
             2,
         )
         row["sovraccarico"] = bool(
@@ -8940,6 +9002,119 @@ def _dashboard_carico_prossimo_mese(ordini: list[InputOdp]) -> list[dict]:
         )
 
     return list(by_day.values())
+
+
+def _dashboard_capacity_hours_for_next_days(
+    *,
+    scope_type: str = "global",
+    scope_code: str = "*",
+) -> float:
+    capacity = _dashboard_capacity_by_weekday(
+        scope_type=scope_type,
+        scope_code=scope_code,
+    )
+    return round(
+        sum(
+            float(capacity.get(day.weekday(), 0.0) or 0.0)
+            for day in _dashboard_next_month_days()
+        ),
+        2,
+    )
+
+
+def _dashboard_saturazione_risorse(carico_rows: list[dict]) -> list[dict]:
+    out = []
+
+    for row in carico_rows or []:
+        risorsa = _norm_text(row.get("risorsa")) or "-"
+        ore_totali = float(row.get("ore_totali") or 0.0)
+        capacita = _dashboard_capacity_hours_for_next_days(
+            scope_type="risorsa",
+            scope_code=risorsa,
+        )
+        saturazione = round((ore_totali / capacita) * 100, 2) if capacita > 0 else 0.0
+
+        if saturazione > 110:
+            livello = "critico"
+        elif saturazione >= 90:
+            livello = "attenzione"
+        elif saturazione >= 70:
+            livello = "buono"
+        else:
+            livello = "sottocarico"
+
+        out.append(
+            {
+                "label": risorsa,
+                "risorsa": risorsa,
+                "ore_totali": round(ore_totali, 2),
+                "capacita": round(capacita, 2),
+                "saturazione": saturazione,
+                "livello": livello,
+            }
+        )
+
+    return sorted(out, key=lambda x: (-x["saturazione"], x["label"].lower()))[:12]
+
+
+def _dashboard_carico_per_reparto(ordini: list[InputOdp]) -> list[dict]:
+    buckets = {}
+    reparto_labels = _dashboard_reparti_label_map()
+
+    for ordine in ordini or []:
+        stato = _dashboard_stato_norm(ordine).lower()
+        reparto = _dashboard_reparto_attivo(ordine) or "-"
+        reparto_label = _dashboard_reparto_label(reparto, reparto_labels)
+        ore = _dashboard_carico_ore(ordine)
+
+        buckets.setdefault(
+            reparto,
+            {
+                "label": reparto_label,
+                "reparto": reparto,
+                "codice_reparto": reparto,
+                "ore_attive": 0.0,
+                "ore_sospese": 0.0,
+                "ore_pianificate": 0.0,
+                "ore_totali": 0.0,
+            },
+        )
+
+        if "attiv" in stato:
+            buckets[reparto]["ore_attive"] += ore
+        elif "sospes" in stato:
+            buckets[reparto]["ore_sospese"] += ore
+        elif "pianificat" in stato:
+            buckets[reparto]["ore_pianificate"] += ore
+
+    out = []
+    for row in buckets.values():
+        row["ore_attive"] = round(float(row["ore_attive"] or 0.0), 2)
+        row["ore_sospese"] = round(float(row["ore_sospese"] or 0.0), 2)
+        row["ore_pianificate"] = round(float(row["ore_pianificate"] or 0.0), 2)
+        row["ore_totali"] = round(
+            row["ore_attive"] + row["ore_sospese"] + row["ore_pianificate"],
+            2,
+        )
+        out.append(row)
+
+    return sorted(out, key=lambda x: (-x["ore_totali"], x["label"].lower()))[:12]
+
+
+def _dashboard_carico_per_risorsa_chart(carico_rows: list[dict]) -> list[dict]:
+    out = []
+    for row in carico_rows or []:
+        out.append(
+            {
+                "label": row.get("risorsa") or "-",
+                "ore_attive": round(float(row.get("ore_attive") or 0.0), 2),
+                "ore_sospese": round(float(row.get("ore_sospese") or 0.0), 2),
+                "ore_pianificate": round(float(row.get("ore_pianificate") or 0.0), 2),
+                "ore_totali": round(float(row.get("ore_totali") or 0.0), 2),
+            }
+        )
+
+    return sorted(out, key=lambda x: (-x["ore_totali"], x["label"].lower()))[:12]
 
 
 def _dashboard_cruscotto_empty_payload() -> dict:
@@ -8950,6 +9125,9 @@ def _dashboard_cruscotto_empty_payload() -> dict:
             "ordini_pianificati": 0,
             "tempo_previsto_residuo": 0.0,
             "operatori_impegnati": 0,
+            "operatori_capacita": 0,
+            "ordini_critici": 0,
+            "risorse_sovraccariche": 0,
             "ordini_in_ritardo": 0,
             "ordini_scadenza_oggi": 0,
             "ordini_senza_tempo_previsto": 0,
@@ -8958,6 +9136,9 @@ def _dashboard_cruscotto_empty_payload() -> dict:
         "charts": {
             "carico_prossimi_giorni": [],
             "stati_ordine": [],
+            "carico_per_risorsa": [],
+            "carico_per_reparto": [],
+            "saturazione_risorse": [],
         },
         "criticita": [],
         "details": [],
@@ -8966,6 +9147,7 @@ def _dashboard_cruscotto_empty_payload() -> dict:
         "collaudo": [],
         "capacity_calendar": [],
         "filters": {},
+        "filter_options": _dashboard_empty_filter_options(),
     }
 
 
@@ -8975,6 +9157,315 @@ def _dashboard_is_collaudo(ordine: InputOdp) -> bool:
     lavorazione = _dashboard_lavorazione_attiva(ordine).lower()
 
     return reparto == "70" or "coll" in risorsa or "coll" in lavorazione
+
+
+def _dashboard_capacity_users(
+    policy: RbacPolicy, filters: dict | None = None
+) -> list[User]:
+    """
+    Restituisce gli operatori attivi da considerare nel calcolo capacità.
+
+    Regole:
+    - considera solo utenti active = True;
+    - rispetta i reparti consentiti dalla policy;
+    - applica i filtri cruscotto;
+    - esclude utenti senza RepartoPrinc, salvo override operatore esplicito;
+    - include un utente senza reparto solo se ha capacità specifica operatore.
+    """
+
+    filters = filters or {}
+
+    allowed_reparti = {
+        _norm_text(code)
+        for code in getattr(policy, "allowed_reparti", [])
+        if _norm_text(code)
+    }
+
+    users = User.query.filter(User.active.is_(True)).order_by(User.username.asc()).all()
+
+    out = []
+
+    for user in users:
+        user_reparto = _norm_text(getattr(user, "RepartoPrinc", ""))
+        operator_code = str(int(user.id))
+
+        has_operator_capacity = _dashboard_capacity_rows_exist(
+            "operatore",
+            operator_code,
+        )
+
+        # Esclude admin, utenti tecnici o generici senza reparto,
+        # a meno che abbiano una capacità operatore configurata.
+        if not user_reparto and not has_operator_capacity:
+            continue
+
+        # Rispetta i reparti consentiti dalla policy.
+        # Se l'utente non ha reparto ma ha override operatore, passa.
+        if allowed_reparti and user_reparto and user_reparto not in allowed_reparti:
+            continue
+
+        if not _dashboard_user_matches_capacity_filters(user, filters):
+            continue
+
+        out.append(user)
+
+    return out
+
+
+def _dashboard_user_matches_capacity_filters(user: User, filters: dict | None) -> bool:
+    filters = filters or {}
+
+    operatore_filter = _dashboard_text_filter(filters.get("operatore"))
+    reparto_filter = _dashboard_text_filter(filters.get("reparto"))
+    risorsa_filter = _dashboard_text_filter(filters.get("risorsa"))
+
+    username = _norm_text(getattr(user, "username", ""))
+    reparto_code = _norm_text(getattr(user, "RepartoPrinc", ""))
+
+    if operatore_filter and operatore_filter not in username.lower():
+        return False
+
+    if reparto_filter:
+        reparto_label = reparto_code
+
+        if reparto_code:
+            reparto = Reparti.query.filter(
+                func.lower(Reparti.Codice) == reparto_code.lower()
+            ).first()
+
+            if reparto is not None:
+                reparto_label = (
+                    f"{_norm_text(getattr(reparto, 'Codice', ''))} "
+                    f"{_norm_text(getattr(reparto, 'Descrizione', ''))}"
+                )
+
+        if reparto_filter not in reparto_label.lower():
+            return False
+
+    if risorsa_filter:
+        risorsa_labels = []
+
+        for risorsa in getattr(user, "risorse", []) or []:
+            risorsa_labels.append(
+                f"{_norm_text(getattr(risorsa, 'Codice', ''))} "
+                f"{_norm_text(getattr(risorsa, 'Descrizione', ''))}"
+            )
+
+        if not any(risorsa_filter in label.lower() for label in risorsa_labels):
+            return False
+
+    return True
+
+
+def _dashboard_capacity_rows_exist(scope_type: str, scope_code: str) -> bool:
+    scope_type = _norm_text(scope_type)
+    scope_code = _norm_text(scope_code)
+
+    if not scope_type or not scope_code:
+        return False
+
+    return (
+        ProductionCapacityCalendar.query.filter_by(
+            scope_type=scope_type,
+            scope_code=scope_code,
+        ).first()
+        is not None
+    )
+
+
+def _dashboard_capacity_for_operator(user: User) -> dict[int, float]:
+    """
+    Capacità settimanale del singolo operatore.
+
+    Priorità:
+    1. capacità specifica operatore;
+    2. capacità del reparto principale;
+    3. capacità globale.
+
+    Lo scope operatore usa User.id come scope_code.
+    """
+
+    if user is None:
+        return {i: 0.0 for i in range(7)}
+
+    operator_code = str(int(user.id))
+
+    # 1. Override specifico per operatore
+    if _dashboard_capacity_rows_exist("operatore", operator_code):
+        return _dashboard_capacity_by_weekday(
+            scope_type="operatore",
+            scope_code=operator_code,
+            fallback_to_global=False,
+        )
+
+    # 2. Capacità reparto principale
+    reparto_code = _norm_text(getattr(user, "RepartoPrinc", ""))
+
+    if reparto_code and _dashboard_capacity_rows_exist("reparto", reparto_code):
+        return _dashboard_capacity_by_weekday(
+            scope_type="reparto",
+            scope_code=reparto_code,
+            fallback_to_global=False,
+        )
+
+    # 3. Fallback globale
+    return _dashboard_capacity_by_weekday(
+        scope_type="global",
+        scope_code="*",
+    )
+
+
+def _dashboard_capacity_by_weekday_for_policy(
+    policy: RbacPolicy,
+    filters: dict | None = None,
+) -> tuple[dict[int, float], int]:
+    """
+    Calcola la capacità produttiva giornaliera totale per il cruscotto.
+
+    Logica:
+    - prende gli operatori attivi coerenti con policy e filtri;
+    - per ogni operatore calcola la capacità settimanale con priorità:
+        1. capacità specifica operatore;
+        2. capacità reparto;
+        3. capacità globale;
+    - somma le ore per ogni giorno della settimana.
+
+    Ritorna:
+        (
+            {
+                0: ore_lunedì,
+                1: ore_martedì,
+                ...
+                6: ore_domenica,
+            },
+            numero_operatori_considerati
+        )
+    """
+
+    filters = filters or {}
+
+    totals = {weekday: 0.0 for weekday in range(7)}
+    operator_count = 0
+
+    users = _dashboard_capacity_users(policy, filters)
+
+    for user in users:
+        capacity = _dashboard_capacity_for_operator(user)
+
+        # Conta l'operatore solo se ha almeno una capacità settimanale valorizzata.
+        # Se vuoi contare anche operatori con 0 ore su tutta la settimana,
+        # rimuovi questo controllo.
+        has_capacity = any(
+            float(capacity.get(weekday, 0.0) or 0.0) > 0 for weekday in range(7)
+        )
+
+        if not has_capacity:
+            continue
+
+        operator_count += 1
+
+        for weekday in range(7):
+            totals[weekday] += float(capacity.get(weekday, 0.0) or 0.0)
+
+    return (
+        {weekday: round(hours, 2) for weekday, hours in totals.items()},
+        operator_count,
+    )
+
+
+def _dashboard_seed_model_filter_options(
+    options: dict,
+    *,
+    key: str,
+    model,
+) -> None:
+    """
+    Alimenta un filtro da una tabella anagrafica con Codice/Descrizione.
+    Esempi:
+    - reparto -> Reparti
+    - risorsa -> Risorse
+    - lavorazione -> Lavorazioni
+    """
+    rows = model.query.order_by(
+        func.lower(func.coalesce(model.Descrizione, model.Codice)),
+        func.lower(model.Codice),
+    ).all()
+
+    for row in rows:
+        codice = _norm_text(getattr(row, "Codice", ""))
+        descrizione = _norm_text(getattr(row, "Descrizione", ""))
+
+        if not codice:
+            continue
+
+        _dashboard_add_filter_option(
+            options,
+            key,
+            codice,
+            _dashboard_filter_label(codice, descrizione),
+        )
+
+
+def _dashboard_seed_user_filter_options(options: dict) -> None:
+    """
+    Alimenta il filtro Operatore da tutti gli utenti presenti in users.
+    Non filtra per active, ruolo, reparto o policy.
+    """
+    users = User.query.order_by(func.lower(User.username)).all()
+
+    for user in users:
+        username = _norm_text(getattr(user, "username", ""))
+
+        if not username:
+            continue
+
+        _dashboard_add_filter_option(
+            options,
+            "operatore",
+            username,
+            username,
+        )
+
+
+def _dashboard_seed_stato_filter_options(options: dict) -> None:
+    """
+    Stati standard usati dalla dashboard produzione.
+    Non vengono presi da TipologieStato perché quel model contiene solo 'tipo'
+    numerico e non la descrizione testuale usata nei dati dashboard.
+    """
+    for stato in ("Pianificata", "Attivo", "In Sospeso", "Chiusa"):
+        _dashboard_add_filter_option(
+            options,
+            "stato",
+            stato,
+            stato,
+        )
+
+
+def _dashboard_seed_master_filter_options(options: dict) -> None:
+    """
+    Filtri caricati da anagrafiche/models, indipendenti dalle righe visibili.
+    """
+    _dashboard_seed_model_filter_options(
+        options,
+        key="reparto",
+        model=Reparti,
+    )
+
+    _dashboard_seed_model_filter_options(
+        options,
+        key="risorsa",
+        model=Risorse,
+    )
+
+    _dashboard_seed_model_filter_options(
+        options,
+        key="lavorazione",
+        model=Lavorazioni,
+    )
+
+    _dashboard_seed_user_filter_options(options)
+    _dashboard_seed_stato_filter_options(options)
 
 
 def _dashboard_build_cruscotto_payload(policy: RbacPolicy) -> dict:
@@ -8991,6 +9482,9 @@ def _dashboard_build_cruscotto_payload(policy: RbacPolicy) -> dict:
     criticita = []
     collaudo_rows = []
     filtered_ordini = []
+    filter_options = _dashboard_new_filter_options_bucket()
+    filter_label_maps = _dashboard_filter_label_maps()
+    _dashboard_seed_master_filter_options(filter_options)
 
     stati_chart = {
         "Pianificata": 0,
@@ -9008,6 +9502,11 @@ def _dashboard_build_cruscotto_payload(policy: RbacPolicy) -> dict:
         data_fine = _dashboard_data_fine_prevista(ordine)
         runtime = getattr(ordine, "runtime_row", None)
         base_row = _dashboard_order_payload(ordine)
+        _dashboard_collect_filter_options_from_row(
+            filter_options,
+            base_row,
+            filter_label_maps,
+        )
 
         if not _dashboard_row_matches_filters(base_row, filters):
             continue
@@ -9125,8 +9624,19 @@ def _dashboard_build_cruscotto_payload(policy: RbacPolicy) -> dict:
         {"label": key, "value": value} for key, value in stati_chart.items()
     ]
 
+    capacity_by_weekday, capacity_operator_count = (
+        _dashboard_capacity_by_weekday_for_policy(
+            policy,
+            filters,
+        )
+    )
+
+    payload["cards"]["operatori_capacita"] = capacity_operator_count
+
     payload["charts"]["carico_prossimi_giorni"] = _dashboard_carico_prossimo_mese(
-        filtered_ordini
+        filtered_ordini,
+        capacity_by_weekday=capacity_by_weekday,
+        capacity_operator_count=capacity_operator_count,
     )
 
     payload["operatori"] = sorted(
@@ -9159,6 +9669,21 @@ def _dashboard_build_cruscotto_payload(policy: RbacPolicy) -> dict:
         key=lambda x: (-x["ore_totali"], x["risorsa"].lower()),
     )
 
+    payload["charts"]["carico_per_risorsa"] = _dashboard_carico_per_risorsa_chart(
+        payload["carico_risorsa"]
+    )
+    payload["charts"]["carico_per_reparto"] = _dashboard_carico_per_reparto(
+        filtered_ordini
+    )
+    payload["charts"]["saturazione_risorse"] = _dashboard_saturazione_risorse(
+        payload["carico_risorsa"]
+    )
+    payload["cards"]["risorse_sovraccariche"] = sum(
+        1
+        for row in payload["charts"]["saturazione_risorse"]
+        if float(row.get("saturazione") or 0.0) > 110
+    )
+
     payload["criticita"] = sorted(
         criticita,
         key=lambda x: (
@@ -9167,6 +9692,8 @@ def _dashboard_build_cruscotto_payload(policy: RbacPolicy) -> dict:
             x.get("data_fine_prevista") or "9999-12-31",
         ),
     )[:100]
+    payload["cards"]["ordini_critici"] = len(payload["criticita"])
+    payload["filter_options"] = _dashboard_finalize_filter_options(filter_options)
 
     payload["collaudo"] = collaudo_rows[:100]
     payload["capacity_calendar"] = _capacity_calendar_payload()
@@ -9180,6 +9707,24 @@ def _dashboard_build_cruscotto_payload(policy: RbacPolicy) -> dict:
     )[:500]
 
     return payload
+
+
+def _kpi_macchine_prodotte(rt: OdpRuntimeLog, il: InputOdpLog | None) -> float:
+    """
+    Numero macchine prodotte.
+
+    Regola corretta per il KPI:
+    - conta 1 macchina per ogni chiusura_finale valida;
+    - non somma QuantitaConforme;
+    - non somma Quantita;
+    - non conta chiusura_macchina, per evitare doppioni su ordini multifase.
+    """
+    azione = _norm_text(getattr(rt, "Azione", "")).lower()
+
+    if azione != "chiusura_finale":
+        return 0.0
+
+    return 1.0
 
 
 def _kpi_parse_date(value) -> date | None:
@@ -9461,11 +10006,18 @@ def _dashboard_kpi_empty_payload() -> dict:
             "tempo_medio_fase": 0.0,
             "tempo_medio_collaudo": 0.0,
             "collaudi_chiusi_oggi": 0,
+            "affidabilita_tempi": 0.0,
+            "ordini_tempi_affidabili": 0,
+            "ordini_tempi_non_affidabili": 0,
         },
         "charts": {
             "tempo_reale_vs_previsto": [],
             "ritardo_medio_reparto": [],
             "ritardo_medio_risorsa": [],
+            "top_risorse_scostamento": [],
+            "top_reparti_scostamento": [],
+            "top_lavorazioni_scostamento": [],
+            "affidabilita_tempi": [],
         },
         "details": [],
         "aggregati": {
@@ -9475,6 +10027,7 @@ def _dashboard_kpi_empty_payload() -> dict:
             "operatori": [],
             "articoli": [],
         },
+        "filter_options": _dashboard_empty_filter_options(),
     }
 
 
@@ -9529,7 +10082,6 @@ def _finalize_kpi_group(bucket: dict) -> dict:
 
 def _build_dashboard_kpi_payload(*, detail_limit: int | None = 500) -> dict:
     payload = _dashboard_kpi_empty_payload()
-
     date_from, date_to = _kpi_date_range_from_request()
     date_from_dt = datetime.combine(date_from, datetime.min.time()).replace(
         tzinfo=ROME_TZ
@@ -9562,6 +10114,9 @@ def _build_dashboard_kpi_payload(*, detail_limit: int | None = 500) -> dict:
 
     detail_rows = []
     today = _dashboard_today()
+    filter_options = _dashboard_new_filter_options_bucket()
+    filter_label_maps = _dashboard_filter_label_maps()
+    _dashboard_seed_master_filter_options(filter_options)
 
     groups = {
         "reparti": {},
@@ -9573,7 +10128,6 @@ def _build_dashboard_kpi_payload(*, detail_limit: int | None = 500) -> dict:
 
     collaudo_tempi = []
     collaudi_chiusi_oggi = 0
-
     for rt, il in rows:
         if not _kpi_event_is_eligible(rt, il):
             continue
@@ -9588,6 +10142,7 @@ def _build_dashboard_kpi_payload(*, detail_limit: int | None = 500) -> dict:
         reparto = _kpi_reparto_for_log(rt, il)
         risorsa = _kpi_risorsa_for_log(il)
         lavorazione = _kpi_lavorazione_for_log(il)
+        macchine_prodotte = _kpi_macchine_prodotte(rt, il)
 
         tempo_previsto = _kpi_tempo_previsto_ore(il)
         tempo_reale = _kpi_tempo_reale_ore(rt, il)
@@ -9631,6 +10186,7 @@ def _build_dashboard_kpi_payload(*, detail_limit: int | None = 500) -> dict:
             else _norm_text(getattr(rt, "FasePost", "")),
             "tempo_previsto_ore": round(tempo_previsto, 2),
             "tempo_reale_ore": round(tempo_reale, 2),
+            "macchine_prodotte": round(macchine_prodotte, 2),
             "scostamento_ore": round(scostamento, 2),
             "scostamento_percentuale": round((scostamento / tempo_previsto) * 100, 2)
             if tempo_previsto > 0
@@ -9642,6 +10198,15 @@ def _build_dashboard_kpi_payload(*, detail_limit: int | None = 500) -> dict:
             "is_ritardo": ritardo_giorni > 0,
             "is_collaudo": _kpi_is_collaudo(reparto, risorsa, lavorazione),
         }
+
+        _dashboard_collect_filter_options_from_row(
+            filter_options,
+            {
+                **row,
+                "cod_art": row.get("articolo"),
+            },
+            filter_label_maps,
+        )
 
         if not _kpi_matches_filters(row, filters):
             continue
@@ -9665,6 +10230,9 @@ def _build_dashboard_kpi_payload(*, detail_limit: int | None = 500) -> dict:
 
     ordini = len(detail_rows)
     ritardi = sum(1 for row in detail_rows if row["is_ritardo"])
+    macchine_prodotte = sum(
+        float(row.get("macchine_prodotte", 0.0) or 0.0) for row in detail_rows
+    )
 
     tempo_previsto_totale = sum(
         float(row["tempo_previsto_ore"] or 0.0) for row in detail_rows
@@ -9678,6 +10246,25 @@ def _build_dashboard_kpi_payload(*, detail_limit: int | None = 500) -> dict:
         float(row["ritardo_giorni"] or 0.0) for row in detail_rows if row["is_ritardo"]
     )
 
+    rows_con_tempo_previsto = [
+        row for row in detail_rows if float(row.get("tempo_previsto_ore") or 0.0) > 0
+    ]
+    ordini_tempi_affidabili = sum(
+        1
+        for row in rows_con_tempo_previsto
+        if float(row.get("tempo_reale_ore") or 0.0)
+        <= float(row.get("tempo_previsto_ore") or 0.0) * 1.10
+    )
+    ordini_tempi_non_affidabili = max(
+        len(rows_con_tempo_previsto) - ordini_tempi_affidabili,
+        0,
+    )
+    affidabilita_tempi = (
+        round((ordini_tempi_affidabili / len(rows_con_tempo_previsto)) * 100, 2)
+        if rows_con_tempo_previsto
+        else 0.0
+    )
+
     payload["cards"] = {
         "ordini_chiusi": ordini,
         "ordini_in_ritardo": ritardi,
@@ -9685,6 +10272,7 @@ def _build_dashboard_kpi_payload(*, detail_limit: int | None = 500) -> dict:
         "giorni_medi_ritardo": round(giorni_ritardo_totali / ritardi, 2)
         if ritardi
         else 0.0,
+        "macchine_prodotte": round(macchine_prodotte, 2),
         "tempo_previsto_totale": round(tempo_previsto_totale, 2),
         "tempo_reale_totale": round(tempo_reale_totale, 2),
         "tempo_reale_vs_previsto": round(tempo_reale_totale - tempo_previsto_totale, 2),
@@ -9701,6 +10289,9 @@ def _build_dashboard_kpi_payload(*, detail_limit: int | None = 500) -> dict:
         if collaudo_tempi
         else 0.0,
         "collaudi_chiusi_oggi": collaudi_chiusi_oggi,
+        "affidabilita_tempi": affidabilita_tempi,
+        "ordini_tempi_affidabili": ordini_tempi_affidabili,
+        "ordini_tempi_non_affidabili": ordini_tempi_non_affidabili,
     }
 
     payload["charts"]["tempo_reale_vs_previsto"] = [
@@ -9722,14 +10313,27 @@ def _build_dashboard_kpi_payload(*, detail_limit: int | None = 500) -> dict:
         for name, group in groups.items()
     }
 
+    reparto_labels = _dashboard_reparti_label_map()
+
     payload["charts"]["ritardo_medio_reparto"] = [
         {
-            "label": row["key"],
+            "label": _dashboard_reparto_label(row["key"], reparto_labels),
+            "codice_reparto": row["key"],
             "value": row["giorni_medi_ritardo"],
+            "ordini": row["ordini"],
+            "ritardi": row["ritardi"],
         }
-        for row in payload["aggregati"]["reparti"]
-        if row["giorni_medi_ritardo"] > 0
-    ]
+        for row in sorted(
+            payload["aggregati"]["reparti"],
+            key=lambda x: (
+                -float(x.get("giorni_medi_ritardo") or 0.0),
+                -int(x.get("ritardi") or 0),
+                -int(x.get("ordini") or 0),
+                x.get("key", "").lower(),
+            ),
+        )
+        if int(row.get("ordini") or 0) > 0
+    ][:10]
 
     payload["charts"]["ritardo_medio_risorsa"] = [
         {
@@ -9738,6 +10342,63 @@ def _build_dashboard_kpi_payload(*, detail_limit: int | None = 500) -> dict:
         }
         for row in payload["aggregati"]["risorse"]
         if row["giorni_medi_ritardo"] > 0
+    ]
+
+    payload["charts"]["top_risorse_scostamento"] = [
+        {
+            "label": row["key"],
+            "value": row["scostamento_percentuale"],
+            "scostamento_ore": row["scostamento"],
+        }
+        for row in sorted(
+            payload["aggregati"]["risorse"],
+            key=lambda x: (
+                -float(x.get("scostamento_percentuale") or 0.0),
+                -float(x.get("scostamento") or 0.0),
+                x.get("key", "").lower(),
+            ),
+        )
+        if float(row.get("scostamento_percentuale") or 0.0) > 0
+    ][:10]
+
+    payload["charts"]["top_reparti_scostamento"] = [
+        {
+            "label": _dashboard_reparto_label(row["key"], reparto_labels),
+            "codice_reparto": row["key"],
+            "value": row["scostamento_percentuale"],
+            "scostamento_ore": row["scostamento"],
+        }
+        for row in sorted(
+            payload["aggregati"]["reparti"],
+            key=lambda x: (
+                -float(x.get("scostamento_percentuale") or 0.0),
+                -float(x.get("scostamento") or 0.0),
+                x.get("key", "").lower(),
+            ),
+        )
+        if float(row.get("scostamento_percentuale") or 0.0) > 0
+    ][:10]
+
+    payload["charts"]["top_lavorazioni_scostamento"] = [
+        {
+            "label": row["key"],
+            "value": row["scostamento_percentuale"],
+            "scostamento_ore": row["scostamento"],
+        }
+        for row in sorted(
+            payload["aggregati"]["lavorazioni"],
+            key=lambda x: (
+                -float(x.get("scostamento_percentuale") or 0.0),
+                -float(x.get("scostamento") or 0.0),
+                x.get("key", "").lower(),
+            ),
+        )
+        if float(row.get("scostamento_percentuale") or 0.0) > 0
+    ][:10]
+
+    payload["charts"]["affidabilita_tempi"] = [
+        {"label": "Entro +10%", "value": ordini_tempi_affidabili},
+        {"label": "Oltre +10%", "value": ordini_tempi_non_affidabili},
     ]
 
     sorted_details = sorted(
@@ -9756,6 +10417,7 @@ def _build_dashboard_kpi_payload(*, detail_limit: int | None = 500) -> dict:
         "date_to": date_to.isoformat(),
         **{k: _norm_text(v) for k, v in filters.items()},
     }
+    payload["filter_options"] = _dashboard_finalize_filter_options(filter_options)
 
     return payload
 
@@ -9819,6 +10481,7 @@ def _write_kpi_summary_sheet(ws, data: dict):
         ("Filtro stato", filters.get("stato", "")),
         ("", ""),
         ("Ordini chiusi", cards.get("ordini_chiusi", 0)),
+        ("Macchine prodotte", cards.get("macchine_prodotte", 0)),
         ("Ordini in ritardo", cards.get("ordini_in_ritardo", 0)),
         ("% ritardo", cards.get("percentuale_ritardo", 0)),
         ("Giorni medi ritardo", cards.get("giorni_medi_ritardo", 0)),
@@ -10013,6 +10676,9 @@ def _snapshot_row_to_dict(row: ProductionKpiSnapshot) -> dict:
         "period_end": row.period_end,
         "ordini_chiusi": _snapshot_int(row.ordini_chiusi),
         "ordini_in_ritardo": _snapshot_int(row.ordini_in_ritardo),
+        "macchine_prodotte": round(
+            _snapshot_float(getattr(row, "macchine_prodotte", 0)), 2
+        ),
         "percentuale_ritardo": round(_snapshot_float(row.percentuale_ritardo), 2),
         "giorni_medi_ritardo": round(_snapshot_float(row.giorni_medi_ritardo), 2),
         "tempo_previsto_totale": round(_snapshot_float(row.tempo_previsto_totale), 2),
@@ -10103,6 +10769,10 @@ def _build_kpi_snapshot_payload() -> dict:
                 latest.get("scostamento_totale"),
                 previous.get("scostamento_totale") if previous else 0,
             ),
+            "macchine_prodotte": _snapshot_change(
+                latest.get("macchine_prodotte"),
+                previous.get("macchine_prodotte") if previous else 0,
+            ),
         }
 
     available_scopes = (
@@ -10166,6 +10836,13 @@ def _build_kpi_snapshot_payload() -> dict:
                 }
                 for row in data_rows
             ],
+            "macchine_prodotte": [
+                {
+                    "month": row["snapshot_month"],
+                    "value": row["macchine_prodotte"],
+                }
+                for row in data_rows
+            ],
         },
         "rows": data_rows,
     }
@@ -10217,6 +10894,13 @@ def _capacity_scope_code_is_valid(scope_type: str, scope_code: str) -> bool:
             ).first()
             is not None
         )
+    if scope_type == "operatore":
+        try:
+            user_id = int(scope_code)
+        except (TypeError, ValueError):
+            return False
+
+        return User.query.filter(User.id == user_id).first() is not None
 
     return False
 
@@ -10245,6 +10929,9 @@ def _capacity_settings_payload() -> dict:
     reparti = Reparti.query.order_by(func.lower(Reparti.Codice)).all()
 
     risorse = Risorse.query.order_by(func.lower(Risorse.Codice)).all()
+    operatori = (
+        User.query.filter(User.active.is_(True)).order_by(User.username.asc()).all()
+    )
 
     return {
         "weekdays": [
@@ -10264,6 +10951,15 @@ def _capacity_settings_payload() -> dict:
                 "descrizione": r.Descrizione or r.Codice or "",
             }
             for r in risorse
+        ],
+        "operatori": [
+            {
+                "codice": str(int(u.id)),
+                "descrizione": f"{u.username or ''} - {u.RepartoPrinc or 'senza reparto'}",
+                "username": u.username or "",
+                "reparto_princ": u.RepartoPrinc or "",
+            }
+            for u in operatori
         ],
     }
 
@@ -10286,7 +10982,7 @@ def api_save_production_capacity():
 
     scope_type = _norm_text(data.get("scope_type")).lower() or "global"
 
-    if scope_type not in {"global", "reparto", "risorsa"}:
+    if scope_type not in {"global", "reparto", "risorsa", "operatore"}:
         return jsonify({"ok": False, "error": "Tipo scope non valido."}), 400
 
     scope_code = _norm_text(data.get("scope_code"))
@@ -10369,98 +11065,6 @@ def api_dashboard_produzione_kpi_snapshots():
             "data": _json_safe(data),
         }
     ), 200
-
-
-@main_bp.get("/api/dash-complessiva")
-@main_bp.get("/dash-complessiva")
-@require_active_perm("dash_complessiva")
-def dash_complessiva():
-    policy = _current_policy()
-    ordini_visibili = policy.filter_input_odp(_base_odp_query()).all()
-    ordini_globali_unici = set()
-
-    allowed_reparti = {
-        _norm_text(code)
-        for code in getattr(policy, "allowed_reparti", [])
-        if _norm_text(code)
-    }
-
-    reparti_rows = []
-    if allowed_reparti:
-        reparti_rows = (
-            Reparti.query.filter(Reparti.Codice.in_(sorted(allowed_reparti)))
-            .order_by(Reparti.Descrizione.asc(), Reparti.Codice.asc())
-            .all()
-        )
-
-    kpi_globali = _dash_complessiva_new_bucket()
-
-    kpi_per_reparto = {}
-    for rep in reparti_rows:
-        codice = _norm_text(rep.Codice)
-        if not codice:
-            continue
-
-        kpi_per_reparto[codice] = {
-            "codice": codice,
-            "descrizione": _first_not_blank(rep.Descrizione, rep.Codice, default="-"),
-            "kpi": _dash_complessiva_new_bucket(),
-            "_seen_order_keys": set(),
-        }
-
-    for ordine in ordini_visibili:
-        chiave_ordine = (ordine.IdDocumento, ordine.IdRiga)
-        ordini_globali_unici.add(chiave_ordine)
-        stato = _norm_text(getattr(ordine, "StatoOrdine", "")).lower()
-        if stato == "chiusa":
-            continue
-
-        # Nel tuo caso questi valori vanno interpretati come minuti correnti
-        ore_lavorazione, ore_attrezzaggio = _order_hours_snapshot_complessiva(ordine)
-
-        _dash_complessiva_apply_order(
-            kpi_globali,
-            stato,
-            ore_lavorazione,
-            ore_attrezzaggio,
-        )
-
-        fase_attiva = _norm_text(getattr(ordine, "FaseAttiva", ""))
-
-        reparto_attivo_raw = _active_value_for_phase(
-            getattr(ordine, "CodReparto", ""),
-            getattr(ordine, "NumFase", ""),
-            fase_attiva,
-        )
-        reparto_attivo = _first_code_from_cell(reparto_attivo_raw)
-
-        if reparto_attivo in kpi_per_reparto:
-            _dash_complessiva_apply_order(
-                kpi_per_reparto[reparto_attivo]["kpi"],
-                stato,
-                ore_lavorazione,
-                ore_attrezzaggio,
-            )
-
-    kpi_globali = _dash_complessiva_finalize_bucket(kpi_globali)
-
-    kpi_reparti = []
-    for reparto_code in sorted(
-        kpi_per_reparto,
-        key=lambda code: (
-            (kpi_per_reparto[code]["descrizione"] or "").lower(),
-            code.lower(),
-        ),
-    ):
-        payload = kpi_per_reparto[reparto_code]
-        payload["kpi"] = _dash_complessiva_finalize_bucket(payload["kpi"])
-        kpi_reparti.append(payload)
-
-    return render_template(
-        "dash_complessiva.j2",
-        kpi_globali=_json_safe(kpi_globali),
-        kpi_reparti=_json_safe(kpi_reparti),
-    )
 
 
 @main_bp.get("/api/dash-reparto")

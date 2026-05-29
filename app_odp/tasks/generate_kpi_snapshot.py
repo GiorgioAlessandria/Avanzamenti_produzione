@@ -32,6 +32,27 @@ def _safe_float(value) -> float:
         return 0.0
 
 
+def _positive_float(value) -> float:
+    out = _safe_float(value)
+    return out if out > 0 else 0.0
+
+
+def _macchine_prodotte_for_log(rt: OdpRuntimeLog, il: InputOdpLog | None) -> float:
+    """
+    Numero macchine prodotte nello snapshot mensile.
+
+    Conta 1 macchina per ogni chiusura_finale valida.
+    Non usa QuantitaConforme/Quantita perché quei campi possono rappresentare pezzi,
+    quantità o componenti, non necessariamente macchine finite.
+    """
+    azione = _norm_text(getattr(rt, "Azione", "")).lower()
+
+    if azione != "chiusura_finale":
+        return 0.0
+
+    return 1.0
+
+
 def _parse_date(value) -> date | None:
     raw = _norm_text(value)
     if not raw:
@@ -322,12 +343,14 @@ def _new_bucket(scope_type: str, scope_code: str) -> dict:
         "tempo_reale_totale": 0.0,
         "tempo_medio_ordine": 0.0,
         "tempo_medio_fase": 0.0,
+        "macchine_prodotte": 0.0,
         "rows": [],
     }
 
 
 def _apply_to_bucket(bucket: dict, row: dict) -> None:
     bucket["ordini_chiusi"] += 1
+    bucket["macchine_prodotte"] += float(row.get("macchine_prodotte", 0.0) or 0.0)
 
     if row["ritardo_giorni"] > 0:
         bucket["ordini_in_ritardo"] += 1
@@ -343,6 +366,7 @@ def _finalize_bucket(
 ) -> dict:
     ordini = int(bucket["ordini_chiusi"] or 0)
     ritardi = int(bucket["ordini_in_ritardo"] or 0)
+    macchine_prodotte = float(bucket.get("macchine_prodotte", 0.0) or 0.0)
 
     tempo_previsto = float(bucket["tempo_previsto_totale"] or 0.0)
     tempo_reale = float(bucket["tempo_reale_totale"] or 0.0)
@@ -356,6 +380,7 @@ def _finalize_bucket(
         "period_end": period_end.isoformat(),
         "ordini_chiusi": ordini,
         "ordini_in_ritardo": ritardi,
+        "macchine_prodotte": round(macchine_prodotte, 2),
         "percentuale_ritardo": round((ritardi / ordini) * 100, 2) if ordini else 0.0,
         "giorni_medi_ritardo": round(bucket["giorni_ritardo_totali"] / ritardi, 2)
         if ritardi
@@ -398,6 +423,7 @@ def _upsert_snapshot(record: dict, *, created_by: str) -> None:
     row.ordini_chiusi = record["ordini_chiusi"]
     row.ordini_in_ritardo = record["ordini_in_ritardo"]
     row.percentuale_ritardo = record["percentuale_ritardo"]
+    row.macchine_prodotte = record["macchine_prodotte"]
     row.giorni_medi_ritardo = record["giorni_medi_ritardo"]
     row.tempo_previsto_totale = record["tempo_previsto_totale"]
     row.tempo_reale_totale = record["tempo_reale_totale"]
@@ -471,6 +497,7 @@ def generate_snapshot_for_month(
 
         tempo_previsto = _tempo_previsto_ore(il)
         tempo_reale = _tempo_reale_ore(rt, il)
+        macchine_prodotte = _macchine_prodotte_for_log(rt, il)
 
         data_fine_prevista = _data_fine_prevista(il)
         ritardo_giorni = 0
@@ -488,6 +515,7 @@ def generate_snapshot_for_month(
             "lavorazione": lavorazione,
             "operatore": operatore,
             "articolo": articolo,
+            "macchine_prodotte": macchine_prodotte,
             "tempo_previsto_ore": tempo_previsto,
             "tempo_reale_ore": tempo_reale,
             "ritardo_giorni": ritardo_giorni,

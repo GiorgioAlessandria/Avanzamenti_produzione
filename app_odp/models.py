@@ -1625,7 +1625,7 @@ class ProductionCapacityCalendar(db.Model):
 
     __table_args__ = (
         db.CheckConstraint(
-            "scope_type IN ('global', 'reparto', 'risorsa')",
+            "scope_type IN ('global', 'reparto', 'risorsa', 'operatore')",
             name="ck_production_capacity_calendar_scope_type",
         ),
         db.CheckConstraint(
@@ -1664,6 +1664,9 @@ class ProductionKpiSnapshot(db.Model):
     ordini_chiusi = db.Column(db.Integer, nullable=False, default=0, server_default="0")
     ordini_in_ritardo = db.Column(
         db.Integer, nullable=False, default=0, server_default="0"
+    )
+    macchine_prodotte = db.Column(
+        db.Float, nullable=False, default=0.0, server_default="0"
     )
     percentuale_ritardo = db.Column(db.Float)
 
