@@ -4,7 +4,7 @@
         <div class="card-header">
             <h3 class="mb-0">Capacità produttiva</h3>
             <div class="text-muted small">
-                Configurazione ore disponibili per globale, reparto o risorsa.
+                Configurazione ore disponibili per singolo operatore.
             </div>
         </div>
 
@@ -16,23 +16,17 @@
             <form id="form-production-capacity"
                   class="border rounded p-3 mb-3">
                 <div class="row g-2 align-items-end">
-                    <div class="col-12 col-md-3">
-                        <label class="form-label">Tipo</label>
-                        <select class="form-select"
-                                name="scope_type"
-                                id="capacity-scope-type">
-                            <option value="global">Globale</option>
-                            <option value="reparto">Reparto</option>
-                            <option value="risorsa">Risorsa</option>
-                        </select>
-                    </div>
+                    <input type="hidden"
+                           name="scope_type"
+                           id="capacity-scope-type"
+                           value="operatore">
 
-                    <div class="col-12 col-md-5">
-                        <label class="form-label">Scope</label>
+                    <div class="col-12 col-md-8">
+                        <label class="form-label">Operatore</label>
                         <select class="form-select"
                                 name="scope_code"
                                 id="capacity-scope-code">
-                            <option value="*">Globale</option>
+                            <option value="">Seleziona operatore</option>
                         </select>
                     </div>
 
@@ -92,8 +86,7 @@
                 <table class="table table-sm table-hover align-middle">
                     <thead class="table-light">
                     <tr>
-                        <th>Tipo</th>
-                        <th>Codice</th>
+                        <th>Operatore</th>
                         <th>Giorno</th>
                         <th class="text-end">Ore</th>
                         <th class="text-center">Attivo</th>
@@ -103,7 +96,7 @@
                     </thead>
                     <tbody id="capacity-existing-body">
                     <tr>
-                        <td colspan="7"
+                        <td colspan="6"
                             class="text-center text-muted py-3">
                             Dati non caricati.
                         </td>
@@ -126,8 +119,7 @@
             let payload = {
                 weekdays: [],
                 capacity_rows: [],
-                reparti: [],
-                risorse: [],
+                operatori: [],
             };
 
             function withTabSession(url) {
@@ -187,31 +179,35 @@
             }
 
             function renderScopeCodes() {
-                const typeSelect = document.getElementById("capacity-scope-type");
                 const codeSelect = document.getElementById("capacity-scope-code");
-                if (!typeSelect || !codeSelect) return;
+                if (!codeSelect) return;
 
-                const scopeType = typeSelect.value;
+                const rows = payload.operatori || [];
+                const currentValue = codeSelect.value;
 
-                if (scopeType === "global") {
-                    codeSelect.innerHTML = `<option value="*">Globale</option>`;
-                    codeSelect.value = "*";
+                if (!rows.length) {
+                    codeSelect.innerHTML = `<option value="">Nessun operatore disponibile</option>`;
+                    codeSelect.value = "";
                     return;
                 }
 
-                const rows = scopeType === "reparto" ? payload.reparti : payload.risorse;
+                codeSelect.innerHTML = rows.map(row => `
+                        <option value="${escapeHtml(row.codice)}">
+                            ${escapeHtml(row.descrizione || row.username || row.codice)}
+                        </option>
+                    `).join("");
 
-                codeSelect.innerHTML = (rows || []).map(row => `
-            <option value="${escapeHtml(row.codice)}">
-                ${escapeHtml(row.codice)} - ${escapeHtml(row.descrizione)}
-            </option>
-        `).join("");
+                if (currentValue && rows.some(row => String(row.codice) === String(currentValue))) {
+                    codeSelect.value = currentValue;
+                } else {
+                    codeSelect.value = rows[0].codice;
+                }
             }
 
             function currentScope() {
                 return {
-                    scope_type: document.getElementById("capacity-scope-type")?.value || "global",
-                    scope_code: document.getElementById("capacity-scope-code")?.value || "*",
+                    scope_type: "operatore",
+                    scope_code: document.getElementById("capacity-scope-code")?.value || "",
                 };
             }
 
@@ -246,40 +242,45 @@
                 }
             }
 
+            function operatorLabel(scopeCode) {
+                const row = (payload.operatori || []).find(x => String(x.codice) === String(scopeCode));
+                return row?.descrizione || row?.username || scopeCode || "-";
+            }
+
             function renderExistingRows() {
                 const tbody = document.getElementById("capacity-existing-body");
                 if (!tbody) return;
 
-                const rows = payload.capacity_rows || [];
+                const rows = (payload.capacity_rows || [])
+                    .filter(row => row.scope_type === "operatore");
 
                 if (!rows.length) {
                     tbody.innerHTML = `
-                <tr>
-                    <td colspan="7" class="text-center text-muted py-3">
-                        Nessuna configurazione salvata.
-                    </td>
-                </tr>
-            `;
+            <tr>
+                <td colspan="6" class="text-center text-muted py-3">
+                    Nessuna configurazione operatore salvata.
+                </td>
+            </tr>
+        `;
                     return;
                 }
 
                 tbody.innerHTML = rows.map(row => `
-            <tr>
-                <td>${escapeHtml(row.scope_type)}</td>
-                <td>${escapeHtml(row.scope_code)}</td>
-                <td>${escapeHtml(row.weekday_label)}</td>
-                <td class="text-end">${Number(row.hours_capacity || 0).toFixed(2)}</td>
-                <td class="text-center">${row.active ? "Sì" : "No"}</td>
-                <td>${escapeHtml(row.updated_by || "")}</td>
-                <td class="text-end">
-                    <button type="button"
-                            class="btn btn-sm btn-outline-primary"
-                            data-capacity-load="${escapeHtml(row.scope_type)}|${escapeHtml(row.scope_code)}">
-                        Carica
-                    </button>
-                </td>
-            </tr>
-        `).join("");
+        <tr>
+                    <td>${escapeHtml(operatorLabel(row.scope_code))}</td>
+                    <td>${escapeHtml(row.weekday_label)}</td>
+                    <td class="text-end">${Number(row.hours_capacity || 0).toFixed(2)}</td>
+                    <td class="text-center">${row.active ? "Sì" : "No"}</td>
+                    <td>${escapeHtml(row.updated_by || "")}</td>
+                    <td class="text-end">
+                        <button type="button"
+                                class="btn btn-sm btn-outline-primary"
+                                data-capacity-load="${escapeHtml(row.scope_code)}">
+                            Carica
+                        </button>
+                    </td>
+                </tr>
+            `).join("");
             }
 
             function collectFormRows() {
@@ -312,9 +313,8 @@
                 const button = event.target.closest("[data-capacity-load]");
                 if (!button) return;
 
-                const [scopeType, scopeCode] = button.dataset.capacityLoad.split("|");
+                const scopeCode = button.dataset.capacityLoad || "";
 
-                document.getElementById("capacity-scope-type").value = scopeType;
                 renderScopeCodes();
                 document.getElementById("capacity-scope-code").value = scopeCode;
                 applyRowsToForm();

@@ -137,98 +137,31 @@
                         </div>
                     </div>
                 </div>
-
                 <div class="row g-3 mb-3">
-                    <div class="col-12 col-md-2">
-                        <div class="card shadow-sm h-100">
-                            <div class="card-body">
-                                <div class="text-muted small">Attivi</div>
-                                <div class="kpi-card-value"
-                                     data-dashboard-card="ordini_attivi">0
-                                </div>
-                                <div class="small text-muted kpi-card-subtitle">carico reale</div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-12 col-md-2">
-                        <div class="card shadow-sm h-100">
-                            <div class="card-body">
-                                <div class="text-muted small">Sospesi</div>
-                                <div class="kpi-card-value"
-                                     data-dashboard-card="ordini_sospesi">0
-                                </div>
-                                <div class="small text-muted kpi-card-subtitle">carico bloccato</div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-12 col-md-2">
-                        <div class="card shadow-sm h-100">
-                            <div class="card-body">
-                                <div class="text-muted small">Pianificati</div>
-                                <div class="kpi-card-value"
-                                     data-dashboard-card="ordini_pianificati">0
-                                </div>
-                                <div class="small text-muted kpi-card-subtitle">carico futuro</div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-12 col-md-2">
-                        <div class="card shadow-sm h-100">
-                            <div class="card-body">
-                                <div class="text-muted small">Ore residue</div>
-                                <div class="kpi-card-value"
-                                     data-dashboard-card="tempo_previsto_residuo">0 h
-                                </div>
-                                <div class="small text-muted kpi-card-subtitle">solo ordini attivi</div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-12 col-md-2">
-                        <div class="card shadow-sm h-100">
-                            <div class="card-body">
-                                <div class="text-muted small">Criticità</div>
-                                <div class="kpi-card-value text-danger"
-                                     data-dashboard-card="ordini_critici">0
-                                </div>
-                                <div class="small text-muted kpi-card-subtitle">ritardi, sospesi, senza tempi</div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-12 col-md-2">
-                        <div class="card shadow-sm h-100">
-                            <div class="card-body">
-                                <div class="text-muted small">Risorse sovraccariche</div>
-                                <div class="kpi-card-value"
-                                     data-dashboard-card="risorse_sovraccariche">0
-                                </div>
-                                <div class="small text-muted kpi-card-subtitle">oltre 110%</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="row g-3 mb-3">
-                    <div class="col-12 col-xl-8">
+                    <div class="col-12 col-xl-10">
                         <div class="card shadow-sm h-100">
                             <div class="card-header">Carico prossimo mese</div>
                             <div class="card-body">
                                 <div class="dashboard-chart-box">
                                     <canvas id="chart-cruscotto-carico"></canvas>
                                     <div class="dashboard-empty"
-                                         data-empty-for="chart-cruscotto-carico">Dati non caricati.
+                                         data-empty-for="chart-cruscotto-carico">
+                                        Dati non caricati.
                                     </div>
                                 </div>
                             </div>
                         </div>
                     </div>
-                    <div class="col-12 col-xl-4">
+
+                    <div class="col-12 col-xl-2">
                         <div class="card shadow-sm h-100">
                             <div class="card-header">Stati ordine</div>
                             <div class="card-body">
                                 <div class="dashboard-chart-box">
                                     <canvas id="chart-cruscotto-stati"></canvas>
                                     <div class="dashboard-empty"
-                                         data-empty-for="chart-cruscotto-stati">Dati non caricati.
+                                         data-empty-for="chart-cruscotto-stati">
+                                        Dati non caricati.
                                     </div>
                                 </div>
                             </div>
@@ -237,19 +170,6 @@
                 </div>
 
                 <div class="row g-3 mb-3">
-                    <div class="col-12 col-xl-6">
-                        <div class="card shadow-sm h-100">
-                            <div class="card-header">Saturazione risorse</div>
-                            <div class="card-body">
-                                <div class="dashboard-chart-box">
-                                    <canvas id="chart-cruscotto-saturazione"></canvas>
-                                    <div class="dashboard-empty"
-                                         data-empty-for="chart-cruscotto-saturazione">Dati non caricati.
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
                     <div class="col-12 col-xl-6">
                         <div class="card shadow-sm h-100">
                             <div class="card-header">Carico per reparto</div>
@@ -257,7 +177,55 @@
                                 <div class="dashboard-chart-box">
                                     <canvas id="chart-cruscotto-reparti"></canvas>
                                     <div class="dashboard-empty"
-                                         data-empty-for="chart-cruscotto-reparti">Dati non caricati.
+                                         data-empty-for="chart-cruscotto-reparti">
+                                        Dati non caricati.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-12 col-xl-6">
+                        <div class="card shadow-sm h-100">
+                            <div class="card-header">Ordini per reparto</div>
+                            <div class="card-body">
+                                <div class="dashboard-chart-box">
+                                    <canvas id="chart-cruscotto-ordini-reparto"></canvas>
+                                    <div class="dashboard-empty"
+                                         data-empty-for="chart-cruscotto-ordini-reparto">
+                                        Dati non caricati.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row g-3 mb-3">
+                    <div class="col-12 col-xl-6">
+                        <div class="card shadow-sm h-100">
+                            <div class="card-header">Carico per risorsa</div>
+                            <div class="card-body">
+                                <div class="dashboard-chart-box">
+                                    <canvas id="chart-cruscotto-risorse"></canvas>
+                                    <div class="dashboard-empty"
+                                         data-empty-for="chart-cruscotto-risorse">
+                                        Dati non caricati.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-12 col-xl-6">
+                        <div class="card shadow-sm h-100">
+                            <div class="card-header">Ordini per risorsa</div>
+                            <div class="card-body">
+                                <div class="dashboard-chart-box">
+                                    <canvas id="chart-cruscotto-ordini-risorsa"></canvas>
+                                    <div class="dashboard-empty"
+                                         data-empty-for="chart-cruscotto-ordini-risorsa">
+                                        Dati non caricati.
                                     </div>
                                 </div>
                             </div>
@@ -266,20 +234,22 @@
                 </div>
 
                 <div class="row g-3">
-                    <div class="col-12 col-xl-7">
+                    <div class="col-12 col-xl-6">
                         <div class="card shadow-sm h-100">
-                            <div class="card-header">Carico per risorsa</div>
+                            <div class="card-header">Saturazione risorse</div>
                             <div class="card-body">
                                 <div class="dashboard-chart-box">
-                                    <canvas id="chart-cruscotto-risorse"></canvas>
+                                    <canvas id="chart-cruscotto-saturazione"></canvas>
                                     <div class="dashboard-empty"
-                                         data-empty-for="chart-cruscotto-risorse">Dati non caricati.
+                                         data-empty-for="chart-cruscotto-saturazione">
+                                        Dati non caricati.
                                     </div>
                                 </div>
                             </div>
                         </div>
                     </div>
-                    <div class="col-12 col-xl-5">
+
+                    <div class="col-12 col-xl-6">
                         <div class="card shadow-sm h-100">
                             <div class="card-header">Top criticità operative</div>
                             <div class="card-body">
@@ -594,6 +564,30 @@
                                         <div class="dashboard-empty"
                                              data-empty-for="chart-snapshot-tempi">Dati non caricati.
                                         </div>
+                                    </div>
+
+                                    <div class="table-responsive mt-3">
+                                        <table class="table table-sm table-striped table-hover align-middle mb-0">
+                                            <thead class="table-light">
+                                            <tr>
+                                                <th>Mese</th>
+                                                <th class="text-end">Tempo previsto</th>
+                                                <th class="text-end">Tempo reale</th>
+                                                <th class="text-end">Scostamento</th>
+                                                <th class="text-end">% scostamento</th>
+                                                <th class="text-end">Tempo medio ordine</th>
+                                                <th class="text-end">Tempo medio fase</th>
+                                            </tr>
+                                            </thead>
+                                            <tbody id="tbody-snapshot-tempi">
+                                            <tr>
+                                                <td colspan="7"
+                                                    class="text-center text-muted py-3">
+                                                    Dati non caricati.
+                                                </td>
+                                            </tr>
+                                            </tbody>
+                                        </table>
                                     </div>
                                 </div>
                             </div>
@@ -933,13 +927,114 @@
                         ],
                     },
                     options: baseOptions({
-                        indexAxis: "y",
+                        indexAxis: "x",
                         scales: {
-                            x: {stacked: true, beginAtZero: true, title: {display: true, text: "Ore"}},
-                            y: {stacked: true}
+                            y: {stacked: true, beginAtZero: true, title: {display: true, text: "Ore"}},
+                            x: {stacked: true}
                         }
                     }),
                 }, rows?.length > 0);
+            }
+
+            function renderCruscottoOrdiniReparto(rows) {
+                rows = rows || [];
+
+                renderChart("cruscotto_ordini_reparto", "chart-cruscotto-ordini-reparto", {
+                    type: "bar",
+                    data: {
+                        labels: rows.map(x => x.label),
+                        datasets: [
+                            {
+                                label: "Attivi",
+                                data: rows.map(x => Number(x.ordini_attivi || 0)),
+                                backgroundColor: COLORS.green,
+                                stack: "ordini"
+                            },
+                            {
+                                label: "Sospesi",
+                                data: rows.map(x => Number(x.ordini_sospesi || 0)),
+                                backgroundColor: COLORS.yellow,
+                                stack: "ordini"
+                            },
+                            {
+                                label: "Pianificati",
+                                data: rows.map(x => Number(x.ordini_pianificati || 0)),
+                                backgroundColor: COLORS.blue,
+                                stack: "ordini"
+                            },
+                        ],
+                    },
+                    options: baseOptions({
+                        indexAxis: "y",
+                        scales: {
+                            x: {
+                                stacked: true,
+                                beginAtZero: true,
+                                ticks: {
+                                    precision: 0
+                                },
+                                title: {
+                                    display: true,
+                                    text: "Numero ordini"
+                                }
+                            },
+                            y: {
+                                stacked: true
+                            }
+                        }
+                    }),
+                }, rows.some(x => Number(x.ordini_totali || 0) > 0));
+            }
+
+
+            function renderCruscottoOrdiniRisorsa(rows) {
+                rows = rows || [];
+
+                renderChart("cruscotto_ordini_risorsa", "chart-cruscotto-ordini-risorsa", {
+                    type: "bar",
+                    data: {
+                        labels: rows.map(x => x.label),
+                        datasets: [
+                            {
+                                label: "Attivi",
+                                data: rows.map(x => Number(x.ordini_attivi || 0)),
+                                backgroundColor: COLORS.green,
+                                stack: "ordini"
+                            },
+                            {
+                                label: "Sospesi",
+                                data: rows.map(x => Number(x.ordini_sospesi || 0)),
+                                backgroundColor: COLORS.yellow,
+                                stack: "ordini"
+                            },
+                            {
+                                label: "Pianificati",
+                                data: rows.map(x => Number(x.ordini_pianificati || 0)),
+                                backgroundColor: COLORS.blue,
+                                stack: "ordini"
+                            },
+                        ],
+                    },
+                    options: baseOptions({
+                        indexAxis: "y",
+                        scales: {
+                            x: {
+                                stacked: true,
+                                beginAtZero: true,
+                                ticks: {
+                                    precision: 0
+                                },
+                                title: {
+                                    display: true,
+                                    text: "Numero ordini"
+                                }
+                            },
+                            y: {
+                                stacked: true
+                            }
+                        }
+                    }),
+                }, rows.some(x => Number(x.ordini_totali || 0) > 0));
             }
 
             function renderCriticitaList(rows) {
@@ -1042,6 +1137,8 @@
                 renderCruscottoSaturazione(data.charts?.saturazione_risorse || []);
                 renderCruscottoReparti(data.charts?.carico_per_reparto || []);
                 renderCruscottoRisorse(data.charts?.carico_per_risorsa || []);
+                renderCruscottoOrdiniReparto(data.charts?.ordini_per_reparto || []);
+                renderCruscottoOrdiniRisorsa(data.charts?.ordini_per_risorsa || []);
                 renderCriticitaList(data.criticita || []);
             }
 
@@ -1226,34 +1323,15 @@
             }
 
             function renderSnapshotCharts(rows) {
-                renderChart("snapshot_ordini", "chart-snapshot-ordini", {
-                    type: "line",
-                    data: {
-                        labels: rows.map(x => x.snapshot_month),
-                        datasets: [
-                            {
-                                label: "Andamento produzione mensile",
-                                data: rows.map(x => Number(x.ordini_chiusi || 0)),
-                                borderColor: BORDER_COLORS.blue,
-                                backgroundColor: COLORS.blue,
-                                tension: .25
-                            },
-                            {
-                                label: "In ritardo",
-                                data: rows.map(x => Number(x.ordini_in_ritardo || 0)),
-                                borderColor: BORDER_COLORS.red,
-                                backgroundColor: COLORS.red,
-                                tension: .25
-                            },
-                        ],
-                    },
-                    options: baseOptions({scales: {y: {beginAtZero: true}}}),
-                }, rows?.length > 0);
+                rows = Array.isArray(rows) ? rows : [];
+
+                const labels = rows.map(x => x.snapshot_month);
+                const hasRows = rows.length > 0;
 
                 renderChart("snapshot_ordini", "chart-snapshot-ordini", {
                     type: "line",
                     data: {
-                        labels: rows.map(x => x.snapshot_month),
+                        labels,
                         datasets: [
                             {
                                 label: "Macchine prodotte",
@@ -1289,7 +1367,99 @@
                             }
                         }
                     }),
-                }, rows?.length > 0);
+                }, hasRows);
+
+                const hasTempi = rows.some(row => {
+                    return Number(row.tempo_previsto_totale || 0) !== 0
+                        || Number(row.tempo_reale_totale || 0) !== 0
+                        || Number(row.scostamento_totale || 0) !== 0;
+                });
+
+                renderChart("snapshot_tempi", "chart-snapshot-tempi", {
+                    type: "line",
+                    data: {
+                        labels,
+                        datasets: [
+                            {
+                                label: "Tempo previsto",
+                                data: rows.map(x => Number(x.tempo_previsto_totale || 0)),
+                                borderColor: BORDER_COLORS.blue,
+                                backgroundColor: COLORS.blue,
+                                tension: .25
+                            },
+                            {
+                                label: "Tempo reale",
+                                data: rows.map(x => Number(x.tempo_reale_totale || 0)),
+                                borderColor: BORDER_COLORS.orange,
+                                backgroundColor: COLORS.orange,
+                                tension: .25
+                            },
+                            {
+                                label: "Scostamento",
+                                data: rows.map(x => Number(x.scostamento_totale || 0)),
+                                borderColor: BORDER_COLORS.red,
+                                backgroundColor: COLORS.red,
+                                tension: .25
+                            },
+                        ],
+                    },
+                    options: baseOptions({
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: "Ore"
+                                }
+                            }
+                        }
+                    }),
+                }, hasTempi);
+            }
+
+            function formatSignedHours(value) {
+                const n = Number(value || 0);
+                const sign = n > 0 ? "+" : "";
+                return `${sign}${n.toFixed(2)} h`;
+            }
+
+            function renderSnapshotTempiTable(rows) {
+                const tbody = document.getElementById("tbody-snapshot-tempi");
+                if (!tbody) return;
+
+                rows = Array.isArray(rows) ? rows : [];
+
+                if (!rows.length) {
+                    tbody.innerHTML = `
+            <tr>
+                <td colspan="7" class="text-center text-muted py-3">
+                    Nessuno snapshot disponibile.
+                </td>
+            </tr>
+        `;
+                    return;
+                }
+
+                tbody.innerHTML = rows.map(row => {
+                    const scostamento = Number(row.scostamento_totale || 0);
+                    const scostamentoClass = scostamento > 0
+                        ? "text-danger"
+                        : scostamento < 0
+                            ? "text-success"
+                            : "";
+
+                    return `
+            <tr>
+                <td>${escapeHtml(row.snapshot_month || "")}</td>
+                <td class="text-end">${formatHours(row.tempo_previsto_totale)}</td>
+                <td class="text-end">${formatHours(row.tempo_reale_totale)}</td>
+                <td class="text-end ${scostamentoClass}">${formatSignedHours(scostamento)}</td>
+                <td class="text-end ${scostamentoClass}">${formatPercent(row.scostamento_percentuale)}</td>
+                <td class="text-end">${formatHours(row.tempo_medio_ordine)}</td>
+                <td class="text-end">${formatHours(row.tempo_medio_fase)}</td>
+            </tr>
+        `;
+                }).join("");
             }
 
             async function loadSnapshots() {
@@ -1328,6 +1498,7 @@
                 setSnapshotDelta("percentuale_ritardo", data.comparison?.percentuale_ritardo, "%");
                 setSnapshotDelta("scostamento_totale", data.comparison?.scostamento_totale, " h");
                 renderSnapshotCharts(rows);
+                renderSnapshotTempiTable(rows);
             }
 
             bindFilterAutoReload("dashboard-produzione-cruscotto", loadCruscotto);

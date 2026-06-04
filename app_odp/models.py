@@ -1625,7 +1625,7 @@ class ProductionCapacityCalendar(db.Model):
 
     __table_args__ = (
         db.CheckConstraint(
-            "scope_type IN ('global', 'reparto', 'risorsa', 'operatore')",
+            "scope_type IN ('operatore')",
             name="ck_production_capacity_calendar_scope_type",
         ),
         db.CheckConstraint(

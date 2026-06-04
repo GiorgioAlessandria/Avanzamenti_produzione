@@ -8680,16 +8680,76 @@ def _dashboard_produzione_initial_payload(policy: RbacPolicy) -> dict:
     }
 
 
-def _dashboard_parse_date(value):
+def _dashboard_parse_date(value) -> date | None:
+    """
+    Converte una data dashboard in date.
+
+    Formati gestiti:
+    - date/datetime Python
+    - 2026-06-03
+    - 2026-06-03 00:00:00
+    - 2026-06-03T00:00:00
+    - 2026-06-03 00:00:00.000
+    - 03/06/2026
+    - 03/06/2026 00:00
+    - 03/06/2026 00:00:00
+    - 20260603
+    """
+
+    if value is None:
+        return None
+
+    if isinstance(value, datetime):
+        return value.date()
+
+    if isinstance(value, date):
+        return value
+
     raw = _norm_text(value)
+
     if not raw:
         return None
 
-    for fmt in ("%Y-%m-%d", "%Y-%m-%d %H:%M:%S", "%d/%m/%Y"):
+    if raw.lower() in {"none", "null", "nan", "nat", "0000-00-00"}:
+        return None
+
+    # ISO diretto: gestisce anche "2026-06-03T00:00:00"
+    iso_raw = raw.replace("Z", "+00:00")
+    try:
+        return datetime.fromisoformat(iso_raw).date()
+    except ValueError:
+        pass
+
+    # Normalizzazione base:
+    # - T diventa spazio
+    # - rimuove millisecondi
+    # - rimuove timezone finale
+    clean = raw.replace("T", " ").strip()
+    clean = re.sub(r"\.\d+", "", clean)
+    clean = re.sub(r"\s*(Z|[+-]\d{2}:?\d{2})$", "", clean).strip()
+
+    formats = (
+        "%Y-%m-%d",
+        "%Y-%m-%d %H:%M",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y/%m/%d",
+        "%Y/%m/%d %H:%M",
+        "%Y/%m/%d %H:%M:%S",
+        "%d/%m/%Y",
+        "%d/%m/%Y %H:%M",
+        "%d/%m/%Y %H:%M:%S",
+        "%d-%m-%Y",
+        "%d-%m-%Y %H:%M",
+        "%d-%m-%Y %H:%M:%S",
+        "%Y%m%d",
+        "%d%m%Y",
+    )
+
+    for fmt in formats:
         try:
-            return datetime.strptime(raw[:19], fmt).date()
+            return datetime.strptime(clean, fmt).date()
         except ValueError:
-            pass
+            continue
 
     return None
 
@@ -8793,38 +8853,92 @@ def _dashboard_lavorazione_attiva(ordine: InputOdp) -> str:
 
 
 def _dashboard_data_fine_prevista(ordine: InputOdp):
-    return _dashboard_parse_date(
-        getattr(ordine, "DataFinePrevista", "") or getattr(ordine, "DataFineSched", "")
+    raw_data_fine = getattr(ordine, "DataFinePrevista", "") or getattr(
+        ordine, "DataFineSched", ""
     )
 
+    fase_attiva = getattr(ordine, "FaseAttiva", "1")
+    data_fine_attiva = InputOdp._active_value_from_phase_list(
+        raw_data_fine,
+        fase_attiva,
+    )
 
-def _dashboard_tempo_previsto_ore(ordine: InputOdp) -> float:
-    """
-    Regola richiesta:
-    1. TempoPrevistoFase
-    2. fallback TempoPrevisto
-    3. fallback TempoPrevistoLavoraz della fase attiva
-    """
+    return _dashboard_parse_date(data_fine_attiva)
 
-    runtime = getattr(ordine, "runtime_row", None)
 
-    raw_values = [
-        getattr(ordine, "TempoPrevistoFase", ""),
-        getattr(runtime, "TempoPrevistoFase", "") if runtime else "",
-        getattr(ordine, "TempoPrevisto", ""),
-        getattr(runtime, "TempoPrevisto", "") if runtime else "",
-        InputOdp._active_value_from_phase_list(
-            getattr(ordine, "TempoPrevistoLavoraz", ""),
-            _dashboard_fase_attiva(ordine),
-        ),
-    ]
+def _dashboard_parse_date(value) -> date | None:
+    if value is None:
+        return None
 
-    for raw in raw_values:
-        value = _safe_float(raw)
-        if value > 0:
-            return value
+    if isinstance(value, datetime):
+        return value.date()
 
-    return 0.0
+    if isinstance(value, date):
+        return value
+
+    raw = _norm_text(value)
+
+    if not raw:
+        return None
+
+    if raw.lower() in {"none", "null", "nan", "nat", "0000-00-00"}:
+        return None
+
+    # Gestione valori salvati come lista JSON:
+    # es. ["2026-04-07 00:00:00"]
+    if raw.startswith("["):
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, list) and parsed:
+                raw = _norm_text(parsed[0])
+            else:
+                return None
+        except (json.JSONDecodeError, TypeError, ValueError):
+            return None
+
+    # Gestione valori JSON string:
+    # es. "2026-04-07 00:00:00"
+    elif raw.startswith('"') and raw.endswith('"'):
+        try:
+            raw = _norm_text(json.loads(raw))
+        except (json.JSONDecodeError, TypeError, ValueError):
+            raw = raw.strip('"')
+
+    iso_raw = raw.replace("Z", "+00:00")
+
+    try:
+        return datetime.fromisoformat(iso_raw).date()
+    except ValueError:
+        pass
+
+    clean = raw.replace("T", " ").strip()
+    clean = re.sub(r"\.\d+", "", clean)
+    clean = re.sub(r"\s*(Z|[+-]\d{2}:?\d{2})$", "", clean).strip()
+
+    formats = (
+        "%Y-%m-%d",
+        "%Y-%m-%d %H:%M",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y/%m/%d",
+        "%Y/%m/%d %H:%M",
+        "%Y/%m/%d %H:%M:%S",
+        "%d/%m/%Y",
+        "%d/%m/%Y %H:%M",
+        "%d/%m/%Y %H:%M:%S",
+        "%d-%m-%Y",
+        "%d-%m-%Y %H:%M",
+        "%d-%m-%Y %H:%M:%S",
+        "%Y%m%d",
+        "%d%m%Y",
+    )
+
+    for fmt in formats:
+        try:
+            return datetime.strptime(clean, fmt).date()
+        except ValueError:
+            continue
+
+    return None
 
 
 def _dashboard_attrezzaggio_ore(ordine: InputOdp) -> float:
@@ -8836,6 +8950,22 @@ def _dashboard_attrezzaggio_ore(ordine: InputOdp) -> float:
 
     # Attrezzaggio nel tuo codice storico era gestito come minuti.
     return value / 60.0 if value > 0 else 0.0
+
+
+def _dashboard_tempo_previsto_ore(ordine: InputOdp) -> float:
+    """
+    Restituisce le ore previste della fase attiva.
+
+    Gestisce anche valori salvati come lista JSON, ad esempio:
+    ["1.5", "2.0", "0.75"]
+    """
+
+    raw = _dashboard_active_value(ordine, "TempoPrevistoLavoraz")
+
+    if not raw:
+        raw = getattr(ordine, "TempoPrevistoLavoraz", "")
+
+    return _safe_float(raw)
 
 
 def _dashboard_carico_ore(ordine: InputOdp) -> float:
@@ -9101,6 +9231,67 @@ def _dashboard_carico_per_reparto(ordini: list[InputOdp]) -> list[dict]:
     return sorted(out, key=lambda x: (-x["ore_totali"], x["label"].lower()))[:12]
 
 
+def _dashboard_ordini_per_reparto(ordini: list[InputOdp]) -> list[dict]:
+    buckets = {}
+    reparto_labels = _dashboard_reparti_label_map()
+    seen_keys = set()
+
+    for ordine in ordini or []:
+        stato = _dashboard_stato_norm(ordine).lower()
+
+        if not ("attiv" in stato or "sospes" in stato or "pianificat" in stato):
+            continue
+
+        ordine_key = (
+            _norm_text(getattr(ordine, "IdDocumento", "")),
+            _norm_text(getattr(ordine, "IdRiga", "")),
+            _norm_text(getattr(ordine, "FaseAttiva", "")) or "1",
+        )
+
+        if ordine_key in seen_keys:
+            continue
+
+        seen_keys.add(ordine_key)
+
+        reparto = _dashboard_reparto_attivo(ordine) or "-"
+        reparto_label = _dashboard_reparto_label(reparto, reparto_labels)
+
+        buckets.setdefault(
+            reparto,
+            {
+                "label": reparto_label,
+                "reparto": reparto,
+                "codice_reparto": reparto,
+                "ordini_attivi": 0,
+                "ordini_sospesi": 0,
+                "ordini_pianificati": 0,
+                "ordini_totali": 0,
+            },
+        )
+
+        if "attiv" in stato:
+            buckets[reparto]["ordini_attivi"] += 1
+        elif "sospes" in stato:
+            buckets[reparto]["ordini_sospesi"] += 1
+        elif "pianificat" in stato:
+            buckets[reparto]["ordini_pianificati"] += 1
+
+    out = []
+
+    for row in buckets.values():
+        row["ordini_totali"] = (
+            int(row["ordini_attivi"] or 0)
+            + int(row["ordini_sospesi"] or 0)
+            + int(row["ordini_pianificati"] or 0)
+        )
+        out.append(row)
+
+    return sorted(
+        out,
+        key=lambda x: (-int(x["ordini_totali"] or 0), x["label"].lower()),
+    )[:12]
+
+
 def _dashboard_carico_per_risorsa_chart(carico_rows: list[dict]) -> list[dict]:
     out = []
     for row in carico_rows or []:
@@ -9115,6 +9306,31 @@ def _dashboard_carico_per_risorsa_chart(carico_rows: list[dict]) -> list[dict]:
         )
 
     return sorted(out, key=lambda x: (-x["ore_totali"], x["label"].lower()))[:12]
+
+
+def _dashboard_ordini_per_risorsa_chart(carico_rows: list[dict]) -> list[dict]:
+    out = []
+
+    for row in carico_rows or []:
+        ordini_attivi = int(row.get("ordini_attivi") or 0)
+        ordini_sospesi = int(row.get("ordini_sospesi") or 0)
+        ordini_pianificati = int(row.get("ordini_pianificati") or 0)
+
+        out.append(
+            {
+                "label": row.get("risorsa") or "-",
+                "risorsa": row.get("risorsa") or "-",
+                "ordini_attivi": ordini_attivi,
+                "ordini_sospesi": ordini_sospesi,
+                "ordini_pianificati": ordini_pianificati,
+                "ordini_totali": ordini_attivi + ordini_sospesi + ordini_pianificati,
+            }
+        )
+
+    return sorted(
+        out,
+        key=lambda x: (-int(x["ordini_totali"] or 0), x["label"].lower()),
+    )[:12]
 
 
 def _dashboard_cruscotto_empty_payload() -> dict:
@@ -9277,12 +9493,12 @@ def _dashboard_capacity_for_operator(user: User) -> dict[int, float]:
     """
     Capacità settimanale del singolo operatore.
 
-    Priorità:
-    1. capacità specifica operatore;
-    2. capacità del reparto principale;
-    3. capacità globale.
+    Usa solo righe:
+    scope_type = "operatore"
+    scope_code = User.id
 
-    Lo scope operatore usa User.id come scope_code.
+    Se l'operatore non ha una configurazione specifica,
+    la sua capacità è 0.
     """
 
     if user is None:
@@ -9290,28 +9506,13 @@ def _dashboard_capacity_for_operator(user: User) -> dict[int, float]:
 
     operator_code = str(int(user.id))
 
-    # 1. Override specifico per operatore
-    if _dashboard_capacity_rows_exist("operatore", operator_code):
-        return _dashboard_capacity_by_weekday(
-            scope_type="operatore",
-            scope_code=operator_code,
-            fallback_to_global=False,
-        )
+    if not _dashboard_capacity_rows_exist("operatore", operator_code):
+        return {i: 0.0 for i in range(7)}
 
-    # 2. Capacità reparto principale
-    reparto_code = _norm_text(getattr(user, "RepartoPrinc", ""))
-
-    if reparto_code and _dashboard_capacity_rows_exist("reparto", reparto_code):
-        return _dashboard_capacity_by_weekday(
-            scope_type="reparto",
-            scope_code=reparto_code,
-            fallback_to_global=False,
-        )
-
-    # 3. Fallback globale
     return _dashboard_capacity_by_weekday(
-        scope_type="global",
-        scope_code="*",
+        scope_type="operatore",
+        scope_code=operator_code,
+        fallback_to_global=False,
     )
 
 
@@ -9672,9 +9873,19 @@ def _dashboard_build_cruscotto_payload(policy: RbacPolicy) -> dict:
     payload["charts"]["carico_per_risorsa"] = _dashboard_carico_per_risorsa_chart(
         payload["carico_risorsa"]
     )
+
     payload["charts"]["carico_per_reparto"] = _dashboard_carico_per_reparto(
         filtered_ordini
     )
+
+    payload["charts"]["ordini_per_reparto"] = _dashboard_ordini_per_reparto(
+        filtered_ordini
+    )
+
+    payload["charts"]["ordini_per_risorsa"] = _dashboard_ordini_per_risorsa_chart(
+        payload["carico_risorsa"]
+    )
+
     payload["charts"]["saturazione_risorse"] = _dashboard_saturazione_risorse(
         payload["carico_risorsa"]
     )
@@ -10876,33 +11087,21 @@ def _capacity_scope_code_is_valid(scope_type: str, scope_code: str) -> bool:
     scope_type = _norm_text(scope_type)
     scope_code = _norm_text(scope_code)
 
-    if scope_type == "global":
-        return scope_code == "*"
+    if scope_type != "operatore":
+        return False
 
-    if scope_type == "reparto":
-        return (
-            Reparti.query.filter(
-                func.lower(Reparti.Codice) == scope_code.lower()
-            ).first()
-            is not None
-        )
+    try:
+        user_id = int(scope_code)
+    except (TypeError, ValueError):
+        return False
 
-    if scope_type == "risorsa":
-        return (
-            Risorse.query.filter(
-                func.lower(Risorse.Codice) == scope_code.lower()
-            ).first()
-            is not None
-        )
-    if scope_type == "operatore":
-        try:
-            user_id = int(scope_code)
-        except (TypeError, ValueError):
-            return False
-
-        return User.query.filter(User.id == user_id).first() is not None
-
-    return False
+    return (
+        User.query.filter(
+            User.id == user_id,
+            User.active.is_(True),
+        ).first()
+        is not None
+    )
 
 
 def _capacity_row_to_dict(row: ProductionCapacityCalendar) -> dict:
@@ -10920,15 +11119,17 @@ def _capacity_row_to_dict(row: ProductionCapacityCalendar) -> dict:
 
 
 def _capacity_settings_payload() -> dict:
-    rows = ProductionCapacityCalendar.query.order_by(
-        ProductionCapacityCalendar.scope_type.asc(),
-        ProductionCapacityCalendar.scope_code.asc(),
-        ProductionCapacityCalendar.weekday.asc(),
-    ).all()
+    rows = (
+        ProductionCapacityCalendar.query.filter(
+            ProductionCapacityCalendar.scope_type == "operatore"
+        )
+        .order_by(
+            ProductionCapacityCalendar.scope_code.asc(),
+            ProductionCapacityCalendar.weekday.asc(),
+        )
+        .all()
+    )
 
-    reparti = Reparti.query.order_by(func.lower(Reparti.Codice)).all()
-
-    risorse = Risorse.query.order_by(func.lower(Risorse.Codice)).all()
     operatori = (
         User.query.filter(User.active.is_(True)).order_by(User.username.asc()).all()
     )
@@ -10938,20 +11139,6 @@ def _capacity_settings_payload() -> dict:
             {"weekday": key, "label": label} for key, label in WEEKDAY_LABELS.items()
         ],
         "capacity_rows": [_capacity_row_to_dict(row) for row in rows],
-        "reparti": [
-            {
-                "codice": r.Codice or "",
-                "descrizione": r.Descrizione or r.Codice or "",
-            }
-            for r in reparti
-        ],
-        "risorse": [
-            {
-                "codice": r.Codice or "",
-                "descrizione": r.Descrizione or r.Codice or "",
-            }
-            for r in risorse
-        ],
         "operatori": [
             {
                 "codice": str(int(u.id)),
@@ -10980,15 +11167,17 @@ def api_production_capacity_data():
 def api_save_production_capacity():
     data = request.get_json(silent=True) or {}
 
-    scope_type = _norm_text(data.get("scope_type")).lower() or "global"
+    scope_type = _norm_text(data.get("scope_type")).lower() or "operatore"
 
-    if scope_type not in {"global", "reparto", "risorsa", "operatore"}:
-        return jsonify({"ok": False, "error": "Tipo scope non valido."}), 400
+    if scope_type != "operatore":
+        return jsonify(
+            {
+                "ok": False,
+                "error": "La capacità produttiva può essere configurata solo per operatore.",
+            }
+        ), 400
 
     scope_code = _norm_text(data.get("scope_code"))
-
-    if scope_type == "global":
-        scope_code = "*"
 
     if not scope_code:
         return jsonify({"ok": False, "error": "Codice scope obbligatorio."}), 400
