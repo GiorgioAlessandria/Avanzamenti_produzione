@@ -530,7 +530,9 @@
                     console.error("Payload modal materiale non valido:", err);
                     titleExtraEl.textContent = "";
                     bodyEl.innerHTML = `<div class="alert alert-danger mb-0">Impossibile leggere il dettaglio materiale.</div>`;
-                    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+
+                    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+                    modal.show();
                     return;
                 }
 
@@ -579,7 +581,8 @@
 
                 bodyEl.innerHTML = headerInfo + distintaHtml + ordineHtml;
 
-                bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+                modal.show();
             });
         })();
     </script>
@@ -615,9 +618,25 @@
             }
 
             document.addEventListener("click", (event) => {
-                const giacenzaBtn = event.target.closest("#btn-export-acq-giacenza");
-                if (giacenzaBtn) {
-                    startAcquistiExcelExport("giacenza");
+                const btn = event.target.closest(".js-open-acq-material-modal");
+                if (!btn) return;
+
+                const modalEl = document.querySelector("#modalAcqMateriale.modal");
+                const titleExtraEl = document.getElementById("modal-acq-materiale-title-extra");
+                const bodyEl = document.getElementById("modal-acq-materiale-body");
+
+                if (!(modalEl instanceof HTMLElement)) {
+                    console.error("Modal #modalAcqMateriale non trovato o non valido.");
+                    return;
+                }
+
+                if (!titleExtraEl || !bodyEl) {
+                    console.error("Elementi interni del modal materiale non trovati.");
+                    return;
+                }
+
+                if (!window.bootstrap || !bootstrap.Modal) {
+                    console.error("Bootstrap Modal non disponibile. Verificare bootstrap.bundle.min.js.");
                     return;
                 }
 

@@ -11450,34 +11450,72 @@ def _remaining_phase_codes_for_ordine(ordine) -> set[str]:
     return out or {str(fase_attiva_int)}
 
 
+def _normalize_acq_mag_code(value) -> str:
+    raw = _norm_text(value)
+    if not raw:
+        return ""
+
+    try:
+        num = Decimal(raw.replace(",", "."))
+        if num == num.to_integral_value():
+            return str(int(num))
+    except (InvalidOperation, ValueError):
+        pass
+
+    return raw
+
+
 def _material_key(cod_art: str, variante_art: str) -> tuple[str, str]:
-    return (_norm_text(cod_art), _norm_text(variante_art))
+    return (
+        _norm_text(cod_art),
+        _normalize_variante_articolo_search(variante_art),
+    )
 
 
 ACQUISTI_MAGAZZINI_GIACENZA = ("0", "6", "10", "11", "12", "13")
-ACQUISTI_MAGAZZINI_MATERIALE = ACQUISTI_MAGAZZINI_GIACENZA
+ACQUISTI_MAGAZZINI_MATERIALE = ("0",)
 
 
 def _build_acquisti_giacenze_map(
     magazzini_codes: tuple[str, ...],
 ) -> dict[str, dict[str, float]]:
     grouped: dict[str, dict[str, float]] = {}
+    allowed_mags = {_normalize_acq_mag_code(mag) for mag in magazzini_codes}
 
-    rows = AcqGiacenze.query.filter(AcqGiacenze.CodMag.in_(list(magazzini_codes))).all()
-
-    for giacenza in rows:
+    for giacenza in AcqGiacenze.query.all():
         cod_art = _norm_text(giacenza.CodArt)
-        cod_mag = _norm_text(giacenza.CodMag)
+        cod_mag = _normalize_acq_mag_code(giacenza.CodMag)
 
-        if not cod_art or cod_mag not in magazzini_codes:
+        if not cod_art or cod_mag not in allowed_mags:
             continue
 
         article_bucket = grouped.setdefault(
             cod_art,
-            {mag: 0.0 for mag in magazzini_codes},
+            {mag: 0.0 for mag in allowed_mags},
         )
 
-        article_bucket[cod_mag] += float(giacenza.Giacenza or 0)
+        article_bucket[cod_mag] += _safe_float(getattr(giacenza, "Giacenza", 0))
+
+    return grouped
+
+
+def _build_acquisti_materiale_mag0_map() -> dict[tuple[str, str], float]:
+    grouped: dict[tuple[str, str], float] = {}
+
+    for giacenza in AcqGiacenze.query.all():
+        cod_art = _norm_text(giacenza.CodArt)
+        variante_art = _normalize_variante_articolo_search(
+            getattr(giacenza, "VarianteArt", "")
+        )
+        cod_mag = _normalize_acq_mag_code(giacenza.CodMag)
+
+        if not cod_art or cod_mag != "0":
+            continue
+
+        key = _material_key(cod_art, variante_art)
+        grouped[key] = grouped.get(key, 0.0) + _safe_float(
+            getattr(giacenza, "Giacenza", 0)
+        )
 
     return grouped
 
@@ -11512,13 +11550,7 @@ def _build_acquisti_materiale_rows() -> list[dict]:
         if _norm_text(row.CodArt)
     }
 
-    giacenze_materiale_map = _build_acquisti_giacenze_map(ACQUISTI_MAGAZZINI_MATERIALE)
-
-    giacenze_materiale_totali = {
-        cod_art: sum(mag_map.values())
-        for cod_art, mag_map in giacenze_materiale_map.items()
-    }
-
+    giacenze_materiale_totali = _build_acquisti_materiale_mag0_map()
     grouped: dict[tuple[str, str], dict] = {}
 
     for ordine in ordini:
@@ -11641,8 +11673,12 @@ def _build_acquisti_materiale_rows() -> list[dict]:
 
     for _, row in grouped.items():
         articolo = articoli_map.get(row["CodArt"])
-        giacenza_totale = giacenze_materiale_totali.get(row["CodArt"])
-
+        giacenza_totale = giacenze_materiale_totali.get(
+            _material_key(
+                row["CodArt"],
+                _normalize_variante_art(row["VarianteArt"]),
+            )
+        )
         if not row["MagUM"]:
             row["MagUM"] = _first_not_blank_text(
                 getattr(articolo, "MagUM", "") if articolo else "",
@@ -11991,7 +12027,6 @@ def _build_acquisti_ordini_rows() -> dict:
 def home_acquisti():
     giacenze_rows = _build_acquisti_giacenze_rows()
     materiali_rows = _build_acquisti_materiale_rows()
-    ordini_rows = _build_acquisti_ordini_rows()
     ordini_rows = _build_acquisti_ordini_rows()
 
     return render_template(

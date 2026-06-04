@@ -1249,12 +1249,22 @@
             const modalBody = document.getElementById("modal-materiali-body");
             const modalCodArt = document.getElementById("modal-codart");
 
-            const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+            if (!(modalEl instanceof HTMLElement) || !modalBody || !modalCodArt) {
+                return;
+            }
+
+            if (!window.bootstrap || !bootstrap.Modal) {
+                console.error("Bootstrap Modal non disponibile.");
+                return;
+            }
+
+            let modal = null;
 
             document.addEventListener("click", function (e) {
                 const trigger = e.target.closest(".open-materiali-modal");
                 if (!trigger) return;
 
+                modal = bootstrap.Modal.getOrCreateInstance(modalEl);
                 e.preventDefault();
 
                 const codArt = trigger.dataset.codart || "";
