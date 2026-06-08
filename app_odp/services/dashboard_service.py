@@ -1005,6 +1005,8 @@ def _dashboard_build_cruscotto_payload(policy: RbacPolicy) -> dict:
         if not (is_attivo or is_sospeso or is_pianificata):
             continue
         payload["details"].append(base_row)
+        payload["cards"]["ordini_totali"] += 1
+        payload["cards"]["ore_previste_produzione"] += ore
 
         if is_attivo:
             payload["cards"]["ordini_attivi"] += 1
@@ -1103,6 +1105,12 @@ def _dashboard_build_cruscotto_payload(policy: RbacPolicy) -> dict:
         payload["cards"]["tempo_previsto_residuo"],
         2,
     )
+
+    payload["cards"]["ore_previste_produzione"] = round(
+        payload["cards"]["ore_previste_produzione"],
+        2,
+    )
+
     payload["cards"]["operatori_impegnati"] = len(operatori)
 
     payload["charts"]["stati_ordine"] = [
@@ -1116,7 +1124,13 @@ def _dashboard_build_cruscotto_payload(policy: RbacPolicy) -> dict:
         )
     )
 
+    today_weekday = _dashboard_today().weekday()
+
     payload["cards"]["operatori_capacita"] = capacity_operator_count
+    payload["cards"]["ore_disponibili_oggi"] = round(
+        float(capacity_by_weekday.get(today_weekday, 0.0) or 0.0),
+        2,
+    )
 
     payload["charts"]["carico_prossimi_giorni"] = _dashboard_carico_prossimo_mese(
         filtered_ordini,
@@ -1866,6 +1880,9 @@ def _dashboard_carico_per_risorsa_chart(carico_rows: list[dict]) -> list[dict]:
 def _dashboard_cruscotto_empty_payload() -> dict:
     return {
         "cards": {
+            "ordini_totali": 0,
+            "ore_previste_produzione": 0.0,
+            "ore_disponibili_oggi": 0.0,
             "ordini_attivi": 0,
             "ordini_sospesi": 0,
             "ordini_pianificati": 0,

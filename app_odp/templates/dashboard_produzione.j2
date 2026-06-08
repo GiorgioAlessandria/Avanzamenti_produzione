@@ -55,6 +55,20 @@
         .dashboard-list-item:last-child {
             border-bottom: 0;
         }
+
+        .dashboard-summary-card {
+            min-height: 76px;
+        }
+
+        .dashboard-summary-card .kpi-card-value {
+            font-size: 1.85rem;
+            font-weight: 700;
+            line-height: 1.1;
+        }
+
+        .dashboard-summary-card .small {
+            line-height: 1.1;
+        }
     </style>
 {% endblock %}
 
@@ -137,6 +151,72 @@
                         </div>
                     </div>
                 </div>
+                <!-- Sezione riepilogo sopra Carico prossimo mese + Stati ordine -->
+                <!-- Sezione riepilogo sopra Carico prossimo mese + Stati ordine -->
+                <div class="row g-3 mb-3">
+                    <div class="col-12">
+                        <div class="card shadow-sm">
+                            <div class="card-header">Riepilogo carico produzione</div>
+
+                            <div class="card-body">
+                                <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-xl-5 g-2">
+
+                                    <div class="col">
+                                        <div class="dashboard-summary-card border rounded p-2 h-100 text-center d-flex flex-column justify-content-center align-items-center">
+                                            <div class="text-muted small">Ordini totali</div>
+                                            <div class="kpi-card-value"
+                                                 data-dashboard-card="ordini_totali">0
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="col">
+                                        <div class="dashboard-summary-card border rounded p-2 h-100 text-center d-flex flex-column justify-content-center align-items-center">
+                                            <div class="text-muted small">Attivi</div>
+                                            <div class="kpi-card-value"
+                                                 data-dashboard-card="ordini_attivi">0
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="col">
+                                        <div class="dashboard-summary-card border rounded p-2 h-100 text-center d-flex flex-column justify-content-center align-items-center">
+                                            <div class="text-muted small">Sospesi</div>
+                                            <div class="kpi-card-value"
+                                                 data-dashboard-card="ordini_sospesi">0
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="col">
+                                        <div class="dashboard-summary-card border rounded p-2 h-100 text-center d-flex flex-column justify-content-center align-items-center">
+                                            <div class="text-muted small">Ore previste produzione</div>
+                                            <div class="kpi-card-value"
+                                                 data-dashboard-card="ore_previste_produzione">0 h
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="col">
+                                        <div class="dashboard-summary-card border rounded p-2 h-100 text-center d-flex flex-column justify-content-center align-items-center">
+                                            <div class="text-muted small">Ore disponibili oggi</div>
+                                            <div class="kpi-card-value"
+                                                 data-dashboard-card="ore_disponibili_oggi">0 h
+                                            </div>
+                                            <div class="small text-muted"
+                                                 data-dashboard-card-sub="operatori_capacita">
+                                                0 operatori
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Grafici Carico prossimo mese + Stati ordine -->
                 <div class="row g-3 mb-3">
                     <div class="col-12 col-xl-10">
                         <div class="card shadow-sm h-100">
@@ -1148,11 +1228,35 @@
                 );
 
                 const cards = data.cards || {};
-
+                setCard("data-dashboard-card", "ordini_totali", cards.ordini_totali ?? 0);
                 setCard("data-dashboard-card", "ordini_attivi", cards.ordini_attivi ?? 0);
                 setCard("data-dashboard-card", "ordini_sospesi", cards.ordini_sospesi ?? 0);
                 setCard("data-dashboard-card", "ordini_pianificati", cards.ordini_pianificati ?? 0);
-                setCard("data-dashboard-card", "tempo_previsto_residuo", formatHours(cards.tempo_previsto_residuo));
+
+                setCard(
+                    "data-dashboard-card",
+                    "tempo_previsto_residuo",
+                    formatHours(cards.tempo_previsto_residuo)
+                );
+
+                setCard(
+                    "data-dashboard-card",
+                    "ore_previste_produzione",
+                    formatHours(cards.ore_previste_produzione)
+                );
+
+                setCard(
+                    "data-dashboard-card",
+                    "ore_disponibili_oggi",
+                    formatHours(cards.ore_disponibili_oggi)
+                );
+
+                setCard(
+                    "data-dashboard-card-sub",
+                    "operatori_capacita",
+                    `${cards.operatori_capacita ?? 0} operatori`
+                );
+
                 setCard("data-dashboard-card", "ordini_critici", cards.ordini_critici ?? 0);
                 setCard("data-dashboard-card", "risorse_sovraccariche", cards.risorse_sovraccariche ?? 0);
 
