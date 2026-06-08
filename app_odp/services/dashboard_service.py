@@ -209,35 +209,281 @@ def _dashboard_carico_prossimo_mese(
     return list(by_day.values())
 
 
-def _dashboard_saturazione_risorse(carico_rows: list[dict]) -> list[dict]:
+def _dashboard_capacity_hours_from_weekday(
+    capacity_by_weekday: dict[int, float],
+    *,
+    days: list[date] | None = None,
+) -> float:
+    """Somma le ore di capacità sulla finestra del cruscotto, da oggi in avanti."""
+    days = days or _dashboard_next_month_days()
+
+    return round(
+        sum(float(capacity_by_weekday.get(day.weekday(), 0.0) or 0.0) for day in days),
+        2,
+    )
+
+
+def _dashboard_ordine_in_saturation_window(ordine: InputOdp) -> bool:
+    """
+    Include nel carico di saturazione:
+    - ordini senza data fine prevista;
+    - ordini arretrati;
+    - ordini con fine prevista entro la finestra del cruscotto.
+    """
+    data_fine = _dashboard_data_fine_prevista(ordine)
+
+    if data_fine is None:
+        return True
+
+    today = _dashboard_today()
+    end_day = today + timedelta(days=DASHBOARD_PRODUZIONE_FUTURE_DAYS - 1)
+
+    return data_fine <= end_day
+
+
+def _dashboard_capacity_by_reparto_for_policy(
+    policy: RbacPolicy,
+    filters: dict | None = None,
+) -> dict[str, dict]:
+    """
+    Calcola la capacità disponibile per reparto sommando le ore degli utenti
+    attivi appartenenti al reparto, sulla finestra da oggi in avanti.
+    """
+    buckets: dict[str, dict] = {}
+    reparto_labels = _dashboard_reparti_label_map()
+
+    for user in _dashboard_capacity_users(policy, filters):
+        reparto = _norm_text(getattr(user, "RepartoPrinc", ""))
+
+        if not reparto:
+            continue
+
+        capacity = _dashboard_capacity_for_operator(user)
+        ore_disponibili = _dashboard_capacity_hours_from_weekday(capacity)
+
+        if ore_disponibili <= 0:
+            continue
+
+        reparto_label = _dashboard_reparto_label(reparto, reparto_labels)
+
+        buckets.setdefault(
+            reparto,
+            {
+                "label": reparto_label,
+                "reparto": reparto,
+                "codice_reparto": reparto,
+                "capacita": 0.0,
+                "operatori_capacita": 0,
+            },
+        )
+
+        buckets[reparto]["capacita"] += ore_disponibili
+        buckets[reparto]["operatori_capacita"] += 1
+
+    for row in buckets.values():
+        row["capacita"] = round(float(row["capacita"] or 0.0), 2)
+
+    return buckets
+
+
+def _dashboard_capacity_hours_today(capacity_by_weekday: dict[int, float]) -> float:
+    """
+    Restituisce la capacità dell'operatore/reparto per il solo giorno attuale.
+
+    Esempio:
+    - oggi lunedì -> usa weekday 0;
+    - oggi venerdì -> usa weekday 4.
+    """
+    today = _dashboard_today()
+    return round(float(capacity_by_weekday.get(today.weekday(), 0.0) or 0.0), 2)
+
+
+def _dashboard_ordine_in_saturation_day(ordine: InputOdp) -> bool:
+    """
+    Stabilisce se l'ordine deve pesare nella saturazione di oggi.
+
+    Regola consigliata:
+    - ordini senza data fine prevista: inclusi oggi;
+    - ordini arretrati: inclusi oggi;
+    - ordini con data fine prevista oggi: inclusi oggi;
+    - ordini futuri: esclusi.
+    """
+    data_fine = _dashboard_data_fine_prevista(ordine)
+
+    if data_fine is None:
+        return True
+
+    today = _dashboard_today()
+
+    return data_fine <= today
+
+
+def _dashboard_capacity_by_reparto_today_for_policy(
+    policy: RbacPolicy,
+    filters: dict | None = None,
+) -> dict[str, dict]:
+    """
+    Calcola la capacità disponibile oggi per reparto.
+
+    La capacità reparto è la somma delle ore disponibili oggi
+    degli operatori attivi appartenenti a quel reparto.
+    """
+    buckets: dict[str, dict] = {}
+    reparto_labels = _dashboard_reparti_label_map()
+
+    for user in _dashboard_capacity_users(policy, filters):
+        reparto = _norm_text(getattr(user, "RepartoPrinc", ""))
+
+        if not reparto:
+            continue
+
+        capacity = _dashboard_capacity_for_operator(user)
+        ore_oggi = _dashboard_capacity_hours_today(capacity)
+
+        if ore_oggi <= 0:
+            continue
+
+        reparto_label = _dashboard_reparto_label(reparto, reparto_labels)
+
+        buckets.setdefault(
+            reparto,
+            {
+                "label": reparto_label,
+                "reparto": reparto,
+                "codice_reparto": reparto,
+                "capacita": 0.0,
+                "operatori_capacita": 0,
+            },
+        )
+
+        buckets[reparto]["capacita"] += ore_oggi
+        buckets[reparto]["operatori_capacita"] += 1
+
+    for row in buckets.values():
+        row["capacita"] = round(float(row["capacita"] or 0.0), 2)
+
+    return buckets
+
+
+def _dashboard_saturazione_risorse(
+    ordini: list[InputOdp],
+    policy: RbacPolicy,
+    filters: dict | None = None,
+) -> list[dict]:
+    """
+    Mantiene il nome storico `saturazione_risorse` per non rompere il frontend,
+    ma calcola la saturazione per reparto sul solo giorno attuale.
+
+    Formula:
+        ore ordini reparto oggi / ore disponibili oggi operatori reparto * 100
+    """
+    reparto_labels = _dashboard_reparti_label_map()
+    capacity_by_reparto = _dashboard_capacity_by_reparto_today_for_policy(
+        policy,
+        filters,
+    )
+
+    buckets: dict[str, dict] = {}
+    seen_keys = set()
+
+    for ordine in ordini or []:
+        stato = _dashboard_stato_norm(ordine).lower()
+
+        if not ("attiv" in stato or "sospes" in stato or "pianificat" in stato):
+            continue
+
+        if not _dashboard_ordine_in_saturation_day(ordine):
+            continue
+
+        ordine_key = _dashboard_order_key(ordine)
+
+        if ordine_key in seen_keys:
+            continue
+
+        seen_keys.add(ordine_key)
+
+        reparto = _dashboard_reparto_attivo(ordine) or "-"
+        reparto_label = _dashboard_reparto_label(reparto, reparto_labels)
+        ore = _dashboard_carico_ore(ordine)
+
+        buckets.setdefault(
+            reparto,
+            {
+                "label": reparto_label,
+                "reparto": reparto,
+                "codice_reparto": reparto,
+                "ore_attive": 0.0,
+                "ore_sospese": 0.0,
+                "ore_pianificate": 0.0,
+                "ore_totali": 0.0,
+            },
+        )
+
+        if "attiv" in stato:
+            buckets[reparto]["ore_attive"] += ore
+        elif "sospes" in stato:
+            buckets[reparto]["ore_sospese"] += ore
+        elif "pianificat" in stato:
+            buckets[reparto]["ore_pianificate"] += ore
+
+    # Mostra anche reparti con capacità oggi ma senza carico.
+    for reparto, cap_row in capacity_by_reparto.items():
+        buckets.setdefault(
+            reparto,
+            {
+                "label": cap_row["label"],
+                "reparto": reparto,
+                "codice_reparto": reparto,
+                "ore_attive": 0.0,
+                "ore_sospese": 0.0,
+                "ore_pianificate": 0.0,
+                "ore_totali": 0.0,
+            },
+        )
+
     out = []
 
-    for row in carico_rows or []:
-        risorsa = _norm_text(row.get("risorsa")) or "-"
-        ore_totali = float(row.get("ore_totali") or 0.0)
-        capacita = _dashboard_capacity_hours_for_next_days(
-            scope_type="risorsa",
-            scope_code=risorsa,
-        )
-        saturazione = round((ore_totali / capacita) * 100, 2) if capacita > 0 else 0.0
+    for reparto, row in buckets.items():
+        cap_row = capacity_by_reparto.get(reparto) or {}
 
-        if saturazione > 110:
+        ore_attive = round(float(row.get("ore_attive") or 0.0), 2)
+        ore_sospese = round(float(row.get("ore_sospese") or 0.0), 2)
+        ore_pianificate = round(float(row.get("ore_pianificate") or 0.0), 2)
+        ore_totali = round(ore_attive + ore_sospese + ore_pianificate, 2)
+        capacita = round(float(cap_row.get("capacita") or 0.0), 2)
+
+        if capacita > 0:
+            saturazione = round((ore_totali / capacita) * 100, 2)
+        elif ore_totali > 0:
+            saturazione = 120.0
+        else:
+            saturazione = 0.0
+
+        if capacita <= 0 and ore_totali > 0:
+            livello = "senza_capacita"
+        elif saturazione > 100:
             livello = "critico"
-        elif saturazione >= 90:
+        elif saturazione >= 80:
             livello = "attenzione"
-        elif saturazione >= 70:
+        elif saturazione >= 50:
             livello = "buono"
         else:
             livello = "sottocarico"
 
         out.append(
             {
-                "label": risorsa,
-                "risorsa": risorsa,
-                "ore_totali": round(ore_totali, 2),
-                "capacita": round(capacita, 2),
+                "label": row.get("label") or reparto,
+                "reparto": reparto,
+                "codice_reparto": reparto,
+                "ore_attive": ore_attive,
+                "ore_sospese": ore_sospese,
+                "ore_pianificate": ore_pianificate,
+                "ore_totali": ore_totali,
+                "capacita": capacita,
+                "scostamento_ore": round(capacita - ore_totali, 2),
                 "saturazione": saturazione,
                 "livello": livello,
+                "operatori_capacita": int(cap_row.get("operatori_capacita") or 0),
             }
         )
 
@@ -387,27 +633,49 @@ def _dashboard_capacity_for_operator(user: User) -> dict[int, float]:
     """
     Capacità settimanale del singolo operatore.
 
-    Usa solo righe:
-    scope_type = "operatore"
-    scope_code = User.id
+    Priorità:
+    1. capacità specifica operatore:
+       scope_type = "operatore", scope_code = User.id
 
-    Se l'operatore non ha una configurazione specifica,
-    la sua capacità è 0.
+    2. capacità reparto:
+       scope_type = "reparto", scope_code = User.RepartoPrinc
+
+    3. capacità globale:
+       scope_type = "global", scope_code = "*"
+
+    Nota:
+    questa funzione restituisce sempre la settimana completa.
+    La saturazione reparto usa poi solo il weekday di oggi.
     """
-
     if user is None:
         return {i: 0.0 for i in range(7)}
 
     operator_code = str(int(user.id))
 
-    if not _dashboard_capacity_rows_exist("operatore", operator_code):
-        return {i: 0.0 for i in range(7)}
+    if _dashboard_capacity_rows_exist("operatore", operator_code):
+        return _dashboard_capacity_by_weekday(
+            scope_type="operatore",
+            scope_code=operator_code,
+            fallback_to_global=False,
+        )
 
-    return _dashboard_capacity_by_weekday(
-        scope_type="operatore",
-        scope_code=operator_code,
-        fallback_to_global=False,
-    )
+    reparto_code = _norm_text(getattr(user, "RepartoPrinc", ""))
+
+    if reparto_code and _dashboard_capacity_rows_exist("reparto", reparto_code):
+        return _dashboard_capacity_by_weekday(
+            scope_type="reparto",
+            scope_code=reparto_code,
+            fallback_to_global=False,
+        )
+
+    if _dashboard_capacity_rows_exist("global", "*"):
+        return _dashboard_capacity_by_weekday(
+            scope_type="global",
+            scope_code="*",
+            fallback_to_global=False,
+        )
+
+    return {i: 0.0 for i in range(7)}
 
 
 def _dashboard_seed_user_filter_options(options: dict) -> None:
@@ -903,13 +1171,22 @@ def _dashboard_build_cruscotto_payload(policy: RbacPolicy) -> dict:
     )
 
     payload["charts"]["saturazione_risorse"] = _dashboard_saturazione_risorse(
-        payload["carico_risorsa"]
+        filtered_ordini,
+        policy,
+        filters,
     )
-    payload["cards"]["risorse_sovraccariche"] = sum(
+
+    payload["cards"]["reparti_sovraccarichi"] = sum(
         1
         for row in payload["charts"]["saturazione_risorse"]
-        if float(row.get("saturazione") or 0.0) > 110
+        if row.get("livello") in {"critico", "senza_capacita"}
     )
+
+    # Compatibilità con il frontend attuale:
+    # il template legge ancora risorse_sovraccariche.
+    payload["cards"]["risorse_sovraccariche"] = payload["cards"][
+        "reparti_sovraccarichi"
+    ]
 
     payload["criticita"] = sorted(
         criticita,

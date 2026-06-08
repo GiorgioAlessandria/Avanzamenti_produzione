@@ -236,7 +236,7 @@
                 <div class="row g-3">
                     <div class="col-12 col-xl-6">
                         <div class="card shadow-sm h-100">
-                            <div class="card-header">Saturazione risorse</div>
+                            <div class="card-header">Saturazione reparti</div>
                             <div class="card-body">
                                 <div class="dashboard-chart-box">
                                     <canvas id="chart-cruscotto-saturazione"></canvas>
@@ -765,9 +765,9 @@
 
             function colorByPercent(value) {
                 const n = Number(value || 0);
-                if (n > 110) return COLORS.red;
-                if (n >= 90) return COLORS.orange;
-                if (n >= 70) return COLORS.green;
+                if (n > 100) return COLORS.red;
+                if (n >= 80) return COLORS.orange;
+                if (n >= 50) return COLORS.green;
                 return COLORS.gray;
             }
 
@@ -847,22 +847,46 @@
             }
 
             function renderCruscottoSaturazione(rows) {
+                rows = rows || [];
+
                 renderChart("cruscotto_saturazione", "chart-cruscotto-saturazione", {
                     type: "bar",
                     data: {
-                        labels: (rows || []).map(x => x.label),
+                        labels: rows.map(x => x.label),
                         datasets: [{
-                            label: "Saturazione",
-                            data: (rows || []).map(x => Number(x.saturazione || 0)),
-                            backgroundColor: (rows || []).map(x => colorByPercent(x.saturazione)),
+                            label: "Carico / capacità oggi",
+                            data: rows.map(x => Number(x.saturazione || 0)),
+                            backgroundColor: rows.map(x => colorByPercent(x.saturazione)),
                         }],
                     },
                     options: baseOptions({
                         indexAxis: "y",
-                        scales: {x: {beginAtZero: true, title: {display: true, text: "%"}}},
-                        plugins: {legend: {display: false}},
+                        scales: {
+                            x: {
+                                beginAtZero: true,
+                                title: {display: true, text: "% saturazione oggi"}
+                            }
+                        },
+                        plugins: {
+                            legend: {display: false},
+                            tooltip: {
+                                callbacks: {
+                                    label: (context) => {
+                                        const row = rows[context.dataIndex] || {};
+
+                                        return [
+                                            `Saturazione oggi: ${formatPercent(row.saturazione)}`,
+                                            `Ore ordini oggi: ${formatHours(row.ore_totali)}`,
+                                            `Ore disponibili oggi: ${formatHours(row.capacita)}`,
+                                            `Scostamento oggi: ${formatHours(row.scostamento_ore)}`,
+                                            `Operatori reparto: ${row.operatori_capacita ?? 0}`,
+                                        ];
+                                    }
+                                }
+                            }
+                        },
                     }),
-                }, rows?.length > 0);
+                }, rows.length > 0);
             }
 
             function renderCruscottoReparti(rows) {
