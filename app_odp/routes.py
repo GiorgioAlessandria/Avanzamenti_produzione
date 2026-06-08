@@ -1,12 +1,8 @@
-from datetime import datetime, date, timedelta
+from datetime import datetime, date
 from zoneinfo import ZoneInfo
 import json
 import re
 import unicodedata
-from io import BytesIO
-from openpyxl import Workbook
-from openpyxl.styles import Font
-from openpyxl.utils import get_column_letter
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 from sqlalchemy.orm import selectinload
@@ -18,19 +14,16 @@ from flask import (
     abort,
     jsonify,
     current_app,
-    send_file,
-    redirect,
     g,
 )
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy import func, select, delete, and_, exists, or_
+from sqlalchemy import func, select, and_, exists, or_
 from app_odp.etichette import gen_etichette
 from app_odp.models import (
     InputOdp,
     InputOdpRuntime,
     db,
     OdpPriorita,
-    Causaliattivita,
     GiacenzaLotti,
     LottiUsatiLog,
     ErpOutbox,
@@ -41,9 +34,6 @@ from app_odp.models import (
     Reparti,
     User,
     user_roles,
-    users_lavorazioni,
-    users_risorse,
-    users_famiglia,
     Permissions,
     Risorse,
     Lavorazioni,
@@ -59,245 +49,646 @@ from app_odp.models import (
     roles_macrofamiglia,
     roles_ineritance,
     roles_manageable_roles,
-    AcqArticoli,
-    AcqGiacenze,
-    AcqArticoliLookup,
     HomeRepartoConfig,
     HomeVisibilityRule,
     ConfigAuditLog,
     ProductionCapacityCalendar,
-    ProductionKpiSnapshot,
 )
 from app_odp.ordine_ref import format_ordine_ref_display_from_ordine
-from app_odp.policy.decorator import require_active_perm
-from app_odp.policy.policy import RbacPolicy, PROTECTED_ROLE_NAMES
-from app_odp.odp_output import txt_generator
-from threading import Lock
-from time import monotonic
+from app_odp.policy.policy import RbacPolicy
 from uuid import uuid4
 import win32con
 import win32ui
 from PIL import Image, ImageOps, ImageWin
 from app_odp.operator_session import (
-    operator_perm_required,
     active_user,
     active_policy,
     active_token,
-    revoke_operator_sessions_for_user,
-    operator_or_login_required,
 )
+from datetime import timedelta
 
-DASHBOARD_PRODUZIONE_FUTURE_DAYS = 31
 main_bp = Blueprint("main", __name__)
 ROME_TZ = ZoneInfo("Europe/Rome")
 MIN_SECONDS_BEFORE_CLOSE_WITHOUT_TIME_PERMISSION = 180
-MONTAGGIO_PDF_INDEX_TTL_SECONDS = 60
-_montaggio_pdf_index_lock = Lock()
-_montaggio_pdf_index_cache = {
-    "directory": "",
-    "expires_at": 0.0,
-    "files": {},
-}
-MATERIALE_IMG_INDEX_TTL_SECONDS = 60
-_materiale_img_index_lock = Lock()
-_materiale_img_index_cache = {
-    "directory": "",
-    "expires_at": 0.0,
-    "files": {},
-}
-# region FUNZIONI
-ROLE_LINK_CONFIG = {
-    "permissions": {
-        "label": "Permessi",
-        "assoc_table": roles_permission,
-        "left_fk": "role_id",
-        "right_fk": "permission_id",
-        "model": Permissions,
-        "model_id": "id",
-        "code_attr": "Codice",
-        "desc_attr": "Descrizione",
-    },
-    "reparti": {
-        "label": "Reparti",
-        "assoc_table": roles_reparti,
-        "left_fk": "roles_id",
-        "right_fk": "reparto_id",
-        "model": Reparti,
-        "model_id": "id",
-        "code_attr": "Codice",
-        "desc_attr": "Descrizione",
-    },
-    "risorse": {
-        "label": "Risorse",
-        "assoc_table": roles_risorse,
-        "left_fk": "roles_id",
-        "right_fk": "risorse_id",
-        "model": Risorse,
-        "model_id": "id",
-        "code_attr": "Codice",
-        "desc_attr": "Descrizione",
-    },
-    "lavorazioni": {
-        "label": "Lavorazioni",
-        "assoc_table": roles_lavorazioni,
-        "left_fk": "roles_id",
-        "right_fk": "lavorazioni_id",
-        "model": Lavorazioni,
-        "model_id": "id",
-        "code_attr": "Codice",
-        "desc_attr": "Descrizione",
-    },
-    "magazzini": {
-        "label": "Magazzini",
-        "assoc_table": roles_magazzini,
-        "left_fk": "roles_id",
-        "right_fk": "magazzini_id",
-        "model": Magazzini,
-        "model_id": "id",
-        "code_attr": "Codice",
-        "desc_attr": "Descrizione",
-    },
-    "famiglia": {
-        "label": "Famiglia",
-        "assoc_table": roles_famiglia,
-        "left_fk": "roles_id",
-        "right_fk": "famiglia_id",
-        "model": Famiglia,
-        "model_id": "id",
-        "code_attr": "Codice",
-        "desc_attr": "Descrizione",
-    },
-    "macrofamiglia": {
-        "label": "Macrofamiglia",
-        "assoc_table": roles_macrofamiglia,
-        "left_fk": "roles_id",
-        "right_fk": "macrofamiglia_id",
-        "model": Macrofamiglia,
-        "model_id": "id",
-        "code_attr": "Codice",
-        "desc_attr": "Descrizione",
-    },
-    "ruoli_ereditati": {
-        "label": "Ruoli ereditati",
-        "assoc_table": roles_ineritance,
-        "left_fk": "role_id",
-        "right_fk": "included_role",
-        "model": Roles,
-        "model_id": "id",
-        "code_attr": "name",
-        "desc_attr": "description",
-    },
-    "ruoli_gestibili": {
-        "label": "Ruoli gestibili",
-        "assoc_table": roles_manageable_roles,
-        "left_fk": "manager_role_id",
-        "right_fk": "managed_role_id",
-        "model": Roles,
-        "model_id": "id",
-        "code_attr": "name",
-        "desc_attr": "description",
-    },
-}
 
 
-def _role_config_items_for_creation(policy: RbacPolicy, cfg: dict) -> list[dict]:
-    model = cfg["model"]
-    code_attr = cfg["code_attr"]
-    desc_attr = cfg["desc_attr"]
-
-    if model is Roles:
-        rows = policy.role_creation_manageable_roles()
-    else:
-        rows = model.query.order_by(
-            func.lower(
-                func.coalesce(
-                    getattr(model, desc_attr),
-                    getattr(model, code_attr),
-                )
-            ),
-            func.lower(getattr(model, code_attr)),
-        ).all()
-
-    return [
-        {
-            "id": getattr(row, cfg["model_id"]),
-            "codice": getattr(row, code_attr, "") or "",
-            "descrizione": getattr(row, desc_attr, "") or "",
-        }
-        for row in rows
-    ]
+def _format_date_it(day_value: date | None) -> str:
+    if not day_value:
+        return ""
+    return day_value.strftime("%d/%m/%Y")
 
 
-def _valid_role_creation_ids(policy: RbacPolicy, cfg: dict) -> set[int]:
-    model = cfg["model"]
-
-    if model is Roles:
-        return {int(role.id) for role in policy.role_creation_manageable_roles()}
-
-    model_id_attr = getattr(model, cfg["model_id"])
-    stmt = select(model_id_attr)
-    return {int(x) for x in db.session.execute(stmt).scalars().all()}
+def _is_business_day(day_value: date) -> bool:
+    if day_value.weekday() >= 5:
+        return False
+    return day_value not in (day_value.year)
 
 
-def _normalize_role_creation_links(raw_links) -> dict[str, set[int]]:
-    if raw_links in (None, ""):
-        return {}
-
-    if not isinstance(raw_links, dict):
-        raise ValueError("Il payload 'links' deve essere un oggetto JSON.")
-
-    normalized = {}
-
-    for key, raw_values in raw_links.items():
-        if key not in ROLE_LINK_CONFIG:
-            raise ValueError(f"Tabella non valida nel payload: {key}")
-
-        if raw_values in (None, ""):
-            normalized[key] = set()
-            continue
-
-        if not isinstance(raw_values, (list, tuple, set)):
-            raise ValueError(f"I valori per '{key}' devono essere una lista di id.")
-
-        try:
-            normalized[key] = {int(x) for x in raw_values}
-        except (TypeError, ValueError):
-            raise ValueError(f"Gli id per '{key}' non sono validi.")
-
-    return normalized
+def _easter_sunday(year: int) -> date:
+    a = year % 19
+    b = year // 100
+    c = year % 100
+    d = b // 4
+    e = b % 4
+    f = (b + 8) // 25
+    g = (b - f + 1) // 3
+    h = (19 * a + b - d - g + 15) % 30
+    i = c // 4
+    k = c % 4
+    l = (32 + 2 * e + 2 * i - h - k) % 7
+    m = (a + 11 * h + 22 * l) // 451
+    month = (h + l - 7 * m + 114) // 31
+    day = ((h + l - 7 * m + 114) % 31) + 1
+    return date(year, month, day)
 
 
-def _new_dash_kpi_bucket() -> dict:
+def _italian_holidays(year: int) -> set[date]:
+    easter = _easter_sunday(year)
+    easter_monday = easter + timedelta(days=1)
+
     return {
-        "totali": 0,
-        "pianificati": 0,
-        "sospesi": 0,
-        "attivi": 0,
-        "ore_lavorazione": 0.0,
-        "ore_attrezzaggio": 0.0,
-        "percentuale_attivi": 0.0,
-        "percentuale_sospesi": 0.0,
+        date(year, 1, 1),  # Capodanno
+        date(year, 1, 6),  # Epifania
+        date(year, 4, 25),  # Liberazione
+        date(year, 5, 1),  # Festa del Lavoro
+        date(year, 6, 2),  # Festa della Repubblica
+        date(year, 8, 15),  # Ferragosto
+        date(year, 11, 1),  # Ognissanti
+        date(year, 12, 8),  # Immacolata
+        date(year, 12, 25),  # Natale
+        date(year, 12, 26),  # Santo Stefano
+        easter_monday,  # Lunedì dell'Angelo
     }
 
 
-def _finalize_dash_kpi(bucket: dict) -> dict:
-    totali = int(bucket.get("totali", 0) or 0)
-    attivi = int(bucket.get("attivi", 0) or 0)
-    sospesi = int(bucket.get("sospesi", 0) or 0)
-    bucket["ore_lavorazione"] = round(
-        float(bucket.get("ore_lavorazione", 0.0) or 0.0), 2
+def _normalize_to_business_day(day_value: date) -> date:
+    current = day_value
+    while not _is_business_day(current):
+        current += timedelta(days=1)
+    return current
+
+
+def _add_business_days(start_day: date, business_days: int) -> date:
+    current = _normalize_to_business_day(start_day)
+
+    if business_days <= 0:
+        return current
+
+    remaining = int(business_days)
+
+    while remaining > 0:
+        current += timedelta(days=1)
+        if _is_business_day(current):
+            remaining -= 1
+
+    return current
+
+
+def _calc_supply_date_from_today(lead_time_days) -> date | None:
+    try:
+        lead_days = int(float(lead_time_days or 0))
+    except (TypeError, ValueError):
+        return None
+
+    today_rome = _now_rome_dt().date()
+    return _add_business_days(today_rome, lead_days)
+
+
+def _norm_text(value) -> str:
+    return str(value or "").strip()
+
+
+def _current_policy() -> RbacPolicy:
+    return active_policy()
+
+
+def _now_rome_dt() -> datetime:
+    return datetime.now(ROME_TZ)
+
+
+def _current_username(default: str = "utente_sconosciuto") -> str:
+    user = active_user()
+
+    return (
+        getattr(user, "username", None)
+        or getattr(user, "name", None)
+        or getattr(user, "email", None)
+        or str(getattr(user, "id", default))
     )
-    bucket["ore_attrezzaggio"] = round(
-        float(bucket.get("ore_attrezzaggio", 0.0) or 0.0),
-        2,
+
+
+def _current_user_id(default: int | None = None):
+    user = active_user()
+    return getattr(user, "id", default)
+
+
+def _parse_bool_flag(value) -> bool:
+    if isinstance(value, bool):
+        return value
+    raw = _norm_text(value).lower()
+    return raw in {"1", "true", "si", "sì", "yes", "on"}
+
+
+def _parse_qty_decimal(value) -> Decimal:
+    raw = _norm_text(value).replace(",", ".")
+    if raw == "":
+        return Decimal("0")
+    try:
+        return Decimal(raw)
+    except InvalidOperation:
+        raise ValueError(f"Quantità non valida: {value!r}")
+
+
+def _snapshot_priorita_in_runtime(
+    stato,
+    priorita_row: OdpPriorita | None,
+    operatore_id: int,
+    when_iso: str,
+) -> None:
+    """
+    Salva nel runtime la priorità che l'ordine aveva
+    per l'operatore che lo prende in carico.
+
+    Se l'operatore corrente non aveva priorità assegnata,
+    lo snapshot viene pulito.
+    """
+    if stato is None:
+        return
+
+    if priorita_row is None:
+        stato.PrioritaInCarico = None
+        stato.PrioritaOperatoreIdInCarico = None
+        stato.PrioritaPresaInCaricoAt = None
+        return
+
+    stato.PrioritaInCarico = int(priorita_row.Priorita)
+    stato.PrioritaOperatoreIdInCarico = int(operatore_id)
+    stato.PrioritaPresaInCaricoAt = when_iso
+
+
+def _priorita_row_for_operatore_ordine(
+    operatore_id: int,
+    id_documento: str,
+    id_riga: str,
+    fase: str,
+) -> OdpPriorita | None:
+    """
+    Recupera la priorità assegnata allo specifico operatore
+    per lo specifico ordine/fase.
+    """
+    key = _make_ordine_fase_key(id_documento, id_riga, fase)
+
+    return (
+        OdpPriorita.query.filter_by(
+            operatore_id=int(operatore_id),
+            IdDocumento=key[0],
+            IdRiga=key[1],
+            Fase=key[2],
+        )
+        .order_by(
+            OdpPriorita.Priorita.asc(),
+            OdpPriorita.Posizione.asc(),
+            OdpPriorita.id.asc(),
+        )
+        .first()
     )
-    if totali > 0:
-        bucket["percentuale_attivi"] = round((attivi / totali) * 100, 2)
-        bucket["percentuale_sospesi"] = round((sospesi / totali) * 100, 2)
-    else:
-        bucket["percentuale_attivi"] = 0.0
-        bucket["percentuale_sospesi"] = 0.0
-    return bucket
+
+
+def _cleanup_priorita_operatore(operatore: User) -> None:
+    """
+    Elimina priorità non più valide:
+    - ordine non più visibile all'operatore;
+    - ordine non più Pianificata;
+    - fase cambiata.
+    """
+    valid_keys = _priorita_valid_keys_for_operatore(operatore)
+
+    for row in _priorita_rows_for_operatore(operatore.id):
+        key = _make_ordine_fase_key(row.IdDocumento, row.IdRiga, row.Fase)
+        if key not in valid_keys:
+            db.session.delete(row)
+
+
+def _ordine_fase_key(ordine) -> tuple[str, str, str]:
+    return (
+        _norm_text(ordine.IdDocumento),
+        _norm_text(ordine.IdRiga),
+        _norm_text(ordine.FaseAttiva) or "1",
+    )
+
+
+def _priorita_rows_for_operatore(operatore_id: int) -> list[OdpPriorita]:
+    return (
+        OdpPriorita.query.filter_by(operatore_id=int(operatore_id))
+        .order_by(
+            OdpPriorita.Priorita.asc(),
+            OdpPriorita.Posizione.asc(),
+            OdpPriorita.id.asc(),
+        )
+        .all()
+    )
+
+
+def _priorita_map_for_operatore(
+    operatore_id: int,
+) -> dict[tuple[str, str, str], OdpPriorita]:
+    return {
+        _make_ordine_fase_key(row.IdDocumento, row.IdRiga, row.Fase): row
+        for row in _priorita_rows_for_operatore(operatore_id)
+    }
+
+
+def _priorita_valid_keys_for_operatore(
+    operatore: User,
+) -> dict[tuple[str, str, str], InputOdp]:
+    return {
+        _ordine_fase_key(ordine): ordine
+        for ordine in _ordini_pianificata_visibili_per_operatore(operatore)
+    }
+
+
+def _is_ordine_pianificata(ordine) -> bool:
+    return _norm_text(getattr(ordine, "StatoOrdine", "")).lower() == "pianificata"
+
+
+PRIORITA_2_MAX_DEFAULT = 5
+PRIORITA_HIDDEN_ROLE_NAMES = {"admin"}
+
+
+def _priorita_2_max() -> int:
+    try:
+        return int(current_app.config.get("PRIORITA_2_MAX", PRIORITA_2_MAX_DEFAULT))
+    except (TypeError, ValueError):
+        return PRIORITA_2_MAX_DEFAULT
+
+
+def _ordini_pianificata_visibili_per_operatore(operatore: User) -> list[InputOdp]:
+    policy_operatore = RbacPolicy(operatore)
+
+    q = _base_odp_query()
+    q = policy_operatore.filter_input_odp(q)
+    ordini = q.all()
+
+    ordini = policy_operatore.filter_montaggio_macchine_famiglia_rows(ordini)
+
+    return [ordine for ordine in ordini if _is_ordine_pianificata(ordine)]
+
+
+def _normalize_indice_articolo_search(value) -> str:
+    indice = _norm_text(value)
+    if not indice:
+        return ""
+
+    if indice == "-" or indice.upper() in {"X", "NAN", "NONE", "NULL"}:
+        return ""
+
+    return indice
+
+
+def _normalize_variante_articolo_search(value) -> str:
+    variante = _norm_text(value)
+    if not variante:
+        return ""
+    if variante == "-" or variante.upper() == "X":
+        return ""
+    return variante
+
+
+def _ordine_state_rank(stato: str) -> int:
+    s = _norm_text(stato).lower()
+    if "attiv" in s:
+        return 0
+    if "sospes" in s:
+        return 1
+    if "pianificat" in s:
+        return 2
+    return 9
+
+
+def _remaining_phase_codes_for_ordine(ordine) -> set[str]:
+    fasi = _phase_sequence_for_ordine(ordine)
+    fase_attiva_int = _fase_to_int(getattr(ordine, "FaseAttiva", "")) or 1
+
+    if not fasi:
+        return {str(fase_attiva_int)}
+
+    idx = 0
+    for i, fase in enumerate(fasi):
+        fase_int = _fase_to_int(fase)
+        if fase_int is not None and fase_int >= fase_attiva_int:
+            idx = i
+            break
+
+    out = set()
+    for fase in fasi[idx:]:
+        fase_int = _fase_to_int(fase)
+        if fase_int is not None:
+            out.add(str(fase_int))
+
+    return out or {str(fase_attiva_int)}
+
+
+def _ordine_priorita_payload(ordine, priorita_row: OdpPriorita | None = None) -> dict:
+    fase = _norm_text(ordine.FaseAttiva) or "1"
+
+    return {
+        "key": f"{ordine.IdDocumento}|{ordine.IdRiga}|{fase}",
+        "id_documento": _norm_text(ordine.IdDocumento),
+        "id_riga": _norm_text(ordine.IdRiga),
+        "fase": fase,
+        "ordine": _ordine_ref_label(ordine),
+        "codice": _norm_text(ordine.CodArt),
+        "variante": _norm_text(ordine.VarianteArt),
+        "revisione": _norm_text(ordine.IndiceModifica),
+        "descrizione": _norm_text(ordine.DesArt),
+        "quantita": _norm_text(getattr(ordine, "QtyDaLavorare", ""))
+        or _norm_text(ordine.Quantita),
+        "risorsa": _norm_text(getattr(ordine, "RisorsaAttiva", "")),
+        "lavorazione": _norm_text(getattr(ordine, "LavorazioneAttiva", "")),
+        "priorita": priorita_row.Priorita if priorita_row else None,
+        "matricola": _norm_text(getattr(ordine, "CodMatricola", "")),
+        "posizione": priorita_row.Posizione if priorita_row else None,
+    }
+
+
+def _compact_priorita_operatore(operatore_id: int) -> None:
+    """
+    Ricompatta la coda:
+    - 1 solo ordine in priorità 1;
+    - massimo N ordini in priorità 2;
+    - resto in priorità 3.
+    """
+    rows = _priorita_rows_for_operatore(operatore_id)
+    max_p2 = _priorita_2_max()
+
+    for index, row in enumerate(rows):
+        if index == 0:
+            row.Priorita = 1
+            row.Posizione = 1
+        elif index <= max_p2:
+            row.Priorita = 2
+            row.Posizione = index
+        else:
+            row.Priorita = 3
+            row.Posizione = index - max_p2
+
+        row.updated_at = _priority_now_iso()
+
+
+def _consume_priorita_ordine(id_documento: str, id_riga: str, fase: str) -> None:
+    """
+    Da chiamare quando un ordine viene preso in carico.
+    Rimuove quell'ordine da tutte le code operatore in cui compare,
+    poi ricompatta le code coinvolte.
+    """
+    key = _make_ordine_fase_key(id_documento, id_riga, fase)
+
+    rows = OdpPriorita.query.filter_by(
+        IdDocumento=key[0],
+        IdRiga=key[1],
+        Fase=key[2],
+    ).all()
+
+    operatori_coinvolti = {row.operatore_id for row in rows}
+
+    for row in rows:
+        db.session.delete(row)
+
+    db.session.flush()
+
+    for operatore_id in operatori_coinvolti:
+        _compact_priorita_operatore(operatore_id)
+
+
+def _parse_qty_integer_decimal(value, field_name: str = "Quantità") -> Decimal:
+    q = _parse_qty_decimal(value)
+    if q != q.to_integral_value():
+        raise ValueError(f"{field_name} deve essere un numero intero")
+    return q
+
+
+def _decimal_to_text(value: Decimal) -> str:
+    if not isinstance(value, Decimal):
+        value = Decimal(str(value))
+    s = format(value.normalize(), "f") if value != 0 else "0"
+    if "." in s:
+        s = s.rstrip("0").rstrip(".")
+    return s or "0"
+
+
+def _safe_float(value) -> float:
+    raw = _norm_text(value).replace(",", ".")
+    if not raw:
+        return 0.0
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _json_safe(value):
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, set):
+        return sorted(_json_safe(v) for v in value)
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    return value
+
+
+def _parse_iso_dt(value) -> datetime | None:
+    raw = _norm_text(value)
+    if not raw:
+        return None
+    try:
+        dt = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=ROME_TZ)
+    return dt
+
+
+def _extract_codes_from_cell(value) -> list[str]:
+    """
+    Normalizza celle che possono contenere:
+    - "10"
+    - ["10"]
+    - [["10"]]
+    - {"key": "10"}
+    """
+    if value in (None, ""):
+        return []
+
+    def walk(node):
+        if isinstance(node, dict):
+            for v in node.values():
+                yield from walk(v)
+        elif isinstance(node, (list, tuple, set)):
+            for item in node:
+                yield from walk(item)
+        else:
+            s = str(node).strip()
+            if s:
+                yield s
+
+    if isinstance(value, (dict, list, tuple, set)):
+        return list(dict.fromkeys(walk(value)))
+
+    raw = str(value).strip()
+    if not raw:
+        return []
+
+    try:
+        parsed = json.loads(raw)
+    except Exception:
+        return [raw]
+
+    return list(dict.fromkeys(walk(parsed)))
+
+
+def _first_code_from_cell(value) -> str:
+    for code in _extract_codes_from_cell(value):
+        code = _norm_text(code)
+        if code:
+            return code
+    return ""
+
+
+def _first_not_blank(*values, default=""):
+    for value in values:
+        text = _norm_text(value)
+        if text:
+            return text
+    return default
+
+
+def _bool_text(value: bool) -> str:
+    return "true" if bool(value) else "false"
+
+
+def _row_key(id_documento: str, id_riga: str) -> str:
+    return f"{id_documento}|{id_riga}"
+
+
+def _build_rif_ordine_princ(id_documento: str, id_riga: str) -> str:
+    return json.dumps(
+        [_norm_text(id_documento), _norm_text(id_riga)],
+        ensure_ascii=False,
+    )
+
+
+def _ordine_ref_label(ordine) -> str:
+    ref = format_ordine_ref_display_from_ordine(ordine)
+
+    if ref:
+        return ref
+
+    return f"{_norm_text(ordine.IdDocumento)} {_norm_text(ordine.IdRiga)}".strip()
+
+
+def _base_odp_query():
+    return InputOdp.query.options(
+        selectinload(InputOdp.runtime_row),
+    )
+
+
+def filter_input_odp_for_home_config(
+    query,
+    config: HomeRepartoConfig,
+    policy: RbacPolicy,
+    user=None,
+):
+    return policy.filter_input_odp_for_home_config(
+        query,
+        config,
+        user=user,
+    )
+
+
+def _last_log_token() -> str:
+    runtime_max = db.session.query(func.max(OdpRuntimeLog.log_id)).scalar() or 0
+    input_max = db.session.query(func.max(InputOdpLog.log_id)).scalar() or 0
+    return f"{input_max}:{runtime_max}"
+
+
+@main_bp.context_processor
+def inject_policy_and_nav():
+    user = active_user()
+
+    if not getattr(user, "is_authenticated", False):
+        return {}
+
+    policy = active_policy()
+
+    operator_token = _norm_text(request.args.get("tab_session")) or active_token()
+
+    items = []
+
+    for cfg in _allowed_home_reparto_configs(policy):
+        url_kwargs = {"tab": cfg.tab_code}
+        if operator_token:
+            url_kwargs["tab_session"] = operator_token
+
+        items.append(
+            {
+                "label": _home_reparto_label(cfg),
+                "url": url_for(".home", **url_kwargs),
+                "tab": cfg.tab_code,
+                "reparto": _home_reparto_code(cfg),
+            }
+        )
+
+    area_switch_items = []
+
+    if policy.can("home_acquisti"):
+        acq_kwargs = {}
+        if operator_token:
+            acq_kwargs["tab_session"] = operator_token
+
+        area_switch_items.append(
+            {
+                "label": "Acquisti",
+                "url": url_for(".home_acquisti", **acq_kwargs),
+                "area": "acquisti",
+            }
+        )
+
+    if policy.can("home"):
+        first_production_tab = None
+
+        for it in items:
+            first_production_tab = it["tab"]
+            break
+
+        if first_production_tab:
+            prod_kwargs = {"tab": first_production_tab}
+            if operator_token:
+                prod_kwargs["tab_session"] = operator_token
+
+            area_switch_items.append(
+                {
+                    "label": "Produzione",
+                    "url": url_for(".home", **prod_kwargs),
+                    "area": "produzione",
+                }
+            )
+
+    return {
+        "policy": policy,
+        "operator_user": getattr(g, "operator_user", None),
+        "operator_policy": getattr(g, "operator_policy", None),
+        "tab_session": operator_token,
+        "home_switch_items": items,
+        "area_switch_items": area_switch_items,
+    }
+
+
+@main_bp.context_processor
+def inject_order_ref_formatters():
+    return {
+        "ordine_ref_display": format_ordine_ref_display_from_ordine,
+    }
 
 
 def _normalize_home_tab_code(value) -> str:
@@ -437,77 +828,342 @@ def _home_rows_for_config(
     return odp
 
 
-def _base_odp_query():
-    return InputOdp.query.options(
-        selectinload(InputOdp.runtime_row),
-    )
-
-
-def filter_input_odp_for_home_config(
-    query,
-    config: HomeRepartoConfig,
-    policy: RbacPolicy,
-    user=None,
-):
-    return policy.filter_input_odp_for_home_config(
-        query,
-        config,
-        user=user,
-    )
-
-
-def _last_log_token() -> str:
-    runtime_max = db.session.query(func.max(OdpRuntimeLog.log_id)).scalar() or 0
-    input_max = db.session.query(func.max(InputOdpLog.log_id)).scalar() or 0
-    return f"{input_max}:{runtime_max}"
-
-
-def _parse_qty_decimal(value) -> Decimal:
-    raw = _norm_text(value).replace(",", ".")
-    if raw == "":
-        return Decimal("0")
-    try:
-        return Decimal(raw)
-    except InvalidOperation:
-        raise ValueError(f"Quantità non valida: {value!r}")
-
-
-def _parse_qty_integer_decimal(value, field_name: str = "Quantità") -> Decimal:
-    q = _parse_qty_decimal(value)
-    if q != q.to_integral_value():
-        raise ValueError(f"{field_name} deve essere un numero intero")
+def _query_for_tab(policy, reparto_code):
+    q = _base_odp_query()
+    q = policy.filter_input_odp_for_reparto(q, reparto_code)
     return q
 
 
-def _parse_bool_flag(value) -> bool:
-    if isinstance(value, bool):
-        return value
-    raw = _norm_text(value).lower()
-    return raw in {"1", "true", "si", "sì", "yes", "on"}
+def _home_ui_texts_for_user(
+    config: HomeRepartoConfig,
+    policy: RbacPolicy,
+    user=None,
+) -> dict:
+    user = user or active_user()
 
+    texts = {
+        "titolo_macchine_da_eseguire": "Ordini macchina da eseguire",
+        "titolo_macchine_attive": "Ordini macchina attivi",
+        "titolo_semilavorati_da_eseguire": "Ordini semilavorati da eseguire",
+        "titolo_semilavorati_attivi": "Ordini semilavorati attivi",
+        "testo_presa_macchina": "Attiva ordine macchina",
+        "testo_sospendi_macchina": "Sospendi ordine",
+        "testo_riattiva_macchina": "Riattiva ordine",
+        "testo_chiudi_macchina": "Chiudi ordine",
+        "toast_presa_macchina": "Presa in carico ordine macchina",
+        "toast_sospendi_macchina": "Sospensione ordine macchina",
+        "toast_riattiva_macchina": "Riattivazione ordine macchina",
+        "toast_chiudi_macchina": "Chiusura ordine macchina",
+    }
 
-def _decimal_to_text(value: Decimal) -> str:
-    if not isinstance(value, Decimal):
-        value = Decimal(str(value))
-    s = format(value.normalize(), "f") if value != 0 else "0"
-    if "." in s:
-        s = s.rstrip("0").rstrip(".")
-    return s or "0"
+    config_map = {
+        "titolo_macchine_da_eseguire": getattr(
+            config, "titolo_macchine_da_eseguire", None
+        ),
+        "titolo_macchine_attive": getattr(config, "titolo_macchine_attive", None),
+        "titolo_semilavorati_da_eseguire": getattr(
+            config, "titolo_semilavorati_da_eseguire", None
+        ),
+        "titolo_semilavorati_attivi": getattr(
+            config, "titolo_semilavorati_attivi", None
+        ),
+        "testo_presa_macchina": getattr(config, "testo_presa_macchina", None),
+        "testo_sospendi_macchina": getattr(config, "testo_sospendi_macchina", None),
+        "testo_riattiva_macchina": getattr(config, "testo_riattiva_macchina", None),
+        "testo_chiudi_macchina": getattr(config, "testo_chiudi_macchina", None),
+    }
 
+    for key, value in config_map.items():
+        value = _norm_text(value)
+        if value:
+            texts[key] = value
 
-def _qty_da_lavorare_text(ordine, stato=None) -> str:
-    if stato is not None:
-        qty_runtime = _norm_text(getattr(stato, "QtyDaLavorare", ""))
-        if qty_runtime:
-            return qty_runtime
-
-    return _norm_text(getattr(ordine, "QtyDaLavorare", "")) or _norm_text(
-        ordine.Quantita
+    rules = (
+        HomeVisibilityRule.query.filter(
+            HomeVisibilityRule.attivo.is_(True),
+            HomeVisibilityRule.reparto_id == config.reparto_id,
+        )
+        .filter(
+            or_(
+                HomeVisibilityRule.role_id.in_(policy.role_ids),
+                HomeVisibilityRule.user_id == getattr(user, "id", None),
+            )
+        )
+        .order_by(
+            HomeVisibilityRule.user_id.isnot(None).asc(),
+            HomeVisibilityRule.id.asc(),
+        )
+        .all()
     )
 
+    for rule in rules:
+        rule_map = {
+            "titolo_macchine_da_eseguire": rule.titolo_macchine_da_eseguire,
+            "titolo_macchine_attive": rule.titolo_macchine_attive,
+            "testo_presa_macchina": rule.testo_presa_macchina,
+            "testo_sospendi_macchina": rule.testo_sospendi_macchina,
+            "testo_riattiva_macchina": rule.testo_riattiva_macchina,
+            "testo_chiudi_macchina": rule.testo_chiudi_macchina,
+        }
 
-def _qty_da_lavorare_decimal(ordine, stato=None) -> Decimal:
-    return _parse_qty_decimal(_qty_da_lavorare_text(ordine, stato=stato))
+        for key, value in rule_map.items():
+            value = _norm_text(value)
+            if value:
+                texts[key] = value
+
+    # Toast: se non hai un campo dedicato, riuso gli stessi testi azione.
+    texts["toast_presa_macchina"] = (
+        texts.get("testo_presa_macchina") or texts["toast_presa_macchina"]
+    )
+    texts["toast_sospendi_macchina"] = (
+        texts.get("testo_sospendi_macchina") or texts["toast_sospendi_macchina"]
+    )
+    texts["toast_riattiva_macchina"] = (
+        texts.get("testo_riattiva_macchina") or texts["toast_riattiva_macchina"]
+    )
+    texts["toast_chiudi_macchina"] = (
+        texts.get("testo_chiudi_macchina") or texts["toast_chiudi_macchina"]
+    )
+
+    return texts
+
+
+def _home_method_settings_for_user(
+    config: HomeRepartoConfig,
+    policy: RbacPolicy,
+    user=None,
+) -> dict:
+    user = user or active_user()
+
+    settings = {
+        "tipo": _norm_text(getattr(config, "metodo_documentale_tipo", ""))
+        or "montaggio",
+        "prefisso": _norm_text(getattr(config, "metodo_documentale_prefisso", "")),
+        "path_key": _norm_text(getattr(config, "metodo_documentale_path_key", ""))
+        or "MONTAGGIO_PDF_DIR",
+    }
+
+    rules = (
+        HomeVisibilityRule.query.filter(
+            HomeVisibilityRule.attivo.is_(True),
+            HomeVisibilityRule.reparto_id == config.reparto_id,
+        )
+        .filter(
+            or_(
+                HomeVisibilityRule.role_id.in_(policy.role_ids),
+                HomeVisibilityRule.user_id == getattr(user, "id", None),
+            )
+        )
+        .order_by(
+            HomeVisibilityRule.user_id.isnot(None).asc(),
+            HomeVisibilityRule.id.asc(),
+        )
+        .all()
+    )
+
+    for rule in rules:
+        if _norm_text(rule.metodo_documentale_tipo):
+            settings["tipo"] = _norm_text(rule.metodo_documentale_tipo)
+        if _norm_text(rule.metodo_documentale_prefisso):
+            settings["prefisso"] = _norm_text(rule.metodo_documentale_prefisso)
+        if _norm_text(rule.metodo_documentale_path_key):
+            settings["path_key"] = _norm_text(rule.metodo_documentale_path_key)
+
+    return settings
+
+
+def _render_bridge_standard(odp):
+    from app_odp.services.documenti_service import _build_metodo_montaggio_lookup
+
+    metodo_montaggio_lookup = _build_metodo_montaggio_lookup(odp)
+
+    return {
+        "tbody_ordini_da_eseguire": render_template(
+            "partials/_home_standard_rows_da_eseguire.j2",
+            odp=odp,
+        ),
+        "tbody_ordini_in_corso": render_template(
+            "partials/_home_standard_rows_in_corso.j2",
+            odp=odp,
+            metodo_montaggio_lookup=metodo_montaggio_lookup,
+        ),
+    }
+
+
+def _render_bridge_montaggio(
+    odp,
+    *,
+    metodo_path_key: str = "MONTAGGIO_PDF_DIR",
+    metodo_prefisso: str = "",
+):
+    from app_odp.services.documenti_service import _build_metodo_lookup
+
+    metodo_lookup = _build_metodo_lookup(
+        odp,
+        path_key=metodo_path_key,
+        prefisso=metodo_prefisso,
+    )
+
+    ctx = {
+        "odp": odp,
+        "metodo_lookup": metodo_lookup,
+        "metodo_documentale_prefisso": metodo_prefisso,
+    }
+
+    return {
+        "tbody_ordini_da_eseguire_sl": render_template(
+            "partials/_home_montaggio_sl_rows_da_eseguire.j2",
+            odp=odp,
+        ),
+        "tbody_ordini_in_corso_sl": render_template(
+            "partials/_home_montaggio_sl_rows_in_corso.j2",
+            **ctx,
+        ),
+        "tbody_ordini_da_eseguire_m": render_template(
+            "partials/_home_montaggio_m_rows_da_eseguire.j2",
+            odp=odp,
+        ),
+        "tbody_ordini_in_corso_m": render_template(
+            "partials/_home_montaggio_m_rows_in_corso.j2",
+            **ctx,
+        ),
+    }
+
+
+def _phase_sequence_for_ordine(ordine) -> list[str]:
+    fasi = _parse_phase_list(getattr(ordine, "NumFase", ""))
+    if fasi:
+        return fasi
+
+    fase_corrente = _fase_to_int(getattr(ordine, "FaseAttiva", ""))
+    if fase_corrente is not None and fase_corrente > 0:
+        return [str(fase_corrente)]
+
+    return []
+
+
+def _get_phase_transition(ordine, fase_corrente: str) -> tuple[bool, str | None]:
+    fasi = _phase_sequence_for_ordine(ordine)
+    if not fasi:
+        return True, None
+
+    fase_corrente = _norm_text(fase_corrente)
+    if fase_corrente not in fasi:
+        return True, None
+
+    idx = fasi.index(fase_corrente)
+    is_last = idx >= len(fasi) - 1
+    next_phase = None if is_last else fasi[idx + 1]
+    return is_last, next_phase
+
+
+def _render_bridge_empty(odp):
+    return {}
+
+
+RENDERERS = {
+    "standard": _render_bridge_standard,
+    "montaggio": _render_bridge_montaggio,
+    "empty": _render_bridge_empty,
+}
+
+
+def _render_fragments_for_home_config(
+    config: HomeRepartoConfig,
+    odp: list[InputOdp],
+) -> dict:
+    renderer_key = _norm_text(getattr(config, "renderer", "")) or "empty"
+
+    if renderer_key == "montaggio":
+        method_settings = _home_method_settings_for_user(
+            config,
+            _current_policy(),
+            active_user(),
+        )
+
+        return _render_bridge_montaggio(
+            odp,
+            metodo_path_key=method_settings["path_key"],
+            metodo_prefisso=method_settings["prefisso"],
+        )
+
+    renderer = RENDERERS.get(renderer_key)
+    if renderer is None:
+        current_app.logger.warning(
+            "Renderer home non valido: tab_code=%s renderer=%s",
+            getattr(config, "tab_code", ""),
+            renderer_key,
+        )
+        return {}
+
+    return renderer(odp)
+
+
+def _tab_from_ordine(ordine: InputOdp) -> str | None:
+    config = _home_reparto_config_for_ordine(ordine)
+    return config.tab_code if config else None
+
+
+def _get_visible_odp_by_key(
+    policy: RbacPolicy,
+    id_documento: str,
+    id_riga: str,
+) -> InputOdp:
+    exists_anyway = (
+        _base_odp_query()
+        .filter_by(
+            IdDocumento=id_documento,
+            IdRiga=id_riga,
+        )
+        .first()
+    )
+
+    if exists_anyway is None:
+        abort(404)
+
+    config = _home_reparto_config_for_ordine(exists_anyway)
+
+    if config is None:
+        abort(403)
+
+    if not _policy_can_access_home_config(policy, config):
+        abort(403)
+
+    ordine = (
+        filter_input_odp_for_home_config(
+            _base_odp_query(),
+            config,
+            policy,
+            active_user(),
+        )
+        .filter(
+            InputOdp.IdDocumento == id_documento,
+            InputOdp.IdRiga == id_riga,
+        )
+        .first()
+    )
+
+    if ordine is None:
+        abort(403)
+
+    return ordine
+
+
+def _fragments_for_ordine_tab(
+    policy: RbacPolicy,
+    ordine: InputOdp,
+) -> tuple[str | None, dict]:
+    config = _home_reparto_config_for_ordine(ordine)
+    if config is None:
+        return None, {}
+
+    if not _policy_can_access_home_config(policy, config):
+        return None, {}
+
+    odp = _home_rows_for_config(policy, config, apply_priorita=True, sort_priorita=True)
+    fragments = _render_fragments_for_home_config(config, odp)
+
+    return config.tab_code, fragments
 
 
 def _get_blocking_outbox_for_phase(
@@ -529,18 +1185,6 @@ def _get_blocking_outbox_for_phase(
         .order_by(ErpOutbox.outbox_id.desc())
         .first()
     )
-
-
-def _parse_distinta_materiale(ordine) -> list[dict]:
-    distinta = []
-    if ordine.DistintaMateriale:
-        try:
-            distinta = json.loads(ordine.DistintaMateriale)
-            if isinstance(distinta, str):
-                distinta = json.loads(distinta)
-        except (json.JSONDecodeError, TypeError):
-            distinta = []
-    return distinta if isinstance(distinta, list) else []
 
 
 def _ordine_has_distinta_materiale(ordine) -> bool:
@@ -588,196 +1232,6 @@ def _parse_phase_list(value) -> list[str]:
         return [str(i) for i in range(1, totale_fasi + 1)]
 
     return []
-
-
-def _phase_sequence_for_ordine(ordine) -> list[str]:
-    fasi = _parse_phase_list(getattr(ordine, "NumFase", ""))
-    if fasi:
-        return fasi
-
-    fase_corrente = _fase_to_int(getattr(ordine, "FaseAttiva", ""))
-    if fase_corrente is not None and fase_corrente > 0:
-        return [str(fase_corrente)]
-
-    return []
-
-
-def _get_phase_transition(ordine, fase_corrente: str) -> tuple[bool, str | None]:
-    fasi = _phase_sequence_for_ordine(ordine)
-    if not fasi:
-        return True, None
-
-    fase_corrente = _norm_text(fase_corrente)
-    if fase_corrente not in fasi:
-        return True, None
-
-    idx = fasi.index(fase_corrente)
-    is_last = idx >= len(fasi) - 1
-    next_phase = None if is_last else fasi[idx + 1]
-    return is_last, next_phase
-
-
-def _reset_runtime_for_next_phase(
-    stato,
-    ordine,
-    username: str,
-    next_phase: str,
-):
-    """
-    Prepara il runtime per la fase successiva.
-
-    Il tempo deve ripartire da zero, perché Tempo_funzionamento
-    deve rappresentare il tempo della fase corrente, non il cumulato ordine.
-    """
-    if stato is None:
-        return
-
-    next_phase = _norm_text(next_phase)
-
-    stato.Stato_odp = "Pianificata"
-    stato.Utente_operazione = username
-    stato.FaseAttiva = next_phase
-
-    # Punto centrale della modifica:
-    # azzera il tempo al cambio fase.
-    stato.Tempo_funzionamento = "0"
-
-    # La fase successiva non è ancora presa in carico.
-    stato.data_ultima_attivazione = None
-    stato.Data_in_carico = None
-
-    stato.QtyDaLavorare = _norm_text(getattr(ordine, "QtyDaLavorare", ""))
-
-    stato.RisorsaAttiva = _norm_text(getattr(ordine, "RisorsaAttiva", ""))
-    stato.LavorazioneAttiva = _norm_text(getattr(ordine, "LavorazioneAttiva", ""))
-    stato.AttrezzaggioAttivo = _norm_text(getattr(ordine, "AttrezzaggioAttivo", ""))
-
-    stato.VarianteArt = _norm_text(getattr(ordine, "VarianteArt", ""))
-
-
-def _set_runtime_pianificata(stato, username: str):
-    if stato is None:
-        return
-    stato.Stato_odp = "Pianificata"
-    stato.Utente_operazione = username
-    stato.data_ultima_attivazione = None
-
-
-def _set_runtime_sospeso(
-    stato,
-    username: str,
-    fase_corrente: str,
-    qty_residua_text: str = "",
-):
-    if stato is None:
-        return
-    stato.Stato_odp = "In Sospeso"
-    stato.Utente_operazione = username
-    if fase_corrente:
-        stato.FaseAttiva = fase_corrente
-    if qty_residua_text != "":
-        stato.QtyDaLavorare = qty_residua_text
-    stato.data_ultima_attivazione = None
-
-
-def _safe_float(value) -> float:
-    raw = _norm_text(value).replace(",", ".")
-    if not raw:
-        return 0.0
-    try:
-        return float(raw)
-    except (TypeError, ValueError):
-        return 0.0
-
-
-def _order_hours_snapshot_reparto(ordine: InputOdp) -> float:
-    fase_attiva = _norm_text(getattr(ordine, "FaseAttiva", "")) or "1"
-    ore_lavorazione = InputOdp._active_value_from_phase_list(
-        getattr(ordine, "TempoPrevistoLavoraz", ""),
-        fase_attiva,
-    )
-    ore_lavorazione_val = _safe_float(ore_lavorazione)
-
-    return ore_lavorazione_val
-
-
-def _advance_or_finalize_phase(
-    *,
-    ordine,
-    stato,
-    fase_corrente: str,
-    q_ok: Decimal,
-    q_nok: Decimal,
-    qty_residua: Decimal,
-    qty_residua_text: str,
-    qty_lavorata_text: str,
-    chiusura_parziale: bool,
-    username: str,
-):
-    is_last_phase, next_phase = _get_phase_transition(ordine, fase_corrente)
-
-    if chiusura_parziale:
-        _set_runtime_sospeso(
-            stato,
-            username,
-            fase_corrente,
-            qty_residua_text=qty_residua_text,
-        )
-        return {
-            "tipo": "parziale_stessa_fase",
-            "fase_corrente": fase_corrente,
-            "fase_successiva": fase_corrente,
-        }
-
-    if is_last_phase:
-        ordine.StatoOrdine = "Chiusa"
-        ordine.FaseAttiva = fase_corrente
-        ordine.QtyDaLavorare = "0"
-        _sync_active_fields_for_phase(ordine, fase_corrente)
-        return {
-            "tipo": "finale",
-            "fase_corrente": fase_corrente,
-            "fase_successiva": None,
-        }
-
-    ordine.StatoOrdine = "Pianificata"
-    ordine.FaseAttiva = next_phase
-    ordine.QtyDaLavorare = _decimal_to_text(q_ok)
-
-    # Aggiorna RisorsaAttiva, LavorazioneAttiva, AttrezzaggioAttivo
-    # in base alla nuova fase.
-    _sync_active_fields_for_phase(ordine, next_phase)
-
-    # Azzera il runtime per la nuova fase.
-    _reset_runtime_for_next_phase(
-        stato=stato,
-        ordine=ordine,
-        username=username,
-        next_phase=next_phase,
-    )
-
-    return {
-        "tipo": "avanzata",
-        "fase_corrente": fase_corrente,
-        "fase_successiva": next_phase,
-    }
-
-
-def _fase_corrente_for_export(ordine, stato=None, fase_override="") -> str:
-    raw = (
-        _norm_text(fase_override)
-        or _norm_text(getattr(stato, "FaseAttiva", ""))
-        or _norm_text(getattr(ordine, "FaseAttiva", ""))
-    )
-    fase_int = _fase_to_int(raw)
-    if fase_int is not None and fase_int > 0:
-        return str(fase_int)
-
-    fasi = _phase_sequence_for_ordine(ordine)
-    if len(fasi) == 1:
-        return fasi[0]
-
-    return ""
 
 
 def _parse_jsonish_list(value) -> list[str]:
@@ -848,6 +1302,21 @@ def _sync_active_fields_for_phase(ordine, fase_corrente: str | None = None) -> N
         getattr(ordine, "NumFase", ""),
         fase_ref,
     )
+
+
+def _qty_da_lavorare_text(ordine, stato=None) -> str:
+    if stato is not None:
+        qty_runtime = _norm_text(getattr(stato, "QtyDaLavorare", ""))
+        if qty_runtime:
+            return qty_runtime
+
+    return _norm_text(getattr(ordine, "QtyDaLavorare", "")) or _norm_text(
+        ordine.Quantita
+    )
+
+
+def _qty_da_lavorare_decimal(ordine, stato=None) -> Decimal:
+    return _parse_qty_decimal(_qty_da_lavorare_text(ordine, stato=stato))
 
 
 def _componenti_lotto_per_ordine(
@@ -973,28 +1442,67 @@ def _normalize_lotto_prodotto_for_payload(lotto: dict | None) -> dict | None:
     return _norm_text(lotto.get("RifLottoAlfa"))
 
 
-def _current_username(default: str = "utente_sconosciuto") -> str:
-    user = active_user()
+def _reset_runtime_for_next_phase(
+    stato,
+    ordine,
+    username: str,
+    next_phase: str,
+):
+    """
+    Prepara il runtime per la fase successiva.
 
-    return (
-        getattr(user, "username", None)
-        or getattr(user, "name", None)
-        or getattr(user, "email", None)
-        or str(getattr(user, "id", default))
-    )
+    Il tempo deve ripartire da zero, perché Tempo_funzionamento
+    deve rappresentare il tempo della fase corrente, non il cumulato ordine.
+    """
+    if stato is None:
+        return
+
+    next_phase = _norm_text(next_phase)
+
+    stato.Stato_odp = "Pianificata"
+    stato.Utente_operazione = username
+    stato.FaseAttiva = next_phase
+
+    # Punto centrale della modifica:
+    # azzera il tempo al cambio fase.
+    stato.Tempo_funzionamento = "0"
+
+    # La fase successiva non è ancora presa in carico.
+    stato.data_ultima_attivazione = None
+    stato.Data_in_carico = None
+
+    stato.QtyDaLavorare = _norm_text(getattr(ordine, "QtyDaLavorare", ""))
+
+    stato.RisorsaAttiva = _norm_text(getattr(ordine, "RisorsaAttiva", ""))
+    stato.LavorazioneAttiva = _norm_text(getattr(ordine, "LavorazioneAttiva", ""))
+    stato.AttrezzaggioAttivo = _norm_text(getattr(ordine, "AttrezzaggioAttivo", ""))
+
+    stato.VarianteArt = _norm_text(getattr(ordine, "VarianteArt", ""))
 
 
-def _current_user_id(default: int | None = None):
-    user = active_user()
-    return getattr(user, "id", default)
+def _set_runtime_pianificata(stato, username: str):
+    if stato is None:
+        return
+    stato.Stato_odp = "Pianificata"
+    stato.Utente_operazione = username
+    stato.data_ultima_attivazione = None
 
 
-def _current_policy() -> RbacPolicy:
-    return active_policy()
-
-
-def _bool_text(value: bool) -> str:
-    return "true" if bool(value) else "false"
+def _set_runtime_sospeso(
+    stato,
+    username: str,
+    fase_corrente: str,
+    qty_residua_text: str = "",
+):
+    if stato is None:
+        return
+    stato.Stato_odp = "In Sospeso"
+    stato.Utente_operazione = username
+    if fase_corrente:
+        stato.FaseAttiva = fase_corrente
+    if qty_residua_text != "":
+        stato.QtyDaLavorare = qty_residua_text
+    stato.data_ultima_attivazione = None
 
 
 def _build_operation_group_id(ordine, action: str, when_iso: str) -> str:
@@ -1023,332 +1531,6 @@ def _runtime_snapshot(stato) -> dict:
         "utente_operazione": _norm_text(getattr(stato, "Utente_operazione", "")),
         "rif_ordine_princ": _norm_text(getattr(stato, "RifOrdinePrinc", "")),
     }
-
-
-def _normalize_id_list(raw_values) -> list[int]:
-    if raw_values in (None, ""):
-        return []
-
-    if not isinstance(raw_values, (list, tuple, set)):
-        raise ValueError("I valori devono essere una lista di id.")
-
-    out = []
-    for value in raw_values:
-        try:
-            item_id = int(value)
-        except (TypeError, ValueError):
-            raise ValueError("Id non valido.")
-
-        if item_id > 0 and item_id not in out:
-            out.append(item_id)
-
-    return out
-
-
-HOME_CONFIG_TEMPLATE_OPTIONS = {
-    "partials/_home_montaggio.j2": "Layout montaggio/macchine",
-    "partials/_home_standard.j2": "Layout standard",
-    "partials/page_vuota.html": "Pagina vuota",
-}
-
-HOME_CONFIG_RENDERER_OPTIONS = {
-    "montaggio": "Montaggio/macchine",
-    "standard": "Standard",
-    "empty": "Vuoto",
-}
-
-HOME_CONFIG_METODO_OPTIONS = {
-    "montaggio": "Metodo montaggio",
-    "collaudo": "Metodo collaudo",
-    "nessuno": "Nessuno",
-}
-
-HOME_RULE_APPLY_TO_OPTIONS = {
-    "macchine": "Macchine",
-    "semilavorati": "Semilavorati",
-    "all": "Tutto",
-}
-
-HOME_RULE_PHASE_MODE_OPTIONS = {
-    "all": "Tutte",
-    "exact": "Esatta",
-    "last": "Ultima",
-    "not_first": "Dopo la prima",
-    "list": "Lista",
-}
-
-
-def _home_config_bool(value) -> bool:
-    return _parse_bool_flag(value)
-
-
-def _home_config_int(value, default: int = 0) -> int:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return default
-
-
-def _home_config_text(value) -> str:
-    return _norm_text(value)
-
-
-def _home_config_json_payload(obj) -> str:
-    return json.dumps(_json_safe(obj), ensure_ascii=False, sort_keys=True)
-
-
-def _home_config_audit(
-    *,
-    entity_type: str,
-    entity_id: str,
-    action: str,
-    old_payload=None,
-    new_payload=None,
-    note: str = "",
-):
-    user = active_user()
-
-    db.session.add(
-        ConfigAuditLog(
-            entity_type=entity_type,
-            entity_id=str(entity_id),
-            action=action,
-            old_payload=_home_config_json_payload(old_payload)
-            if old_payload is not None
-            else None,
-            new_payload=_home_config_json_payload(new_payload)
-            if new_payload is not None
-            else None,
-            changed_by_user_id=getattr(user, "id", None),
-            changed_by_username=getattr(user, "username", None) or "",
-            changed_at=_now_rome_dt().isoformat(timespec="seconds"),
-            note=note,
-        )
-    )
-
-
-def _home_reparto_config_to_dict(row: HomeRepartoConfig) -> dict:
-    return {
-        "id": row.id,
-        "reparto_id": row.reparto_id,
-        "reparto_codice": row.reparto.Codice if row.reparto else "",
-        "reparto_descrizione": row.reparto.Descrizione if row.reparto else "",
-        "tab_code": row.tab_code or "",
-        "label": row.label or "",
-        "template": row.template or "",
-        "renderer": row.renderer or "",
-        "permesso": row.permesso or "home",
-        "ordine_menu": int(row.ordine_menu or 0),
-        "attivo": bool(row.attivo),
-        "titolo_macchine_da_eseguire": row.titolo_macchine_da_eseguire or "",
-        "titolo_macchine_attive": row.titolo_macchine_attive or "",
-        "titolo_semilavorati_da_eseguire": row.titolo_semilavorati_da_eseguire or "",
-        "titolo_semilavorati_attivi": row.titolo_semilavorati_attivi or "",
-        "testo_presa_macchina": row.testo_presa_macchina or "",
-        "testo_sospendi_macchina": row.testo_sospendi_macchina or "",
-        "testo_riattiva_macchina": row.testo_riattiva_macchina or "",
-        "testo_chiudi_macchina": row.testo_chiudi_macchina or "",
-        "metodo_documentale_tipo": row.metodo_documentale_tipo or "nessuno",
-        "metodo_documentale_prefisso": row.metodo_documentale_prefisso or "",
-        "metodo_documentale_path_key": row.metodo_documentale_path_key or "",
-    }
-
-
-def _home_visibility_rule_to_dict(row: HomeVisibilityRule) -> dict:
-    return {
-        "id": row.id,
-        "reparto_id": row.reparto_id,
-        "reparto_codice": row.reparto.Codice if row.reparto else "",
-        "reparto_descrizione": row.reparto.Descrizione if row.reparto else "",
-        "role_id": row.role_id,
-        "role_name": row.role.name if row.role else "",
-        "role_description": row.role.description if row.role else "",
-        "user_id": row.user_id,
-        "username": row.user.username if row.user else "",
-        "apply_to": row.apply_to or "macchine",
-        "phase_mode": row.phase_mode or "all",
-        "phase_values": row.phase_values or "",
-        "attivo": bool(row.attivo),
-        "titolo_macchine_da_eseguire": row.titolo_macchine_da_eseguire or "",
-        "titolo_macchine_attive": row.titolo_macchine_attive or "",
-        "testo_presa_macchina": row.testo_presa_macchina or "",
-        "testo_sospendi_macchina": row.testo_sospendi_macchina or "",
-        "testo_riattiva_macchina": row.testo_riattiva_macchina or "",
-        "testo_chiudi_macchina": row.testo_chiudi_macchina or "",
-        "metodo_documentale_tipo": row.metodo_documentale_tipo or "",
-        "metodo_documentale_prefisso": row.metodo_documentale_prefisso or "",
-        "metodo_documentale_path_key": row.metodo_documentale_path_key or "",
-    }
-
-
-def _home_config_manageable_users(policy: RbacPolicy) -> list[User]:
-    manageable_role_ids = set(policy.descendant_manageable_role_ids)
-
-    if not manageable_role_ids:
-        return []
-
-    ur_allowed = user_roles.alias("home_cfg_ur_allowed")
-    ur_forbidden = user_roles.alias("home_cfg_ur_forbidden")
-
-    allowed_exists = exists(
-        select(1)
-        .select_from(ur_allowed)
-        .where(
-            and_(
-                ur_allowed.c.user_id == User.id,
-                ur_allowed.c.role_id.in_(manageable_role_ids),
-            )
-        )
-    )
-
-    forbidden_exists = exists(
-        select(1)
-        .select_from(ur_forbidden)
-        .where(
-            and_(
-                ur_forbidden.c.user_id == User.id,
-                ~ur_forbidden.c.role_id.in_(manageable_role_ids),
-            )
-        )
-    )
-
-    return (
-        User.query.filter(User.active.is_(True))
-        .filter(User.id != _current_user_id())
-        .filter(allowed_exists)
-        .filter(~forbidden_exists)
-        .order_by(func.lower(User.username))
-        .all()
-    )
-
-
-def _home_config_user_is_manageable(policy: RbacPolicy, user: User | None) -> bool:
-    if user is None:
-        return False
-
-    manageable_role_ids = set(policy.descendant_manageable_role_ids)
-    if not manageable_role_ids:
-        return False
-
-    target_roles = list(user.roles or [])
-    if not target_roles:
-        return False
-
-    return all(int(role.id) in manageable_role_ids for role in target_roles)
-
-
-def _home_config_role_is_manageable(policy: RbacPolicy, role: Roles | None) -> bool:
-    if role is None:
-        return False
-
-    return int(role.id) in set(policy.descendant_manageable_role_ids)
-
-
-def _build_home_config_settings_payload(policy: RbacPolicy) -> dict:
-    reparto_rows = Reparti.query.order_by(
-        func.lower(func.coalesce(Reparti.Descrizione, Reparti.Codice)),
-        func.lower(Reparti.Codice),
-    ).all()
-
-    config_rows = (
-        HomeRepartoConfig.query.options(selectinload(HomeRepartoConfig.reparto))
-        .order_by(HomeRepartoConfig.ordine_menu.asc(), HomeRepartoConfig.id.asc())
-        .all()
-    )
-
-    rule_rows = (
-        HomeVisibilityRule.query.options(
-            selectinload(HomeVisibilityRule.reparto),
-            selectinload(HomeVisibilityRule.role),
-            selectinload(HomeVisibilityRule.user),
-        )
-        .order_by(HomeVisibilityRule.reparto_id.asc(), HomeVisibilityRule.id.asc())
-        .all()
-    )
-
-    manageable_roles = sorted(
-        list(policy.descendant_manageable_roles),
-        key=lambda r: ((r.description or r.name or "").lower(), (r.name or "").lower()),
-    )
-
-    manageable_users = _home_config_manageable_users(policy)
-
-    return {
-        "reparti": [
-            {
-                "id": r.id,
-                "codice": r.Codice or "",
-                "descrizione": r.Descrizione or r.Codice or "",
-            }
-            for r in reparto_rows
-        ],
-        "roles": [
-            {
-                "id": r.id,
-                "name": r.name or "",
-                "description": r.description or r.name or "",
-            }
-            for r in manageable_roles
-        ],
-        "users": [
-            {
-                "id": u.id,
-                "username": u.username or "",
-            }
-            for u in manageable_users
-        ],
-        "home_configs": [_home_reparto_config_to_dict(row) for row in config_rows],
-        "visibility_rules": [_home_visibility_rule_to_dict(row) for row in rule_rows],
-        "template_options": HOME_CONFIG_TEMPLATE_OPTIONS,
-        "renderer_options": HOME_CONFIG_RENDERER_OPTIONS,
-        "metodo_options": HOME_CONFIG_METODO_OPTIONS,
-        "apply_to_options": HOME_RULE_APPLY_TO_OPTIONS,
-        "phase_mode_options": HOME_RULE_PHASE_MODE_OPTIONS,
-    }
-
-
-def _parse_home_rule_phase_values(raw_values, phase_mode: str) -> str | None:
-    phase_mode = _home_config_text(phase_mode).lower()
-
-    if phase_mode in {"all", "last", "not_first"}:
-        return None
-
-    if isinstance(raw_values, str):
-        raw_values = raw_values.strip()
-
-        if raw_values.startswith("["):
-            try:
-                parsed = json.loads(raw_values)
-            except json.JSONDecodeError:
-                parsed = [raw_values]
-        else:
-            parsed = [x.strip() for x in raw_values.split(",")]
-    elif isinstance(raw_values, (list, tuple, set)):
-        parsed = list(raw_values)
-    else:
-        parsed = []
-
-    values = []
-    for item in parsed:
-        value = _home_config_text(item)
-        if not value:
-            continue
-
-        try:
-            phase_int = int(float(value))
-            if phase_int <= 0:
-                raise ValueError
-            value = str(phase_int)
-        except (TypeError, ValueError):
-            raise ValueError("I valori fase devono essere numerici.")
-
-        if value not in values:
-            values.append(value)
-
-    if phase_mode in {"exact", "list"} and not values:
-        raise ValueError("Per fase esatta/lista devi indicare almeno un valore fase.")
-
-    return json.dumps(values, ensure_ascii=False)
 
 
 def _add_input_odp_closure_log(
@@ -1735,182 +1917,6 @@ def _queue_phase_export(ordine, fase_corrente: str, payload: dict):
     return outbox
 
 
-def _safe_txt_suffix(value: str, fallback: str = "export") -> str:
-    raw = _norm_text(value)
-    if not raw:
-        return fallback
-
-    out = []
-    for ch in raw:
-        if ch.isalnum() or ch in ("-", "_"):
-            out.append(ch)
-        else:
-            out.append("_")
-
-    cleaned = "".join(out).strip("_")
-    return cleaned or fallback
-
-
-def _get_erp_export_dir() -> Path:
-    """
-    Recupera la cartella export dai config caricati nell'app factory.
-    Se manca, usa una cartella locale di fallback.
-    """
-    raw = current_app.config.get("ERP_EXPORT_DIR", "")
-    if raw:
-        export_dir = Path(raw)
-    else:
-        export_dir = Path(current_app.instance_path) / "erp_exports"
-
-    export_dir.mkdir(parents=True, exist_ok=True)
-    return export_dir
-
-
-def _build_export_txt_path(prefix: str = "AVPB", suffix: str = "") -> Path:
-    now_txt = _now_rome_dt().strftime("%Y%m%d_%H%M%S")
-    safe_suffix = _safe_txt_suffix(suffix, "export")
-    file_name = f"{prefix}_{safe_suffix}_{now_txt}.txt"
-    return _get_erp_export_dir() / file_name
-
-
-def _write_txt_content(
-    lines: list[str],
-    *,
-    prefix: str = "AVPB",
-    suffix: str = "",
-    encoding: str = "utf-8",
-) -> Path:
-    path_txt = _build_export_txt_path(prefix=prefix, suffix=suffix)
-    content = "\n".join(lines) + "\n"
-    path_txt.write_text(content, encoding=encoding, newline="\r\n")
-    return path_txt
-
-
-def _json_loads_safe(raw, default):
-    try:
-        return json.loads(raw)
-    except Exception:
-        return default
-
-
-def _get_pending_avp_outbox(outbox_id: int | None = None) -> list[ErpOutbox]:
-    q = ErpOutbox.query.filter(
-        ErpOutbox.kind == "consuntivo_fase",
-        ErpOutbox.status == "pending",
-    )
-
-    if outbox_id is not None:
-        q = q.filter(ErpOutbox.outbox_id == outbox_id)
-
-    return q.order_by(ErpOutbox.outbox_id.asc()).all()
-
-
-def _norm_articolo_search_value(value) -> str:
-    return str(value or "").strip().upper()
-
-
-def _norm_articolo_revisione(value) -> str:
-    raw = _norm_articolo_search_value(value)
-
-    if raw in {"", "X", "-", "NONE", "NULL", "NAN"}:
-        return ""
-
-    return raw
-
-
-def _same_articolo_variante(db_value, search_value) -> bool:
-    return _norm_articolo_search_value(db_value) == _norm_articolo_search_value(
-        search_value
-    )
-
-
-def _same_articolo_revisione(db_value, search_value) -> bool:
-    return _norm_articolo_revisione(db_value) == _norm_articolo_revisione(search_value)
-
-
-def _find_articolo_lookup(
-    cod_art: str,
-    variante_art: str = "",
-):
-    cod_art_norm = _norm_articolo_search_value(cod_art)
-    variante_norm = _norm_articolo_search_value(variante_art)
-
-    if not cod_art_norm:
-        return None
-
-    candidates = AcqArticoliLookup.query.filter(
-        func.upper(func.trim(AcqArticoliLookup.CodArt)) == cod_art_norm
-    ).all()
-
-    if variante_norm:
-        candidates = [
-            row
-            for row in candidates
-            if _same_articolo_variante(row.VarianteArt, variante_norm)
-        ]
-
-    if not candidates:
-        return None
-
-    # Preferisce il candidato più completo
-    candidates.sort(
-        key=lambda row: (
-            0 if _norm_articolo_search_value(getattr(row, "VarianteArt", "")) else 1,
-            0 if _norm_articolo_revisione(getattr(row, "IndiceModifica", "")) else 1,
-        )
-    )
-
-    return candidates[0]
-
-
-def _get_outbox_payload(outbox: ErpOutbox) -> dict:
-    payload = _json_loads_safe(outbox.payload_json or "{}", {})
-    return payload if isinstance(payload, dict) else {}
-
-
-def _get_pending_avp_export_rows(outbox_id: int | None = None) -> list[dict]:
-    rows = []
-    for outbox in _get_pending_avp_outbox(outbox_id=outbox_id):
-        rows.append(
-            {
-                "outbox": outbox,
-                "payload": _get_outbox_payload(outbox),
-                "source_row": _get_export_source_row(outbox),
-            }
-        )
-    return rows
-
-
-def _get_export_source_row(outbox: ErpOutbox):
-    """
-    Prova prima su InputOdp corrente.
-    Se non esiste più, ripiega sull'ultimo snapshot InputOdpLog.
-    """
-    ordine = InputOdp.query.filter_by(
-        IdDocumento=outbox.IdDocumento,
-        IdRiga=outbox.IdRiga,
-    ).first()
-    if ordine is not None:
-        return ordine
-
-    return (
-        InputOdpLog.query.filter_by(
-            IdDocumento=outbox.IdDocumento,
-            IdRiga=outbox.IdRiga,
-        )
-        .order_by(InputOdpLog.log_id.desc())
-        .first()
-    )
-
-
-def _first_not_blank(*values, default=""):
-    for value in values:
-        text = _norm_text(value)
-        if text:
-            return text
-    return default
-
-
 def _build_export_distinta_base(
     ordine,
     fase_corrente: str,
@@ -1945,1534 +1951,6 @@ def _build_export_distinta_base(
         )
 
     return json.dumps(out, ensure_ascii=False)
-
-
-def _normalize_indice_modifica_for_pdf(value) -> str:
-    rev = _norm_text(value)
-    if not rev:
-        return ""
-    if rev == "-" or rev.upper() == "X":
-        return ""
-    return rev
-
-
-def _build_montaggio_pdf_key(cod_art: str, indice_modifica: str = "") -> str:
-    cod_art = _norm_text(cod_art)
-    if not cod_art:
-        return ""
-    rev = _normalize_indice_modifica_for_pdf(indice_modifica)
-    return f"{cod_art}.{rev}" if rev else cod_art
-
-
-def _get_montaggio_pdf_dir() -> Path | None:
-    raw = _norm_text(current_app.config.get("MONTAGGIO_PDF_DIR"))
-    if not raw:
-        return None
-
-    pdf_dir = Path(raw).expanduser()
-    try:
-        pdf_dir = pdf_dir.resolve()
-    except Exception:
-        pass
-
-    if not pdf_dir.exists() or not pdf_dir.is_dir():
-        return None
-
-    return pdf_dir
-
-
-def _scan_montaggio_pdf_directory(pdf_dir: Path) -> dict[str, Path]:
-    files = {}
-
-    try:
-        for entry in pdf_dir.iterdir():
-            if not entry.is_file():
-                continue
-            if entry.suffix.lower() != ".pdf":
-                continue
-
-            stem = entry.stem.strip()
-            if not stem:
-                continue
-
-            try:
-                resolved = entry.resolve()
-            except Exception:
-                resolved = entry
-
-            files.setdefault(stem.lower(), resolved)
-    except Exception:
-        return {}
-
-    return files
-
-
-def _get_montaggio_pdf_index(
-    *, force_refresh: bool = False
-) -> tuple[Path | None, dict[str, Path]]:
-    pdf_dir = _get_montaggio_pdf_dir()
-    if pdf_dir is None:
-        return None, {}
-
-    directory_key = str(pdf_dir).lower()
-    now_monotonic = monotonic()
-
-    with _montaggio_pdf_index_lock:
-        cache_valid = (
-            not force_refresh
-            and _montaggio_pdf_index_cache["directory"] == directory_key
-            and float(_montaggio_pdf_index_cache["expires_at"]) > now_monotonic
-        )
-
-        if cache_valid:
-            return pdf_dir, dict(_montaggio_pdf_index_cache["files"])
-
-        files = _scan_montaggio_pdf_directory(pdf_dir)
-        _montaggio_pdf_index_cache["directory"] = directory_key
-        _montaggio_pdf_index_cache["expires_at"] = (
-            now_monotonic + MONTAGGIO_PDF_INDEX_TTL_SECONDS
-        )
-        _montaggio_pdf_index_cache["files"] = files
-
-        return pdf_dir, dict(files)
-
-
-def _find_montaggio_pdf_path(
-    cod_art: str,
-    indice_modifica: str = "",
-    *,
-    force_refresh: bool = False,
-) -> Path | None:
-    lookup_key = _build_montaggio_pdf_key(cod_art, indice_modifica)
-    if not lookup_key:
-        return None
-
-    pdf_dir, pdf_index = _get_montaggio_pdf_index(force_refresh=force_refresh)
-    if pdf_dir is None:
-        return None
-
-    candidate = pdf_index.get(lookup_key.lower())
-    if candidate is not None and candidate.exists() and candidate.is_file():
-        try:
-            candidate.relative_to(pdf_dir)
-        except ValueError:
-            return None
-        return candidate
-
-    if not force_refresh:
-        return _find_montaggio_pdf_path(
-            cod_art,
-            indice_modifica,
-            force_refresh=True,
-        )
-
-    return None
-
-
-_metodo_pdf_index_lock = Lock()
-_metodo_pdf_index_cache = {}
-
-
-def _get_metodo_pdf_dir(path_key: str) -> Path | None:
-    path_key = _norm_text(path_key)
-    if not path_key:
-        return None
-
-    base = _norm_text(current_app.config.get(path_key))
-    if not base:
-        return None
-
-    path = Path(base)
-    return path if path.is_dir() else None
-
-
-def _get_metodo_pdf_index(
-    path_key: str,
-    *,
-    force_refresh: bool = False,
-) -> tuple[Path | None, dict[str, Path]]:
-    pdf_dir = _get_metodo_pdf_dir(path_key)
-    if pdf_dir is None:
-        return None, {}
-
-    directory_key = f"{path_key}:{str(pdf_dir).lower()}"
-    now_monotonic = monotonic()
-
-    with _metodo_pdf_index_lock:
-        cache = _metodo_pdf_index_cache.get(directory_key)
-
-        if (
-            cache
-            and not force_refresh
-            and float(cache.get("expires_at") or 0) > now_monotonic
-        ):
-            return pdf_dir, dict(cache.get("files") or {})
-
-        files = _scan_montaggio_pdf_directory(pdf_dir)
-
-        _metodo_pdf_index_cache[directory_key] = {
-            "expires_at": now_monotonic + MONTAGGIO_PDF_INDEX_TTL_SECONDS,
-            "files": files,
-        }
-
-        return pdf_dir, dict(files)
-
-
-def _build_metodo_pdf_key(
-    cod_art: str,
-    indice_modifica: str = "",
-    *,
-    prefisso: str = "",
-) -> str:
-    cod_art = _norm_text(cod_art)
-    indice_modifica = _normalize_indice_modifica_for_pdf(indice_modifica)
-    prefisso = _norm_text(prefisso)
-
-    if not cod_art:
-        return ""
-
-    return (
-        f"{prefisso}{cod_art}.{indice_modifica}"
-        if indice_modifica
-        else f"{prefisso}{cod_art}"
-    )
-
-
-def _find_metodo_pdf_path(
-    *,
-    cod_art: str,
-    indice_modifica: str = "",
-    path_key: str,
-    prefisso: str = "",
-    force_refresh: bool = False,
-) -> Path | None:
-    lookup_key = _build_metodo_pdf_key(
-        cod_art,
-        indice_modifica,
-        prefisso=prefisso,
-    )
-
-    if not lookup_key:
-        return None
-
-    pdf_dir, pdf_index = _get_metodo_pdf_index(
-        path_key,
-        force_refresh=force_refresh,
-    )
-
-    if pdf_dir is None:
-        return None
-
-    candidate = pdf_index.get(lookup_key.lower())
-
-    if candidate is not None and candidate.exists() and candidate.is_file():
-        try:
-            candidate.relative_to(pdf_dir)
-        except ValueError:
-            return None
-        return candidate
-
-    if not force_refresh:
-        return _find_metodo_pdf_path(
-            cod_art=cod_art,
-            indice_modifica=indice_modifica,
-            path_key=path_key,
-            prefisso=prefisso,
-            force_refresh=True,
-        )
-
-    return None
-
-
-def _build_metodo_montaggio_lookup(odp_rows) -> dict[str, dict]:
-    lookup = {}
-
-    for ordine in odp_rows or []:
-        cod_art = _norm_text(getattr(ordine, "CodArt", ""))
-        indice_modifica = _normalize_indice_modifica_for_pdf(
-            getattr(ordine, "IndiceModifica", "")
-        )
-        key = _build_montaggio_pdf_key(cod_art, indice_modifica)
-
-        if not key or key in lookup:
-            continue
-
-        pdf_path = _find_montaggio_pdf_path(cod_art, indice_modifica)
-        lookup[key] = {
-            "found": pdf_path is not None,
-            "url": (
-                url_for(
-                    "main.api_metodo_montaggio_pdf",
-                    cod_art=cod_art,
-                    indice_modifica=indice_modifica,
-                    tab_session=active_token(),
-                )
-                if pdf_path is not None
-                else ""
-            ),
-        }
-
-    return lookup
-
-
-def _normalize_article_search_token(value) -> str:
-    return _norm_text(value)
-
-
-def _normalize_variante_articolo_search(value) -> str:
-    variante = _norm_text(value)
-    if not variante:
-        return ""
-    if variante == "-" or variante.upper() == "X":
-        return ""
-    return variante
-
-
-def _normalize_indice_articolo_search(value) -> str:
-    indice = _norm_text(value)
-    if not indice:
-        return ""
-
-    if indice == "-" or indice.upper() in {"X", "NAN", "NONE", "NULL"}:
-        return ""
-
-    return indice
-
-
-def _build_materiale_image_key(
-    cod_art: str,
-    variante_art: str = "",
-    indice_modifica: str = "",
-) -> str:
-    cod_art = _normalize_article_search_token(cod_art)
-    variante_art = _normalize_variante_articolo_search(variante_art)
-    indice_modifica = _normalize_indice_articolo_search(indice_modifica)
-
-    if not cod_art:
-        return ""
-
-    if variante_art and indice_modifica:
-        return f"{cod_art}.{variante_art}.{indice_modifica}"
-    if variante_art:
-        return f"{cod_art}.{variante_art}"
-    if indice_modifica:
-        return f"{cod_art}..{indice_modifica}"
-    return cod_art
-
-
-def _get_materiale_image_dir() -> Path | None:
-    raw = _norm_text(current_app.config.get("FOTOGRAFIE_MATERIALE"))
-    if not raw:
-        return None
-
-    img_dir = Path(raw).expanduser()
-    try:
-        img_dir = img_dir.resolve()
-    except Exception:
-        pass
-
-    if not img_dir.exists() or not img_dir.is_dir():
-        return None
-
-    return img_dir
-
-
-def _scan_materiale_image_directory(img_dir: Path) -> dict[str, Path]:
-    files = {}
-
-    try:
-        for entry in img_dir.iterdir():
-            if not entry.is_file():
-                continue
-            if entry.suffix.lower() != ".png":
-                continue
-
-            stem = entry.stem.strip()
-            if not stem:
-                continue
-
-            try:
-                resolved = entry.resolve()
-            except Exception:
-                resolved = entry
-
-            files.setdefault(stem.lower(), resolved)
-    except Exception:
-        return {}
-
-    return files
-
-
-def _get_materiale_image_index(
-    *,
-    force_refresh: bool = False,
-) -> tuple[Path | None, dict[str, Path]]:
-    img_dir = _get_materiale_image_dir()
-    if img_dir is None:
-        return None, {}
-
-    directory_key = str(img_dir).lower()
-    now_monotonic = monotonic()
-
-    with _materiale_img_index_lock:
-        cache_valid = (
-            not force_refresh
-            and _materiale_img_index_cache["directory"] == directory_key
-            and float(_materiale_img_index_cache["expires_at"]) > now_monotonic
-        )
-
-        if cache_valid:
-            return img_dir, dict(_materiale_img_index_cache["files"])
-
-        files = _scan_materiale_image_directory(img_dir)
-        _materiale_img_index_cache["directory"] = directory_key
-        _materiale_img_index_cache["expires_at"] = (
-            now_monotonic + MATERIALE_IMG_INDEX_TTL_SECONDS
-        )
-        _materiale_img_index_cache["files"] = files
-
-        return img_dir, dict(files)
-
-
-def _find_materiale_image_path(
-    cod_art: str,
-    variante_art: str = "",
-    indice_modifica: str = "",
-    *,
-    force_refresh: bool = False,
-) -> Path | None:
-    lookup_key = _build_materiale_image_key(
-        cod_art=cod_art,
-        variante_art=variante_art,
-        indice_modifica=indice_modifica,
-    )
-    if not lookup_key:
-        return None
-
-    img_dir, img_index = _get_materiale_image_index(force_refresh=force_refresh)
-    if img_dir is None:
-        return None
-
-    candidate = img_index.get(lookup_key.lower())
-    if candidate is not None and candidate.exists() and candidate.is_file():
-        try:
-            candidate.relative_to(img_dir)
-        except ValueError:
-            return None
-        return candidate
-
-    if not force_refresh:
-        return _find_materiale_image_path(
-            cod_art=cod_art,
-            variante_art=variante_art,
-            indice_modifica=indice_modifica,
-            force_refresh=True,
-        )
-
-    return None
-
-
-def _is_articolo_search_state(stato: str) -> bool:
-    s = _norm_text(stato).lower()
-    if s == "chiusa":
-        return False
-    return "pianificat" in s or "attiv" in s or "sospes" in s
-
-
-def _component_matches_search(
-    comp: dict,
-    *,
-    cod_art: str,
-    variante_art: str,
-    indice_modifica: str,
-) -> bool:
-    return (
-        _normalize_article_search_token(comp.get("CodArt")) == cod_art
-        and _normalize_variante_articolo_search(comp.get("VarianteArt")) == variante_art
-        and _normalize_indice_articolo_search(comp.get("IndiceModifica"))
-        == indice_modifica
-    )
-
-
-def _build_articolo_ordini_attivi_rows(
-    *,
-    cod_art: str,
-    variante_art: str,
-    indice_modifica: str,
-) -> list[dict]:
-    rows = []
-
-    for ordine in _base_odp_query().all():
-        stato = _norm_text(getattr(ordine, "StatoOrdine", ""))
-        if not _is_articolo_search_state(stato):
-            continue
-
-        distinta = _parse_distinta_materiale(ordine)
-        qty_tot = Decimal("0")
-
-        for comp in distinta:
-            if not isinstance(comp, dict):
-                continue
-
-            if not _component_matches_search(
-                comp,
-                cod_art=cod_art,
-                variante_art=variante_art,
-                indice_modifica=indice_modifica,
-            ):
-                continue
-
-            try:
-                qty_tot += _parse_qty_decimal(comp.get("Quantita"))
-            except ValueError:
-                continue
-
-        if qty_tot <= 0:
-            continue
-
-        rows.append(
-            {
-                "Ordine": _ordine_ref_label(ordine),
-                "CodArtProdotto": _norm_text(getattr(ordine, "CodArt", "")),
-                "VarianteProdotto": _norm_text(getattr(ordine, "VarianteArt", "")),
-                "IndiceModificaProdotto": _norm_text(
-                    getattr(ordine, "IndiceModifica", "")
-                ),
-                "DescrizioneProdotto": _norm_text(getattr(ordine, "DesArt", "")),
-                "Stato": stato,
-                "QuantitaComponente": _decimal_to_text(qty_tot),
-            }
-        )
-
-    rows.sort(
-        key=lambda x: (
-            (x.get("Ordine") or "").lower(),
-            (x.get("CodArtProdotto") or "").lower(),
-            (x.get("VarianteProdotto") or "").lower(),
-            (x.get("IndiceModificaProdotto") or "").lower(),
-        )
-    )
-    return rows
-
-
-@main_bp.context_processor
-def inject_policy_and_nav():
-    user = active_user()
-
-    if not getattr(user, "is_authenticated", False):
-        return {}
-
-    policy = active_policy()
-
-    operator_token = _norm_text(request.args.get("tab_session")) or active_token()
-
-    items = []
-
-    for cfg in _allowed_home_reparto_configs(policy):
-        url_kwargs = {"tab": cfg.tab_code}
-        if operator_token:
-            url_kwargs["tab_session"] = operator_token
-
-        items.append(
-            {
-                "label": _home_reparto_label(cfg),
-                "url": url_for(".home", **url_kwargs),
-                "tab": cfg.tab_code,
-                "reparto": _home_reparto_code(cfg),
-            }
-        )
-
-    area_switch_items = []
-
-    if policy.can("home_acquisti"):
-        acq_kwargs = {}
-        if operator_token:
-            acq_kwargs["tab_session"] = operator_token
-
-        area_switch_items.append(
-            {
-                "label": "Acquisti",
-                "url": url_for(".home_acquisti", **acq_kwargs),
-                "area": "acquisti",
-            }
-        )
-
-    if policy.can("home"):
-        first_production_tab = None
-
-        for it in items:
-            first_production_tab = it["tab"]
-            break
-
-        if first_production_tab:
-            prod_kwargs = {"tab": first_production_tab}
-            if operator_token:
-                prod_kwargs["tab_session"] = operator_token
-
-            area_switch_items.append(
-                {
-                    "label": "Produzione",
-                    "url": url_for(".home", **prod_kwargs),
-                    "area": "produzione",
-                }
-            )
-
-    return {
-        "policy": policy,
-        "operator_user": getattr(g, "operator_user", None),
-        "operator_policy": getattr(g, "operator_policy", None),
-        "tab_session": operator_token,
-        "home_switch_items": items,
-        "area_switch_items": area_switch_items,
-    }
-
-
-@main_bp.context_processor
-def inject_order_ref_formatters():
-    return {
-        "ordine_ref_display": format_ordine_ref_display_from_ordine,
-    }
-
-
-@main_bp.get("/documenti/metodo-utilizzo")
-@operator_or_login_required
-def metodo_utilizzo_pdf():
-    base_dir = Path(current_app.config.get("METODO_UTILIZZO_DIR", ""))
-    pdf_path = base_dir / "metodo_utilizzo.pdf"
-
-    if not pdf_path.is_file():
-        abort(404)
-
-    return send_file(
-        pdf_path,
-        mimetype="application/pdf",
-        as_attachment=False,
-        download_name=pdf_path.name,
-    )
-
-
-# region PERCORSI
-@main_bp.route("/")
-@operator_perm_required("home")
-def home():
-    policy = _current_policy()
-    user = active_user()
-
-    tab_raw = request.args.get("tab")
-    config = _home_reparto_config_by_tab(tab_raw) if tab_raw else None
-
-    # Default: prima home reparto consentita dal DB.
-    if config is None and not tab_raw:
-        config = _first_allowed_home_reparto_config(policy)
-
-    if config is None:
-        abort(404)
-
-    if not _policy_can_access_home_config(policy, config):
-        abort(403)
-
-    active_tab = config.tab_code
-    template = config.template
-
-    odp = _home_rows_for_config(policy, config, apply_priorita=True, sort_priorita=True)
-
-    causali = (
-        db.session.execute(
-            select(Causaliattivita.DesCausaleAttivita).order_by(
-                Causaliattivita.DesCausaleAttivita
-            )
-        )
-        .scalars()
-        .all()
-    )
-    method_settings = _home_method_settings_for_user(config, policy, user)
-    home_ui_texts = _home_ui_texts_for_user(config, policy, user)
-
-    return render_template(
-        "home.j2",
-        active_partial=template,
-        active_tab=active_tab,
-        home_config=config,
-        home_ui_texts=home_ui_texts,
-        policy=policy,
-        odp=odp,
-        causali_attivita=causali,
-        bridge_url=url_for(
-            "main.api_home_bridge",
-            tab=active_tab,
-            tab_session=active_token(),
-        ),
-        bridge_last_event_id=_last_log_token(),
-        method_settings=method_settings,
-        metodo_lookup=_build_metodo_lookup(
-            odp,
-            path_key=method_settings["path_key"],
-            prefisso=method_settings["prefisso"],
-        ),
-        metodo_documentale_prefisso=method_settings["prefisso"],
-        metodo_documentale_tipo=method_settings["tipo"],
-        operator_user=user,
-        operator_policy=policy,
-        tab_session=active_token(),
-    )
-
-
-def _query_for_tab(policy, reparto_code):
-    q = _base_odp_query()
-    q = policy.filter_input_odp_for_reparto(q, reparto_code)
-    return q
-
-
-def _json_safe(value):
-    if isinstance(value, dict):
-        return {k: _json_safe(v) for k, v in value.items()}
-    if isinstance(value, set):
-        return sorted(_json_safe(v) for v in value)
-    if isinstance(value, (list, tuple)):
-        return [_json_safe(v) for v in value]
-    return value
-
-
-def _render_bridge_standard(odp):
-    metodo_montaggio_lookup = _build_metodo_montaggio_lookup(odp)
-
-    return {
-        "tbody_ordini_da_eseguire": render_template(
-            "partials/_home_standard_rows_da_eseguire.j2",
-            odp=odp,
-        ),
-        "tbody_ordini_in_corso": render_template(
-            "partials/_home_standard_rows_in_corso.j2",
-            odp=odp,
-            metodo_montaggio_lookup=metodo_montaggio_lookup,
-        ),
-    }
-
-
-def _home_ui_texts_for_user(
-    config: HomeRepartoConfig,
-    policy: RbacPolicy,
-    user=None,
-) -> dict:
-    user = user or active_user()
-
-    texts = {
-        "titolo_macchine_da_eseguire": "Ordini macchina da eseguire",
-        "titolo_macchine_attive": "Ordini macchina attivi",
-        "titolo_semilavorati_da_eseguire": "Ordini semilavorati da eseguire",
-        "titolo_semilavorati_attivi": "Ordini semilavorati attivi",
-        "testo_presa_macchina": "Attiva ordine macchina",
-        "testo_sospendi_macchina": "Sospendi ordine",
-        "testo_riattiva_macchina": "Riattiva ordine",
-        "testo_chiudi_macchina": "Chiudi ordine",
-        "toast_presa_macchina": "Presa in carico ordine macchina",
-        "toast_sospendi_macchina": "Sospensione ordine macchina",
-        "toast_riattiva_macchina": "Riattivazione ordine macchina",
-        "toast_chiudi_macchina": "Chiusura ordine macchina",
-    }
-
-    config_map = {
-        "titolo_macchine_da_eseguire": getattr(
-            config, "titolo_macchine_da_eseguire", None
-        ),
-        "titolo_macchine_attive": getattr(config, "titolo_macchine_attive", None),
-        "titolo_semilavorati_da_eseguire": getattr(
-            config, "titolo_semilavorati_da_eseguire", None
-        ),
-        "titolo_semilavorati_attivi": getattr(
-            config, "titolo_semilavorati_attivi", None
-        ),
-        "testo_presa_macchina": getattr(config, "testo_presa_macchina", None),
-        "testo_sospendi_macchina": getattr(config, "testo_sospendi_macchina", None),
-        "testo_riattiva_macchina": getattr(config, "testo_riattiva_macchina", None),
-        "testo_chiudi_macchina": getattr(config, "testo_chiudi_macchina", None),
-    }
-
-    for key, value in config_map.items():
-        value = _norm_text(value)
-        if value:
-            texts[key] = value
-
-    rules = (
-        HomeVisibilityRule.query.filter(
-            HomeVisibilityRule.attivo.is_(True),
-            HomeVisibilityRule.reparto_id == config.reparto_id,
-        )
-        .filter(
-            or_(
-                HomeVisibilityRule.role_id.in_(policy.role_ids),
-                HomeVisibilityRule.user_id == getattr(user, "id", None),
-            )
-        )
-        .order_by(
-            HomeVisibilityRule.user_id.isnot(None).asc(),
-            HomeVisibilityRule.id.asc(),
-        )
-        .all()
-    )
-
-    for rule in rules:
-        rule_map = {
-            "titolo_macchine_da_eseguire": rule.titolo_macchine_da_eseguire,
-            "titolo_macchine_attive": rule.titolo_macchine_attive,
-            "testo_presa_macchina": rule.testo_presa_macchina,
-            "testo_sospendi_macchina": rule.testo_sospendi_macchina,
-            "testo_riattiva_macchina": rule.testo_riattiva_macchina,
-            "testo_chiudi_macchina": rule.testo_chiudi_macchina,
-        }
-
-        for key, value in rule_map.items():
-            value = _norm_text(value)
-            if value:
-                texts[key] = value
-
-    # Toast: se non hai un campo dedicato, riuso gli stessi testi azione.
-    texts["toast_presa_macchina"] = (
-        texts.get("testo_presa_macchina") or texts["toast_presa_macchina"]
-    )
-    texts["toast_sospendi_macchina"] = (
-        texts.get("testo_sospendi_macchina") or texts["toast_sospendi_macchina"]
-    )
-    texts["toast_riattiva_macchina"] = (
-        texts.get("testo_riattiva_macchina") or texts["toast_riattiva_macchina"]
-    )
-    texts["toast_chiudi_macchina"] = (
-        texts.get("testo_chiudi_macchina") or texts["toast_chiudi_macchina"]
-    )
-
-    return texts
-
-
-def _home_method_settings_for_user(
-    config: HomeRepartoConfig,
-    policy: RbacPolicy,
-    user=None,
-) -> dict:
-    user = user or active_user()
-
-    settings = {
-        "tipo": _norm_text(getattr(config, "metodo_documentale_tipo", ""))
-        or "montaggio",
-        "prefisso": _norm_text(getattr(config, "metodo_documentale_prefisso", "")),
-        "path_key": _norm_text(getattr(config, "metodo_documentale_path_key", ""))
-        or "MONTAGGIO_PDF_DIR",
-    }
-
-    rules = (
-        HomeVisibilityRule.query.filter(
-            HomeVisibilityRule.attivo.is_(True),
-            HomeVisibilityRule.reparto_id == config.reparto_id,
-        )
-        .filter(
-            or_(
-                HomeVisibilityRule.role_id.in_(policy.role_ids),
-                HomeVisibilityRule.user_id == getattr(user, "id", None),
-            )
-        )
-        .order_by(
-            HomeVisibilityRule.user_id.isnot(None).asc(),
-            HomeVisibilityRule.id.asc(),
-        )
-        .all()
-    )
-
-    for rule in rules:
-        if _norm_text(rule.metodo_documentale_tipo):
-            settings["tipo"] = _norm_text(rule.metodo_documentale_tipo)
-        if _norm_text(rule.metodo_documentale_prefisso):
-            settings["prefisso"] = _norm_text(rule.metodo_documentale_prefisso)
-        if _norm_text(rule.metodo_documentale_path_key):
-            settings["path_key"] = _norm_text(rule.metodo_documentale_path_key)
-
-    return settings
-
-
-def _render_bridge_montaggio(
-    odp,
-    *,
-    metodo_path_key: str = "MONTAGGIO_PDF_DIR",
-    metodo_prefisso: str = "",
-):
-    metodo_lookup = _build_metodo_lookup(
-        odp,
-        path_key=metodo_path_key,
-        prefisso=metodo_prefisso,
-    )
-
-    ctx = {
-        "odp": odp,
-        "metodo_lookup": metodo_lookup,
-        "metodo_documentale_prefisso": metodo_prefisso,
-    }
-
-    return {
-        "tbody_ordini_da_eseguire_sl": render_template(
-            "partials/_home_montaggio_sl_rows_da_eseguire.j2",
-            odp=odp,
-        ),
-        "tbody_ordini_in_corso_sl": render_template(
-            "partials/_home_montaggio_sl_rows_in_corso.j2",
-            **ctx,
-        ),
-        "tbody_ordini_da_eseguire_m": render_template(
-            "partials/_home_montaggio_m_rows_da_eseguire.j2",
-            odp=odp,
-        ),
-        "tbody_ordini_in_corso_m": render_template(
-            "partials/_home_montaggio_m_rows_in_corso.j2",
-            **ctx,
-        ),
-    }
-
-
-def _render_bridge_empty(odp):
-    return {}
-
-
-RENDERERS = {
-    "standard": _render_bridge_standard,
-    "montaggio": _render_bridge_montaggio,
-    "empty": _render_bridge_empty,
-}
-
-
-def _render_fragments_for_home_config(
-    config: HomeRepartoConfig,
-    odp: list[InputOdp],
-) -> dict:
-    renderer_key = _norm_text(getattr(config, "renderer", "")) or "empty"
-
-    if renderer_key == "montaggio":
-        method_settings = _home_method_settings_for_user(
-            config,
-            _current_policy(),
-            active_user(),
-        )
-
-        return _render_bridge_montaggio(
-            odp,
-            metodo_path_key=method_settings["path_key"],
-            metodo_prefisso=method_settings["prefisso"],
-        )
-
-    renderer = RENDERERS.get(renderer_key)
-    if renderer is None:
-        current_app.logger.warning(
-            "Renderer home non valido: tab_code=%s renderer=%s",
-            getattr(config, "tab_code", ""),
-            renderer_key,
-        )
-        return {}
-
-    return renderer(odp)
-
-
-def _first_code_from_cell(value) -> str:
-    for code in _extract_codes_from_cell(value):
-        code = _norm_text(code)
-        if code:
-            return code
-    return ""
-
-
-@main_bp.get("/api/home/<tab>/bridge")
-@operator_perm_required("home")
-def api_home_bridge(tab):
-    config = _home_reparto_config_by_tab(tab)
-    if config is None:
-        abort(404)
-
-    policy = _current_policy()
-
-    if not _policy_can_access_home_config(policy, config):
-        abort(403)
-
-    client_last_event_id = _norm_text(request.args.get("last_event_id"))
-    server_last_event_id = _last_log_token()
-
-    if client_last_event_id and client_last_event_id == server_last_event_id:
-        return jsonify(
-            {
-                "ok": True,
-                "changed": False,
-                "last_event_id": server_last_event_id,
-                "fragments": {},
-            }
-        )
-
-    odp = _home_rows_for_config(policy, config, apply_priorita=True, sort_priorita=True)
-    fragments = _render_fragments_for_home_config(config, odp)
-
-    return jsonify(
-        {
-            "ok": True,
-            "changed": True,
-            "active_tab": config.tab_code,
-            "last_event_id": server_last_event_id,
-            "fragments": fragments,
-        }
-    )
-
-
-@main_bp.get("/api/documenti/metodo")
-@operator_perm_required("home")
-def api_metodo_pdf():
-    cod_art = _norm_text(request.args.get("cod_art"))
-    indice_modifica = _normalize_indice_modifica_for_pdf(
-        request.args.get("indice_modifica")
-    )
-    path_key = _norm_text(request.args.get("path_key")) or "MONTAGGIO_PDF_DIR"
-    prefisso = _norm_text(request.args.get("prefisso"))
-
-    allowed_path_keys = {"MONTAGGIO_PDF_DIR", "COLLAUDO_PDF_DIR"}
-    if path_key not in allowed_path_keys:
-        abort(404)
-
-    pdf_path = _find_metodo_pdf_path(
-        cod_art=cod_art,
-        indice_modifica=indice_modifica,
-        path_key=path_key,
-        prefisso=prefisso,
-        force_refresh=True,
-    )
-
-    if pdf_path is None:
-        current_app.logger.warning(
-            "PDF metodo non trovato cod_art=%s indice_modifica=%s path_key=%s prefisso=%s",
-            cod_art,
-            indice_modifica,
-            path_key,
-            prefisso,
-        )
-        abort(404)
-
-    return send_file(
-        pdf_path,
-        mimetype="application/pdf",
-        as_attachment=False,
-        download_name=pdf_path.name,
-    )
-
-
-def _build_metodo_lookup(
-    odp_rows,
-    *,
-    path_key: str = "MONTAGGIO_PDF_DIR",
-    prefisso: str = "",
-) -> dict[str, dict]:
-    lookup = {}
-
-    for ordine in odp_rows or []:
-        cod_art = _norm_text(getattr(ordine, "CodArt", ""))
-        indice_modifica = _normalize_indice_modifica_for_pdf(
-            getattr(ordine, "IndiceModifica", "")
-        )
-
-        key = _build_metodo_pdf_key(
-            cod_art,
-            indice_modifica,
-            prefisso=prefisso,
-        )
-
-        if not key or key in lookup:
-            continue
-
-        pdf_path = _find_metodo_pdf_path(
-            cod_art=cod_art,
-            indice_modifica=indice_modifica,
-            path_key=path_key,
-            prefisso=prefisso,
-        )
-
-        lookup[key] = {
-            "found": pdf_path is not None,
-            "url": (
-                url_for(
-                    "main.api_metodo_pdf",
-                    cod_art=cod_art,
-                    indice_modifica=indice_modifica,
-                    path_key=path_key,
-                    prefisso=prefisso,
-                    tab_session=active_token(),
-                )
-                if pdf_path is not None
-                else ""
-            ),
-        }
-
-    return lookup
-
-
-@main_bp.get("/api/documenti/metodo-montaggio")
-@operator_perm_required("home")
-def api_metodo_montaggio_pdf():
-    cod_art = _norm_text(request.args.get("cod_art"))
-    indice_modifica = _normalize_indice_modifica_for_pdf(
-        request.args.get("indice_modifica")
-    )
-
-    pdf_dir = _get_montaggio_pdf_dir()
-    if pdf_dir is None:
-        current_app.logger.error("MONTAGGIO_PDF_DIR non configurata o non valida")
-        abort(404)
-
-    pdf_path = _find_montaggio_pdf_path(
-        cod_art=cod_art,
-        indice_modifica=indice_modifica,
-        force_refresh=True,
-    )
-
-    if pdf_path is None:
-        current_app.logger.warning(
-            "PDF metodo montaggio non trovato per cod_art=%s indice_modifica=%s",
-            cod_art,
-            indice_modifica,
-        )
-        abort(404)
-
-    try:
-        pdf_path = pdf_path.resolve()
-        pdf_dir = pdf_dir.resolve()
-        pdf_path.relative_to(pdf_dir)
-    except Exception:
-        current_app.logger.exception("Percorso PDF non valido")
-        abort(403)
-
-    if not pdf_path.exists() or not pdf_path.is_file():
-        current_app.logger.warning("PDF non accessibile: %s", pdf_path)
-        abort(404)
-
-    current_app.logger.info("Invio PDF metodo montaggio: %s", pdf_path)
-
-    response = send_file(
-        pdf_path,
-        mimetype="application/pdf",
-        as_attachment=False,
-        download_name=pdf_path.name,
-        conditional=False,
-    )
-    response.headers["Content-Disposition"] = f'inline; filename="{pdf_path.name}"'
-    return response
-
-
-@main_bp.get("/api/materiali/foto")
-@operator_or_login_required
-def api_materiale_foto():
-    cod_art = _normalize_article_search_token(request.args.get("cod_art"))
-    variante_art = _normalize_variante_articolo_search(request.args.get("variante_art"))
-    indice_modifica = _normalize_indice_articolo_search(
-        request.args.get("indice_modifica")
-    )
-
-    img_dir = _get_materiale_image_dir()
-    if img_dir is None:
-        abort(404)
-
-    img_path = _find_materiale_image_path(
-        cod_art=cod_art,
-        variante_art=variante_art,
-        indice_modifica=indice_modifica,
-        force_refresh=True,
-    )
-    if img_path is None:
-        abort(404)
-
-    try:
-        img_path = img_path.resolve()
-        img_dir = img_dir.resolve()
-        img_path.relative_to(img_dir)
-    except Exception:
-        abort(403)
-
-    if not img_path.exists() or not img_path.is_file():
-        abort(404)
-
-    return send_file(
-        img_path,
-        mimetype="image/png",
-        as_attachment=False,
-        download_name=img_path.name,
-    )
-
-
-@main_bp.post("/api/materiali/ricerca-articolo")
-@operator_or_login_required
-def api_ricerca_articolo():
-    data = request.get_json(silent=True) or {}
-
-    cod_art = _normalize_article_search_token(data.get("cod_art"))
-    variante_art = _normalize_variante_articolo_search(data.get("variante_art"))
-
-    if not cod_art:
-        return jsonify({"ok": False, "error": "CodArt obbligatorio."}), 400
-
-    articolo = _find_articolo_lookup(
-        cod_art=cod_art,
-        variante_art=variante_art,
-    )
-
-    if articolo is None:
-        return jsonify(
-            {
-                "ok": True,
-                "found_component": False,
-                "message": "Il codice inserito è errato oppure non è presente a gestionale.",
-                "component": None,
-                "image": {"found": False, "url": "", "file_name": ""},
-                "orders": [],
-                "orders_message": "",
-            }
-        )
-    cod_art = _normalize_article_search_token(getattr(articolo, "CodArt", ""))
-    variante_art = _normalize_variante_articolo_search(
-        getattr(articolo, "VarianteArt", "")
-    )
-    indice_modifica = _normalize_indice_articolo_search(
-        getattr(articolo, "IndiceModifica", "")
-    )
-    giacenza_totale = (
-        db.session.execute(
-            select(func.coalesce(func.sum(AcqGiacenze.Giacenza), 0.0)).where(
-                AcqGiacenze.CodArt == cod_art,
-                AcqGiacenze.VarianteArt == variante_art,
-            )
-        ).scalar()
-        or 0.0
-    )
-
-    image_path = _find_materiale_image_path(
-        cod_art=cod_art,
-        variante_art=variante_art,
-        indice_modifica=indice_modifica,
-    )
-    image_url = (
-        url_for(
-            "main.api_materiale_foto",
-            cod_art=cod_art,
-            variante_art=variante_art,
-            indice_modifica=indice_modifica,
-            tab_session=active_token(),
-        )
-        if image_path is not None
-        else ""
-    )
-
-    orders = _build_articolo_ordini_attivi_rows(
-        cod_art=cod_art,
-        variante_art=variante_art,
-        indice_modifica=indice_modifica,
-    )
-
-    return jsonify(
-        {
-            "ok": True,
-            "found_component": True,
-            "message": "",
-            "component": {
-                "CodArt": cod_art,
-                "VarianteArt": variante_art,
-                "IndiceModifica": indice_modifica,
-                "DesArt": _norm_text(getattr(articolo, "DesArt", "")),
-                "MagUM": _norm_text(getattr(articolo, "MagUM", "")),
-                "TecniciUm": _norm_text(getattr(articolo, "TecniciUm", "")),
-                "GiacenzaTotale": float(giacenza_totale or 0.0),
-                "GiacenzaTotaleText": _decimal_to_text(
-                    Decimal(str(float(giacenza_totale or 0.0)))
-                ),
-            },
-            "image": {
-                "found": image_path is not None,
-                "url": image_url,
-                "file_name": image_path.name if image_path is not None else "",
-            },
-            "orders": orders,
-            "orders_message": (
-                ""
-                if orders
-                else "Non sono presenti ordini attivi per questo componente."
-            ),
-        }
-    )
-
-
-def _row_key(id_documento: str, id_riga: str) -> str:
-    return f"{id_documento}|{id_riga}"
-
-
-def _build_rif_ordine_princ(id_documento: str, id_riga: str) -> str:
-    return json.dumps(
-        [_norm_text(id_documento), _norm_text(id_riga)],
-        ensure_ascii=False,
-    )
-
-
-def _norm_text(value) -> str:
-    return str(value or "").strip()
-
-
-PRIORITA_2_MAX_DEFAULT = 5
-PRIORITA_HIDDEN_ROLE_NAMES = {"admin"}
-
-
-def _priorita_2_max() -> int:
-    try:
-        return int(current_app.config.get("PRIORITA_2_MAX", PRIORITA_2_MAX_DEFAULT))
-    except (TypeError, ValueError):
-        return PRIORITA_2_MAX_DEFAULT
-
-
-def _priority_now_iso() -> str:
-    return datetime.now(ROME_TZ).isoformat(timespec="seconds")
-
-
-def _ordine_fase_key(ordine) -> tuple[str, str, str]:
-    return (
-        _norm_text(ordine.IdDocumento),
-        _norm_text(ordine.IdRiga),
-        _norm_text(ordine.FaseAttiva) or "1",
-    )
-
-
-def _make_ordine_fase_key(id_documento, id_riga, fase) -> tuple[str, str, str]:
-    return (
-        _norm_text(id_documento),
-        _norm_text(id_riga),
-        _norm_text(fase) or "1",
-    )
-
-
-def _is_ordine_pianificata(ordine) -> bool:
-    return _norm_text(getattr(ordine, "StatoOrdine", "")).lower() == "pianificata"
-
-
-def _priority_sort_key(ordine):
-    pr = getattr(ordine, "PrioritaNumero", None)
-    pos = getattr(ordine, "PrioritaPosizione", None)
-
-    if pr in (1, 2, 3):
-        return (
-            0,
-            pr,
-            pos or 999999,
-            _norm_text(ordine.DataFineSched),
-            _norm_text(ordine.RifRegistraz),
-        )
-
-    return (
-        1,
-        99,
-        999999,
-        _norm_text(ordine.DataFineSched),
-        _norm_text(ordine.RifRegistraz),
-    )
-
-
-def _priorita_rows_for_operatore(operatore_id: int) -> list[OdpPriorita]:
-    return (
-        OdpPriorita.query.filter_by(operatore_id=int(operatore_id))
-        .order_by(
-            OdpPriorita.Priorita.asc(),
-            OdpPriorita.Posizione.asc(),
-            OdpPriorita.id.asc(),
-        )
-        .all()
-    )
-
-
-def _ordini_pianificata_visibili_per_operatore(operatore: User) -> list[InputOdp]:
-    policy_operatore = RbacPolicy(operatore)
-
-    q = _base_odp_query()
-    q = policy_operatore.filter_input_odp(q)
-
-    ordini = q.all()
-    ordini = policy_operatore.filter_montaggio_macchine_famiglia_rows(ordini)
-
-    return [ordine for ordine in ordini if _is_ordine_pianificata(ordine)]
-
-
-def _priorita_valid_keys_for_operatore(
-    operatore: User,
-) -> dict[tuple[str, str, str], InputOdp]:
-    return {
-        _ordine_fase_key(ordine): ordine
-        for ordine in _ordini_pianificata_visibili_per_operatore(operatore)
-    }
-
-
-def _cleanup_priorita_operatore(operatore: User) -> None:
-    """
-    Elimina priorità non più valide:
-    - ordine non più visibile all'operatore;
-    - ordine non più Pianificata;
-    - fase cambiata.
-    """
-    valid_keys = _priorita_valid_keys_for_operatore(operatore)
-
-    for row in _priorita_rows_for_operatore(operatore.id):
-        key = _make_ordine_fase_key(row.IdDocumento, row.IdRiga, row.Fase)
-        if key not in valid_keys:
-            db.session.delete(row)
-
-
-def _compact_priorita_operatore(operatore_id: int) -> None:
-    """
-    Ricompatta la coda:
-    - 1 solo ordine in priorità 1;
-    - massimo N ordini in priorità 2;
-    - resto in priorità 3.
-    """
-    rows = _priorita_rows_for_operatore(operatore_id)
-    max_p2 = _priorita_2_max()
-
-    for index, row in enumerate(rows):
-        if index == 0:
-            row.Priorita = 1
-            row.Posizione = 1
-        elif index <= max_p2:
-            row.Priorita = 2
-            row.Posizione = index
-        else:
-            row.Priorita = 3
-            row.Posizione = index - max_p2
-
-        row.updated_at = _priority_now_iso()
-
-
-def _priorita_map_for_operatore(
-    operatore_id: int,
-) -> dict[tuple[str, str, str], OdpPriorita]:
-    return {
-        _make_ordine_fase_key(row.IdDocumento, row.IdRiga, row.Fase): row
-        for row in _priorita_rows_for_operatore(operatore_id)
-    }
-
-
-def _apply_priorita_to_ordini(
-    ordini: list[InputOdp],
-    operatore_id: int,
-    *,
-    sort_result: bool = True,
-) -> list[InputOdp]:
-    priorita_map = _priorita_map_for_operatore(operatore_id)
-
-    for ordine in ordini:
-        row = priorita_map.get(_ordine_fase_key(ordine))
-
-        if row is None:
-            ordine.PrioritaNumero = None
-            ordine.PrioritaPosizione = None
-        else:
-            ordine.PrioritaNumero = row.Priorita
-            ordine.PrioritaPosizione = row.Posizione
-
-    if sort_result:
-        return sorted(ordini, key=_priority_sort_key)
-
-    return ordini
-
-
-def _ordine_priorita_payload(ordine, priorita_row: OdpPriorita | None = None) -> dict:
-    fase = _norm_text(ordine.FaseAttiva) or "1"
-
-    return {
-        "key": f"{ordine.IdDocumento}|{ordine.IdRiga}|{fase}",
-        "id_documento": _norm_text(ordine.IdDocumento),
-        "id_riga": _norm_text(ordine.IdRiga),
-        "fase": fase,
-        "ordine": _ordine_ref_label(ordine),
-        "codice": _norm_text(ordine.CodArt),
-        "variante": _norm_text(ordine.VarianteArt),
-        "revisione": _norm_text(ordine.IndiceModifica),
-        "descrizione": _norm_text(ordine.DesArt),
-        "quantita": _norm_text(getattr(ordine, "QtyDaLavorare", ""))
-        or _norm_text(ordine.Quantita),
-        "risorsa": _norm_text(getattr(ordine, "RisorsaAttiva", "")),
-        "lavorazione": _norm_text(getattr(ordine, "LavorazioneAttiva", "")),
-        "priorita": priorita_row.Priorita if priorita_row else None,
-        "matricola": _norm_text(getattr(ordine, "CodMatricola", "")),
-        "posizione": priorita_row.Posizione if priorita_row else None,
-    }
-
-
-def _consume_priorita_ordine(id_documento: str, id_riga: str, fase: str) -> None:
-    """
-    Da chiamare quando un ordine viene preso in carico.
-    Rimuove quell'ordine da tutte le code operatore in cui compare,
-    poi ricompatta le code coinvolte.
-    """
-    key = _make_ordine_fase_key(id_documento, id_riga, fase)
-
-    rows = OdpPriorita.query.filter_by(
-        IdDocumento=key[0],
-        IdRiga=key[1],
-        Fase=key[2],
-    ).all()
-
-    operatori_coinvolti = {row.operatore_id for row in rows}
-
-    for row in rows:
-        db.session.delete(row)
-
-    db.session.flush()
-
-    for operatore_id in operatori_coinvolti:
-        _compact_priorita_operatore(operatore_id)
-
-
-def _priorita_row_for_operatore_ordine(
-    operatore_id: int,
-    id_documento: str,
-    id_riga: str,
-    fase: str,
-) -> OdpPriorita | None:
-    """
-    Recupera la priorità assegnata allo specifico operatore
-    per lo specifico ordine/fase.
-    """
-    key = _make_ordine_fase_key(id_documento, id_riga, fase)
-
-    return (
-        OdpPriorita.query.filter_by(
-            operatore_id=int(operatore_id),
-            IdDocumento=key[0],
-            IdRiga=key[1],
-            Fase=key[2],
-        )
-        .order_by(
-            OdpPriorita.Priorita.asc(),
-            OdpPriorita.Posizione.asc(),
-            OdpPriorita.id.asc(),
-        )
-        .first()
-    )
-
-
-def _snapshot_priorita_in_runtime(
-    stato,
-    priorita_row: OdpPriorita | None,
-    operatore_id: int,
-    when_iso: str,
-) -> None:
-    """
-    Salva nel runtime la priorità che l'ordine aveva
-    per l'operatore che lo prende in carico.
-
-    Se l'operatore corrente non aveva priorità assegnata,
-    lo snapshot viene pulito.
-    """
-    if stato is None:
-        return
-
-    if priorita_row is None:
-        stato.PrioritaInCarico = None
-        stato.PrioritaOperatoreIdInCarico = None
-        stato.PrioritaPresaInCaricoAt = None
-        return
-
-    stato.PrioritaInCarico = int(priorita_row.Priorita)
-    stato.PrioritaOperatoreIdInCarico = int(operatore_id)
-    stato.PrioritaPresaInCaricoAt = when_iso
 
 
 def _restore_priorita_for_next_phase_from_runtime(
@@ -3542,121 +2020,142 @@ def _restore_priorita_for_next_phase_from_runtime(
     )
 
 
-def _now_rome_dt() -> datetime:
-    return datetime.now(ROME_TZ)
+def _append_operazione_log(
+    *,
+    topic: str,
+    ordine,
+    action: str,
+    event_at: str,
+    username: str,
+    runtime_pre: dict | None,
+    runtime_post: dict | None,
+    stato_ordine_pre: str = "",
+    stato_ordine_post: str = "",
+    qty_pre: str = "",
+    qty_post: str = "",
+    q_ok: str = "",
+    q_nok: str = "",
+    elapsed_seconds: int | str | None = None,
+    tempo_non_funzionamento_minuti: int | str | None = None,
+    tempo_non_funzionamento_secondi: int | str | None = None,
+    causale: str = "",
+    note: str = "",
+    motivo: str = "",
+    fase: str = "",
+    extra_payload: dict | None = None,
+):
+    runtime_pre = runtime_pre or {}
+    runtime_post = runtime_post or {}
 
+    reparto_codes = _extract_codes_from_cell(ordine.CodReparto)
+    scope = reparto_codes[0] if reparto_codes else _norm_text(ordine.CodReparto)
 
-def _easter_sunday(year: int) -> date:
-    a = year % 19
-    b = year // 100
-    c = year % 100
-    d = b // 4
-    e = b % 4
-    f = (b + 8) // 25
-    g = (b - f + 1) // 3
-    h = (19 * a + b - d - g + 15) % 30
-    i = c // 4
-    k = c % 4
-    l = (32 + 2 * e + 2 * i - h - k) % 7
-    m = (a + 11 * h + 22 * l) // 451
-    month = (h + l - 7 * m + 114) // 31
-    day = ((h + l - 7 * m + 114) % 31) + 1
-    return date(year, month, day)
-
-
-def _italian_holidays(year: int) -> set[date]:
-    easter = _easter_sunday(year)
-    easter_monday = easter + timedelta(days=1)
-
-    return {
-        date(year, 1, 1),  # Capodanno
-        date(year, 1, 6),  # Epifania
-        date(year, 4, 25),  # Liberazione
-        date(year, 5, 1),  # Festa del Lavoro
-        date(year, 6, 2),  # Festa della Repubblica
-        date(year, 8, 15),  # Ferragosto
-        date(year, 11, 1),  # Ognissanti
-        date(year, 12, 8),  # Immacolata
-        date(year, 12, 25),  # Natale
-        date(year, 12, 26),  # Santo Stefano
-        easter_monday,  # Lunedì dell'Angelo
+    payload = {
+        "azione": action,
+        "utente": username,
+        "fase": _first_not_blank(
+            fase,
+            _norm_text(runtime_post.get("fase")),
+            _norm_text(runtime_pre.get("fase")),
+            default="",
+        ),
+        "tempo_funzionamento": _norm_text(runtime_post.get("tempo_funzionamento")),
     }
+    if q_ok not in (None, ""):
+        payload["quantita_conforme"] = _norm_text(q_ok)
+    if q_nok not in (None, ""):
+        payload["quantita_non_conforme"] = _norm_text(q_nok)
+    if elapsed_seconds not in (None, ""):
+        payload["elapsed_seconds"] = elapsed_seconds
+    if tempo_non_funzionamento_minuti not in (None, ""):
+        payload["tempo_non_funzionamento_minuti"] = tempo_non_funzionamento_minuti
+    if tempo_non_funzionamento_secondi not in (None, ""):
+        payload["tempo_non_funzionamento_secondi"] = tempo_non_funzionamento_secondi
+    if causale:
+        payload["causale"] = causale
+    if note:
+        payload["note"] = note
+    if extra_payload:
+        payload.update(extra_payload)
+
+    operation_group_id = _build_operation_group_id(
+        ordine=ordine,
+        action=action,
+        when_iso=event_at,
+    )
+
+    row = OdpRuntimeLog(
+        OperationGroupId=operation_group_id,
+        EventSequence=1,
+        Topic=topic,
+        Scope=scope,
+        CodArt=_norm_text(ordine.CodArt),
+        CodReparto=_norm_text(ordine.CodReparto),
+        PayloadJson=json.dumps(payload, ensure_ascii=False),
+        IdDocumento=ordine.IdDocumento,
+        IdRiga=ordine.IdRiga,
+        RifRegistraz=ordine.RifRegistraz,
+        Azione=action,
+        Motivo=_norm_text(motivo),
+        UtenteOperazione=username,
+        EventAt=event_at,
+        StatoOdpPre=_norm_text(runtime_pre.get("stato_odp")),
+        StatoOdpPost=_norm_text(runtime_post.get("stato_odp")),
+        StatoOrdinePre=_norm_text(stato_ordine_pre),
+        StatoOrdinePost=_norm_text(stato_ordine_post),
+        FasePre=_norm_text(runtime_pre.get("fase")),
+        FasePost=_norm_text(runtime_post.get("fase")),
+        DataInCaricoPre=_norm_text(runtime_pre.get("data_in_carico")),
+        DataInCaricoPost=_norm_text(runtime_post.get("data_in_carico")),
+        DataUltimaAttivazionePre=_norm_text(runtime_pre.get("data_ultima_attivazione")),
+        DataUltimaAttivazionePost=_norm_text(
+            runtime_post.get("data_ultima_attivazione")
+        ),
+        VarianteArt=_norm_text(getattr(ordine, "VarianteArt", "")),
+        TempoFunzionamentoPre=_norm_text(runtime_pre.get("tempo_funzionamento")),
+        TempoFunzionamentoPost=_norm_text(runtime_post.get("tempo_funzionamento")),
+        ElapsedSeconds=_norm_text(elapsed_seconds),
+        TempoNonFunzionamentoMinuti=_norm_text(tempo_non_funzionamento_minuti),
+        TempoNonFunzionamentoSecondi=_norm_text(tempo_non_funzionamento_secondi),
+        QtyDaLavorarePre=_norm_text(qty_pre),
+        QtyDaLavorarePost=_norm_text(qty_post),
+        QuantitaConforme=_norm_text(q_ok),
+        QuantitaNonConforme=_norm_text(q_nok),
+        Causale=_norm_text(causale),
+        Note=_norm_text(note),
+        RifOrdinePrinc=_first_not_blank(
+            runtime_post.get("rif_ordine_princ"),
+            runtime_pre.get("rif_ordine_princ"),
+            default="",
+        ),
+    )
+    db.session.add(row)
+    db.session.flush()
+    return row
 
 
-def _is_business_day(day_value: date) -> bool:
-    if day_value.weekday() >= 5:
-        return False
-    return day_value not in _italian_holidays(day_value.year)
+def _delete_closed_order_from_runtime_db(ordine, stato=None) -> None:
+    """
+    Elimina l'ordine dal DB runtime principale dopo aver già salvato tutto nel db_log.
+    Cancella InputOdpRuntime solo se la riga esiste ancora, poi cancella InputOdp.
+    """
+    id_documento = _norm_text(getattr(ordine, "IdDocumento", ""))
+    id_riga = _norm_text(getattr(ordine, "IdRiga", ""))
 
+    if id_documento and id_riga:
+        (
+            db.session.query(InputOdpRuntime)
+            .filter(
+                InputOdpRuntime.IdDocumento == id_documento,
+                InputOdpRuntime.IdRiga == id_riga,
+            )
+            .delete(synchronize_session=False)
+        )
 
-def _normalize_to_business_day(day_value: date) -> date:
-    current = day_value
-    while not _is_business_day(current):
-        current += timedelta(days=1)
-    return current
+    if ordine is not None:
+        db.session.delete(ordine)
 
-
-def _add_business_days(start_day: date, business_days: int) -> date:
-    current = _normalize_to_business_day(start_day)
-
-    if business_days <= 0:
-        return current
-
-    remaining = int(business_days)
-
-    while remaining > 0:
-        current += timedelta(days=1)
-        if _is_business_day(current):
-            remaining -= 1
-
-    return current
-
-
-def _format_date_it(day_value: date | None) -> str:
-    if not day_value:
-        return ""
-    return day_value.strftime("%d/%m/%Y")
-
-
-def _calc_supply_date_from_today(lead_time_days) -> date | None:
-    try:
-        lead_days = int(float(lead_time_days or 0))
-    except (TypeError, ValueError):
-        return None
-
-    today_rome = _now_rome_dt().date()
-    return _add_business_days(today_rome, lead_days)
-
-
-def _parse_iso_dt(value) -> datetime | None:
-    raw = _norm_text(value)
-    if not raw:
-        return None
-    try:
-        dt = datetime.fromisoformat(raw)
-    except ValueError:
-        return None
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=ROME_TZ)
-    return dt
-
-
-def _today_rome_date() -> date:
-    return _now_rome_dt().date()
-
-
-def _parse_registration_date_input(value) -> date | None:
-    raw = _norm_text(value)
-    if not raw:
-        return None
-
-    for fmt in ("%Y-%m-%d", "%d/%m/%Y"):
-        try:
-            return datetime.strptime(raw, fmt).date()
-        except ValueError:
-            continue
-
-    raise ValueError("Data registrazione non valida.")
+    db.session.flush()
 
 
 def _resolve_registration_datetime(
@@ -3680,45 +2179,6 @@ def _resolve_registration_datetime(
     )
     registration_date_text = registration_day.strftime("%d/%m/%Y")
     return registration_day, registration_dt, registration_date_text
-
-
-def _tempo_to_seconds(value) -> int:
-    raw = _norm_text(value).replace(",", ".")
-    if not raw:
-        return 0
-    try:
-        hours = Decimal(raw)
-    except InvalidOperation:
-        return 0
-    return int((hours * Decimal("3600")).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
-
-
-def _seconds_to_tempo_text(seconds: int) -> str:
-    if seconds <= 0:
-        return "0"
-    hours = (Decimal(seconds) / Decimal("3600")).quantize(
-        Decimal("0.01"), rounding=ROUND_HALF_UP
-    )
-    text = format(hours, "f")
-    return text.rstrip("0").rstrip(".") if "." in text else text
-
-
-def _parse_minuti_non_funzionamento(
-    value,
-    field_name: str = "Tempo di non funzionamento macchina",
-) -> int:
-    raw = _norm_text(value)
-    if raw == "":
-        return 0
-
-    if not raw.isdigit():
-        raise ValueError(f"{field_name} deve essere un numero intero >= 0")
-
-    minuti = int(raw)
-    if minuti < 0:
-        raise ValueError(f"{field_name} deve essere >= 0")
-
-    return minuti
 
 
 def _apply_stop_minutes_to_runtime(
@@ -3803,19 +2263,22 @@ def _ensure_stato_attivo(
     return stato
 
 
-def _stato_operativo_chiusura(ordine, stato=None) -> str:
-    """
-    Stato reale da usare per decidere se un ordine è chiudibile.
+def _parse_minuti_non_funzionamento(
+    value,
+    field_name: str = "Tempo di non funzionamento macchina",
+) -> int:
+    raw = _norm_text(value)
+    if raw == "":
+        return 0
 
-    Priorità:
-    1. runtime.Stato_odp
-    2. ordine.StatoOrdine
-    """
-    stato_runtime = _norm_text(getattr(stato, "Stato_odp", ""))
-    if stato_runtime:
-        return stato_runtime
+    if not raw.isdigit():
+        raise ValueError(f"{field_name} deve essere un numero intero >= 0")
 
-    return _norm_text(getattr(ordine, "StatoOrdine", ""))
+    minuti = int(raw)
+    if minuti < 0:
+        raise ValueError(f"{field_name} deve essere >= 0")
+
+    return minuti
 
 
 def _ensure_min_active_time_before_chiusura(
@@ -3952,242 +2415,333 @@ def _accumulate_runtime_until(stato, end_dt: datetime) -> int:
     return elapsed_seconds
 
 
-def _extract_codes_from_cell(value) -> list[str]:
-    """
-    Normalizza celle che possono contenere:
-    - "10"
-    - ["10"]
-    - [["10"]]
-    - {"key": "10"}
-    """
-    if value in (None, ""):
-        return []
+def generazione_lotti(dt=None) -> str:
+    dt = dt or _now_rome_dt()
+    return dt.strftime("%Y%m%d")
 
-    def walk(node):
-        if isinstance(node, dict):
-            for v in node.values():
-                yield from walk(v)
-        elif isinstance(node, (list, tuple, set)):
-            for item in node:
-                yield from walk(item)
-        else:
-            s = str(node).strip()
-            if s:
-                yield s
 
-    if isinstance(value, (dict, list, tuple, set)):
-        return list(dict.fromkeys(walk(value)))
-
-    raw = str(value).strip()
+def _safe_txt_suffix(value: str, fallback: str = "export") -> str:
+    raw = _norm_text(value)
     if not raw:
+        return fallback
+
+    out = []
+    for ch in raw:
+        if ch.isalnum() or ch in ("-", "_"):
+            out.append(ch)
+        else:
+            out.append("_")
+
+    cleaned = "".join(out).strip("_")
+    return cleaned or fallback
+
+
+def _get_erp_export_dir() -> Path:
+    """
+    Recupera la cartella export dai config caricati nell'app factory.
+    Se manca, usa una cartella locale di fallback.
+    """
+    raw = current_app.config.get("ERP_EXPORT_DIR", "")
+    if raw:
+        export_dir = Path(raw)
+    else:
+        export_dir = Path(current_app.instance_path) / "erp_exports"
+
+    export_dir.mkdir(parents=True, exist_ok=True)
+    return export_dir
+
+
+def _build_export_txt_path(prefix: str = "AVPB", suffix: str = "") -> Path:
+    now_txt = _now_rome_dt().strftime("%Y%m%d_%H%M%S")
+    safe_suffix = _safe_txt_suffix(suffix, "export")
+    file_name = f"{prefix}_{safe_suffix}_{now_txt}.txt"
+    return _get_erp_export_dir() / file_name
+
+
+def _write_txt_content(
+    lines: list[str],
+    *,
+    prefix: str = "AVPB",
+    suffix: str = "",
+    encoding: str = "utf-8",
+) -> Path:
+    path_txt = _build_export_txt_path(prefix=prefix, suffix=suffix)
+    content = "\n".join(lines) + "\n"
+    path_txt.write_text(content, encoding=encoding, newline="\r\n")
+    return path_txt
+
+
+def _json_loads_safe(raw, default):
+    try:
+        return json.loads(raw)
+    except Exception:
+        return default
+
+
+def _get_pending_avp_outbox(outbox_id: int | None = None) -> list[ErpOutbox]:
+    q = ErpOutbox.query.filter(
+        ErpOutbox.kind == "consuntivo_fase",
+        ErpOutbox.status == "pending",
+    )
+
+    if outbox_id is not None:
+        q = q.filter(ErpOutbox.outbox_id == outbox_id)
+
+    return q.order_by(ErpOutbox.outbox_id.asc()).all()
+
+
+def _get_outbox_payload(outbox: ErpOutbox) -> dict:
+    payload = _json_loads_safe(outbox.payload_json or "{}", {})
+    return payload if isinstance(payload, dict) else {}
+
+
+def _get_pending_avp_export_rows(outbox_id: int | None = None) -> list[dict]:
+    rows = []
+    for outbox in _get_pending_avp_outbox(outbox_id=outbox_id):
+        rows.append(
+            {
+                "outbox": outbox,
+                "payload": _get_outbox_payload(outbox),
+                "source_row": _get_export_source_row(outbox),
+            }
+        )
+    return rows
+
+
+def _get_export_source_row(outbox: ErpOutbox):
+    """
+    Prova prima su InputOdp corrente.
+    Se non esiste più, ripiega sull'ultimo snapshot InputOdpLog.
+    """
+    ordine = InputOdp.query.filter_by(
+        IdDocumento=outbox.IdDocumento,
+        IdRiga=outbox.IdRiga,
+    ).first()
+    if ordine is not None:
+        return ordine
+
+    return (
+        InputOdpLog.query.filter_by(
+            IdDocumento=outbox.IdDocumento,
+            IdRiga=outbox.IdRiga,
+        )
+        .order_by(InputOdpLog.log_id.desc())
+        .first()
+    )
+
+
+ROLE_LINK_CONFIG = {
+    "permissions": {
+        "label": "Permessi",
+        "assoc_table": roles_permission,
+        "left_fk": "role_id",
+        "right_fk": "permission_id",
+        "model": Permissions,
+        "model_id": "id",
+        "code_attr": "Codice",
+        "desc_attr": "Descrizione",
+    },
+    "reparti": {
+        "label": "Reparti",
+        "assoc_table": roles_reparti,
+        "left_fk": "roles_id",
+        "right_fk": "reparto_id",
+        "model": Reparti,
+        "model_id": "id",
+        "code_attr": "Codice",
+        "desc_attr": "Descrizione",
+    },
+    "risorse": {
+        "label": "Risorse",
+        "assoc_table": roles_risorse,
+        "left_fk": "roles_id",
+        "right_fk": "risorse_id",
+        "model": Risorse,
+        "model_id": "id",
+        "code_attr": "Codice",
+        "desc_attr": "Descrizione",
+    },
+    "lavorazioni": {
+        "label": "Lavorazioni",
+        "assoc_table": roles_lavorazioni,
+        "left_fk": "roles_id",
+        "right_fk": "lavorazioni_id",
+        "model": Lavorazioni,
+        "model_id": "id",
+        "code_attr": "Codice",
+        "desc_attr": "Descrizione",
+    },
+    "magazzini": {
+        "label": "Magazzini",
+        "assoc_table": roles_magazzini,
+        "left_fk": "roles_id",
+        "right_fk": "magazzini_id",
+        "model": Magazzini,
+        "model_id": "id",
+        "code_attr": "Codice",
+        "desc_attr": "Descrizione",
+    },
+    "famiglia": {
+        "label": "Famiglia",
+        "assoc_table": roles_famiglia,
+        "left_fk": "roles_id",
+        "right_fk": "famiglia_id",
+        "model": Famiglia,
+        "model_id": "id",
+        "code_attr": "Codice",
+        "desc_attr": "Descrizione",
+    },
+    "macrofamiglia": {
+        "label": "Macrofamiglia",
+        "assoc_table": roles_macrofamiglia,
+        "left_fk": "roles_id",
+        "right_fk": "macrofamiglia_id",
+        "model": Macrofamiglia,
+        "model_id": "id",
+        "code_attr": "Codice",
+        "desc_attr": "Descrizione",
+    },
+    "ruoli_ereditati": {
+        "label": "Ruoli ereditati",
+        "assoc_table": roles_ineritance,
+        "left_fk": "role_id",
+        "right_fk": "included_role",
+        "model": Roles,
+        "model_id": "id",
+        "code_attr": "name",
+        "desc_attr": "description",
+    },
+    "ruoli_gestibili": {
+        "label": "Ruoli gestibili",
+        "assoc_table": roles_manageable_roles,
+        "left_fk": "manager_role_id",
+        "right_fk": "managed_role_id",
+        "model": Roles,
+        "model_id": "id",
+        "code_attr": "name",
+        "desc_attr": "description",
+    },
+}
+
+
+def _role_config_items_for_creation(policy: RbacPolicy, cfg: dict) -> list[dict]:
+    model = cfg["model"]
+    code_attr = cfg["code_attr"]
+    desc_attr = cfg["desc_attr"]
+
+    if model is Roles:
+        rows = policy.role_creation_manageable_roles()
+    else:
+        rows = model.query.order_by(
+            func.lower(
+                func.coalesce(
+                    getattr(model, desc_attr),
+                    getattr(model, code_attr),
+                )
+            ),
+            func.lower(getattr(model, code_attr)),
+        ).all()
+
+    return [
+        {
+            "id": getattr(row, cfg["model_id"]),
+            "codice": getattr(row, code_attr, "") or "",
+            "descrizione": getattr(row, desc_attr, "") or "",
+        }
+        for row in rows
+    ]
+
+
+def _valid_role_creation_ids(policy: RbacPolicy, cfg: dict) -> set[int]:
+    model = cfg["model"]
+
+    if model is Roles:
+        return {int(role.id) for role in policy.role_creation_manageable_roles()}
+
+    model_id_attr = getattr(model, cfg["model_id"])
+    stmt = select(model_id_attr)
+    return {int(x) for x in db.session.execute(stmt).scalars().all()}
+
+
+def _normalize_role_creation_links(raw_links) -> dict[str, set[int]]:
+    if raw_links in (None, ""):
+        return {}
+
+    if not isinstance(raw_links, dict):
+        raise ValueError("Il payload 'links' deve essere un oggetto JSON.")
+
+    normalized = {}
+
+    for key, raw_values in raw_links.items():
+        if key not in ROLE_LINK_CONFIG:
+            raise ValueError(f"Tabella non valida nel payload: {key}")
+
+        if raw_values in (None, ""):
+            normalized[key] = set()
+            continue
+
+        if not isinstance(raw_values, (list, tuple, set)):
+            raise ValueError(f"I valori per '{key}' devono essere una lista di id.")
+
+        try:
+            normalized[key] = {int(x) for x in raw_values}
+        except (TypeError, ValueError):
+            raise ValueError(f"Gli id per '{key}' non sono validi.")
+
+    return normalized
+
+
+def _normalize_id_list(raw_values) -> list[int]:
+    if raw_values in (None, ""):
         return []
 
-    try:
-        parsed = json.loads(raw)
-    except Exception:
-        return [raw]
+    if not isinstance(raw_values, (list, tuple, set)):
+        raise ValueError("I valori devono essere una lista di id.")
 
-    return list(dict.fromkeys(walk(parsed)))
+    out = []
+    for value in raw_values:
+        try:
+            item_id = int(value)
+        except (TypeError, ValueError):
+            raise ValueError("Id non valido.")
 
+        if item_id > 0 and item_id not in out:
+            out.append(item_id)
 
-def _tab_from_ordine(ordine: InputOdp) -> str | None:
-    config = _home_reparto_config_for_ordine(ordine)
-    return config.tab_code if config else None
-
-
-def _get_visible_odp_by_key(
-    policy: RbacPolicy,
-    id_documento: str,
-    id_riga: str,
-) -> InputOdp:
-    exists_anyway = (
-        _base_odp_query()
-        .filter_by(
-            IdDocumento=id_documento,
-            IdRiga=id_riga,
-        )
-        .first()
-    )
-
-    if exists_anyway is None:
-        abort(404)
-
-    config = _home_reparto_config_for_ordine(exists_anyway)
-
-    if config is None:
-        abort(403)
-
-    if not _policy_can_access_home_config(policy, config):
-        abort(403)
-
-    ordine = (
-        filter_input_odp_for_home_config(
-            _base_odp_query(),
-            config,
-            policy,
-            active_user(),
-        )
-        .filter(
-            InputOdp.IdDocumento == id_documento,
-            InputOdp.IdRiga == id_riga,
-        )
-        .first()
-    )
-
-    if ordine is None:
-        abort(403)
-
-    return ordine
+    return out
 
 
-def _fragments_for_ordine_tab(
-    policy: RbacPolicy,
-    ordine: InputOdp,
-) -> tuple[str | None, dict]:
-    config = _home_reparto_config_for_ordine(ordine)
-    if config is None:
-        return None, {}
+HOME_CONFIG_TEMPLATE_OPTIONS = {
+    "partials/_home_montaggio.j2": "Layout montaggio/macchine",
+    "partials/_home_standard.j2": "Layout standard",
+    "partials/page_vuota.html": "Pagina vuota",
+}
 
-    if not _policy_can_access_home_config(policy, config):
-        return None, {}
+HOME_CONFIG_RENDERER_OPTIONS = {
+    "montaggio": "Montaggio/macchine",
+    "standard": "Standard",
+    "empty": "Vuoto",
+}
 
-    odp = _home_rows_for_config(policy, config, apply_priorita=True, sort_priorita=True)
-    fragments = _render_fragments_for_home_config(config, odp)
+HOME_CONFIG_METODO_OPTIONS = {
+    "montaggio": "Metodo montaggio",
+    "collaudo": "Metodo collaudo",
+    "nessuno": "Nessuno",
+}
 
-    return config.tab_code, fragments
+HOME_RULE_APPLY_TO_OPTIONS = {
+    "macchine": "Macchine",
+    "semilavorati": "Semilavorati",
+    "all": "Tutto",
+}
 
-
-def _append_operazione_log(
-    *,
-    topic: str,
-    ordine,
-    action: str,
-    event_at: str,
-    username: str,
-    runtime_pre: dict | None,
-    runtime_post: dict | None,
-    stato_ordine_pre: str = "",
-    stato_ordine_post: str = "",
-    qty_pre: str = "",
-    qty_post: str = "",
-    q_ok: str = "",
-    q_nok: str = "",
-    elapsed_seconds: int | str | None = None,
-    tempo_non_funzionamento_minuti: int | str | None = None,
-    tempo_non_funzionamento_secondi: int | str | None = None,
-    causale: str = "",
-    note: str = "",
-    motivo: str = "",
-    fase: str = "",
-    extra_payload: dict | None = None,
-):
-    runtime_pre = runtime_pre or {}
-    runtime_post = runtime_post or {}
-
-    reparto_codes = _extract_codes_from_cell(ordine.CodReparto)
-    scope = reparto_codes[0] if reparto_codes else _norm_text(ordine.CodReparto)
-
-    payload = {
-        "azione": action,
-        "utente": username,
-        "fase": _first_not_blank(
-            fase,
-            _norm_text(runtime_post.get("fase")),
-            _norm_text(runtime_pre.get("fase")),
-            default="",
-        ),
-        "tempo_funzionamento": _norm_text(runtime_post.get("tempo_funzionamento")),
-    }
-    if q_ok not in (None, ""):
-        payload["quantita_conforme"] = _norm_text(q_ok)
-    if q_nok not in (None, ""):
-        payload["quantita_non_conforme"] = _norm_text(q_nok)
-    if elapsed_seconds not in (None, ""):
-        payload["elapsed_seconds"] = elapsed_seconds
-    if tempo_non_funzionamento_minuti not in (None, ""):
-        payload["tempo_non_funzionamento_minuti"] = tempo_non_funzionamento_minuti
-    if tempo_non_funzionamento_secondi not in (None, ""):
-        payload["tempo_non_funzionamento_secondi"] = tempo_non_funzionamento_secondi
-    if causale:
-        payload["causale"] = causale
-    if note:
-        payload["note"] = note
-    if extra_payload:
-        payload.update(extra_payload)
-
-    operation_group_id = _build_operation_group_id(
-        ordine=ordine,
-        action=action,
-        when_iso=event_at,
-    )
-
-    row = OdpRuntimeLog(
-        OperationGroupId=operation_group_id,
-        EventSequence=1,
-        Topic=topic,
-        Scope=scope,
-        CodArt=_norm_text(ordine.CodArt),
-        CodReparto=_norm_text(ordine.CodReparto),
-        PayloadJson=json.dumps(payload, ensure_ascii=False),
-        IdDocumento=ordine.IdDocumento,
-        IdRiga=ordine.IdRiga,
-        RifRegistraz=ordine.RifRegistraz,
-        Azione=action,
-        Motivo=_norm_text(motivo),
-        UtenteOperazione=username,
-        EventAt=event_at,
-        StatoOdpPre=_norm_text(runtime_pre.get("stato_odp")),
-        StatoOdpPost=_norm_text(runtime_post.get("stato_odp")),
-        StatoOrdinePre=_norm_text(stato_ordine_pre),
-        StatoOrdinePost=_norm_text(stato_ordine_post),
-        FasePre=_norm_text(runtime_pre.get("fase")),
-        FasePost=_norm_text(runtime_post.get("fase")),
-        DataInCaricoPre=_norm_text(runtime_pre.get("data_in_carico")),
-        DataInCaricoPost=_norm_text(runtime_post.get("data_in_carico")),
-        DataUltimaAttivazionePre=_norm_text(runtime_pre.get("data_ultima_attivazione")),
-        DataUltimaAttivazionePost=_norm_text(
-            runtime_post.get("data_ultima_attivazione")
-        ),
-        VarianteArt=_norm_text(getattr(ordine, "VarianteArt", "")),
-        TempoFunzionamentoPre=_norm_text(runtime_pre.get("tempo_funzionamento")),
-        TempoFunzionamentoPost=_norm_text(runtime_post.get("tempo_funzionamento")),
-        ElapsedSeconds=_norm_text(elapsed_seconds),
-        TempoNonFunzionamentoMinuti=_norm_text(tempo_non_funzionamento_minuti),
-        TempoNonFunzionamentoSecondi=_norm_text(tempo_non_funzionamento_secondi),
-        QtyDaLavorarePre=_norm_text(qty_pre),
-        QtyDaLavorarePost=_norm_text(qty_post),
-        QuantitaConforme=_norm_text(q_ok),
-        QuantitaNonConforme=_norm_text(q_nok),
-        Causale=_norm_text(causale),
-        Note=_norm_text(note),
-        RifOrdinePrinc=_first_not_blank(
-            runtime_post.get("rif_ordine_princ"),
-            runtime_pre.get("rif_ordine_princ"),
-            default="",
-        ),
-    )
-    db.session.add(row)
-    db.session.flush()
-    return row
-
-
-def _delete_closed_order_from_runtime_db(ordine, stato=None) -> None:
-    """
-    Elimina l'ordine dal DB runtime principale dopo aver già salvato tutto nel db_log.
-    Cancella sia InputOdpRuntime sia InputOdp.
-    """
-    if stato is None:
-        stato = InputOdpRuntime.query.filter_by(
-            IdDocumento=ordine.IdDocumento,
-            IdRiga=ordine.IdRiga,
-        ).first()
-
-    if stato is not None:
-        db.session.delete(stato)
-        db.session.flush()
-
-    db.session.delete(ordine)
-    db.session.flush()
+HOME_RULE_PHASE_MODE_OPTIONS = {
+    "all": "Tutte",
+    "exact": "Esatta",
+    "last": "Ultima",
+    "not_first": "Dopo la prima",
+    "list": "Lista",
+}
 
 
 def _build_public_id_from_full_name(value: str) -> str:
@@ -4204,6 +2758,350 @@ def _build_public_id_from_full_name(value: str) -> str:
     normalized = re.sub(r"_+", "_", normalized).strip("_")
 
     return normalized
+
+
+def _login_code_error_response(message: str, status_code: int = 400):
+    return jsonify(
+        {
+            "ok": False,
+            "error": message,
+        }
+    ), status_code
+
+
+def _is_login_code_integrity_error(exc: IntegrityError) -> bool:
+    msg = str(getattr(exc, "orig", exc)).lower()
+    return "unique constraint failed" in msg and "login_code_lookup" in msg
+
+
+LOGIN_CODE_DUPLICATO_MSG = "Il codice di login è già utilizzato"
+
+
+def _prepare_login_code_or_response(
+    raw_code,
+    exclude_user_id: int | None = None,
+):
+    """
+    Valida il login code e verifica che non sia già assegnato.
+
+    exclude_user_id serve nel reset/modifica:
+    - permette allo stesso utente di mantenere lo stesso codice;
+    - blocca il codice se appartiene a un altro utente.
+    """
+    try:
+        code = User.validate_login_code(raw_code)
+    except ValueError as exc:
+        return None, _login_code_error_response(str(exc), 400)
+
+    lookup = User.login_code_lookup_for(code)
+
+    query = User.query.filter(User.login_code_lookup == lookup)
+
+    if exclude_user_id is not None:
+        query = query.filter(User.id != int(exclude_user_id))
+
+    if query.first() is not None:
+        return None, _login_code_error_response(LOGIN_CODE_DUPLICATO_MSG, 409)
+
+    return code, None
+
+
+def _home_config_bool(value) -> bool:
+    return _parse_bool_flag(value)
+
+
+def _home_config_int(value, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _home_config_text(value) -> str:
+    return _norm_text(value)
+
+
+def _home_config_json_payload(obj) -> str:
+    return json.dumps(_json_safe(obj), ensure_ascii=False, sort_keys=True)
+
+
+def _home_config_audit(
+    *,
+    entity_type: str,
+    entity_id: str,
+    action: str,
+    old_payload=None,
+    new_payload=None,
+    note: str = "",
+):
+    user = active_user()
+
+    db.session.add(
+        ConfigAuditLog(
+            entity_type=entity_type,
+            entity_id=str(entity_id),
+            action=action,
+            old_payload=_home_config_json_payload(old_payload)
+            if old_payload is not None
+            else None,
+            new_payload=_home_config_json_payload(new_payload)
+            if new_payload is not None
+            else None,
+            changed_by_user_id=getattr(user, "id", None),
+            changed_by_username=getattr(user, "username", None) or "",
+            changed_at=_now_rome_dt().isoformat(timespec="seconds"),
+            note=note,
+        )
+    )
+
+
+def _home_reparto_config_to_dict(row: HomeRepartoConfig) -> dict:
+    return {
+        "id": row.id,
+        "reparto_id": row.reparto_id,
+        "reparto_codice": row.reparto.Codice if row.reparto else "",
+        "reparto_descrizione": row.reparto.Descrizione if row.reparto else "",
+        "tab_code": row.tab_code or "",
+        "label": row.label or "",
+        "template": row.template or "",
+        "renderer": row.renderer or "",
+        "permesso": row.permesso or "home",
+        "ordine_menu": int(row.ordine_menu or 0),
+        "attivo": bool(row.attivo),
+        "titolo_macchine_da_eseguire": row.titolo_macchine_da_eseguire or "",
+        "titolo_macchine_attive": row.titolo_macchine_attive or "",
+        "titolo_semilavorati_da_eseguire": row.titolo_semilavorati_da_eseguire or "",
+        "titolo_semilavorati_attivi": row.titolo_semilavorati_attivi or "",
+        "testo_presa_macchina": row.testo_presa_macchina or "",
+        "testo_sospendi_macchina": row.testo_sospendi_macchina or "",
+        "testo_riattiva_macchina": row.testo_riattiva_macchina or "",
+        "testo_chiudi_macchina": row.testo_chiudi_macchina or "",
+        "metodo_documentale_tipo": row.metodo_documentale_tipo or "nessuno",
+        "metodo_documentale_prefisso": row.metodo_documentale_prefisso or "",
+        "metodo_documentale_path_key": row.metodo_documentale_path_key or "",
+    }
+
+
+def _home_visibility_rule_to_dict(row: HomeVisibilityRule) -> dict:
+    return {
+        "id": row.id,
+        "reparto_id": row.reparto_id,
+        "reparto_codice": row.reparto.Codice if row.reparto else "",
+        "reparto_descrizione": row.reparto.Descrizione if row.reparto else "",
+        "role_id": row.role_id,
+        "role_name": row.role.name if row.role else "",
+        "role_description": row.role.description if row.role else "",
+        "user_id": row.user_id,
+        "username": row.user.username if row.user else "",
+        "apply_to": row.apply_to or "macchine",
+        "phase_mode": row.phase_mode or "all",
+        "phase_values": row.phase_values or "",
+        "attivo": bool(row.attivo),
+        "titolo_macchine_da_eseguire": row.titolo_macchine_da_eseguire or "",
+        "titolo_macchine_attive": row.titolo_macchine_attive or "",
+        "testo_presa_macchina": row.testo_presa_macchina or "",
+        "testo_sospendi_macchina": row.testo_sospendi_macchina or "",
+        "testo_riattiva_macchina": row.testo_riattiva_macchina or "",
+        "testo_chiudi_macchina": row.testo_chiudi_macchina or "",
+        "metodo_documentale_tipo": row.metodo_documentale_tipo or "",
+        "metodo_documentale_prefisso": row.metodo_documentale_prefisso or "",
+        "metodo_documentale_path_key": row.metodo_documentale_path_key or "",
+    }
+
+
+def _home_config_manageable_users(policy: RbacPolicy) -> list[User]:
+    manageable_role_ids = set(policy.descendant_manageable_role_ids)
+
+    if not manageable_role_ids:
+        return []
+
+    ur_allowed = user_roles.alias("home_cfg_ur_allowed")
+    ur_forbidden = user_roles.alias("home_cfg_ur_forbidden")
+
+    allowed_exists = exists(
+        select(1)
+        .select_from(ur_allowed)
+        .where(
+            and_(
+                ur_allowed.c.user_id == User.id,
+                ur_allowed.c.role_id.in_(manageable_role_ids),
+            )
+        )
+    )
+
+    forbidden_exists = exists(
+        select(1)
+        .select_from(ur_forbidden)
+        .where(
+            and_(
+                ur_forbidden.c.user_id == User.id,
+                ~ur_forbidden.c.role_id.in_(manageable_role_ids),
+            )
+        )
+    )
+
+    return (
+        User.query.filter(User.active.is_(True))
+        .filter(User.id != _current_user_id())
+        .filter(allowed_exists)
+        .filter(~forbidden_exists)
+        .order_by(func.lower(User.username))
+        .all()
+    )
+
+
+def _home_config_user_is_manageable(policy: RbacPolicy, user: User | None) -> bool:
+    if user is None:
+        return False
+
+    manageable_role_ids = set(policy.descendant_manageable_role_ids)
+    if not manageable_role_ids:
+        return False
+
+    target_roles = list(user.roles or [])
+    if not target_roles:
+        return False
+
+    return all(int(role.id) in manageable_role_ids for role in target_roles)
+
+
+def _home_config_role_is_manageable(policy: RbacPolicy, role: Roles | None) -> bool:
+    if role is None:
+        return False
+
+    return int(role.id) in set(policy.descendant_manageable_role_ids)
+
+
+def _build_home_config_settings_payload(policy: RbacPolicy) -> dict:
+    reparto_rows = Reparti.query.order_by(
+        func.lower(func.coalesce(Reparti.Descrizione, Reparti.Codice)),
+        func.lower(Reparti.Codice),
+    ).all()
+
+    config_rows = (
+        HomeRepartoConfig.query.options(selectinload(HomeRepartoConfig.reparto))
+        .order_by(HomeRepartoConfig.ordine_menu.asc(), HomeRepartoConfig.id.asc())
+        .all()
+    )
+
+    rule_rows = (
+        HomeVisibilityRule.query.options(
+            selectinload(HomeVisibilityRule.reparto),
+            selectinload(HomeVisibilityRule.role),
+            selectinload(HomeVisibilityRule.user),
+        )
+        .order_by(HomeVisibilityRule.reparto_id.asc(), HomeVisibilityRule.id.asc())
+        .all()
+    )
+
+    manageable_roles = sorted(
+        list(policy.descendant_manageable_roles),
+        key=lambda r: ((r.description or r.name or "").lower(), (r.name or "").lower()),
+    )
+
+    manageable_users = _home_config_manageable_users(policy)
+
+    return {
+        "reparti": [
+            {
+                "id": r.id,
+                "codice": r.Codice or "",
+                "descrizione": r.Descrizione or r.Codice or "",
+            }
+            for r in reparto_rows
+        ],
+        "roles": [
+            {
+                "id": r.id,
+                "name": r.name or "",
+                "description": r.description or r.name or "",
+            }
+            for r in manageable_roles
+        ],
+        "users": [
+            {
+                "id": u.id,
+                "username": u.username or "",
+            }
+            for u in manageable_users
+        ],
+        "home_configs": [_home_reparto_config_to_dict(row) for row in config_rows],
+        "visibility_rules": [_home_visibility_rule_to_dict(row) for row in rule_rows],
+        "template_options": HOME_CONFIG_TEMPLATE_OPTIONS,
+        "renderer_options": HOME_CONFIG_RENDERER_OPTIONS,
+        "metodo_options": HOME_CONFIG_METODO_OPTIONS,
+        "apply_to_options": HOME_RULE_APPLY_TO_OPTIONS,
+        "phase_mode_options": HOME_RULE_PHASE_MODE_OPTIONS,
+    }
+
+
+def _parse_home_rule_phase_values(raw_values, phase_mode: str) -> str | None:
+    phase_mode = _home_config_text(phase_mode).lower()
+
+    if phase_mode in {"all", "last", "not_first"}:
+        return None
+
+    if isinstance(raw_values, str):
+        raw_values = raw_values.strip()
+
+        if raw_values.startswith("["):
+            try:
+                parsed = json.loads(raw_values)
+            except json.JSONDecodeError:
+                parsed = [raw_values]
+        else:
+            parsed = [x.strip() for x in raw_values.split(",")]
+    elif isinstance(raw_values, (list, tuple, set)):
+        parsed = list(raw_values)
+    else:
+        parsed = []
+
+    values = []
+    for item in parsed:
+        value = _home_config_text(item)
+        if not value:
+            continue
+
+        try:
+            phase_int = int(float(value))
+            if phase_int <= 0:
+                raise ValueError
+            value = str(phase_int)
+        except (TypeError, ValueError):
+            raise ValueError("I valori fase devono essere numerici.")
+
+        if value not in values:
+            values.append(value)
+
+    if phase_mode in {"exact", "list"} and not values:
+        raise ValueError("Per fase esatta/lista devi indicare almeno un valore fase.")
+
+    return json.dumps(values, ensure_ascii=False)
+
+
+def _capacity_calendar_payload() -> list[dict]:
+    rows = (
+        ProductionCapacityCalendar.query.filter(
+            ProductionCapacityCalendar.active.is_(True)
+        )
+        .order_by(
+            ProductionCapacityCalendar.scope_type.asc(),
+            ProductionCapacityCalendar.scope_code.asc(),
+            ProductionCapacityCalendar.weekday.asc(),
+        )
+        .all()
+    )
+
+    return [
+        {
+            "id": row.id,
+            "scope_type": row.scope_type,
+            "scope_code": row.scope_code,
+            "weekday": row.weekday,
+            "hours_capacity": float(row.hours_capacity or 0),
+        }
+        for row in rows
+    ]
 
 
 def _safe_filename(value: str) -> str:
@@ -4434,8249 +3332,134 @@ def _print_label_png_to_windows_printer(file_path: Path) -> None:
         printer_dc.DeleteDC()
 
 
-@main_bp.post("/api/ordini/presa")
-@operator_perm_required("home")
-def api_prendi_ordine():
-    data = request.get_json(silent=True) or {}
+def _priority_sort_key(ordine):
+    pr = getattr(ordine, "PrioritaNumero", None)
+    pos = getattr(ordine, "PrioritaPosizione", None)
 
-    id_documento = _norm_text(data.get("id_documento"))
-    id_riga = _norm_text(data.get("id_riga"))
-    id_documento_principale = _norm_text(data.get("id_documento_principale"))
-    id_riga_principale = _norm_text(data.get("id_riga_principale"))
-
-    rif_ordine_princ = None
-
-    if id_documento_principale or id_riga_principale:
-        if not id_documento_principale or not id_riga_principale:
-            return (
-                jsonify(
-                    {
-                        "ok": False,
-                        "error": "Per l'ordine mascherato servono sia id_documento_principale sia id_riga_principale",
-                    }
-                ),
-                400,
-            )
-
-        if id_documento_principale == id_documento and id_riga_principale == id_riga:
-            return (
-                jsonify(
-                    {
-                        "ok": False,
-                        "error": "L'ordine principale non può coincidere con l'ordine preso in carico",
-                    }
-                ),
-                400,
-            )
-
-        rif_ordine_princ = _build_rif_ordine_princ(
-            id_documento_principale,
-            id_riga_principale,
-        )
-
-    if not id_documento or not id_riga:
+    if pr in (1, 2, 3):
         return (
-            jsonify(
-                {
-                    "ok": False,
-                    "error": "IdDocumento e IdRiga sono obbligatori",
-                }
-            ),
-            400,
-        )
-
-    policy = _current_policy()
-    ordine = _get_visible_odp_by_key(policy, id_documento, id_riga)
-
-    fase_corrente = _fase_corrente_for_export(ordine)
-    blocking_outbox = _get_blocking_outbox_for_phase(
-        id_documento=ordine.IdDocumento,
-        id_riga=ordine.IdRiga,
-        fase=fase_corrente,
-    )
-
-    if blocking_outbox is not None:
-        tab, fragments = _fragments_for_ordine_tab(policy, ordine)
-
-        return (
-            jsonify(
-                {
-                    "ok": False,
-                    "changed": False,
-                    "error": (
-                        "Questa fase risulta già consuntivata ed è ancora in attesa "
-                        "di sincronizzazione con il gestionale."
-                    ),
-                    "message": (
-                        f"Presa in carico bloccata: fase {fase_corrente} con export "
-                        f"in stato '{blocking_outbox.status}'."
-                    ),
-                    "id_documento": ordine.IdDocumento,
-                    "id_riga": ordine.IdRiga,
-                    "row_key": _row_key(ordine.IdDocumento, ordine.IdRiga),
-                    "rif_registraz": ordine.RifRegistraz,
-                    "stato_ordine": ordine.StatoOrdine,
-                    "fase": fase_corrente,
-                    "outbox_status": blocking_outbox.status,
-                    "outbox_id": blocking_outbox.outbox_id,
-                    "active_tab": tab,
-                    "last_event_id": _last_log_token(),
-                    "fragments": fragments,
-                }
-            ),
-            409,
-        )
-
-    stato_attuale = _norm_text(ordine.StatoOrdine)
-    stato_norm = stato_attuale.lower()
-    changed = False
-    message = None
-    if _norm_text(getattr(ordine, "CodReparto", "")) in {"10", "20", "30", "70"}:
-        if not _ordine_has_distinta_materiale(ordine):
-            event_at = datetime.now(ROME_TZ).isoformat(timespec="seconds")
-            action_code = "blocco_distinta_materiale_assente"
-            action_note = (
-                "Presa in carico bloccata: distinta materiale assente. "
-                "Ordine non attivabile perché il materiale non verrebbe scaricato a magazzino."
-            )
-            operation_group_id = (
-                f"{action_code}:{ordine.IdDocumento}:{ordine.IdRiga}:{event_at}"
-            )
-
-            rt = ordine.runtime_row
-
-            stato_odp_pre = _norm_text(getattr(rt, "Stato_odp", "")) or stato_attuale
-            stato_ordine_pre = stato_attuale
-            fase_pre = _norm_text(getattr(rt, "FaseAttiva", "")) or _norm_text(
-                getattr(ordine, "FaseAttiva", "")
-            )
-            qty_pre = (
-                _norm_text(getattr(rt, "QtyDaLavorare", ""))
-                or _norm_text(getattr(ordine, "QtyDaLavorare", ""))
-                or _norm_text(getattr(ordine, "Quantita", ""))
-            )
-            data_in_carico_pre = _norm_text(getattr(rt, "Data_in_carico", ""))
-            data_ultima_attivazione_pre = _norm_text(
-                getattr(rt, "data_ultima_attivazione", "")
-            )
-            tempo_funzionamento_pre = _norm_text(getattr(rt, "Tempo_funzionamento", ""))
-            rif_ordine_princ = _norm_text(getattr(rt, "RifOrdinePrinc", ""))
-
-            payload = {
-                "evento": action_code,
-                "motivo": action_note,
-                "ordine": {
-                    "IdDocumento": _norm_text(ordine.IdDocumento),
-                    "IdRiga": _norm_text(ordine.IdRiga),
-                    "NumProgrRiga": _norm_text(getattr(ordine, "NumProgrRiga", "")),
-                    "RifRegistraz": _norm_text(getattr(ordine, "RifRegistraz", "")),
-                    "CodArt": _norm_text(getattr(ordine, "CodArt", "")),
-                    "DesArt": _norm_text(getattr(ordine, "DesArt", "")),
-                    "CodReparto": _norm_text(getattr(ordine, "CodReparto", "")),
-                    "FaseAttiva": fase_pre,
-                    "GestioneLotto": _norm_text(getattr(ordine, "GestioneLotto", "")),
-                    "GestioneMatricola": _norm_text(
-                        getattr(ordine, "GestioneMatricola", "")
-                    ),
-                },
-                "runtime_pre": {
-                    "StatoOdp": stato_odp_pre,
-                    "StatoOrdine": stato_ordine_pre,
-                    "QtyDaLavorare": qty_pre,
-                    "DataInCarico": data_in_carico_pre,
-                    "DataUltimaAttivazione": data_ultima_attivazione_pre,
-                    "TempoFunzionamento": tempo_funzionamento_pre,
-                    "RifOrdinePrinc": rif_ordine_princ,
-                },
-                "utente": _current_username(),
-            }
-
-            try:
-                db.session.add(
-                    InputOdpLog(
-                        OperationGroupId=operation_group_id,
-                        IdDocumento=_norm_text(ordine.IdDocumento),
-                        IdRiga=_norm_text(ordine.IdRiga),
-                        RifRegistraz=_norm_text(getattr(ordine, "RifRegistraz", "")),
-                        CodArt=_norm_text(getattr(ordine, "CodArt", "")),
-                        DesArt=_norm_text(getattr(ordine, "DesArt", "")),
-                        Quantita=_norm_text(getattr(ordine, "Quantita", "")),
-                        NumFase=_norm_text(getattr(ordine, "NumFase", "")),
-                        CodLavorazione=_norm_text(
-                            getattr(ordine, "CodLavorazione", "")
-                        ),
-                        CodRisorsaProd=_norm_text(
-                            getattr(ordine, "CodRisorsaProd", "")
-                        ),
-                        DataInizioSched=_norm_text(
-                            getattr(ordine, "DataInizioSched", "")
-                        ),
-                        DataFineSched=_norm_text(getattr(ordine, "DataFineSched", "")),
-                        GestioneLotto=_norm_text(getattr(ordine, "GestioneLotto", "")),
-                        GestioneMatricola=_norm_text(
-                            getattr(ordine, "GestioneMatricola", "")
-                        ),
-                        DistintaMateriale=_norm_text(
-                            getattr(ordine, "DistintaMateriale", "")
-                        ),
-                        CodMatricola=_norm_text(getattr(ordine, "CodMatricola", "")),
-                        StatoRiga=_norm_text(getattr(ordine, "StatoRiga", "")),
-                        CodFamiglia=_norm_text(getattr(ordine, "CodFamiglia", "")),
-                        CodMacrofamiglia=_norm_text(
-                            getattr(ordine, "CodMacrofamiglia", "")
-                        ),
-                        CodMagPrincipale=_norm_text(
-                            getattr(ordine, "CodMagPrincipale", "")
-                        ),
-                        CodReparto=_norm_text(getattr(ordine, "CodReparto", "")),
-                        TempoPrevistoLavoraz=_norm_text(
-                            getattr(ordine, "TempoPrevistoLavoraz", "")
-                        ),
-                        CodClassifTecnica=_norm_text(
-                            getattr(ordine, "CodClassifTecnica", "")
-                        ),
-                        CodTipoDoc=_norm_text(getattr(ordine, "CodTipoDoc", "")),
-                        FaseAttiva=fase_pre,
-                        QtyDaLavorare=qty_pre,
-                        RisorsaAttiva=_norm_text(getattr(ordine, "RisorsaAttiva", "")),
-                        LavorazioneAttiva=_norm_text(
-                            getattr(ordine, "LavorazioneAttiva", "")
-                        ),
-                        AttrezzaggioAttivo=_norm_text(
-                            getattr(ordine, "AttrezzaggioAttivo", "")
-                        ),
-                        RifOrdinePrinc=rif_ordine_princ,
-                        Note=action_note,
-                        StatoOrdinePre=stato_ordine_pre,
-                        StatoOrdinePost=stato_ordine_pre,
-                        QtyDaLavorarePre=qty_pre,
-                        QtyDaLavorarePost=qty_pre,
-                        ClosedBy=_current_username(),
-                        ClosedAt=event_at,
-                        VarianteArt=_norm_text(getattr(ordine, "VarianteArt", "")),
-                        NoteChiusura=action_note,
-                    )
-                )
-
-                db.session.add(
-                    OdpRuntimeLog(
-                        OperationGroupId=operation_group_id,
-                        EventSequence=1,
-                        Topic="ordine",
-                        Scope="presa_in_carico",
-                        CodArt=_norm_text(getattr(ordine, "CodArt", "")),
-                        CodReparto=_norm_text(getattr(ordine, "CodReparto", "")),
-                        PayloadJson=json.dumps(payload, ensure_ascii=False),
-                        IdDocumento=_norm_text(ordine.IdDocumento),
-                        IdRiga=_norm_text(ordine.IdRiga),
-                        RifRegistraz=_norm_text(getattr(ordine, "RifRegistraz", "")),
-                        Azione=action_code,
-                        Motivo=action_note,
-                        UtenteOperazione=_current_username(),
-                        EventAt=event_at,
-                        StatoOdpPre=stato_odp_pre,
-                        StatoOdpPost=stato_odp_pre,
-                        StatoOrdinePre=stato_ordine_pre,
-                        StatoOrdinePost=stato_ordine_pre,
-                        FasePre=fase_pre,
-                        FasePost=fase_pre,
-                        DataInCaricoPre=data_in_carico_pre,
-                        DataInCaricoPost=data_in_carico_pre,
-                        DataUltimaAttivazionePre=data_ultima_attivazione_pre,
-                        DataUltimaAttivazionePost=data_ultima_attivazione_pre,
-                        TempoFunzionamentoPre=tempo_funzionamento_pre,
-                        TempoFunzionamentoPost=tempo_funzionamento_pre,
-                        QtyDaLavorarePre=qty_pre,
-                        QtyDaLavorarePost=qty_pre,
-                        Note=action_note,
-                        RifOrdinePrinc=rif_ordine_princ,
-                        VarianteArt=_norm_text(getattr(ordine, "VarianteArt", "")),
-                        NumProgrRiga=_norm_text(getattr(ordine, "NumProgrRiga", "")),
-                    )
-                )
-
-                db.session.commit()
-
-            except Exception:
-                db.session.rollback()
-                current_app.logger.exception(
-                    "Errore scrittura log per blocco distinta mancante su ordine %s/%s",
-                    _norm_text(ordine.IdDocumento),
-                    _norm_text(ordine.IdRiga),
-                )
-
-            return (
-                jsonify(
-                    ok=False,
-                    error=(
-                        "Ordine bloccato: distinta materiale assente. "
-                        "Impossibile prendere in carico l'ordine perché il materiale "
-                        "non verrebbe scaricato a magazzino. Contattare l'ufficio competente."
-                    ),
-                ),
-                409,
-            )
-
-    if stato_norm == "pianificata":
-        now_dt = _now_rome_dt()
-
-        _sync_active_fields_for_phase(ordine, fase_corrente)
-
-        stato = InputOdpRuntime.query.filter_by(
-            IdDocumento=ordine.IdDocumento,
-            IdRiga=ordine.IdRiga,
-        ).first()
-        stato_ordine_pre = _norm_text(ordine.StatoOrdine)
-        qty_pre = _qty_da_lavorare_text(ordine)
-        now_iso = now_dt.isoformat(timespec="seconds")
-        priorita_row = _priorita_row_for_operatore_ordine(
-            operatore_id=_current_user_id(),
-            id_documento=ordine.IdDocumento,
-            id_riga=ordine.IdRiga,
-            fase=fase_corrente,
-        )
-
-        stato = _ensure_stato_attivo(
-            ordine=ordine,
-            stato=stato,
-            username=_current_username(),
-            when_dt=now_dt,
-            fase_corrente=fase_corrente,
-            rif_ordine_princ=rif_ordine_princ,
-        )
-        _snapshot_priorita_in_runtime(
-            stato=stato,
-            priorita_row=priorita_row,
-            operatore_id=_current_user_id(),
-            when_iso=now_iso,
-        )
-        ordine.StatoOrdine = "Attivo"
-        operation_group_id = _build_operation_group_id(
-            ordine=ordine,
-            action="presa_in_carico",
-            when_iso=now_iso,
-        )
-
-        _add_input_odp_takeover_log(
-            operation_group_id=operation_group_id,
-            ordine=ordine,
-            stato_ordine_pre=stato_ordine_pre,
-            stato_ordine_post=_norm_text(ordine.StatoOrdine),
-            qty_pre=qty_pre,
-            qty_post=_qty_da_lavorare_text(ordine),
-            taken_by=_current_username(),
-            taken_at=now_iso,
-            note_evento="Presa in carico ordine",
-        )
-
-        _consume_priorita_ordine(
-            ordine.IdDocumento,
-            ordine.IdRiga,
-            ordine.FaseAttiva,
-        )
-
-        db.session.commit()
-        changed = True
-        message = "Ordine preso in carico"
-
-    elif stato_norm == "attivo":
-        message = "Ordine già attivo"
-
-    elif stato_norm == "in sospeso":
-        message = "Ordine in sospeso: usare la riattivazione"
-
-    else:
-        message = f"Ordine non prendibile: stato attuale '{stato_attuale}'"
-
-    tab, fragments = _fragments_for_ordine_tab(policy, ordine)
-
-    return (
-        jsonify(
-            {
-                "ok": True,
-                "changed": changed,
-                "message": message,
-                "id_documento": ordine.IdDocumento,
-                "id_riga": ordine.IdRiga,
-                "row_key": _row_key(ordine.IdDocumento, ordine.IdRiga),
-                "rif_registraz": ordine.RifRegistraz,
-                "stato_ordine": ordine.StatoOrdine,
-                "fase": fase_corrente,
-                "active_tab": tab,
-                "last_event_id": _last_log_token(),
-                "fragments": fragments,
-                "num_progr_riga": ordine.NumProgrRiga,
-            }
-        ),
-        200,
-    )
-
-
-@main_bp.post("/api/ordini/sospendi")
-@operator_perm_required("home")
-def api_sospendi_ordine():
-    data = request.get_json(silent=True) or {}
-
-    id_documento = _norm_text(data.get("id_documento"))
-    id_riga = _norm_text(data.get("id_riga"))
-    causale = _norm_text(data.get("causale"))
-
-    tempo_non_funzionamento_raw = data.get("tempo_non_funzionamento_minuti")
-    if tempo_non_funzionamento_raw is None:
-        tempo_non_funzionamento_raw = data.get("tempo_fermo_macchina")
-    if tempo_non_funzionamento_raw is None:
-        tempo_non_funzionamento_raw = data.get("tempo_macchina_ferma")
-
-    try:
-        minuti_non_funzionamento = _parse_minuti_non_funzionamento(
-            tempo_non_funzionamento_raw
-        )
-    except ValueError as e:
-        return jsonify({"ok": False, "error": str(e)}), 400
-
-    if not id_documento or not id_riga:
-        return (
-            jsonify({"ok": False, "error": "IdDocumento e IdRiga sono obbligatori"}),
-            400,
-        )
-
-    policy = _current_policy()
-    ordine = _get_visible_odp_by_key(policy, id_documento, id_riga)
-
-    stato_attuale = _norm_text(ordine.StatoOrdine)
-    stato_norm = stato_attuale.lower()
-
-    changed = False
-    message = None
-    elapsed_seconds = 0
-    tempo_funzionamento = "0"
-
-    if stato_norm == "attivo":
-        now_dt = _now_rome_dt()
-
-        stato = InputOdpRuntime.query.filter_by(
-            IdDocumento=ordine.IdDocumento,
-            IdRiga=ordine.IdRiga,
-        ).first()
-        stato_ordine_pre = _norm_text(ordine.StatoOrdine)
-        qty_pre = _qty_da_lavorare_text(ordine)
-        now_iso = now_dt.isoformat(timespec="seconds")
-
-        if stato is None:
-            db.session.rollback()
-            return (
-                jsonify(
-                    {
-                        "ok": False,
-                        "error": (
-                            "Record runtime non trovato per questo ordine. "
-                            "La sospensione non può aggiornare Tempo_funzionamento."
-                        ),
-                        "id_documento": ordine.IdDocumento,
-                        "id_riga": ordine.IdRiga,
-                    }
-                ),
-                409,
-            )
-
-        stato.Stato_odp = "In Sospeso"
-        stato.Utente_operazione = _current_username()
-
-        elapsed_seconds = _accumulate_runtime_until(stato, now_dt)
-
-        removed_seconds, tempo_funzionamento = _apply_stop_minutes_to_runtime(
-            stato,
-            minuti_non_funzionamento,
-        )
-
-        operation_group_id = _build_operation_group_id(
-            ordine=ordine,
-            action="sospensione",
-            when_iso=now_iso,
-        )
-
-        _add_input_odp_suspend_log(
-            operation_group_id=operation_group_id,
-            ordine=ordine,
-            stato_ordine_pre=stato_ordine_pre,
-            stato_ordine_post="In Sospeso",
-            qty_pre=qty_pre,
-            qty_post=_norm_text(stato.QtyDaLavorare),
-            suspended_by=_current_username(),
-            suspended_at=now_iso,
-            causale=causale,
-            minuti_non_funzionamento=minuti_non_funzionamento,
-            secondi_non_funzionamento=removed_seconds,
-            note_evento="Sospensione ordine",
-        )
-        db.session.commit()
-        changed = True
-        message = "Ordine sospeso"
-
-    elif stato_norm == "in sospeso":
-        message = "Ordine già in sospeso"
-
-    else:
-        message = f"Ordine non sospendibile: stato attuale '{stato_attuale}'"
-
-    tab, fragments = _fragments_for_ordine_tab(policy, ordine)
-
-    return (
-        jsonify(
-            {
-                "ok": True,
-                "changed": changed,
-                "message": message,
-                "id_documento": ordine.IdDocumento,
-                "id_riga": ordine.IdRiga,
-                "row_key": _row_key(ordine.IdDocumento, ordine.IdRiga),
-                "rif_registraz": ordine.RifRegistraz,
-                "stato_ordine": ordine.StatoOrdine,
-                "tempo_funzionamento": tempo_funzionamento,
-                "elapsed_seconds": elapsed_seconds,
-                "active_tab": tab,
-                "last_event_id": _last_log_token(),
-                "fragments": fragments,
-                "num_progr_riga": ordine.NumProgrRiga,
-            }
-        ),
-        200,
-    )
-
-
-@main_bp.post("/api/ordini/montaggio/macchina/sospendi")
-@operator_perm_required("home")
-def api_sospendi_ordine_montaggio_macchina():
-    data = request.get_json(silent=True) or {}
-
-    id_documento = _norm_text(data.get("id_documento"))
-    id_riga = _norm_text(data.get("id_riga"))
-    causale = _norm_text(data.get("causale"))
-    matricola = _norm_text(data.get("matricola"))
-    fase = _norm_text(data.get("fase"))
-
-    if not id_documento or not id_riga:
-        return (
-            jsonify(
-                {
-                    "ok": False,
-                    "error": "IdDocumento e IdRiga sono obbligatori",
-                }
-            ),
-            400,
-        )
-
-    policy = _current_policy()
-    ordine = _get_visible_odp_by_key(policy, id_documento, id_riga)
-
-    if _tab_from_ordine(ordine) != "montaggio":
-        return (
-            jsonify(
-                {
-                    "ok": False,
-                    "error": "Ordine non appartenente alla vista montaggio",
-                }
-            ),
-            400,
-        )
-
-    if _norm_text(ordine.GestioneMatricola).lower() != "si":
-        return (
-            jsonify(
-                {
-                    "ok": False,
-                    "error": "Questa modalità è riservata agli ordini macchina",
-                }
-            ),
-            400,
-        )
-
-    stato_attuale = _norm_text(ordine.StatoOrdine)
-    stato_norm = stato_attuale.lower()
-
-    changed = False
-    message = None
-    elapsed_seconds = 0
-    tempo_funzionamento = "0"
-
-    if stato_norm == "attivo":
-        now_dt = _now_rome_dt()
-
-        stato = InputOdpRuntime.query.filter_by(
-            IdDocumento=ordine.IdDocumento,
-            IdRiga=ordine.IdRiga,
-        ).first()
-        stato_ordine_pre = _norm_text(ordine.StatoOrdine)
-        qty_pre = _qty_da_lavorare_text(ordine)
-        now_iso = now_dt.isoformat(timespec="seconds")
-
-        if stato is None:
-            db.session.rollback()
-            return (
-                jsonify(
-                    {
-                        "ok": False,
-                        "error": (
-                            "Record runtime non trovato per questo ordine macchina. "
-                            "La sospensione non può aggiornare Tempo_funzionamento."
-                        ),
-                        "id_documento": ordine.IdDocumento,
-                        "id_riga": ordine.IdRiga,
-                    }
-                ),
-                409,
-            )
-
-        stato.Stato_odp = "In Sospeso"
-        stato.Utente_operazione = _current_username()
-
-        elapsed_seconds = _accumulate_runtime_until(stato, now_dt)
-        tempo_funzionamento = _norm_text(stato.Tempo_funzionamento) or "0"
-
-        operation_group_id = _build_operation_group_id(
-            ordine=ordine,
-            action="sospensione",
-            when_iso=now_iso,
-        )
-
-        _add_input_odp_suspend_log(
-            operation_group_id=operation_group_id,
-            ordine=ordine,
-            stato_ordine_pre=stato_ordine_pre,
-            stato_ordine_post="In Sospeso",
-            qty_pre=qty_pre,
-            qty_post=_norm_text(stato.QtyDaLavorare),
-            suspended_by=_current_username(),
-            suspended_at=now_iso,
-            causale=causale,
-            minuti_non_funzionamento=None,
-            secondi_non_funzionamento=None,
-            note_evento="Sospensione ordine",
-        )
-
-        db.session.commit()
-        changed = True
-        message = "Ordine macchina sospeso"
-
-    elif stato_norm == "in sospeso":
-        message = "Ordine macchina già in sospeso"
-
-    else:
-        message = f"Ordine macchina non sospendibile: stato attuale '{stato_attuale}'"
-
-    tab, fragments = _fragments_for_ordine_tab(policy, ordine)
-    return (
-        jsonify(
-            {
-                "ok": True,
-                "changed": changed,
-                "message": message,
-                "id_documento": ordine.IdDocumento,
-                "id_riga": ordine.IdRiga,
-                "row_key": _row_key(ordine.IdDocumento, ordine.IdRiga),
-                "rif_registraz": ordine.RifRegistraz,
-                "stato_ordine": ordine.StatoOrdine,
-                "tempo_funzionamento": tempo_funzionamento,
-                "elapsed_seconds": elapsed_seconds,
-                "active_tab": tab,
-                "last_event_id": _last_log_token(),
-                "fragments": fragments,
-                "num_progr_riga": ordine.NumProgrRiga,
-            }
-        ),
-        200,
-    )
-
-
-@main_bp.post("/api/ordini/riattiva")
-@operator_perm_required("home")
-def api_riattiva_ordine():
-    data = request.get_json(silent=True) or {}
-
-    id_documento = _norm_text(data.get("id_documento"))
-    id_riga = _norm_text(data.get("id_riga"))
-
-    if not id_documento or not id_riga:
-        return (
-            jsonify(
-                {
-                    "ok": False,
-                    "error": "IdDocumento e IdRiga sono obbligatori",
-                }
-            ),
-            400,
-        )
-
-    policy = _current_policy()
-    ordine = _get_visible_odp_by_key(policy, id_documento, id_riga)
-    fase_corrente = _fase_corrente_for_export(ordine)
-
-    blocking_outbox = _get_blocking_outbox_for_phase(
-        id_documento=ordine.IdDocumento,
-        id_riga=ordine.IdRiga,
-        fase=fase_corrente,
-    )
-
-    if blocking_outbox is not None:
-        tab, fragments = _fragments_for_ordine_tab(policy, ordine)
-
-        return (
-            jsonify(
-                {
-                    "ok": False,
-                    "changed": False,
-                    "error": (
-                        "Questa fase risulta già consuntivata ed è ancora in attesa "
-                        "di sincronizzazione con il gestionale."
-                    ),
-                    "message": (
-                        f"Riattivazione bloccata: fase {fase_corrente} con export "
-                        f"in stato '{blocking_outbox.status}'."
-                    ),
-                    "id_documento": ordine.IdDocumento,
-                    "id_riga": ordine.IdRiga,
-                    "row_key": _row_key(ordine.IdDocumento, ordine.IdRiga),
-                    "rif_registraz": ordine.RifRegistraz,
-                    "stato_ordine": ordine.StatoOrdine,
-                    "fase": fase_corrente,
-                    "outbox_status": blocking_outbox.status,
-                    "outbox_id": blocking_outbox.outbox_id,
-                    "active_tab": tab,
-                    "last_event_id": _last_log_token(),
-                    "fragments": fragments,
-                }
-            ),
-            409,
-        )
-
-    stato_attuale = _norm_text(ordine.StatoOrdine)
-    stato_norm = stato_attuale.lower()
-    changed = False
-    message = None
-
-    stato = InputOdpRuntime.query.filter_by(
-        IdDocumento=ordine.IdDocumento,
-        IdRiga=ordine.IdRiga,
-    ).first()
-
-    stato_attuale = _norm_text(getattr(stato, "Stato_odp", "")) or _norm_text(
-        ordine.StatoOrdine
-    )
-    stato_norm = stato_attuale.lower()
-    changed = False
-    message = None
-
-    if stato_norm == "in sospeso":
-        now_dt = _now_rome_dt()
-
-        _sync_active_fields_for_phase(ordine, fase_corrente)
-
-        if stato is None:
-            db.session.rollback()
-            return (
-                jsonify(
-                    {
-                        "ok": False,
-                        "error": (
-                            "Record runtime non trovato per questo ordine. "
-                            "La riattivazione non può ripristinare correttamente il runtime."
-                        ),
-                        "id_documento": ordine.IdDocumento,
-                        "id_riga": ordine.IdRiga,
-                    }
-                ),
-                409,
-            )
-
-        _sync_active_fields_for_phase(ordine, fase_corrente)
-
-        stato_ordine_pre = _norm_text(stato_attuale)
-        qty_pre = _qty_da_lavorare_text(ordine, stato=stato)
-        now_iso = now_dt.isoformat(timespec="seconds")
-        stato = _ensure_stato_attivo(
-            ordine=ordine,
-            stato=stato,
-            username=_current_username(),
-            when_dt=now_dt,
-            fase_corrente=fase_corrente,
-        )
-
-        operation_group_id = _build_operation_group_id(
-            ordine=ordine,
-            action="riattivazione",
-            when_iso=now_iso,
-        )
-
-        _add_input_odp_takeover_log(
-            operation_group_id=operation_group_id,
-            ordine=ordine,
-            stato_ordine_pre=stato_ordine_pre,
-            stato_ordine_post="Attivo",
-            qty_pre=qty_pre,
-            qty_post=_norm_text(stato.QtyDaLavorare),
-            taken_by=_current_username(),
-            taken_at=now_iso,
-            note_evento="Riattivazione ordine",
-        )
-        _sync_active_fields_for_phase(ordine, fase_corrente)
-        db.session.commit()
-        changed = True
-        message = "Ordine riattivato"
-
-    elif stato_norm == "attivo":
-        message = "Ordine già attivo"
-
-    else:
-        message = f"Ordine non riattivabile: stato attuale '{stato_attuale}'"
-
-    tab, fragments = _fragments_for_ordine_tab(policy, ordine)
-
-    return (
-        jsonify(
-            {
-                "ok": True,
-                "changed": changed,
-                "message": message,
-                "id_documento": ordine.IdDocumento,
-                "id_riga": ordine.IdRiga,
-                "row_key": _row_key(ordine.IdDocumento, ordine.IdRiga),
-                "rif_registraz": ordine.RifRegistraz,
-                "stato_ordine": ordine.StatoOrdine,
-                "fase": fase_corrente,
-                "active_tab": tab,
-                "last_event_id": _last_log_token(),
-                "fragments": fragments,
-                "num_progr_riga": ordine.NumProgrRiga,
-            }
-        ),
-        200,
-    )
-
-
-@main_bp.post("/api/ordini/montaggio/macchina/riattiva")
-@operator_perm_required("home")
-def api_riattiva_ordine_montaggio_macchina():
-    data = request.get_json(silent=True) or {}
-
-    id_documento = _norm_text(data.get("id_documento"))
-    id_riga = _norm_text(data.get("id_riga"))
-    matricola = _norm_text(data.get("matricola"))
-    fase = _norm_text(data.get("fase"))
-
-    if not id_documento or not id_riga:
-        return (
-            jsonify(
-                {
-                    "ok": False,
-                    "error": "IdDocumento e IdRiga sono obbligatori",
-                }
-            ),
-            400,
-        )
-
-    policy = _current_policy()
-    ordine = _get_visible_odp_by_key(policy, id_documento, id_riga)
-
-    if _tab_from_ordine(ordine) != "montaggio":
-        return (
-            jsonify(
-                {
-                    "ok": False,
-                    "error": "Ordine non appartenente alla vista montaggio",
-                }
-            ),
-            400,
-        )
-
-    if _norm_text(ordine.GestioneMatricola).lower() != "si":
-        return (
-            jsonify(
-                {
-                    "ok": False,
-                    "error": "Questa modalità è riservata agli ordini macchina",
-                }
-            ),
-            400,
-        )
-
-    fase_corrente = _fase_corrente_for_export(ordine, fase_override=fase)
-    blocking_outbox = _get_blocking_outbox_for_phase(
-        id_documento=ordine.IdDocumento,
-        id_riga=ordine.IdRiga,
-        fase=fase_corrente,
-    )
-
-    if blocking_outbox is not None:
-        tab, fragments = _fragments_for_ordine_tab(policy, ordine)
-
-        return (
-            jsonify(
-                {
-                    "ok": False,
-                    "changed": False,
-                    "error": (
-                        "Questa fase risulta già consuntivata ed è ancora in attesa "
-                        "di sincronizzazione con il gestionale."
-                    ),
-                    "message": (
-                        f"Riattivazione bloccata: fase {fase_corrente} con export "
-                        f"in stato '{blocking_outbox.status}'."
-                    ),
-                    "id_documento": ordine.IdDocumento,
-                    "id_riga": ordine.IdRiga,
-                    "row_key": _row_key(ordine.IdDocumento, ordine.IdRiga),
-                    "rif_registraz": ordine.RifRegistraz,
-                    "stato_ordine": ordine.StatoOrdine,
-                    "fase": fase_corrente,
-                    "outbox_status": blocking_outbox.status,
-                    "outbox_id": blocking_outbox.outbox_id,
-                    "active_tab": tab,
-                    "last_event_id": _last_log_token(),
-                    "fragments": fragments,
-                }
-            ),
-            409,
-        )
-
-    stato_attuale = _norm_text(ordine.StatoOrdine)
-    stato_norm = stato_attuale.lower()
-    changed = False
-    message = None
-
-    if stato_norm == "in sospeso":
-        now_dt = _now_rome_dt()
-
-        stato = InputOdpRuntime.query.filter_by(
-            IdDocumento=ordine.IdDocumento,
-            IdRiga=ordine.IdRiga,
-        ).first()
-
-        if stato is None:
-            db.session.rollback()
-            return (
-                jsonify(
-                    {
-                        "ok": False,
-                        "error": (
-                            "Record runtime non trovato per questo ordine macchina. "
-                            "La riattivazione non può ripristinare correttamente il runtime."
-                        ),
-                        "id_documento": ordine.IdDocumento,
-                        "id_riga": ordine.IdRiga,
-                    }
-                ),
-                409,
-            )
-
-        _sync_active_fields_for_phase(ordine, fase_corrente)
-
-        stato_ordine_pre = _norm_text(stato_attuale)
-        qty_pre = _qty_da_lavorare_text(ordine)
-        now_iso = now_dt.isoformat(timespec="seconds")
-
-        stato = _ensure_stato_attivo(
-            ordine=ordine,
-            stato=stato,
-            username=_current_username(),
-            when_dt=now_dt,
-            fase_corrente=fase_corrente,
-        )
-
-        operation_group_id = _build_operation_group_id(
-            ordine=ordine,
-            action="riattivazione_macchina",
-            when_iso=now_iso,
-        )
-
-        _add_input_odp_takeover_log(
-            operation_group_id=operation_group_id,
-            ordine=ordine,
-            stato_ordine_pre=stato_ordine_pre,
-            stato_ordine_post="Attivo",
-            qty_pre=qty_pre,
-            qty_post=_norm_text(stato.QtyDaLavorare),
-            taken_by=_current_username(),
-            taken_at=now_iso,
-            note_evento=f"Riattivazione ordine macchina | Matricola: {matricola}",
-        )
-        db.session.commit()
-        changed = True
-        message = "Ordine macchina riattivato"
-
-    elif stato_norm == "attivo":
-        message = "Ordine macchina già attivo"
-
-    else:
-        message = f"Ordine macchina non riattivabile: stato attuale '{stato_attuale}'"
-
-    tab, fragments = _fragments_for_ordine_tab(policy, ordine)
-
-    return (
-        jsonify(
-            {
-                "ok": True,
-                "changed": changed,
-                "message": message,
-                "id_documento": ordine.IdDocumento,
-                "id_riga": ordine.IdRiga,
-                "row_key": _row_key(ordine.IdDocumento, ordine.IdRiga),
-                "rif_registraz": ordine.RifRegistraz,
-                "stato_ordine": ordine.StatoOrdine,
-                "fase": fase_corrente,
-                "active_tab": tab,
-                "last_event_id": _last_log_token(),
-                "fragments": fragments,
-                "num_progr_riga": ordine.NumProgrRiga,
-            }
-        ),
-        200,
-    )
-
-
-DASHBOARD_FILTER_KEYS = (
-    "reparto",
-    "risorsa",
-    "lavorazione",
-    "operatore",
-    "articolo",
-    "stato",
-)
-
-
-def _dashboard_empty_filter_options() -> dict:
-    return {key: [] for key in DASHBOARD_FILTER_KEYS}
-
-
-def _dashboard_new_filter_options_bucket() -> dict:
-    return {key: {} for key in DASHBOARD_FILTER_KEYS}
-
-
-def _dashboard_filter_label(value: str, description: str = "") -> str:
-    value = _norm_text(value)
-    description = _norm_text(description)
-
-    if not value:
-        return ""
-
-    if description and description.lower() != value.lower():
-        return f"{description} ({value})"
-
-    return value
-
-
-def _dashboard_model_label_map(model) -> dict[str, str]:
-    rows = model.query.order_by(
-        func.lower(func.coalesce(model.Descrizione, model.Codice)),
-        func.lower(model.Codice),
-    ).all()
-
-    out = {}
-
-    for row in rows:
-        codice = _norm_text(getattr(row, "Codice", ""))
-        descrizione = _norm_text(getattr(row, "Descrizione", ""))
-
-        if codice:
-            out[codice] = _dashboard_filter_label(codice, descrizione)
-
-    return out
-
-
-def _dashboard_filter_label_maps() -> dict:
-    return {
-        "reparto": _dashboard_model_label_map(Reparti),
-        "risorsa": _dashboard_model_label_map(Risorse),
-        "lavorazione": _dashboard_model_label_map(Lavorazioni),
-    }
-
-
-def _dashboard_add_filter_option(
-    options: dict,
-    key: str,
-    value,
-    label: str = "",
-) -> None:
-    if key not in options:
-        return
-
-    value = _norm_text(value)
-    if not value:
-        return
-
-    options[key].setdefault(
-        value,
-        {
-            "value": value,
-            "label": _norm_text(label) or value,
-        },
-    )
-
-
-def _dashboard_seed_user_filter_options(options: dict) -> None:
-    """
-    Inserisce nel filtro Operatore tutti gli utenti presenti in users,
-    senza filtrare per active, ruolo, reparto, policy o capacità.
-    """
-    users = User.query.order_by(func.lower(User.username)).all()
-
-    for user in users:
-        username = _norm_text(getattr(user, "username", ""))
-
-        if not username:
-            continue
-
-        _dashboard_add_filter_option(
-            options,
-            "operatore",
-            username,
-            username,
-        )
-
-
-def _dashboard_article_filter_label(cod_art: str, descrizione: str = "") -> str:
-    cod_art = _norm_text(cod_art)
-    descrizione = _norm_text(descrizione)
-
-    if cod_art and descrizione:
-        return f"{cod_art} - {descrizione}"
-
-    return cod_art or descrizione
-
-
-def _dashboard_collect_filter_options_from_row(
-    options: dict,
-    row: dict,
-    label_maps: dict,
-) -> None:
-    articolo = _norm_text(row.get("cod_art") or row.get("articolo"))
-
-    _dashboard_add_filter_option(
-        options,
-        "articolo",
-        articolo,
-        _dashboard_article_filter_label(articolo, row.get("descrizione")),
-    )
-
-
-def _dashboard_finalize_filter_options(options: dict) -> dict:
-    out = {}
-
-    for key in DASHBOARD_FILTER_KEYS:
-        rows = list((options.get(key) or {}).values())
-
-        rows.sort(
-            key=lambda row: (
-                _norm_text(row.get("label")).lower(),
-                _norm_text(row.get("value")).lower(),
-            )
-        )
-
-        out[key] = rows
-
-    return out
-
-
-def _dashboard_text_filter(value) -> str:
-    return _norm_text(value).lower()
-
-
-def _dashboard_cruscotto_filters_from_request() -> dict:
-    return {
-        "reparto": _dashboard_text_filter(request.args.get("reparto")),
-        "risorsa": _dashboard_text_filter(request.args.get("risorsa")),
-        "lavorazione": _dashboard_text_filter(request.args.get("lavorazione")),
-        "operatore": _dashboard_text_filter(request.args.get("operatore")),
-        "articolo": _dashboard_text_filter(request.args.get("articolo")),
-        "stato": _dashboard_text_filter(request.args.get("stato")),
-    }
-
-
-def _dashboard_row_matches_filters(row: dict, filters: dict) -> bool:
-    for key in ("reparto", "risorsa", "lavorazione", "operatore", "articolo", "stato"):
-        expected = _dashboard_text_filter(filters.get(key))
-        if not expected:
-            continue
-
-        if key == "articolo":
-            current = " ".join(
-                [
-                    _norm_text(row.get("cod_art")),
-                    _norm_text(row.get("descrizione")),
-                ]
-            ).lower()
-        else:
-            current = _norm_text(row.get(key)).lower()
-
-        if expected not in current:
-            return False
-
-    return True
-
-
-@main_bp.get("/etichette/<path:filename>")
-@operator_or_login_required
-def etichetta_png(filename):
-    file_path = _resolve_label_file_path(filename)
-
-    if file_path is None or not file_path.is_file():
-        abort(404)
-
-    return send_file(
-        file_path,
-        mimetype="image/png",
-        as_attachment=False,
-        download_name=file_path.name,
-    )
-
-
-@main_bp.post("/api/etichette/stampa")
-@operator_perm_required("home")
-def api_stampa_etichetta():
-    data = request.get_json(silent=True) or {}
-    filename = _norm_text(data.get("filename"))
-
-    if not filename:
-        return jsonify({"ok": False, "error": "Nome file etichetta mancante."}), 400
-
-    file_path = _resolve_label_file_path(filename)
-    if file_path is None or not file_path.is_file():
-        return jsonify({"ok": False, "error": "Etichetta non trovata."}), 404
-
-    try:
-        _print_label_png_to_windows_printer(file_path)
-    except Exception as exc:
-        current_app.logger.exception("Errore stampa etichetta %s", filename)
-        return (
-            jsonify(
-                {
-                    "ok": False,
-                    "error": f"Errore durante la stampa dell'etichetta: {exc}",
-                }
-            ),
-            500,
-        )
-
-    return jsonify(
-        {
-            "ok": True,
-            "message": "Etichetta inviata in stampa.",
-            "filename": filename,
-        }
-    )
-
-
-@main_bp.get("/api/etichette/ricerca")
-@operator_perm_required("home")
-def api_ricerca_etichette():
-    cod_art = _norm_text(request.args.get("cod_art"))
-    lotto = _norm_text(request.args.get("lotto"))
-
-    if not cod_art and not lotto:
-        return (
-            jsonify(
-                {
-                    "ok": False,
-                    "error": "Inserire almeno il codice articolo oppure il lotto.",
-                }
-            ),
-            400,
-        )
-
-    q = LottiGeneratiLog.query
-
-    if cod_art:
-        q = q.filter(func.lower(LottiGeneratiLog.CodArt).like(f"%{cod_art.lower()}%"))
-
-    if lotto:
-        q = q.filter(
-            func.lower(LottiGeneratiLog.RifLottoAlfa).like(f"%{lotto.lower()}%")
-        )
-
-    rows = q.order_by(LottiGeneratiLog.log_id.desc()).limit(100).all()
-
-    operation_group_ids = {
-        row.OperationGroupId for row in rows if _norm_text(row.OperationGroupId)
-    }
-
-    descrizioni_by_operation = {}
-
-    if operation_group_ids:
-        log_rows = (
-            InputOdpLog.query.filter(
-                InputOdpLog.OperationGroupId.in_(sorted(operation_group_ids))
-            )
-            .order_by(InputOdpLog.log_id.desc())
-            .all()
-        )
-
-        for log_row in log_rows:
-            op_id = _norm_text(log_row.OperationGroupId)
-            if op_id and op_id not in descrizioni_by_operation:
-                descrizioni_by_operation[op_id] = _norm_text(log_row.DesArt)
-
-    items = []
-
-    for row in rows:
-        filename = _norm_text(getattr(row, "LabelFilename", ""))
-        file_path = _resolve_label_file_path(filename) if filename else None
-        file_exists = bool(file_path and file_path.is_file())
-
-        items.append(
-            {
-                "log_id": row.log_id,
-                "closed_at": _norm_text(row.ClosedAt or row.logged_at),
-                "cod_art": _norm_text(row.CodArt),
-                "descrizione": descrizioni_by_operation.get(
-                    _norm_text(row.OperationGroupId),
-                    "",
-                ),
-                "lotto": _norm_text(row.RifLottoAlfa),
-                "quantita": _norm_text(row.Quantita),
-                "filename": filename if file_exists else "",
-                "label_url": (
-                    url_for(
-                        "main.etichetta_png",
-                        filename=filename,
-                        tab_session=active_token(),
-                    )
-                    if file_exists
-                    else ""
-                ),
-                "file_exists": file_exists,
-            }
-        )
-
-    return jsonify(
-        {
-            "ok": True,
-            "items": items,
-        }
-    )
-
-
-@main_bp.post("/api/ordini/chiudi")
-@operator_perm_required("home")
-def api_chiudi_ordine():
-    data = request.get_json(silent=True) or {}
-
-    id_documento = _norm_text(data.get("id_documento"))
-    id_riga = _norm_text(data.get("id_riga"))
-    q_ok_raw = data.get("quantita_conforme") or data.get("quantita_prodotta")
-    q_nok_raw = data.get("quantita_non_conforme") or data.get("quantita_scartata")
-    note = _norm_text(data.get("note"))
-    lotti_input = data.get("lotti") or []
-    chiusura_parziale = _parse_bool_flag(data.get("chiusura_parziale"))
-
-    tempo_non_funzionamento_raw = data.get("tempo_non_funzionamento_minuti")
-    if tempo_non_funzionamento_raw is None:
-        tempo_non_funzionamento_raw = data.get("tempo_fermo_macchina")
-    if tempo_non_funzionamento_raw is None:
-        tempo_non_funzionamento_raw = data.get("tempo_macchina_ferma")
-
-    try:
-        minuti_non_funzionamento = _parse_minuti_non_funzionamento(
-            tempo_non_funzionamento_raw
-        )
-    except ValueError as e:
-        return jsonify({"ok": False, "error": str(e)}), 400
-
-    if not id_documento or not id_riga:
-        return (
-            jsonify({"ok": False, "error": "IdDocumento e IdRiga sono obbligatori"}),
-            400,
-        )
-
-    policy = _current_policy()
-    ordine = _get_visible_odp_by_key(policy, id_documento, id_riga)
-    can_override_registration_date = policy.can("modifica_data_chiusura")
-    can_choose_time_line = policy.can("export_avp_senza_riga_tempo")
-    include_time_line = True
-
-    if can_choose_time_line:
-        include_time_line = _parse_bool_flag(data.get("include_time_line", True))
-
-    fase_corrente = _fase_corrente_for_export(ordine)
-    blocking_outbox = _get_blocking_outbox_for_phase(
-        id_documento=ordine.IdDocumento,
-        id_riga=ordine.IdRiga,
-        fase=fase_corrente,
-    )
-    if blocking_outbox is not None:
-        return (
-            jsonify(
-                {
-                    "ok": False,
-                    "error": (
-                        "Questa fase risulta già consuntivata ed è ancora in attesa "
-                        "di sincronizzazione con il gestionale."
-                    ),
-                    "outbox_status": blocking_outbox.status,
-                    "outbox_id": blocking_outbox.outbox_id,
-                }
-            ),
-            409,
-        )
-
-    stato = InputOdpRuntime.query.filter_by(
-        IdDocumento=ordine.IdDocumento,
-        IdRiga=ordine.IdRiga,
-    ).first()
-    closure_error = _ensure_ordine_attivo_per_chiusura(ordine, stato=stato)
-    if closure_error:
-        return closure_error
-
-    now_dt = _now_rome_dt()
-
-    min_time_error = _ensure_min_active_time_before_chiusura(
-        stato,
-        now_dt,
-        can_bypass=can_choose_time_line and not include_time_line,
-    )
-    if min_time_error:
-        return min_time_error
-    try:
-        q_tot = _qty_da_lavorare_decimal(ordine, stato=stato)
-    except ValueError as e:
-        return jsonify({"ok": False, "error": str(e)}), 400
-
-    try:
-        q_ok = (
-            _parse_qty_integer_decimal(q_ok_raw, "Quantità conforme")
-            if q_ok_raw is not None
-            else q_tot
-        )
-        q_nok = (
-            _parse_qty_integer_decimal(q_nok_raw, "Quantità KO")
-            if q_nok_raw is not None
-            else Decimal("0")
-        )
-    except ValueError as e:
-        return jsonify({"ok": False, "error": str(e)}), 400
-
-    if q_ok < 0 or q_nok < 0:
-        return (
-            jsonify({"ok": False, "error": "Le quantità non possono essere negative"}),
-            400,
-        )
-
-    q_lavorata = q_ok + q_nok
-    qty_residua = q_tot - q_lavorata
-    qty_residua_text = _decimal_to_text(qty_residua)
-    qty_lavorata_text = _decimal_to_text(q_lavorata)
-    qty_pre_text = _qty_da_lavorare_text(ordine, stato=stato)
-    distinta_base_export = _build_export_distinta_base(
-        ordine=ordine,
-        fase_corrente=fase_corrente,
-        q_lavorata=q_lavorata,
-        q_tot=q_tot,
-    )
-    if chiusura_parziale:
-        if q_lavorata <= 0:
-            return (
-                jsonify(
-                    {
-                        "ok": False,
-                        "error": "Per la chiusura parziale devi indicare una quantità lavorata > 0.",
-                    }
-                ),
-                400,
-            )
-
-        if q_lavorata >= q_tot:
-            return (
-                jsonify(
-                    {
-                        "ok": False,
-                        "error": "Nella chiusura parziale la quantità lavorata deve essere strettamente minore della quantità totale dell'ordine.",
-                    }
-                ),
-                400,
-            )
-
-    componenti_richiesti_lotto = _componenti_lotto_per_ordine(
-        ordine,
-        include_senza_lotti=True,
-    )
-    if componenti_richiesti_lotto and not lotti_input:
-        return (
-            jsonify(
-                {
-                    "ok": False,
-                    "error": "Per questo ordine è obbligatoria l'assegnazione dei lotti materiale prima della chiusura.",
-                }
-            ),
-            400,
-        )
-
-    if lotti_input:
-        for lotto_row in lotti_input:
-            cod_art = _norm_text(lotto_row.get("CodArt"))
-            rif_lotto = _norm_text(lotto_row.get("RifLottoAlfa"))
-            try:
-                qty = _parse_qty_integer_decimal(
-                    lotto_row.get("Quantita"),
-                    f"Quantità lotto {cod_art}/{rif_lotto}",
-                )
-            except ValueError as e:
-                return (
-                    jsonify({"ok": False, "error": f"Quantità lotto non valida: {e}"}),
-                    400,
-                )
-
-            if not cod_art or not rif_lotto:
-                return (
-                    jsonify(
-                        {
-                            "ok": False,
-                            "error": "Codice e lotto obbligatori per ogni riga.",
-                        }
-                    ),
-                    400,
-                )
-            if qty <= 0:
-                return (
-                    jsonify(
-                        {
-                            "ok": False,
-                            "error": f"{cod_art} lotto {rif_lotto}: quantità deve essere > 0.",
-                        }
-                    ),
-                    400,
-                )
-
-            cod_mag = _norm_text(lotto_row.get("CodMag"))
-
-            lotto_query = GiacenzaLotti.query.filter_by(
-                CodArt=cod_art,
-                RifLottoAlfa=rif_lotto,
-            )
-
-            if cod_mag:
-                lotto_query = lotto_query.filter_by(CodMag=cod_mag)
-
-            lotto_db = lotto_query.first()
-            if lotto_db is None:
-                return (
-                    jsonify(
-                        {
-                            "ok": False,
-                            "error": f"Lotto {rif_lotto} non trovato per {cod_art}.",
-                        }
-                    ),
-                    400,
-                )
-            try:
-                giacenza = _parse_qty_decimal(lotto_db.Giacenza)
-            except ValueError:
-                giacenza = Decimal("0")
-            if qty > giacenza:
-                return (
-                    jsonify(
-                        {
-                            "ok": False,
-                            "error": f"{cod_art} lotto {rif_lotto}: qtà {qty} > giacenza {giacenza}.",
-                        }
-                    ),
-                    400,
-                )
-
-    now_iso = now_dt.isoformat(timespec="seconds")
-
-    try:
-        _registration_day, registration_dt, registration_date_text = (
-            _resolve_registration_datetime(
-                data.get("data_registrazione"),
-                allow_override=can_override_registration_date,
-                fallback_dt=now_dt,
-            )
-        )
-    except ValueError as e:
-        current_app.logger.warning(
-            "Invalid registration date during order closure.",
-            exc_info=True,
-        )
-        return (
-            jsonify(
-                {
-                    "ok": False,
-                    "error": "Data registrazione non valida.",
-                }
-            ),
-            400,
-        )
-
-    registration_iso = registration_dt.isoformat(timespec="seconds")
-    lotto_prodotto = None
-    action_name = "chiusura_parziale" if chiusura_parziale else "chiusura_finale"
-    operation_group_id = _build_operation_group_id(
-        ordine=ordine,
-        action=action_name,
-        when_iso=now_iso,
-    )
-
-    fase_corrente = _fase_corrente_for_export(ordine, stato=stato)
-    phase_export_flags = _phase_export_flags(
-        ordine,
-        fase_corrente,
-        chiusura_parziale=chiusura_parziale,
-    )
-
-    if _norm_text(ordine.GestioneLotto).lower() == "si" and q_ok > 0:
-        rif_lotto_prodotto = generazione_lotti(registration_dt)
-
-        for row in lotti_input:
-            esito_row = _norm_text(row.get("Esito", "ok")).lower()
-            if esito_row != "ok":
-                continue
-
-        lotto_prodotto = {
-            "CodArt": ordine.CodArt,
-            "RifLottoAlfa": rif_lotto_prodotto,
-            "Quantita": _decimal_to_text(q_ok),
-            "Fase": fase_corrente,
-        }
-
-    label_filename = None
-
-    if lotto_prodotto:
-        label_filename = _genera_e_salva_etichetta_lotto(
-            codice=ordine.CodArt,
-            descrizione=ordine.DesArt,
-            lotto=lotto_prodotto["RifLottoAlfa"],
-            quantita=lotto_prodotto["Quantita"],
-        )
-
-    tempo_finale = "0"
-    elapsed_seconds = 0
-    removed_seconds = 0
-    runtime_pre = _runtime_snapshot(stato)
-    stato_ordine_pre = _norm_text(ordine.StatoOrdine)
-    qty_pre = _qty_da_lavorare_text(ordine)
-
-    if stato is not None:
-        if _norm_text(stato.Stato_odp).lower().startswith("attiv"):
-            elapsed_seconds = _accumulate_runtime_until(stato, now_dt)
-
-        removed_seconds, tempo_finale = _apply_stop_minutes_to_runtime(
-            stato,
-            minuti_non_funzionamento,
-        )
-
-    outbox = None
-
-    if chiusura_parziale:
-        if stato is None:
-            db.session.rollback()
-            return (
-                jsonify(
-                    {
-                        "ok": False,
-                        "error": (
-                            "Record runtime non trovato per questo ordine. "
-                            "La chiusura non può proseguire in modo coerente."
-                        ),
-                        "id_documento": ordine.IdDocumento,
-                        "id_riga": ordine.IdRiga,
-                    }
-                ),
-                409,
-            )
-        payload = _build_phase_payload(
-            distinta_base=distinta_base_export,
-            ordine=ordine,
-            fase_corrente=fase_corrente,
-            q_ok=q_ok,
-            q_nok=q_nok,
-            tempo_finale=tempo_finale,
-            lotti_input=lotti_input,
-            lotto_prodotto=lotto_prodotto,
-            note=note,
-            now_iso=registration_iso,
-            registrazione_data=registration_date_text,
-            chiusura_parziale=True,
-            tipo_documento=ordine.CodTipoDoc,
-            risorsa=ordine.RisorsaAttiva,
-            magazzino=ordine.CodMagPrincipale,
-            variante=ordine.VarianteArt,
-            include_time_line=include_time_line,
-            **phase_export_flags,
-        )
-        outbox = _queue_phase_export(
-            ordine=ordine,
-            fase_corrente=fase_corrente,
-            payload=payload,
-        )
-    else:
-        payload = _build_phase_payload(
-            ordine=ordine,
-            distinta_base=distinta_base_export,
-            fase_corrente=fase_corrente,
-            q_ok=q_ok,
-            q_nok=q_nok,
-            tempo_finale=tempo_finale,
-            lotti_input=lotti_input,
-            lotto_prodotto=lotto_prodotto,
-            note=note,
-            now_iso=registration_iso,
-            registrazione_data=registration_date_text,
-            chiusura_parziale=False,
-            tipo_documento=ordine.CodTipoDoc,
-            risorsa=ordine.RisorsaAttiva,
-            magazzino=ordine.CodMagPrincipale,
-            variante=ordine.VarianteArt,
-            include_time_line=include_time_line,
-            **phase_export_flags,
-        )
-        outbox = _queue_phase_export(
-            ordine=ordine,
-            fase_corrente=fase_corrente,
-            payload=payload,
-        )
-
-    db.session.flush()
-
-    note_chiusura_log = note
-    if chiusura_parziale:
-        note_chiusura_log = (
-            f"[PARZIALE] residuo={qty_residua_text}; {note}".strip().rstrip(";")
-        )
-
-    transition = _advance_or_finalize_phase(
-        ordine=ordine,
-        stato=stato,
-        fase_corrente=fase_corrente,
-        q_ok=q_ok,
-        q_nok=q_nok,
-        qty_residua=qty_residua,
-        qty_residua_text=qty_residua_text,
-        qty_lavorata_text=qty_lavorata_text,
-        chiusura_parziale=chiusura_parziale,
-        username=_current_username(),
-    )
-    if transition["tipo"] == "avanzata":
-        _restore_priorita_for_next_phase_from_runtime(
-            stato=stato,
-            ordine=ordine,
-            next_phase=transition["fase_successiva"],
-        )
-    runtime_post = _runtime_snapshot(stato)
-
-    if transition["tipo"] == "finale" and stato is not None:
-        runtime_post["stato_odp"] = "Chiusa"
-        runtime_post["data_ultima_attivazione"] = ""
-
-    if chiusura_parziale:
-        stato_post_log = "In Sospeso"
-        qty_post_log = qty_residua_text
-    elif transition["tipo"] == "finale":
-        stato_post_log = "Chiusa"
-        qty_post_log = "0"
-
-    note_chiusura_log = note
-    stato_post_log = _norm_text(ordine.StatoOrdine)
-    qty_post_log = _norm_text(ordine.QtyDaLavorare)
-
-    if chiusura_parziale:
-        stato_post_log = "In Sospeso"
-        qty_post_log = qty_residua_text
-    elif transition["tipo"] == "finale":
-        stato_post_log = "Chiusa"
-        qty_post_log = "0"
-    if chiusura_parziale:
-        note_chiusura_log = (
-            f"[PARZIALE] residuo={qty_residua_text}; {note}".strip().rstrip(";")
-        )
-    _add_input_odp_closure_log(
-        operation_group_id=operation_group_id,
-        ordine=ordine,
-        fase_consuntivata=fase_corrente,
-        q_ok=q_ok,
-        q_nok=q_nok,
-        tempo_finale=tempo_finale,
-        minuti_non_funzionamento=minuti_non_funzionamento,
-        secondi_non_funzionamento=removed_seconds,
-        chiusura_parziale=chiusura_parziale,
-        note_chiusura=note_chiusura_log,
-        stato_ordine_pre=stato_ordine_pre,
-        stato_ordine_post=stato_post_log,
-        qty_pre=qty_pre_text,
-        qty_post=qty_post_log,
-        closed_by=_current_username(),
-        closed_at=now_iso,
-    )
-
-    _append_operazione_log(
-        topic="fase_consuntivata_parziale"
-        if chiusura_parziale
-        else "fase_consuntivata",
-        ordine=ordine,
-        action=action_name,
-        event_at=now_iso,
-        username=_current_username(),
-        runtime_pre=runtime_pre,
-        runtime_post=runtime_post,
-        stato_ordine_pre=stato_ordine_pre,
-        stato_ordine_post=stato_post_log,
-        qty_pre=qty_pre_text,
-        qty_post=qty_post_log,
-        q_ok=str(q_ok),
-        q_nok=str(q_nok),
-        elapsed_seconds=elapsed_seconds,
-        tempo_non_funzionamento_minuti=minuti_non_funzionamento,
-        tempo_non_funzionamento_secondi=removed_seconds,
-        note=note_chiusura_log,
-        fase=fase_corrente,
-        extra_payload={
-            "quantita_lavorata_step": qty_lavorata_text,
-            "qty_da_lavorare_pre": qty_pre_text,
-            "qty_da_lavorare_post": qty_post_log,
-            "lotti_count": len(lotti_input),
-            "chiusura_parziale": chiusura_parziale,
-            "outbox_id": outbox.outbox_id if outbox else None,
-            "export_status": outbox.status if outbox else None,
-            "lotto_prodotto": lotto_prodotto,
-            "emit_product_line": phase_export_flags["emit_product_line"],
-            "is_last_phase": phase_export_flags["is_last_phase"],
-            "fase_successiva": phase_export_flags["fase_successiva"],
-            "phase_sequence": phase_export_flags["phase_sequence"],
-        },
-    )
-
-    _add_lotti_usati_logs(
-        operation_group_id=operation_group_id,
-        ordine=ordine,
-        lotti_input=lotti_input,
-        fase=fase_corrente,
-        closed_by=_current_username(),
-        closed_at=now_iso,
-    )
-
-    _add_lotto_generato_log(
-        operation_group_id=operation_group_id,
-        ordine=ordine,
-        lotto_prodotto=lotto_prodotto,
-        closed_by=_current_username(),
-        closed_at=now_iso,
-        label_filename=label_filename or "",
-    )
-
-    tab = _tab_from_ordine(ordine)
-    stato_ordine_response = _norm_text(ordine.StatoOrdine)
-    qty_da_lavorare_response = _norm_text(ordine.QtyDaLavorare)
-
-    if chiusura_parziale:
-        stato_ordine_response = "In Sospeso"
-        qty_da_lavorare_response = qty_residua_text
-    elif transition["tipo"] == "finale":
-        _delete_closed_order_from_runtime_db(ordine=ordine, stato=stato)
-        stato_ordine_response = "Chiusa"
-        qty_da_lavorare_response = "0"
-    fragments = {}
-    if tab:
-        config = _home_reparto_config_by_tab(tab)
-
-        if config is not None and _policy_can_access_home_config(policy, config):
-            odp = _home_rows_for_config(
-                policy,
-                config,
-                apply_priorita=True,
-                sort_priorita=True,
-            )
-            fragments = _render_fragments_for_home_config(config, odp)
-
-    db.session.commit()
-    label_url = (
-        url_for(
-            "main.etichetta_png",
-            filename=label_filename,
-            tab_session=active_token(),
-        )
-        if label_filename
-        else None
-    )
-    if transition["tipo"] == "finale":
-        message = (
-            "Ordine chiuso definitivamente, archiviato nel db_log "
-            "e rimosso dal database operativo."
-        )
-    elif transition["tipo"] == "avanzata":
-        message = (
-            f"Fase {transition['fase_corrente']} consuntivata. "
-            f"File TXT generato in coda export. "
-            f"Ordine mantenuto a DB e riportato in pianificata sulla fase "
-            f"{transition['fase_successiva']}."
-        )
-    else:
-        message = (
-            f"Fase {transition['fase_corrente']} chiusa parzialmente. "
-            f"File TXT generato in coda export. "
-            f"Ordine mantenuto a DB e messo in sospeso sulla stessa fase."
+            0,
+            pr,
+            pos or 999999,
+            _norm_text(ordine.DataFineSched),
+            _norm_text(ordine.RifRegistraz),
         )
 
     return (
-        jsonify(
-            {
-                "ok": True,
-                "changed": True,
-                "message": message,
-                "id_documento": id_documento,
-                "id_riga": id_riga,
-                "row_key": _row_key(id_documento, id_riga),
-                "fase": transition["fase_corrente"],
-                "fase_successiva": transition["fase_successiva"],
-                "stato_ordine": stato_ordine_response,
-                "qty_da_lavorare": qty_da_lavorare_response,
-                "outbox_id": outbox.outbox_id if outbox else None,
-                "outbox_status": outbox.status if outbox else None,
-                "active_tab": tab,
-                "last_event_id": _last_log_token(),
-                "fragments": fragments,
-                "num_progr_riga": ordine.NumProgrRiga,
-                "label_url": label_url,
-            }
-        ),
-        200,
+        1,
+        99,
+        999999,
+        _norm_text(ordine.DataFineSched),
+        _norm_text(ordine.RifRegistraz),
     )
 
 
-@main_bp.post("/api/ordini/montaggio/macchina/chiudi")
-@operator_perm_required("home")
-def api_chiudi_ordine_montaggio_macchina():
-    data = request.get_json(silent=True) or {}
-
-    id_documento = _norm_text(data.get("id_documento"))
-    id_riga = _norm_text(data.get("id_riga"))
-    matricola = _norm_text(data.get("matricola"))
-    fase = _norm_text(data.get("fase"))
-    note = _norm_text(data.get("note"))
-    lotti_input = data.get("lotti") or []
-
-    if not id_documento or not id_riga:
-        return (
-            jsonify({"ok": False, "error": "IdDocumento e IdRiga sono obbligatori"}),
-            400,
-        )
-
-    policy = _current_policy()
-    ordine = _get_visible_odp_by_key(policy, id_documento, id_riga)
-    can_override_registration_date = policy.can("modifica_data_chiusura")
-    can_choose_time_line = policy.can("export_avp_senza_riga_tempo")
-    include_time_line = True
-
-    if can_choose_time_line:
-        include_time_line = _parse_bool_flag(data.get("include_time_line", True))
-
-    if _tab_from_ordine(ordine) != "montaggio":
-        return (
-            jsonify(
-                {"ok": False, "error": "Ordine non appartenente alla vista montaggio"}
-            ),
-            400,
-        )
-
-    if _norm_text(ordine.GestioneMatricola).lower() != "si":
-        return (
-            jsonify(
-                {
-                    "ok": False,
-                    "error": "Questa modalità è riservata agli ordini macchina",
-                }
-            ),
-            400,
-        )
-
-    fase_corrente = _fase_corrente_for_export(ordine, fase_override=fase)
-    blocking_outbox = _get_blocking_outbox_for_phase(
-        id_documento=ordine.IdDocumento,
-        id_riga=ordine.IdRiga,
-        fase=fase_corrente,
-    )
-    if blocking_outbox is not None:
-        return (
-            jsonify(
-                {
-                    "ok": False,
-                    "error": (
-                        "Questa fase risulta già consuntivata ed è ancora in attesa "
-                        "di sincronizzazione con il gestionale."
-                    ),
-                    "outbox_status": blocking_outbox.status,
-                    "outbox_id": blocking_outbox.outbox_id,
-                }
-            ),
-            409,
-        )
-
-    stato = InputOdpRuntime.query.filter_by(
-        IdDocumento=ordine.IdDocumento,
-        IdRiga=ordine.IdRiga,
-    ).first()
-
-    closure_error = _ensure_ordine_attivo_per_chiusura(ordine, stato=stato)
-    if closure_error:
-        return closure_error
-
-    now_dt = _now_rome_dt()
-
-    min_time_error = _ensure_min_active_time_before_chiusura(
-        stato,
-        now_dt,
-        can_bypass=can_choose_time_line and not include_time_line,
-    )
-    if min_time_error:
-        return min_time_error
-
-    componenti_richiesti_lotto = _componenti_lotto_per_ordine(
-        ordine,
-        include_senza_lotti=True,
-        ignore_parent_gestione_lotto=True,
-    )
-    if componenti_richiesti_lotto and not lotti_input:
-        return (
-            jsonify(
-                {
-                    "ok": False,
-                    "error": "Per questo ordine è obbligatoria l'assegnazione dei lotti materiale prima della chiusura.",
-                }
-            ),
-            400,
-        )
-
-    if lotti_input:
-        for lotto_row in lotti_input:
-            cod_art = _norm_text(lotto_row.get("CodArt"))
-            rif_lotto = _norm_text(lotto_row.get("RifLottoAlfa"))
-            try:
-                qty = _parse_qty_decimal(lotto_row.get("Quantita"))
-            except ValueError as e:
-                return jsonify(
-                    {"ok": False, "error": f"Quantità lotto non valida: {e}"}
-                ), 400
-
-            if not cod_art or not rif_lotto:
-                return jsonify(
-                    {
-                        "ok": False,
-                        "error": "Codice e lotto sono obbligatori per ogni riga lotti.",
-                    }
-                ), 400
-
-            if qty <= 0:
-                return jsonify(
-                    {
-                        "ok": False,
-                        "error": f"{cod_art} lotto {rif_lotto}: quantità deve essere > 0.",
-                    }
-                ), 400
-
-            cod_mag = _norm_text(lotto_row.get("CodMag"))
-
-            lotto_query = GiacenzaLotti.query.filter_by(
-                CodArt=cod_art,
-                RifLottoAlfa=rif_lotto,
-            )
-
-            if cod_mag:
-                lotto_query = lotto_query.filter_by(CodMag=cod_mag)
-
-            lotto_db = lotto_query.first()
-
-            if lotto_db is None:
-                return jsonify(
-                    {
-                        "ok": False,
-                        "error": f"Lotto {rif_lotto} non trovato per {cod_art}.",
-                    }
-                ), 400
-
-            try:
-                giacenza = _parse_qty_decimal(lotto_db.Giacenza)
-            except ValueError:
-                giacenza = Decimal("0")
-
-            if qty > giacenza:
-                return jsonify(
-                    {
-                        "ok": False,
-                        "error": f"{cod_art} lotto {rif_lotto}: quantità {qty} supera giacenza {giacenza}.",
-                    }
-                ), 400
-
-    try:
-        q_tot = _qty_da_lavorare_decimal(ordine, stato=stato)
-    except ValueError as e:
-        return jsonify({"ok": False, "error": str(e)}), 400
-
-    q_ok = q_tot
-    q_nok = Decimal("0")
-    qty_residua = Decimal("0")
-    qty_residua_text = "0"
-    qty_lavorata_text = _decimal_to_text(q_tot)
-    chiusura_parziale = False
-
-    now_iso = now_dt.isoformat(timespec="seconds")
-
-    try:
-        _registration_day, registration_dt, registration_date_text = (
-            _resolve_registration_datetime(
-                data.get("data_registrazione"),
-                allow_override=can_override_registration_date,
-                fallback_dt=now_dt,
-            )
-        )
-    except ValueError as e:
-        current_app.logger.warning("Invalid registration datetime input: %s", e)
-        return jsonify({"ok": False, "error": "Invalid registration data."}), 400
-
-    registration_iso = registration_dt.isoformat(timespec="seconds")
-    lotto_prodotto = None
-    action_name = "chiusura_macchina"
-    elapsed_seconds = 0
-    minuti_non_funzionamento = 0
-    removed_seconds = 0
-    runtime_pre = _runtime_snapshot(stato)
-    stato_ordine_pre = _norm_text(ordine.StatoOrdine)
-    qty_pre = _qty_da_lavorare_text(ordine, stato=stato)
-    operation_group_id = _build_operation_group_id(
-        ordine=ordine,
-        action="chiusura_macchina",
-        when_iso=now_iso,
-    )
-
-    tempo_finale = "0"
-    if stato is not None:
-        if _norm_text(stato.Stato_odp).lower().startswith("attiv"):
-            elapsed_seconds = _accumulate_runtime_until(stato, now_dt)
-        tempo_finale = _norm_text(stato.Tempo_funzionamento) or "0"
-
-    fase_corrente = _fase_corrente_for_export(ordine, stato=stato, fase_override=fase)
-    phase_export_flags = _phase_export_flags(
-        ordine,
-        fase_corrente,
-        chiusura_parziale=False,
-    )
-    q_lavorata = q_ok + q_nok
-
-    distinta_base_export = _build_export_distinta_base(
-        ordine=ordine,
-        fase_corrente=fase_corrente,
-        q_lavorata=q_lavorata,
-        q_tot=q_tot,
-    )
-    payload = _build_phase_payload(
-        ordine=ordine,
-        distinta_base=distinta_base_export,
-        fase_corrente=fase_corrente,
-        q_ok=q_ok,
-        q_nok=q_nok,
-        tempo_finale=tempo_finale,
-        lotti_input=lotti_input,
-        lotto_prodotto=None,
-        note=note,
-        now_iso=registration_iso,
-        registrazione_data=registration_date_text,
-        tipo_documento=ordine.CodTipoDoc,
-        risorsa=ordine.RisorsaAttiva,
-        magazzino=ordine.CodMagPrincipale,
-        variante=ordine.VarianteArt,
-        include_time_line=include_time_line,
-        **phase_export_flags,
-    )
-
-    outbox = _queue_phase_export(
-        ordine=ordine,
-        fase_corrente=fase_corrente,
-        payload=payload,
-    )
-
-    db.session.flush()
-
-    transition = _advance_or_finalize_phase(
-        ordine=ordine,
-        stato=stato,
-        fase_corrente=fase_corrente,
-        q_ok=q_ok,
-        q_nok=q_nok,
-        qty_residua=qty_residua,
-        qty_residua_text=qty_residua_text,
-        qty_lavorata_text=qty_lavorata_text,
-        chiusura_parziale=chiusura_parziale,
-        username=_current_username(),
-    )
-    if transition["tipo"] == "avanzata":
-        _restore_priorita_for_next_phase_from_runtime(
-            stato=stato,
-            ordine=ordine,
-            next_phase=transition["fase_successiva"],
-        )
-
-    runtime_post = _runtime_snapshot(stato)
-
-    if transition["tipo"] == "finale" and stato is not None:
-        runtime_post["stato_odp"] = "Chiusa"
-        runtime_post["data_ultima_attivazione"] = ""
-
-    note_chiusura_log = note
-    if chiusura_parziale:
-        note_chiusura_log = (
-            f"[PARZIALE] residuo={qty_residua_text}; {note}".strip().rstrip(";")
-        )
-    _append_operazione_log(
-        topic="fase_consuntivata_montaggio_macchina",
-        ordine=ordine,
-        action=action_name,
-        event_at=now_iso,
-        username=_current_username(),
-        runtime_pre=runtime_pre,
-        runtime_post=runtime_post,
-        stato_ordine_pre=stato_ordine_pre,
-        stato_ordine_post=_norm_text(ordine.StatoOrdine),
-        qty_pre=qty_pre,
-        qty_post=_norm_text(ordine.QtyDaLavorare),
-        q_ok=str(q_ok),
-        q_nok=str(q_nok),
-        elapsed_seconds=elapsed_seconds,
-        tempo_non_funzionamento_minuti=0,
-        tempo_non_funzionamento_secondi=0,
-        note=note_chiusura_log,
-        fase=fase_corrente,
-        extra_payload={
-            "matricola": matricola,
-            "lotti_count": len(lotti_input),
-            "outbox_id": outbox.outbox_id if outbox else None,
-            "export_status": outbox.status if outbox else None,
-            "emit_product_line": phase_export_flags["emit_product_line"],
-            "is_last_phase": phase_export_flags["is_last_phase"],
-            "fase_successiva": phase_export_flags["fase_successiva"],
-            "phase_sequence": phase_export_flags["phase_sequence"],
-        },
-    )
-
-    _add_input_odp_closure_log(
-        operation_group_id=operation_group_id,
-        ordine=ordine,
-        fase_consuntivata=fase_corrente,
-        q_ok=q_ok,
-        q_nok=q_nok,
-        tempo_finale=tempo_finale,
-        minuti_non_funzionamento=minuti_non_funzionamento,
-        secondi_non_funzionamento=removed_seconds,
-        chiusura_parziale=chiusura_parziale,
-        note_chiusura=note_chiusura_log,
-        stato_ordine_pre=stato_ordine_pre,
-        stato_ordine_post=_norm_text(ordine.StatoOrdine),
-        qty_pre=qty_pre,
-        qty_post=_norm_text(ordine.QtyDaLavorare),
-        closed_by=_current_username(),
-        closed_at=now_iso,
-    )
-
-    _add_lotti_usati_logs(
-        operation_group_id=operation_group_id,
-        ordine=ordine,
-        lotti_input=lotti_input,
-        fase=fase_corrente,
-        closed_by=_current_username(),
-        closed_at=now_iso,
-    )
-
-    _add_lotto_generato_log(
-        operation_group_id=operation_group_id,
-        ordine=ordine,
-        lotto_prodotto=lotto_prodotto,
-        closed_by=_current_username(),
-        closed_at=now_iso,
-    )
-
-    tab = _tab_from_ordine(ordine)
-    stato_ordine_response = ordine.StatoOrdine
-    qty_da_lavorare_response = _norm_text(ordine.QtyDaLavorare)
-    if transition["tipo"] == "finale":
-        _delete_closed_order_from_runtime_db(ordine=ordine, stato=stato)
-        stato_ordine_response = "Chiusa"
-        qty_da_lavorare_response = "0"
-        message = (
-            "Ordine macchina chiuso definitivamente, archiviato nel db_log "
-            "e rimosso dal database operativo."
-        )
-    else:
-        message = (
-            f"Fase macchina {transition['fase_corrente']} consuntivata. "
-            f"File TXT generato in coda export. "
-            f"Ordine mantenuto a DB e riportato in pianificata sulla fase "
-            f"{transition['fase_successiva']}."
-        )
-    fragments = {}
-    if tab:
-        config = _home_reparto_config_by_tab(tab)
-
-        if config is not None and _policy_can_access_home_config(policy, config):
-            odp = _home_rows_for_config(
-                policy,
-                config,
-                apply_priorita=True,
-                sort_priorita=True,
-            )
-            fragments = _render_fragments_for_home_config(config, odp)
-
-    db.session.commit()
-
-    return (
-        jsonify(
-            {
-                "ok": True,
-                "changed": True,
-                "message": message,
-                "id_documento": id_documento,
-                "id_riga": id_riga,
-                "row_key": _row_key(id_documento, id_riga),
-                "fase": transition["fase_corrente"],
-                "fase_successiva": transition["fase_successiva"],
-                "stato_ordine": stato_ordine_response,
-                "qty_da_lavorare": qty_da_lavorare_response,
-                "outbox_id": outbox.outbox_id,
-                "outbox_status": outbox.status,
-                "active_tab": tab,
-                "last_event_id": _last_log_token(),
-                "fragments": fragments,
-                "num_progr_riga": ordine.NumProgrRiga,
-            }
-        ),
-        200,
-    )
-
-
-@main_bp.post("/api/ordini/lotti-componenti")
-@operator_perm_required("home")
-def api_lotti_componenti():
-    data = request.get_json(silent=True) or {}
-    id_documento = _norm_text(data.get("id_documento"))
-    id_riga = _norm_text(data.get("id_riga"))
-    modalita = _norm_text(data.get("modalita")).lower()
-    is_macchina = modalita == "m"
-
-    if not id_documento or not id_riga:
-        return jsonify({"ok": False, "error": "IdDocumento e IdRiga obbligatori"}), 400
-
-    policy = _current_policy()
-    ordine = _get_visible_odp_by_key(policy, id_documento, id_riga)
-
-    if is_macchina:
-        componenti_lotto = _componenti_lotto_per_ordine(
-            ordine,
-            include_senza_lotti=True,
-            ignore_parent_gestione_lotto=True,
-        )
-
-        return jsonify(
-            {
-                "ok": True,
-                "gestioneLotto": True,
-                "force_show_section": len(componenti_lotto) > 0,
-                "haComponentiLotto": any(
-                    isinstance(c.get("lotti"), list) and len(c["lotti"]) > 0
-                    for c in componenti_lotto
-                ),
-                "componenti": componenti_lotto,
-            }
-        )
-
-    ordine_gestione_lotto = _norm_text(ordine.GestioneLotto).lower() == "si"
-
-    if not ordine_gestione_lotto:
-        return jsonify(
-            {
-                "ok": True,
-                "gestioneLotto": False,
-                "haComponentiLotto": False,
-                "componenti": [],
-            }
-        )
-
-    componenti_lotto = _componenti_lotto_per_ordine(
-        ordine,
-        include_senza_lotti=True,
-    )
-
-    return jsonify(
-        {
-            "ok": True,
-            "gestioneLotto": True,
-            "force_show_section": len(componenti_lotto) > 0,
-            "haComponentiLotto": any(
-                isinstance(c.get("lotti"), list) and len(c["lotti"]) > 0
-                for c in componenti_lotto
-            ),
-            "componenti": componenti_lotto,
-        }
-    )
-
-
-def generazione_lotti(dt=None) -> str:
-    dt = dt or _now_rome_dt()
-    return dt.strftime("%Y%m%d")
-
-
-@main_bp.post("/api/erp/export/avp")
-@operator_perm_required("home")
-def api_export_avp_txt():
-    data = request.get_json(silent=True) or {}
-
-    suffix = _norm_text(data.get("suffix")) or "manuale"
-    outbox_id_raw = data.get("outbox_id")
-
-    try:
-        outbox_id = int(outbox_id_raw)
-    except (TypeError, ValueError):
-        return jsonify(
-            {
-                "ok": False,
-                "error": "Parametro outbox_id obbligatorio e non valido.",
-            }
-        ), 400
-
-    export_rows = _get_pending_avp_export_rows(outbox_id=outbox_id)
-    if not export_rows:
-        return (
-            jsonify(
-                {
-                    "ok": False,
-                    "error": "Nessun record ERP pending trovato per l'outbox richiesto.",
-                }
-            ),
-            404,
-        )
-
-    outbox_rows = [row["outbox"] for row in export_rows]
-
-    try:
-        payload = export_rows[0]["payload"]
-        include_time_line = _parse_bool_flag(payload.get("include_time_line", True))
-
-        list_line = txt_generator(
-            export_rows,
-            include_time_line=include_time_line,
-        )
-        path_txt = _write_txt_content(
-            list_line,
-            prefix="AVPB",
-            suffix=suffix,
-            encoding="utf-8",
-        )
-
-        now_iso = _now_rome_dt().isoformat(timespec="seconds")
-        for row in outbox_rows:
-            row.status = "exported"
-            row.exported_at = now_iso
-            row.last_error = None
-            row.attempts = int(row.attempts or 0) + 1
-
-        db.session.commit()
-
-        return jsonify(
-            {
-                "ok": True,
-                "message": "File AVP generato correttamente",
-                "file_name": path_txt.name,
-                "file_path": str(path_txt),
-                "records": len(outbox_rows),
-            }
-        )
-    except Exception as exc:
-        err = str(exc)
-
-    try:
-        for row in outbox_rows:
-            row.status = "error"
-            row.last_error = err
-            row.attempts = int(row.attempts or 0) + 1
-        db.session.commit()
-    except Exception:
-        db.session.rollback()
-
-    return jsonify({"ok": False, "error": f"Errore generazione file AVP: {err}"}), 500
-
-
-@main_bp.route("/impostazioni")
-@require_active_perm("impostazioni_utente")
-def impostazioni():
-    user = active_user()
-    policy = _current_policy()
-    show_home_config_section = policy.can_view_home_config_section
-    home_config_payload = (
-        _build_home_config_settings_payload(policy) if show_home_config_section else {}
-    )
-
-    show_role_assignment_section = policy.can_view_role_assignment_section
-    show_user_abac_section = policy.can_view_user_abac_section
-    show_capacity_config_section = policy.can("kpi_config")
-
-    ruolo_options = []
-    utenti_per_ruolo = {}
-    ruolo_details = {}
-    user_abac_details = {}
-
-    manageable_users = []
-    manageable_roles = []
-
-    show_role_links_section = policy.can_view_role_links_section
-
-    role_link_tables = []
-    role_link_details = {}
-    role_link_role_options = []
-
-    ruoli_link_gestibili = policy.role_link_manageable_roles()
-
-    show_role_creation_section = policy.can_view_role_creation_section
-    role_creation_tables = []
-    role_creation_options = {}
-
-    show_role_delete_section = policy.can_view_role_delete_section
-    deletable_role_options = []
-    deletable_role_details = {}
-
-    show_user_registry_section = policy.can_view_role_assignment_section
-
-    registry_role_options = []
-    registry_users = []
-
-    registry_reparti_options = []
-
-    if show_role_creation_section:
-        role_creation_tables = [
-            {"key": key, "label": cfg["label"]} for key, cfg in ROLE_LINK_CONFIG.items()
-        ]
-
-        for key, cfg in ROLE_LINK_CONFIG.items():
-            role_creation_options[key] = {
-                "label": cfg["label"],
-                "items": _role_config_items_for_creation(policy, cfg),
-            }
-
-    if show_role_assignment_section:
-        assignable_users = (
-            policy.role_assignment_users_query().order_by(User.username.asc()).all()
-        )
-
-        assignable_roles = (
-            policy.role_assignment_roles_query()
-            .order_by(
-                func.lower(func.coalesce(Roles.description, Roles.name)),
-                func.lower(Roles.name),
-            )
-            .all()
-        )
-
-        manageable_users = []
-        for utente in assignable_users:
-            ruolo_corrente = utente.roles[0] if utente.roles else None
-
-            manageable_users.append(
-                {
-                    "id": utente.id,
-                    "username": utente.username or "",
-                    "current_role_id": ruolo_corrente.id if ruolo_corrente else None,
-                    "current_role_name": ruolo_corrente.name if ruolo_corrente else "",
-                    "current_role_description": (
-                        ruolo_corrente.description or ruolo_corrente.name
-                    )
-                    if ruolo_corrente
-                    else "",
-                }
-            )
-
-        manageable_roles = [
-            {
-                "id": ruolo.id,
-                "name": ruolo.name or "",
-                "description": ruolo.description or ruolo.name or "",
-            }
-            for ruolo in assignable_roles
-        ]
-
-    if show_role_links_section:
-        role_link_role_options = ruoli_link_gestibili
-
-        role_link_tables = [
-            {"key": key, "label": cfg["label"]} for key, cfg in ROLE_LINK_CONFIG.items()
-        ]
-
-        for ruolo in ruoli_link_gestibili:
-            role_link_details[str(ruolo.id)] = {
-                "id": ruolo.id,
-                "name": ruolo.name or "",
-                "description": ruolo.description or "",
-                "tables": {},
-            }
-
-            for key, cfg in ROLE_LINK_CONFIG.items():
-                model = cfg["model"]
-                code_attr = cfg["code_attr"]
-                desc_attr = cfg["desc_attr"]
-
-                if model is Roles:
-                    all_items = [
-                        item
-                        for item in policy.role_link_manageable_roles()
-                        if int(item.id) != int(ruolo.id)
-                    ]
-                else:
-                    all_items = model.query.order_by(
-                        func.lower(
-                            func.coalesce(
-                                getattr(model, desc_attr),
-                                getattr(model, code_attr),
-                            )
-                        ),
-                        func.lower(getattr(model, code_attr)),
-                    ).all()
-
-                selected_ids = set()
-                assoc_table = cfg["assoc_table"]
-                left_col = getattr(assoc_table.c, cfg["left_fk"])
-                right_col = getattr(assoc_table.c, cfg["right_fk"])
-
-                stmt = select(right_col).where(left_col == ruolo.id)
-                selected_ids = set(db.session.execute(stmt).scalars().all())
-
-                role_link_details[str(ruolo.id)]["tables"][key] = {
-                    "label": cfg["label"],
-                    "items": [
-                        {
-                            "id": getattr(item, cfg["model_id"]),
-                            "codice": getattr(item, code_attr, "") or "",
-                            "descrizione": getattr(item, desc_attr, "") or "",
-                            "checked": getattr(item, cfg["model_id"]) in selected_ids,
-                        }
-                        for item in all_items
-                    ],
-                }
-
-    if show_user_abac_section:
-        ruoli_gestibili = policy.abac_manageable_roles()
-
-        for ruolo in ruoli_gestibili:
-            utenti_ruolo = (
-                ruolo.users.filter(User.active.is_(True))
-                .order_by(User.username.asc())
-                .all()
-            )
-
-            if not utenti_ruolo:
-                continue
-
-            ruolo_options.append(ruolo)
-            utenti_per_ruolo[ruolo.id] = utenti_ruolo
-
-            lavorazioni = sorted(
-                ruolo.effective_lavorazioni,
-                key=lambda x: ((x.Codice or "").lower(), (x.Descrizione or "").lower()),
-            )
-            risorse = sorted(
-                ruolo.effective_risorse,
-                key=lambda x: ((x.Codice or "").lower(), (x.Descrizione or "").lower()),
-            )
-
-            famiglie = sorted(
-                ruolo.effective_famiglia,
-                key=lambda x: ((x.Codice or "").lower(), (x.Descrizione or "").lower()),
-            )
-            ruolo_lavorazioni_ids = {x.id for x in lavorazioni}
-            ruolo_risorse_ids = {x.id for x in risorse}
-            ruolo_famiglia_ids = {x.id for x in famiglie}
-
-            ruolo_details[str(ruolo.id)] = {
-                "id": ruolo.id,
-                "name": ruolo.name or "",
-                "description": ruolo.description or "",
-                "lavorazioni": [
-                    {
-                        "id": x.id,
-                        "codice": x.Codice or "",
-                        "descrizione": x.Descrizione or "",
-                    }
-                    for x in lavorazioni
-                ],
-                "risorse": [
-                    {
-                        "id": x.id,
-                        "codice": x.Codice or "",
-                        "descrizione": x.Descrizione or "",
-                    }
-                    for x in risorse
-                ],
-                "famiglia": [
-                    {
-                        "id": x.id,
-                        "codice": x.Codice or "",
-                        "descrizione": x.Descrizione or "",
-                    }
-                    for x in famiglie
-                ],
-            }
-
-            user_abac_details[str(ruolo.id)] = {}
-
-            for utente in utenti_ruolo:
-                user_abac_details[str(ruolo.id)][str(utente.id)] = {
-                    "id": utente.id,
-                    "username": utente.username or "",
-                    "lavorazioni_ids": sorted(
-                        x.id
-                        for x in (utente.lavorazioni or [])
-                        if x.id in ruolo_lavorazioni_ids
-                    ),
-                    "risorse_ids": sorted(
-                        x.id
-                        for x in (utente.risorse or [])
-                        if x.id in ruolo_risorse_ids
-                    ),
-                    "famiglia_ids": sorted(
-                        int(famiglia.id)
-                        for famiglia in (getattr(utente, "famiglie", []) or [])
-                        if famiglia.id in ruolo_famiglia_ids
-                    ),
-                    "has_filtro_macchine": bool(
-                        utente.has_permission("filtro_macchine")
-                    ),
-                }
-    if show_role_delete_section:
-        ruoli_eliminabili = policy.role_delete_manageable_roles()
-        deletable_role_options = ruoli_eliminabili
-
-        for ruolo in ruoli_eliminabili:
-            utenti_collegati_ids = (
-                db.session.execute(
-                    select(user_roles.c.user_id).where(user_roles.c.role_id == ruolo.id)
-                )
-                .scalars()
-                .all()
-            )
-
-            deletable_role_details[str(ruolo.id)] = {
-                "id": ruolo.id,
-                "name": ruolo.name or "",
-                "description": ruolo.description or "",
-                "users_count": len(set(int(x) for x in utenti_collegati_ids)),
-            }
-
-    if show_user_registry_section:
-        registry_role_options = manageable_roles
-
-        manageable_role_ids = set(policy.role_assignment_manageable_role_ids)
-
-        if manageable_role_ids:
-            utenti_anagrafica = (
-                User.query.join(user_roles, user_roles.c.user_id == User.id)
-                .filter(
-                    User.id != user.id,
-                    user_roles.c.role_id.in_(sorted(manageable_role_ids)),
-                )
-                .distinct()
-                .order_by(User.username.asc())
-                .all()
-            )
-            registry_reparti_options = [
-                {
-                    "codice": rep.Codice or "",
-                    "descrizione": rep.Descrizione or "",
-                }
-                for rep in Reparti.query.order_by(
-                    func.lower(func.coalesce(Reparti.Descrizione, Reparti.Codice)),
-                    func.lower(Reparti.Codice),
-                ).all()
-            ]
-
-            registry_users = [
-                {
-                    "id": utente.id,
-                    "username": utente.username or "",
-                    "active": bool(utente.active),
-                    "genere": utente.genere or "",
-                    "reparto_princ": utente.RepartoPrinc or "",
-                    "current_role_id": utente.roles[0].id if utente.roles else None,
-                    "current_role_name": utente.roles[0].name if utente.roles else "",
-                    "current_role_description": (
-                        utente.roles[0].description or utente.roles[0].name
-                    )
-                    if utente.roles
-                    else "",
-                }
-                for utente in utenti_anagrafica
-            ]
-    return render_template(
-        "impostazioni.j2",
-        ruolo_options=ruolo_options,
-        utenti_per_ruolo=utenti_per_ruolo,
-        ruolo_details=ruolo_details,
-        user_abac_details=user_abac_details,
-        manageable_users=manageable_users,
-        manageable_roles=manageable_roles,
-        show_role_assignment_section=show_role_assignment_section,
-        show_user_abac_section=show_user_abac_section,
-        show_role_creation_section=show_role_creation_section,
-        role_creation_tables=role_creation_tables,
-        role_creation_options=role_creation_options,
-        role_link_tables=role_link_tables,
-        role_link_details=role_link_details,
-        show_role_links_section=show_role_links_section,
-        role_link_role_options=role_link_role_options,
-        show_role_delete_section=show_role_delete_section,
-        deletable_role_options=deletable_role_options,
-        deletable_role_details=deletable_role_details,
-        show_user_registry_section=show_user_registry_section,
-        registry_role_options=registry_role_options,
-        registry_users=registry_users,
-        registry_reparti_options=registry_reparti_options,
-        show_home_config_section=show_home_config_section,
-        home_config_payload=home_config_payload,
-        show_capacity_config_section=show_capacity_config_section,
-    )
-
-
-LOGIN_CODE_DUPLICATO_MSG = "Il codice di login è già utilizzato"
-
-
-@main_bp.post("/api/impostazioni/home-reparto-config")
-@require_active_perm("configurazione_home")
-def api_save_home_reparto_config():
-    policy = _current_policy()
-
-    if not policy.can_view_home_config_section:
-        return jsonify({"ok": False, "error": "Permesso insufficiente."}), 403
-
-    data = request.get_json(silent=True) or {}
-
-    config_id = _home_config_int(data.get("id"), 0)
-    reparto_id = _home_config_int(data.get("reparto_id"), 0)
-
-    reparto = Reparti.query.get(reparto_id)
-    if reparto is None:
-        return jsonify({"ok": False, "error": "Reparto non valido."}), 400
-
-    tab_code = _normalize_home_tab_code(data.get("tab_code"))
-    if not tab_code:
-        return jsonify({"ok": False, "error": "Tab code obbligatorio."}), 400
-
-    label = _home_config_text(data.get("label"))
-    if not label:
-        return jsonify({"ok": False, "error": "Label menu obbligatoria."}), 400
-
-    template = _home_config_text(data.get("template"))
-    renderer = _home_config_text(data.get("renderer"))
-    metodo_tipo = _home_config_text(data.get("metodo_documentale_tipo")) or "nessuno"
-
-    if template not in HOME_CONFIG_TEMPLATE_OPTIONS:
-        return jsonify({"ok": False, "error": "Template non valido."}), 400
-
-    if renderer not in HOME_CONFIG_RENDERER_OPTIONS:
-        return jsonify({"ok": False, "error": "Renderer non valido."}), 400
-
-    if metodo_tipo not in HOME_CONFIG_METODO_OPTIONS:
-        return jsonify(
-            {"ok": False, "error": "Tipo metodo documentale non valido."}
-        ), 400
-
-    duplicate = HomeRepartoConfig.query.filter(
-        func.lower(HomeRepartoConfig.tab_code) == tab_code
-    )
-
-    if config_id:
-        duplicate = duplicate.filter(HomeRepartoConfig.id != config_id)
-
-    if duplicate.first() is not None:
-        return jsonify({"ok": False, "error": "Tab code già utilizzato."}), 409
-
-    if config_id:
-        row = HomeRepartoConfig.query.get(config_id)
-        if row is None:
-            return jsonify({"ok": False, "error": "Configurazione non trovata."}), 404
-        action = "update"
-        old_payload = _home_reparto_config_to_dict(row)
-    else:
-        row = HomeRepartoConfig()
-        db.session.add(row)
-        action = "create"
-        old_payload = None
-
-    row.reparto_id = reparto.id
-    row.tab_code = tab_code
-    row.label = label
-    row.template = template
-    row.renderer = renderer
-    row.permesso = _home_config_text(data.get("permesso")) or "home"
-    row.ordine_menu = _home_config_int(data.get("ordine_menu"), 100)
-    row.attivo = _home_config_bool(data.get("attivo"))
-
-    row.titolo_macchine_da_eseguire = (
-        _home_config_text(data.get("titolo_macchine_da_eseguire")) or None
-    )
-    row.titolo_macchine_attive = (
-        _home_config_text(data.get("titolo_macchine_attive")) or None
-    )
-    row.titolo_semilavorati_da_eseguire = (
-        _home_config_text(data.get("titolo_semilavorati_da_eseguire")) or None
-    )
-    row.titolo_semilavorati_attivi = (
-        _home_config_text(data.get("titolo_semilavorati_attivi")) or None
-    )
-
-    row.testo_presa_macchina = (
-        _home_config_text(data.get("testo_presa_macchina")) or None
-    )
-    row.testo_sospendi_macchina = (
-        _home_config_text(data.get("testo_sospendi_macchina")) or None
-    )
-    row.testo_riattiva_macchina = (
-        _home_config_text(data.get("testo_riattiva_macchina")) or None
-    )
-    row.testo_chiudi_macchina = (
-        _home_config_text(data.get("testo_chiudi_macchina")) or None
-    )
-
-    row.metodo_documentale_tipo = metodo_tipo
-    row.metodo_documentale_prefisso = (
-        _home_config_text(data.get("metodo_documentale_prefisso")) or None
-    )
-    row.metodo_documentale_path_key = (
-        _home_config_text(data.get("metodo_documentale_path_key")) or None
-    )
-
-    row.updated_at = _now_rome_dt().isoformat(timespec="seconds")
-    row.updated_by = _current_username()
-
-    try:
-        db.session.flush()
-        new_payload = _home_reparto_config_to_dict(row)
-
-        _home_config_audit(
-            entity_type="home_reparto_config",
-            entity_id=row.id,
-            action=action,
-            old_payload=old_payload,
-            new_payload=new_payload,
-            note="Salvataggio configurazione home reparto da impostazioni.",
-        )
-
-        db.session.commit()
-
-    except Exception as exc:
-        db.session.rollback()
-        current_app.logger.exception("Errore salvataggio home_reparto_config")
-        return jsonify({"ok": False, "error": f"Errore salvataggio: {exc}"}), 500
-
-    return jsonify(
-        {
-            "ok": True,
-            "message": "Configurazione home reparto salvata.",
-            "row": _home_reparto_config_to_dict(row),
-        }
-    ), 200
-
-
-def _login_code_error_response(message: str, status_code: int = 400):
-    return jsonify(
-        {
-            "ok": False,
-            "error": message,
-        }
-    ), status_code
-
-
-def _is_login_code_integrity_error(exc: IntegrityError) -> bool:
-    msg = str(getattr(exc, "orig", exc)).lower()
-    return "unique constraint failed" in msg and "login_code_lookup" in msg
-
-
-def _prepare_login_code_or_response(
-    raw_code,
-    exclude_user_id: int | None = None,
-):
-    """
-    Valida il login code e verifica che non sia già assegnato.
-
-    exclude_user_id serve nel reset/modifica:
-    - permette allo stesso utente di mantenere lo stesso codice;
-    - blocca il codice se appartiene a un altro utente.
-    """
-    try:
-        code = User.validate_login_code(raw_code)
-    except ValueError as exc:
-        return None, _login_code_error_response(str(exc), 400)
-
-    lookup = User.login_code_lookup_for(code)
-
-    query = User.query.filter(User.login_code_lookup == lookup)
-
-    if exclude_user_id is not None:
-        query = query.filter(User.id != int(exclude_user_id))
-
-    if query.first() is not None:
-        return None, _login_code_error_response(LOGIN_CODE_DUPLICATO_MSG, 409)
-
-    return code, None
-
-
-@main_bp.get("/api/impostazioni/home-config")
-@require_active_perm("configurazione_home")
-def api_home_config_data():
-    policy = _current_policy()
-
-    if not policy.can_view_home_config_section:
-        return jsonify({"ok": False, "error": "Permesso insufficiente."}), 403
-
-    return jsonify(
-        {
-            "ok": True,
-            "data": _build_home_config_settings_payload(policy),
-        }
-    ), 200
-
-
-@main_bp.post("/api/impostazioni/home-visibility-rule")
-@require_active_perm("configurazione_home")
-def api_save_home_visibility_rule():
-    policy = _current_policy()
-
-    if not policy.can_view_home_config_section:
-        return jsonify({"ok": False, "error": "Permesso insufficiente."}), 403
-
-    data = request.get_json(silent=True) or {}
-
-    rule_id = _home_config_int(data.get("id"), 0)
-    reparto_id = _home_config_int(data.get("reparto_id"), 0)
-
-    reparto = Reparti.query.get(reparto_id)
-    if reparto is None:
-        return jsonify({"ok": False, "error": "Reparto non valido."}), 400
-
-    scope_type = _home_config_text(data.get("scope_type")).lower()
-    role_id = _home_config_int(data.get("role_id"), 0)
-    user_id = _home_config_int(data.get("user_id"), 0)
-
-    role = None
-    utente = None
-
-    if scope_type == "role":
-        if not role_id:
-            return jsonify({"ok": False, "error": "Ruolo obbligatorio."}), 400
-
-        role = Roles.query.get(role_id)
-        if not _home_config_role_is_manageable(policy, role):
-            return jsonify({"ok": False, "error": "Ruolo non gestibile."}), 403
-
-        user_id = None
-
-    elif scope_type == "user":
-        if not user_id:
-            return jsonify({"ok": False, "error": "Utente obbligatorio."}), 400
-
-        utente = User.query.get(user_id)
-        if not _home_config_user_is_manageable(policy, utente):
-            return jsonify({"ok": False, "error": "Utente non gestibile."}), 403
-
-        role_id = None
-
-    else:
-        return jsonify({"ok": False, "error": "Tipo regola non valido."}), 400
-
-    apply_to = _home_config_text(data.get("apply_to")).lower() or "macchine"
-    phase_mode = _home_config_text(data.get("phase_mode")).lower() or "all"
-
-    if apply_to not in HOME_RULE_APPLY_TO_OPTIONS:
-        return jsonify({"ok": False, "error": "Campo 'applica a' non valido."}), 400
-
-    if phase_mode not in HOME_RULE_PHASE_MODE_OPTIONS:
-        return jsonify({"ok": False, "error": "Modalità fase non valida."}), 400
-
-    try:
-        phase_values = _parse_home_rule_phase_values(
-            data.get("phase_values"),
-            phase_mode,
-        )
-    except ValueError as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
-
-    if rule_id:
-        row = HomeVisibilityRule.query.get(rule_id)
-        if row is None:
-            return jsonify({"ok": False, "error": "Regola non trovata."}), 404
-        action = "update"
-        old_payload = _home_visibility_rule_to_dict(row)
-    else:
-        row = HomeVisibilityRule()
-        db.session.add(row)
-        action = "create"
-        old_payload = None
-
-    row.reparto_id = reparto.id
-    row.role_id = role_id or None
-    row.user_id = user_id or None
-    row.apply_to = apply_to
-    row.phase_mode = phase_mode
-    row.phase_values = phase_values
-    row.attivo = _home_config_bool(data.get("attivo"))
-
-    row.titolo_macchine_da_eseguire = (
-        _home_config_text(data.get("titolo_macchine_da_eseguire")) or None
-    )
-    row.titolo_macchine_attive = (
-        _home_config_text(data.get("titolo_macchine_attive")) or None
-    )
-
-    row.testo_presa_macchina = (
-        _home_config_text(data.get("testo_presa_macchina")) or None
-    )
-    row.testo_sospendi_macchina = (
-        _home_config_text(data.get("testo_sospendi_macchina")) or None
-    )
-    row.testo_riattiva_macchina = (
-        _home_config_text(data.get("testo_riattiva_macchina")) or None
-    )
-    row.testo_chiudi_macchina = (
-        _home_config_text(data.get("testo_chiudi_macchina")) or None
-    )
-
-    metodo_tipo = _home_config_text(data.get("metodo_documentale_tipo"))
-    if metodo_tipo and metodo_tipo not in HOME_CONFIG_METODO_OPTIONS:
-        return jsonify(
-            {"ok": False, "error": "Tipo metodo documentale non valido."}
-        ), 400
-
-    row.metodo_documentale_tipo = metodo_tipo or None
-    row.metodo_documentale_prefisso = (
-        _home_config_text(data.get("metodo_documentale_prefisso")) or None
-    )
-    row.metodo_documentale_path_key = (
-        _home_config_text(data.get("metodo_documentale_path_key")) or None
-    )
-
-    row.updated_at = _now_rome_dt().isoformat(timespec="seconds")
-    row.updated_by = _current_username()
-
-    try:
-        db.session.flush()
-        new_payload = _home_visibility_rule_to_dict(row)
-
-        _home_config_audit(
-            entity_type="home_visibility_rules",
-            entity_id=row.id,
-            action=action,
-            old_payload=old_payload,
-            new_payload=new_payload,
-            note="Salvataggio regola visibilità home da impostazioni.",
-        )
-
-        db.session.commit()
-
-    except Exception as exc:
-        db.session.rollback()
-        current_app.logger.exception("Errore salvataggio home_visibility_rules")
-        return jsonify({"ok": False, "error": f"Errore salvataggio: {exc}"}), 500
-
-    return jsonify(
-        {
-            "ok": True,
-            "message": "Regola visibilità home salvata.",
-            "row": _home_visibility_rule_to_dict(row),
-        }
-    ), 200
-
-
-@main_bp.post("/api/impostazioni/home-visibility-rule/<int:rule_id>/toggle")
-@require_active_perm("configurazione_home")
-def api_toggle_home_visibility_rule(rule_id: int):
-    policy = _current_policy()
-
-    if not policy.can_view_home_config_section:
-        return jsonify({"ok": False, "error": "Permesso insufficiente."}), 403
-
-    row = HomeVisibilityRule.query.get(rule_id)
-    if row is None:
-        return jsonify({"ok": False, "error": "Regola non trovata."}), 404
-
-    old_payload = _home_visibility_rule_to_dict(row)
-
-    row.attivo = not bool(row.attivo)
-    row.updated_at = _now_rome_dt().isoformat(timespec="seconds")
-    row.updated_by = _current_username()
-
-    action = "enable" if row.attivo else "disable"
-
-    try:
-        db.session.flush()
-
-        _home_config_audit(
-            entity_type="home_visibility_rules",
-            entity_id=row.id,
-            action=action,
-            old_payload=old_payload,
-            new_payload=_home_visibility_rule_to_dict(row),
-            note="Cambio stato regola visibilità home.",
-        )
-
-        db.session.commit()
-
-    except Exception as exc:
-        db.session.rollback()
-        return jsonify({"ok": False, "error": f"Errore aggiornamento: {exc}"}), 500
-
-    return jsonify(
-        {
-            "ok": True,
-            "message": "Stato regola aggiornato.",
-            "row": _home_visibility_rule_to_dict(row),
-        }
-    ), 200
-
-
-@main_bp.post("/api/impostazioni/crea-utente")
-@require_active_perm("impostazioni_utente")
-def api_crea_utente():
-    policy = _current_policy()
-
-    if not policy.can_view_role_assignment_section:
-        return jsonify({"ok": False, "error": "Permesso insufficiente."}), 403
-
-    data = request.get_json(silent=True) or {}
-
-    username = _norm_text(data.get("username"))
-    genere = _norm_text(data.get("genere"))
-    reparto_princ = _norm_text(data.get("reparto_princ"))
-    active = bool(data.get("active", True))
-    role_id_raw = data.get("role_id")
-    public_id_source = _norm_text(data.get("public_id"))
-    public_id = _build_public_id_from_full_name(public_id_source)
-    login_code_raw = data.get("login_code")
-
-    try:
-        role_id = int(role_id_raw)
-    except (TypeError, ValueError):
-        return jsonify({"ok": False, "error": "Ruolo non valido."}), 400
-
-    if not username:
-        return jsonify({"ok": False, "error": "Username obbligatorio."}), 400
-
-    if len(username) < 3:
-        return jsonify({"ok": False, "error": "Username troppo corto."}), 400
-
-    ruolo = Roles.query.get(role_id)
-    if ruolo is None:
-        return jsonify({"ok": False, "error": "Ruolo non trovato."}), 404
-
-    if not policy.can_assign_target_role(ruolo):
-        return jsonify({"ok": False, "error": "Ruolo non assegnabile."}), 403
-
-    existing = User.query.filter(func.lower(User.username) == username.lower()).first()
-    if existing is not None:
-        return jsonify(
-            {"ok": False, "error": "Esiste già un utente con questo username."}
-        ), 409
-
-    if not public_id:
-        return jsonify(
-            {"ok": False, "error": "Il public_id non può essere vuoto."}
-        ), 400
-
-    existing_public_id = User.query.filter(User.public_id == public_id).first()
-    if existing_public_id is not None:
-        return jsonify(
-            {"ok": False, "error": "Esiste già un utente con questo public_id."}
-        ), 409
-
-    login_code, error_response = _prepare_login_code_or_response(login_code_raw)
-    if error_response:
-        return error_response
-
-    if reparto_princ:
-        reparto_exists = Reparti.query.filter(Reparti.Codice == reparto_princ).first()
-        if reparto_exists is None:
-            return jsonify(
-                {"ok": False, "error": "Reparto principale non valido."}
-            ), 400
-
-    try:
-        utente = User(
-            username=username,
-            public_id=public_id or None,
-            active=active,
-            genere=genere or None,
-            RepartoPrinc=reparto_princ or None,
-        )
-        utente.set_login_code(login_code)
-
-        db.session.add(utente)
-        db.session.flush()
-
-        db.session.execute(
-            user_roles.insert().values(
-                user_id=utente.id,
-                role_id=ruolo.id,
-            )
-        )
-
-        db.session.commit()
-
-    except IntegrityError as exc:
-        db.session.rollback()
-
-        if _is_login_code_integrity_error(exc):
-            return _login_code_error_response(LOGIN_CODE_DUPLICATO_MSG, 409)
-
-        current_app.logger.exception("Errore integrità durante la creazione utente")
-        return jsonify(
-            {
-                "ok": False,
-                "error": "Errore creazione utente.",
-            }
-        ), 500
-
-    except Exception as exc:
-        db.session.rollback()
-        current_app.logger.exception("Errore creazione utente")
-        return jsonify(
-            {
-                "ok": False,
-                "error": f"Errore creazione utente: {exc}",
-            }
-        ), 500
-
-    return jsonify(
-        {
-            "ok": True,
-            "message": "Utente creato correttamente.",
-            "user": {
-                "id": utente.id,
-                "public_id": utente.public_id or "",
-                "username": utente.username or "",
-                "active": bool(utente.active),
-                "genere": utente.genere or "",
-                "reparto_princ": utente.RepartoPrinc or "",
-                "current_role_id": ruolo.id,
-                "current_role_name": ruolo.name or "",
-                "current_role_description": ruolo.description or ruolo.name or "",
-            },
-        }
-    ), 201
-
-
-@main_bp.post("/api/impostazioni/reset-login-code")
-@require_active_perm("impostazioni_utente")
-def api_reset_login_code():
-    user = active_user()
-    policy = _current_policy()
-
-    if not policy.can_view_role_assignment_section:
-        return jsonify({"ok": False, "error": "Permesso insufficiente."}), 403
-
-    data = request.get_json(silent=True) or {}
-
-    user_id_raw = data.get("user_id")
-    login_code_raw = data.get("login_code")
-
-    try:
-        user_id = int(user_id_raw)
-    except (TypeError, ValueError):
-        return jsonify({"ok": False, "error": "Utente non valido."}), 400
-
-    utente = User.query.get(user_id)
-    if utente is None:
-        return jsonify({"ok": False, "error": "Utente non trovato."}), 404
-
-    if int(utente.id) == int(user.id):
-        return jsonify(
-            {
-                "ok": False,
-                "error": "Non puoi resettare il tuo login_code da questa funzione.",
-            }
-        ), 403
-
-    if not policy.can_manage_target_user(utente):
-        return jsonify({"ok": False, "error": "Utente non gestibile."}), 403
-
-    login_code, error_response = _prepare_login_code_or_response(
-        login_code_raw,
-        exclude_user_id=utente.id,
-    )
-    if error_response:
-        return error_response
-
-    try:
-        utente.set_login_code(login_code)
-        db.session.flush()
-        revoke_operator_sessions_for_user(utente.id, commit=False)
-        db.session.commit()
-
-    except IntegrityError as exc:
-        db.session.rollback()
-
-        if _is_login_code_integrity_error(exc):
-            return _login_code_error_response(LOGIN_CODE_DUPLICATO_MSG, 409)
-
-        current_app.logger.exception("Errore integrità durante il reset login code")
-        return jsonify(
-            {
-                "ok": False,
-                "error": "Errore reset login_code.",
-            }
-        ), 500
-
-    except Exception as exc:
-        db.session.rollback()
-        current_app.logger.exception("Errore reset login_code")
-        return jsonify(
-            {
-                "ok": False,
-                "error": f"Errore reset login_code: {exc}",
-            }
-        ), 500
-
-    return jsonify(
-        {
-            "ok": True,
-            "message": "Login code aggiornato correttamente.",
-            "user_id": utente.id,
-        }
-    ), 200
-
-
-@main_bp.post("/api/impostazioni/utente-attivo")
-@require_active_perm("impostazioni_utente")
-def api_set_utente_attivo():
-    policy = _current_policy()
-
-    if not policy.can_view_role_assignment_section:
-        return jsonify({"ok": False, "error": "Permesso insufficiente."}), 403
-
-    data = request.get_json(silent=True) or {}
-
-    user_id_raw = data.get("user_id")
-    active_raw = data.get("active")
-
-    try:
-        user_id = int(user_id_raw)
-    except (TypeError, ValueError):
-        return jsonify({"ok": False, "error": "Utente non valido."}), 400
-
-    utente = User.query.get(user_id)
-    if utente is None:
-        return jsonify({"ok": False, "error": "Utente non trovato."}), 404
-
-    user = active_user()
-
-    if int(utente.id) == int(user.id):
-        return jsonify(
-            {"ok": False, "error": "Non puoi modificare il tuo stato attivo."}
-        ), 403
-
-    if not policy.can_manage_target_user(utente):
-        return jsonify({"ok": False, "error": "Utente non gestibile."}), 403
-
-    nuovo_stato = bool(active_raw)
-
-    if not nuovo_stato:
-        ordini_aperti = InputOdpRuntime.query.filter(
-            InputOdpRuntime.Utente_operazione == utente.username,
-            InputOdpRuntime.Stato_odp.in_(["Attivo", "In Sospeso"]),
-        ).count()
-        if ordini_aperti > 0:
-            return jsonify(
-                {
-                    "ok": False,
-                    "error": "Impossibile mettere inattivo l'utente: ha ordini ancora attivi o sospesi.",
-                }
-            ), 409
-
-    try:
-        utente.active = nuovo_stato
-        db.session.commit()
-    except Exception as exc:
-        db.session.rollback()
-        return jsonify(
-            {
-                "ok": False,
-                "error": f"Errore aggiornamento stato utente: {exc}",
-            }
-        ), 500
-
-    return jsonify(
-        {
-            "ok": True,
-            "message": "Stato utente aggiornato correttamente.",
-            "user_id": utente.id,
-            "active": bool(utente.active),
-        }
-    ), 200
-
-
-@main_bp.post("/api/impostazioni/elimina-ruolo")
-@require_active_perm("impostazioni_utente")
-def api_elimina_ruolo():
-    policy = _current_policy()
-
-    if not policy.can_view_role_delete_section:
-        return jsonify({"ok": False, "error": "Permesso insufficiente."}), 403
-
-    data = request.get_json(silent=True) or {}
-    role_id_raw = data.get("role_id")
-
-    try:
-        role_id = int(role_id_raw)
-    except (TypeError, ValueError):
-        return jsonify({"ok": False, "error": "Parametro role_id non valido."}), 400
-
-    ruolo = Roles.query.get(role_id)
-    if ruolo is None:
-        return jsonify({"ok": False, "error": "Ruolo non trovato."}), 404
-
-    if not policy.can_manage_target_role(ruolo):
-        return jsonify({"ok": False, "error": "Ruolo non eliminabile."}), 403
-
-    if (ruolo.name or "").strip().lower() in PROTECTED_ROLE_NAMES:
-        return jsonify(
-            {
-                "ok": False,
-                "error": "Questo ruolo è protetto e non può essere eliminato.",
-            }
-        ), 403
-
-    try:
-        impacted_user_ids = set(
-            int(x)
-            for x in db.session.execute(
-                select(user_roles.c.user_id).where(user_roles.c.role_id == ruolo.id)
-            )
-            .scalars()
-            .all()
-        )
-
-        # rimuove assegnazioni utente -> ruolo
-        db.session.execute(delete(user_roles).where(user_roles.c.role_id == ruolo.id))
-
-        # pulizia override ABAC utenti che avevano quel ruolo
-        if impacted_user_ids:
-            db.session.execute(
-                delete(users_lavorazioni).where(
-                    users_lavorazioni.c.user_id.in_(sorted(impacted_user_ids))
-                )
-            )
-            db.session.execute(
-                delete(users_risorse).where(
-                    users_risorse.c.user_id.in_(sorted(impacted_user_ids))
-                )
-            )
-            db.session.execute(
-                delete(users_famiglia).where(
-                    users_famiglia.c.user_id.in_(sorted(impacted_user_ids))
-                )
-            )
-
-        # pulizia link role -> entità
-        db.session.execute(
-            delete(roles_permission).where(roles_permission.c.role_id == ruolo.id)
-        )
-        db.session.execute(
-            delete(roles_reparti).where(roles_reparti.c.roles_id == ruolo.id)
-        )
-        db.session.execute(
-            delete(roles_risorse).where(roles_risorse.c.roles_id == ruolo.id)
-        )
-        db.session.execute(
-            delete(roles_lavorazioni).where(roles_lavorazioni.c.roles_id == ruolo.id)
-        )
-        db.session.execute(
-            delete(roles_magazzini).where(roles_magazzini.c.roles_id == ruolo.id)
-        )
-        db.session.execute(
-            delete(roles_famiglia).where(roles_famiglia.c.roles_id == ruolo.id)
-        )
-        db.session.execute(
-            delete(roles_macrofamiglia).where(
-                roles_macrofamiglia.c.roles_id == ruolo.id
-            )
-        )
-
-        # pulizia relazioni tra ruoli
-        db.session.execute(
-            delete(roles_ineritance).where(
-                (roles_ineritance.c.role_id == ruolo.id)
-                | (roles_ineritance.c.included_role == ruolo.id)
-            )
-        )
-
-        db.session.execute(
-            delete(roles_manageable_roles).where(
-                (roles_manageable_roles.c.manager_role_id == ruolo.id)
-                | (roles_manageable_roles.c.managed_role_id == ruolo.id)
-            )
-        )
-
-        db.session.execute(delete(Roles).where(Roles.id == ruolo.id))
-
-        db.session.commit()
-
-    except Exception as exc:
-        db.session.rollback()
-        return jsonify(
-            {
-                "ok": False,
-                "error": f"Errore eliminazione ruolo: {exc}",
-            }
-        ), 500
-
-    return jsonify(
-        {
-            "ok": True,
-            "message": "Ruolo eliminato correttamente.",
-            "role_id": role_id,
-            "impacted_users": sorted(impacted_user_ids),
-        }
-    ), 200
-
-
-@main_bp.post("/api/impostazioni/assegna-ruolo")
-@require_active_perm("impostazioni_utente")
-def api_assegna_ruolo():
-    policy = _current_policy()
-
-    if not policy.can_view_role_assignment_section:
-        return jsonify({"ok": False, "error": "Permesso insufficiente."}), 403
-
-    data = request.get_json(silent=True) or {}
-
-    user_id_raw = data.get("user_id")
-    role_id_raw = data.get("role_id")
-
-    try:
-        user_id = int(user_id_raw)
-        role_id = int(role_id_raw)
-    except (TypeError, ValueError):
-        return jsonify({"ok": False, "error": "Parametri non validi."}), 400
-
-    utente = User.query.get(user_id)
-    if utente is None:
-        return jsonify({"ok": False, "error": "Utente non trovato."}), 404
-
-    ruolo = Roles.query.get(role_id)
-    if ruolo is None:
-        return jsonify({"ok": False, "error": "Ruolo non trovato."}), 404
-
-    if not policy.can_manage_target_user(utente):
-        return jsonify({"ok": False, "error": "Utente non gestibile."}), 403
-
-    if not policy.can_assign_target_role(ruolo):
-        return jsonify({"ok": False, "error": "Ruolo non assegnabile."}), 403
-
-    try:
-        db.session.execute(delete(user_roles).where(user_roles.c.user_id == utente.id))
-
-        db.session.execute(
-            user_roles.insert().values(
-                user_id=utente.id,
-                role_id=ruolo.id,
-            )
-        )
-        db.session.execute(
-            delete(users_lavorazioni).where(users_lavorazioni.c.user_id == utente.id)
-        )
-
-        db.session.execute(
-            delete(users_risorse).where(users_risorse.c.user_id == utente.id)
-        )
-        db.session.execute(
-            delete(users_famiglia).where(users_famiglia.c.user_id == utente.id)
-        )
-
-        db.session.commit()
-
-    except Exception as exc:
-        db.session.rollback()
-        return jsonify(
-            {
-                "ok": False,
-                "error": f"Errore assegnazione ruolo: {exc}",
-            }
-        ), 500
-
-    return jsonify(
-        {
-            "ok": True,
-            "message": "Ruolo assegnato correttamente.",
-            "user_id": utente.id,
-            "role_id": ruolo.id,
-            "role_name": ruolo.name or "",
-            "role_description": ruolo.description or ruolo.name or "",
-        }
-    ), 200
-
-
-@main_bp.post("/api/impostazioni/crea-ruolo")
-@require_active_perm("impostazioni_utente")
-def api_crea_ruolo():
-    policy = _current_policy()
-
-    if not policy.can_view_role_creation_section:
-        return jsonify({"ok": False, "error": "Permesso insufficiente."}), 403
-
-    data = request.get_json(silent=True) or {}
-
-    name = _norm_text(data.get("name"))
-    description = _norm_text(data.get("description"))
-
-    try:
-        links = _normalize_role_creation_links(data.get("links") or {})
-    except ValueError as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
-
-    if not name:
-        return jsonify({"ok": False, "error": "Il nome ruolo è obbligatorio."}), 400
-
-    if not description:
-        return jsonify(
-            {"ok": False, "error": "La descrizione ruolo è obbligatoria."}
-        ), 400
-
-    if not re.fullmatch(r"[A-Za-z0-9_]+", name):
-        return jsonify(
-            {
-                "ok": False,
-                "error": "Il nome ruolo può contenere solo lettere, numeri e underscore.",
-            }
-        ), 400
-
-    normalized_name = name.strip()
-    normalized_name_lower = normalized_name.lower()
-
-    if normalized_name_lower in PROTECTED_ROLE_NAMES:
-        return jsonify(
-            {
-                "ok": False,
-                "error": "Non è consentito creare questo ruolo.",
-            }
-        ), 403
-
-    existing_role = Roles.query.filter(
-        func.lower(Roles.name) == normalized_name_lower
-    ).first()
-    if existing_role is not None:
-        return jsonify(
-            {
-                "ok": False,
-                "error": "Esiste già un ruolo con questo nome.",
-            }
-        ), 409
-
-    validated_links: dict[str, set[int]] = {}
-
-    for table_key, selected_ids in links.items():
-        cfg = ROLE_LINK_CONFIG[table_key]
-        valid_ids = _valid_role_creation_ids(policy, cfg)
-
-        invalid_ids = selected_ids - valid_ids
-        if invalid_ids:
-            return jsonify(
-                {
-                    "ok": False,
-                    "error": f"Il payload contiene id non validi per '{table_key}'.",
-                    "table_key": table_key,
-                    "invalid_ids": sorted(invalid_ids),
-                }
-            ), 400
-
-        validated_links[table_key] = set(selected_ids)
-
-    try:
-        nuovo_ruolo = Roles(
-            name=normalized_name,
-            description=description,
-        )
-        db.session.add(nuovo_ruolo)
-        db.session.flush()
-
-        # Il ruolo appena creato diventa automaticamente subordinato ai ruoli diretti del creatore.
-        parent_links = [
-            {
-                "manager_role_id": int(parent_role.id),
-                "managed_role_id": int(nuovo_ruolo.id),
-            }
-            for parent_role in policy.direct_assigned_roles
-        ]
-        if parent_links:
-            db.session.execute(roles_manageable_roles.insert(), parent_links)
-
-        for table_key, selected_ids in validated_links.items():
-            if not selected_ids:
-                continue
-
-            cfg = ROLE_LINK_CONFIG[table_key]
-            assoc_table = cfg["assoc_table"]
-
-            db.session.execute(
-                assoc_table.insert(),
-                [
-                    {
-                        cfg["left_fk"]: int(nuovo_ruolo.id),
-                        cfg["right_fk"]: int(item_id),
-                    }
-                    for item_id in sorted(selected_ids)
-                ],
-            )
-
-        db.session.commit()
-
-    except Exception as exc:
-        db.session.rollback()
-        return jsonify(
-            {
-                "ok": False,
-                "error": f"Errore creazione ruolo: {exc}",
-            }
-        ), 500
-
-    return jsonify(
-        {
-            "ok": True,
-            "message": "Ruolo creato correttamente.",
-            "role": {
-                "id": int(nuovo_ruolo.id),
-                "name": nuovo_ruolo.name or "",
-                "description": nuovo_ruolo.description or "",
-            },
-            "links": {key: sorted(value) for key, value in validated_links.items()},
-        }
-    ), 201
-
-
-@main_bp.post("/api/impostazioni/utente-abac")
-@require_active_perm("impostazioni_utente")
-def api_save_user_abac():
-    policy = _current_policy()
-    data = request.get_json(silent=True) or {}
-
-    role_id_raw = data.get("role_id")
-    user_id_raw = data.get("user_id")
-
-    required_keys = {
-        "role_id",
-        "user_id",
-        "lavorazioni_ids",
-        "risorse_ids",
-        "famiglia_ids",
-    }
-
-    missing_keys = sorted(key for key in required_keys if key not in data)
-    if missing_keys:
-        return jsonify(
-            {
-                "ok": False,
-                "error": "Payload incompleto: salvataggio annullato per evitare cancellazioni involontarie.",
-                "missing_keys": missing_keys,
-            }
-        ), 400
-
-    lavorazioni_ids_raw = data.get("lavorazioni_ids")
-    risorse_ids_raw = data.get("risorse_ids")
-    famiglia_ids_raw = data.get("famiglia_ids")
-
-    if not isinstance(lavorazioni_ids_raw, list):
-        return jsonify(
-            {"ok": False, "error": "lavorazioni_ids deve essere una lista."}
-        ), 400
-
-    if not isinstance(risorse_ids_raw, list):
-        return jsonify(
-            {"ok": False, "error": "risorse_ids deve essere una lista."}
-        ), 400
-
-    if not isinstance(famiglia_ids_raw, list):
-        return jsonify(
-            {"ok": False, "error": "famiglia_ids deve essere una lista."}
-        ), 400
-
-    try:
-        role_id = int(role_id_raw)
-        user_id = int(user_id_raw)
-        lavorazioni_ids = {int(x) for x in lavorazioni_ids_raw}
-        risorse_ids = {int(x) for x in risorse_ids_raw}
-        famiglia_ids = _normalize_id_list(famiglia_ids_raw)
-    except (TypeError, ValueError):
-        return jsonify({"ok": False, "error": "Parametri non validi."}), 400
-
-    ruolo = Roles.query.get(role_id)
-    if ruolo is None:
-        return jsonify({"ok": False, "error": "Ruolo non trovato."}), 404
-
-    utente = User.query.get(user_id)
-    if utente is None:
-        return jsonify({"ok": False, "error": "Utente non trovato."}), 404
-
-    if not any(r.id == ruolo.id for r in (utente.roles or [])):
-        return jsonify(
-            {"ok": False, "error": "L'utente non appartiene al ruolo selezionato."}
-        ), 400
-
-    allowed_lavorazioni_ids = {x.id for x in ruolo.effective_lavorazioni}
-    allowed_risorse_ids = {x.id for x in ruolo.effective_risorse}
-    allowed_famiglia_ids = {x.id for x in ruolo.effective_famiglia}
-
-    invalid_lavorazioni = lavorazioni_ids - allowed_lavorazioni_ids
-    invalid_risorse = risorse_ids - allowed_risorse_ids
-    invalid_famiglia = set(famiglia_ids) - allowed_famiglia_ids
-
-    if invalid_lavorazioni or invalid_risorse or invalid_famiglia:
-        return jsonify(
-            {
-                "ok": False,
-                "error": "Il payload contiene assegnazioni fuori dal perimetro RBAC del ruolo.",
-                "invalid_lavorazioni": sorted(invalid_lavorazioni),
-                "invalid_risorse": sorted(invalid_risorse),
-                "invalid_famiglia": sorted(invalid_famiglia),
-            }
-        ), 400
-
-    target_has_filtro_macchine = bool(utente.has_permission("filtro_macchine"))
-
-    if not target_has_filtro_macchine:
-        famiglia_ids = []
-
-    current_lavorazioni_ids = {x.id for x in (utente.lavorazioni or [])}
-    current_risorse_ids = {x.id for x in (utente.risorse or [])}
-
-    current_lavorazioni_in_scope = current_lavorazioni_ids & allowed_lavorazioni_ids
-    current_risorse_in_scope = current_risorse_ids & allowed_risorse_ids
-
-    lavorazioni_to_add = lavorazioni_ids - current_lavorazioni_in_scope
-    lavorazioni_to_remove = current_lavorazioni_in_scope - lavorazioni_ids
-    clear_all_requested = not lavorazioni_ids and not risorse_ids and not famiglia_ids
-
-    has_existing_assignments = (
-        bool(current_lavorazioni_in_scope)
-        or bool(current_risorse_in_scope)
-        or bool(getattr(utente, "famiglie", []))
-    )
-
-    if (
-        clear_all_requested
-        and has_existing_assignments
-        and not data.get("confirm_clear_all")
-    ):
-        return jsonify(
-            {
-                "ok": False,
-                "error": (
-                    "Il salvataggio rimuoverebbe tutte le spunte. "
-                    "Operazione annullata per sicurezza."
-                ),
-                "requires_confirm_clear_all": True,
-            }
-        ), 409
-
-    risorse_to_add = risorse_ids - current_risorse_in_scope
-    risorse_to_remove = current_risorse_in_scope - risorse_ids
-
-    try:
-        if lavorazioni_to_add:
-            db.session.execute(
-                users_lavorazioni.insert(),
-                [
-                    {"user_id": utente.id, "lavorazioni_id": item_id}
-                    for item_id in sorted(lavorazioni_to_add)
-                ],
-            )
-
-        if lavorazioni_to_remove:
-            db.session.execute(
-                delete(users_lavorazioni).where(
-                    users_lavorazioni.c.user_id == utente.id,
-                    users_lavorazioni.c.lavorazioni_id.in_(
-                        sorted(lavorazioni_to_remove)
-                    ),
-                )
-            )
-
-        if risorse_to_add:
-            db.session.execute(
-                users_risorse.insert(),
-                [
-                    {"user_id": utente.id, "risorse_id": item_id}
-                    for item_id in sorted(risorse_to_add)
-                ],
-            )
-
-        if risorse_to_remove:
-            db.session.execute(
-                delete(users_risorse).where(
-                    users_risorse.c.user_id == utente.id,
-                    users_risorse.c.risorse_id.in_(sorted(risorse_to_remove)),
-                )
-            )
-
-        db.session.execute(
-            delete(users_famiglia).where(users_famiglia.c.user_id == utente.id)
-        )
-
-        if target_has_filtro_macchine:
-            for famiglia_id in famiglia_ids:
-                db.session.execute(
-                    users_famiglia.insert().values(
-                        user_id=utente.id,
-                        famiglia_id=famiglia_id,
-                    )
-                )
-
-        db.session.commit()
-
-    except Exception as exc:
-        db.session.rollback()
-        return jsonify(
-            {
-                "ok": False,
-                "error": f"Errore salvataggio impostazioni ABAC: {exc}",
-            }
-        ), 500
-
-    return jsonify(
-        {
-            "ok": True,
-            "message": "Impostazioni ABAC salvate correttamente.",
-            "role_id": ruolo.id,
-            "user_id": utente.id,
-            "lavorazioni_ids": sorted(lavorazioni_ids),
-            "risorse_ids": sorted(risorse_ids),
-            "famiglia_ids": famiglia_ids if target_has_filtro_macchine else [],
-            "has_filtro_macchine": target_has_filtro_macchine,
-            "delta": {
-                "lavorazioni": {
-                    "added": sorted(lavorazioni_to_add),
-                    "removed": sorted(lavorazioni_to_remove),
-                },
-                "risorse": {
-                    "added": sorted(risorse_to_add),
-                    "removed": sorted(risorse_to_remove),
-                },
-                "famiglia": {
-                    "selected": famiglia_ids if target_has_filtro_macchine else [],
-                },
-            },
-        }
-    ), 200
-
-
-@main_bp.post("/api/impostazioni/ruolo-link")
-@require_active_perm("impostazioni_utente")
-def api_save_role_links():
-    policy = _current_policy()
-
-    if not policy.can_view_role_links_section:
-        return jsonify({"ok": False, "error": "Permesso insufficiente."}), 403
-
-    data = request.get_json(silent=True) or {}
-
-    role_id_raw = data.get("role_id")
-    table_key = (data.get("table_key") or "").strip()
-    selected_ids_raw = data.get("selected_ids") or []
-
-    try:
-        role_id = int(role_id_raw)
-        selected_ids = {int(x) for x in selected_ids_raw}
-    except (TypeError, ValueError):
-        return jsonify({"ok": False, "error": "Parametri non validi."}), 400
-
-    if table_key not in ROLE_LINK_CONFIG:
-        return jsonify({"ok": False, "error": "Tabella non valida."}), 400
-
-    ruolo = Roles.query.get(role_id)
-    if ruolo is None:
-        return jsonify({"ok": False, "error": "Ruolo non trovato."}), 404
-    cfg = ROLE_LINK_CONFIG[table_key]
-    assoc_table = cfg["assoc_table"]
-    model = cfg["model"]
-
-    if cfg["model"] is Roles:
-        allowed_role_ids = {int(r.id) for r in policy.role_link_manageable_roles()}
-
-        allowed_role_ids.discard(int(ruolo.id))
-
-        invalid_role_ids = selected_ids - allowed_role_ids
-        if invalid_role_ids:
-            return jsonify(
-                {
-                    "ok": False,
-                    "error": "Il payload contiene ruoli non consentiti o di livello uguale/superiore.",
-                    "invalid_ids": sorted(invalid_role_ids),
-                }
-            ), 400
-
-    if not policy.can_manage_target_role(ruolo):
-        return jsonify({"ok": False, "error": "Ruolo non gestibile."}), 403
-
-    if table_key in {"ruoli_ereditati", "ruoli_gestibili"}:
-        manageable_role_ids = {r.id for r in policy.role_link_manageable_roles()}
-
-        if role_id in selected_ids:
-            return jsonify(
-                {"ok": False, "error": "Un ruolo non può essere collegato a sé stesso."}
-            ), 400
-
-        invalid_target_ids = selected_ids - manageable_role_ids
-        if invalid_target_ids:
-            return jsonify(
-                {
-                    "ok": False,
-                    "error": "Il payload contiene ruoli non gestibili.",
-                    "invalid_ids": sorted(invalid_target_ids),
-                }
-            ), 400
-
-    valid_ids: set[int] = set()
-
-    for item in model.query.all():
-        raw_id = getattr(item, cfg["model_id"], None)
-
-        if raw_id is None:
-            continue
-
-        try:
-            valid_ids.add(int(raw_id))
-        except (TypeError, ValueError):
-            continue
-
-    invalid_ids = selected_ids - valid_ids
-    if invalid_ids:
-        return jsonify(
-            {
-                "ok": False,
-                "error": "Il payload contiene id non validi.",
-                "invalid_ids": sorted(invalid_ids),
-            }
-        ), 400
-
-    left_col = getattr(assoc_table.c, cfg["left_fk"])
-    right_col = getattr(assoc_table.c, cfg["right_fk"])
-
-    current_ids = set(
-        db.session.execute(select(right_col).where(left_col == ruolo.id))
-        .scalars()
-        .all()
-    )
-
-    to_add = selected_ids - current_ids
-    to_remove = current_ids - selected_ids
-
-    try:
-        if to_add:
-            db.session.execute(
-                assoc_table.insert(),
-                [
-                    {
-                        cfg["left_fk"]: ruolo.id,
-                        cfg["right_fk"]: item_id,
-                    }
-                    for item_id in sorted(to_add)
-                ],
-            )
-
-        if to_remove:
-            db.session.execute(
-                delete(assoc_table).where(
-                    left_col == ruolo.id,
-                    right_col.in_(sorted(to_remove)),
-                )
-            )
-
-        db.session.commit()
-
-    except Exception as exc:
-        db.session.rollback()
-        return jsonify(
-            {
-                "ok": False,
-                "error": f"Errore salvataggio connessioni ruolo: {exc}",
-            }
-        ), 500
-
-    return jsonify(
-        {
-            "ok": True,
-            "message": "Connessioni ruolo salvate correttamente.",
-            "role_id": ruolo.id,
-            "table_key": table_key,
-            "selected_ids": sorted(selected_ids),
-            "delta": {
-                "added": sorted(to_add),
-                "removed": sorted(to_remove),
-            },
-        }
-    ), 200
-
-
-def _hours_to_work_days(total_hours: float, hours_per_day: float = 8.0) -> float:
-    total = float(total_hours or 0.0)
-    if total <= 0:
-        return 0.0
-    return round(total / hours_per_day, 2)
-
-
-def _dashboard_produzione_default_section(policy: RbacPolicy) -> str:
-    if policy.can("dashboard_produzione"):
-        return "cruscotto"
-
-    if policy.can("kpi_produzione"):
-        return "kpi"
-
-    return ""
-
-
-def _dashboard_produzione_allowed_sections(policy: RbacPolicy) -> dict:
-    return {
-        "cruscotto": bool(policy.can("dashboard_produzione")),
-        "kpi": bool(policy.can("kpi_produzione")),
-        "export": bool(policy.can("kpi_export")),
-        "config": bool(policy.can("kpi_config")),
-    }
-
-
-def _capacity_calendar_payload() -> list[dict]:
-    rows = (
-        ProductionCapacityCalendar.query.filter(
-            ProductionCapacityCalendar.active.is_(True)
-        )
-        .order_by(
-            ProductionCapacityCalendar.scope_type.asc(),
-            ProductionCapacityCalendar.scope_code.asc(),
-            ProductionCapacityCalendar.weekday.asc(),
-        )
-        .all()
-    )
-
-    return [
-        {
-            "id": row.id,
-            "scope_type": row.scope_type,
-            "scope_code": row.scope_code,
-            "weekday": row.weekday,
-            "hours_capacity": float(row.hours_capacity or 0),
-        }
-        for row in rows
-    ]
-
-
-def _dashboard_produzione_initial_payload(policy: RbacPolicy) -> dict:
-    return {
-        "allowed_sections": _dashboard_produzione_allowed_sections(policy),
-        "capacity_calendar": _capacity_calendar_payload(),
-        "cruscotto": {
-            "cards": {},
-            "charts": {},
-            "criticita": [],
-            "filter_options": _dashboard_empty_filter_options(),
-        },
-        "kpi": {
-            "cards": {},
-            "charts": {},
-            "details": [],
-            "filter_options": _dashboard_empty_filter_options(),
-        },
-    }
-
-
-def _dashboard_parse_date(value) -> date | None:
-    """
-    Converte una data dashboard in date.
-
-    Formati gestiti:
-    - date/datetime Python
-    - 2026-06-03
-    - 2026-06-03 00:00:00
-    - 2026-06-03T00:00:00
-    - 2026-06-03 00:00:00.000
-    - 03/06/2026
-    - 03/06/2026 00:00
-    - 03/06/2026 00:00:00
-    - 20260603
-    """
-
-    if value is None:
-        return None
-
-    if isinstance(value, datetime):
-        return value.date()
-
-    if isinstance(value, date):
-        return value
-
-    raw = _norm_text(value)
-
-    if not raw:
-        return None
-
-    if raw.lower() in {"none", "null", "nan", "nat", "0000-00-00"}:
-        return None
-
-    # ISO diretto: gestisce anche "2026-06-03T00:00:00"
-    iso_raw = raw.replace("Z", "+00:00")
-    try:
-        return datetime.fromisoformat(iso_raw).date()
-    except ValueError:
-        pass
-
-    # Normalizzazione base:
-    # - T diventa spazio
-    # - rimuove millisecondi
-    # - rimuove timezone finale
-    clean = raw.replace("T", " ").strip()
-    clean = re.sub(r"\.\d+", "", clean)
-    clean = re.sub(r"\s*(Z|[+-]\d{2}:?\d{2})$", "", clean).strip()
-
-    formats = (
-        "%Y-%m-%d",
-        "%Y-%m-%d %H:%M",
-        "%Y-%m-%d %H:%M:%S",
-        "%Y/%m/%d",
-        "%Y/%m/%d %H:%M",
-        "%Y/%m/%d %H:%M:%S",
-        "%d/%m/%Y",
-        "%d/%m/%Y %H:%M",
-        "%d/%m/%Y %H:%M:%S",
-        "%d-%m-%Y",
-        "%d-%m-%Y %H:%M",
-        "%d-%m-%Y %H:%M:%S",
-        "%Y%m%d",
-        "%d%m%Y",
-    )
-
-    for fmt in formats:
-        try:
-            return datetime.strptime(clean, fmt).date()
-        except ValueError:
-            continue
-
-    return None
-
-
-def _dashboard_today() -> date:
-    return datetime.now(ROME_TZ).date()
-
-
-def _dashboard_stato_norm(ordine: InputOdp) -> str:
-    runtime = getattr(ordine, "runtime_row", None)
-
-    stato = (
-        _norm_text(getattr(runtime, "Stato_odp", ""))
-        or _norm_text(getattr(ordine, "StatoOrdine", ""))
-        or _norm_text(getattr(ordine, "StatoOrdineErp", ""))
-    )
-
-    return stato.strip()
-
-
-def _dashboard_is_chiusa(ordine: InputOdp) -> bool:
-    stato = _dashboard_stato_norm(ordine).lower()
-    return "chius" in stato or "terminat" in stato
-
-
-def _dashboard_fase_attiva(ordine: InputOdp) -> str:
-    runtime = getattr(ordine, "runtime_row", None)
-
-    return (
-        _norm_text(getattr(runtime, "FaseAttiva", ""))
-        or _norm_text(getattr(ordine, "FaseAttiva", ""))
-        or "1"
-    )
-
-
-def _dashboard_reparti_label_map() -> dict[str, str]:
-    rows = Reparti.query.order_by(Reparti.Codice.asc()).all()
-    out: dict[str, str] = {}
-
-    for row in rows:
-        codice = _norm_text(getattr(row, "Codice", ""))
-        descrizione = _norm_text(getattr(row, "Descrizione", ""))
-
-        if not codice:
-            continue
-
-        if descrizione and descrizione.lower() != codice.lower():
-            out[codice] = f"{descrizione} ({codice})"
-        else:
-            out[codice] = codice
-
-    return out
-
-
-def _dashboard_reparto_label(
-    codice: str, label_map: dict[str, str] | None = None
-) -> str:
-    codice = _first_code_from_cell(codice)
-    if not codice:
-        return "-"
-
-    label_map = label_map if label_map is not None else _dashboard_reparti_label_map()
-    return label_map.get(codice, codice)
-
-
-def _dashboard_active_value(ordine: InputOdp, attr_name: str) -> str:
-    fase_attiva = _dashboard_fase_attiva(ordine)
-
-    return _active_value_for_phase(
-        getattr(ordine, attr_name, ""),
-        getattr(ordine, "NumFase", ""),
-        fase_attiva,
-    )
-
-
-def _dashboard_reparto_attivo(ordine: InputOdp) -> str:
-    raw = _dashboard_active_value(ordine, "CodReparto")
-    return _first_code_from_cell(raw) or _first_code_from_cell(
-        getattr(ordine, "CodReparto", "")
-    )
-
-
-def _dashboard_risorsa_attiva(ordine: InputOdp) -> str:
-    runtime = getattr(ordine, "runtime_row", None)
-
-    return (
-        _norm_text(getattr(runtime, "RisorsaAttiva", ""))
-        or _norm_text(getattr(ordine, "RisorsaAttiva", ""))
-        or _first_code_from_cell(_dashboard_active_value(ordine, "CodRisorsaProd"))
-    )
-
-
-def _dashboard_lavorazione_attiva(ordine: InputOdp) -> str:
-    runtime = getattr(ordine, "runtime_row", None)
-
-    return (
-        _norm_text(getattr(runtime, "LavorazioneAttiva", ""))
-        or _norm_text(getattr(ordine, "LavorazioneAttiva", ""))
-        or _first_code_from_cell(_dashboard_active_value(ordine, "CodLavorazione"))
-    )
-
-
-def _dashboard_data_fine_prevista(ordine: InputOdp):
-    raw_data_fine = getattr(ordine, "DataFinePrevista", "") or getattr(
-        ordine, "DataFineSched", ""
-    )
-
-    fase_attiva = getattr(ordine, "FaseAttiva", "1")
-    data_fine_attiva = InputOdp._active_value_from_phase_list(
-        raw_data_fine,
-        fase_attiva,
-    )
-
-    return _dashboard_parse_date(data_fine_attiva)
-
-
-def _dashboard_parse_date(value) -> date | None:
-    if value is None:
-        return None
-
-    if isinstance(value, datetime):
-        return value.date()
-
-    if isinstance(value, date):
-        return value
-
-    raw = _norm_text(value)
-
-    if not raw:
-        return None
-
-    if raw.lower() in {"none", "null", "nan", "nat", "0000-00-00"}:
-        return None
-
-    # Gestione valori salvati come lista JSON:
-    # es. ["2026-04-07 00:00:00"]
-    if raw.startswith("["):
-        try:
-            parsed = json.loads(raw)
-            if isinstance(parsed, list) and parsed:
-                raw = _norm_text(parsed[0])
-            else:
-                return None
-        except (json.JSONDecodeError, TypeError, ValueError):
-            return None
-
-    # Gestione valori JSON string:
-    # es. "2026-04-07 00:00:00"
-    elif raw.startswith('"') and raw.endswith('"'):
-        try:
-            raw = _norm_text(json.loads(raw))
-        except (json.JSONDecodeError, TypeError, ValueError):
-            raw = raw.strip('"')
-
-    iso_raw = raw.replace("Z", "+00:00")
-
-    try:
-        return datetime.fromisoformat(iso_raw).date()
-    except ValueError:
-        pass
-
-    clean = raw.replace("T", " ").strip()
-    clean = re.sub(r"\.\d+", "", clean)
-    clean = re.sub(r"\s*(Z|[+-]\d{2}:?\d{2})$", "", clean).strip()
-
-    formats = (
-        "%Y-%m-%d",
-        "%Y-%m-%d %H:%M",
-        "%Y-%m-%d %H:%M:%S",
-        "%Y/%m/%d",
-        "%Y/%m/%d %H:%M",
-        "%Y/%m/%d %H:%M:%S",
-        "%d/%m/%Y",
-        "%d/%m/%Y %H:%M",
-        "%d/%m/%Y %H:%M:%S",
-        "%d-%m-%Y",
-        "%d-%m-%Y %H:%M",
-        "%d-%m-%Y %H:%M:%S",
-        "%Y%m%d",
-        "%d%m%Y",
-    )
-
-    for fmt in formats:
-        try:
-            return datetime.strptime(clean, fmt).date()
-        except ValueError:
-            continue
-
-    return None
-
-
-def _dashboard_attrezzaggio_ore(ordine: InputOdp) -> float:
-    raw = getattr(ordine, "AttrezzaggioAttivo", "") or getattr(
-        ordine, "TempoAttrezzaggio", ""
-    )
-
-    value = _safe_float(raw)
-
-    # Attrezzaggio nel tuo codice storico era gestito come minuti.
-    return value / 60.0 if value > 0 else 0.0
-
-
-def _dashboard_tempo_previsto_ore(ordine: InputOdp) -> float:
-    """
-    Restituisce le ore previste della fase attiva.
-
-    Gestisce anche valori salvati come lista JSON, ad esempio:
-    ["1.5", "2.0", "0.75"]
-    """
-
-    raw = _dashboard_active_value(ordine, "TempoPrevistoLavoraz")
-
-    if not raw:
-        raw = getattr(ordine, "TempoPrevistoLavoraz", "")
-
-    return _safe_float(raw)
-
-
-def _dashboard_carico_ore(ordine: InputOdp) -> float:
-    return round(
-        _dashboard_tempo_previsto_ore(ordine) + _dashboard_attrezzaggio_ore(ordine),
-        2,
-    )
-
-
-def _dashboard_order_key(ordine: InputOdp) -> str:
-    return f"{_norm_text(ordine.IdDocumento)}|{_norm_text(ordine.IdRiga)}|{_dashboard_fase_attiva(ordine)}"
-
-
-def _dashboard_order_label(ordine: InputOdp) -> str:
-    try:
-        return _ordine_ref_label(ordine)
-    except Exception:
-        return _norm_text(getattr(ordine, "NumProgrRiga", "")) or _norm_text(
-            getattr(ordine, "IdDocumento", "")
-        )
-
-
-def _dashboard_order_payload(ordine: InputOdp, tipo_criticita: str = "") -> dict:
-    runtime = getattr(ordine, "runtime_row", None)
-    data_fine = _dashboard_data_fine_prevista(ordine)
-    today = _dashboard_today()
-    ritardo_giorni = 0
-
-    if data_fine and data_fine < today:
-        ritardo_giorni = (today - data_fine).days
-
-    return {
-        "key": _dashboard_order_key(ordine),
-        "tipo": tipo_criticita,
-        "ordine": _dashboard_order_label(ordine),
-        "cod_art": _norm_text(getattr(ordine, "CodArt", "")),
-        "descrizione": _norm_text(getattr(ordine, "DesArt", "")),
-        "reparto": _dashboard_reparto_attivo(ordine),
-        "risorsa": _dashboard_risorsa_attiva(ordine),
-        "lavorazione": _dashboard_lavorazione_attiva(ordine),
-        "stato": _dashboard_stato_norm(ordine),
-        "fase": _dashboard_fase_attiva(ordine),
-        "operatore": _norm_text(getattr(runtime, "Utente_operazione", ""))
-        if runtime
-        else "",
-        "data_fine_prevista": data_fine.isoformat() if data_fine else "",
-        "ritardo_giorni": ritardo_giorni,
-        "tempo_previsto_ore": _dashboard_carico_ore(ordine),
-        "priorita": "",
-    }
-
-
-def _dashboard_capacity_by_weekday(
-    *,
-    scope_type: str = "global",
-    scope_code: str = "*",
-    fallback_to_global: bool = True,
-) -> dict[int, float]:
-    rows = (
-        ProductionCapacityCalendar.query.filter(
-            ProductionCapacityCalendar.active.is_(True)
-        )
-        .filter(ProductionCapacityCalendar.scope_type == scope_type)
-        .filter(ProductionCapacityCalendar.scope_code == scope_code)
-        .all()
-    )
-
-    out = {i: 0.0 for i in range(7)}
-
-    for row in rows:
-        out[int(row.weekday)] = float(row.hours_capacity or 0.0)
-
-    if fallback_to_global and scope_type != "global" and not rows:
-        return _dashboard_capacity_by_weekday(
-            scope_type="global",
-            scope_code="*",
-        )
-
-    return out
-
-
-def _dashboard_next_month_days() -> list[date]:
-    today = _dashboard_today()
-    return [today + timedelta(days=i) for i in range(DASHBOARD_PRODUZIONE_FUTURE_DAYS)]
-
-
-def _dashboard_carico_prossimo_mese(
+def _apply_priorita_to_ordini(
     ordini: list[InputOdp],
+    operatore_id: int,
     *,
-    capacity_by_weekday: dict[int, float] | None = None,
-    capacity_operator_count: int = 0,
-) -> list[dict]:
-    capacity = capacity_by_weekday or _dashboard_capacity_by_weekday()
-
-    by_day = {
-        day.isoformat(): {
-            "date": day.isoformat(),
-            "label": day.strftime("%d/%m"),
-            "ore_arretrate": 0.0,
-            "ore_senza_scadenza": 0.0,
-            "ore_pianificate": 0.0,
-            "ore_attive": 0.0,
-            "ore_sospese": 0.0,
-            "capacita": float(capacity.get(day.weekday(), 0.0) or 0.0),
-            "operatori_capacita": int(capacity_operator_count or 0),
-        }
-        for day in _dashboard_next_month_days()
-    }
-
-    today = _dashboard_today()
-    end_day = today + timedelta(days=DASHBOARD_PRODUZIONE_FUTURE_DAYS - 1)
-    today_key = today.isoformat()
+    sort_result: bool = True,
+) -> list[InputOdp]:
+    priorita_map = _priorita_map_for_operatore(operatore_id)
 
     for ordine in ordini:
-        stato = _dashboard_stato_norm(ordine).lower()
-        data_fine = _dashboard_data_fine_prevista(ordine)
-        ore = _dashboard_carico_ore(ordine)
+        row = priorita_map.get(_ordine_fase_key(ordine))
 
-        if not ore:
-            continue
-
-        if not data_fine:
-            # Gli ordini aperti senza data schedulata sono comunque carico reale:
-            # li evidenziamo sul primo giorno del cruscotto.
-            by_day[today_key]["ore_senza_scadenza"] += ore
-            continue
-
-        if data_fine < today:
-            # Gli ordini aperti già scaduti non devono sparire dal grafico:
-            # sono arretrato da gestire subito.
-            by_day[today_key]["ore_arretrate"] += ore
-            continue
-
-        if data_fine > end_day:
-            continue
-
-        day_key = data_fine.isoformat()
-        if day_key not in by_day:
-            continue
-
-        if "pianificat" in stato:
-            by_day[day_key]["ore_pianificate"] += ore
-        elif "attiv" in stato:
-            by_day[day_key]["ore_attive"] += ore
-        elif "sospes" in stato:
-            by_day[day_key]["ore_sospese"] += ore
-
-    for row in by_day.values():
-        row["ore_arretrate"] = round(row["ore_arretrate"], 2)
-        row["ore_senza_scadenza"] = round(row["ore_senza_scadenza"], 2)
-        row["ore_pianificate"] = round(row["ore_pianificate"], 2)
-        row["ore_attive"] = round(row["ore_attive"], 2)
-        row["ore_sospese"] = round(row["ore_sospese"], 2)
-        row["ore_totali"] = round(
-            row["ore_arretrate"]
-            + row["ore_senza_scadenza"]
-            + row["ore_pianificate"]
-            + row["ore_attive"]
-            + row["ore_sospese"],
-            2,
-        )
-        row["sovraccarico"] = bool(
-            row["capacita"] > 0 and row["ore_totali"] > row["capacita"]
-        )
-
-    return list(by_day.values())
-
-
-def _dashboard_capacity_hours_for_next_days(
-    *,
-    scope_type: str = "global",
-    scope_code: str = "*",
-) -> float:
-    capacity = _dashboard_capacity_by_weekday(
-        scope_type=scope_type,
-        scope_code=scope_code,
-    )
-    return round(
-        sum(
-            float(capacity.get(day.weekday(), 0.0) or 0.0)
-            for day in _dashboard_next_month_days()
-        ),
-        2,
-    )
-
-
-def _dashboard_saturazione_risorse(carico_rows: list[dict]) -> list[dict]:
-    out = []
-
-    for row in carico_rows or []:
-        risorsa = _norm_text(row.get("risorsa")) or "-"
-        ore_totali = float(row.get("ore_totali") or 0.0)
-        capacita = _dashboard_capacity_hours_for_next_days(
-            scope_type="risorsa",
-            scope_code=risorsa,
-        )
-        saturazione = round((ore_totali / capacita) * 100, 2) if capacita > 0 else 0.0
-
-        if saturazione > 110:
-            livello = "critico"
-        elif saturazione >= 90:
-            livello = "attenzione"
-        elif saturazione >= 70:
-            livello = "buono"
+        if row is None:
+            ordine.PrioritaNumero = None
+            ordine.PrioritaPosizione = None
         else:
-            livello = "sottocarico"
+            ordine.PrioritaNumero = row.Priorita
+            ordine.PrioritaPosizione = row.Posizione
 
-        out.append(
-            {
-                "label": risorsa,
-                "risorsa": risorsa,
-                "ore_totali": round(ore_totali, 2),
-                "capacita": round(capacita, 2),
-                "saturazione": saturazione,
-                "livello": livello,
-            }
-        )
+    if sort_result:
+        return sorted(ordini, key=_priority_sort_key)
 
-    return sorted(out, key=lambda x: (-x["saturazione"], x["label"].lower()))[:12]
+    return ordini
 
 
-def _dashboard_carico_per_reparto(ordini: list[InputOdp]) -> list[dict]:
-    buckets = {}
-    reparto_labels = _dashboard_reparti_label_map()
-
-    for ordine in ordini or []:
-        stato = _dashboard_stato_norm(ordine).lower()
-        reparto = _dashboard_reparto_attivo(ordine) or "-"
-        reparto_label = _dashboard_reparto_label(reparto, reparto_labels)
-        ore = _dashboard_carico_ore(ordine)
-
-        buckets.setdefault(
-            reparto,
-            {
-                "label": reparto_label,
-                "reparto": reparto,
-                "codice_reparto": reparto,
-                "ore_attive": 0.0,
-                "ore_sospese": 0.0,
-                "ore_pianificate": 0.0,
-                "ore_totali": 0.0,
-            },
-        )
-
-        if "attiv" in stato:
-            buckets[reparto]["ore_attive"] += ore
-        elif "sospes" in stato:
-            buckets[reparto]["ore_sospese"] += ore
-        elif "pianificat" in stato:
-            buckets[reparto]["ore_pianificate"] += ore
-
-    out = []
-    for row in buckets.values():
-        row["ore_attive"] = round(float(row["ore_attive"] or 0.0), 2)
-        row["ore_sospese"] = round(float(row["ore_sospese"] or 0.0), 2)
-        row["ore_pianificate"] = round(float(row["ore_pianificate"] or 0.0), 2)
-        row["ore_totali"] = round(
-            row["ore_attive"] + row["ore_sospese"] + row["ore_pianificate"],
-            2,
-        )
-        out.append(row)
-
-    return sorted(out, key=lambda x: (-x["ore_totali"], x["label"].lower()))[:12]
-
-
-def _dashboard_ordini_per_reparto(ordini: list[InputOdp]) -> list[dict]:
-    buckets = {}
-    reparto_labels = _dashboard_reparti_label_map()
-    seen_keys = set()
-
-    for ordine in ordini or []:
-        stato = _dashboard_stato_norm(ordine).lower()
-
-        if not ("attiv" in stato or "sospes" in stato or "pianificat" in stato):
-            continue
-
-        ordine_key = (
-            _norm_text(getattr(ordine, "IdDocumento", "")),
-            _norm_text(getattr(ordine, "IdRiga", "")),
-            _norm_text(getattr(ordine, "FaseAttiva", "")) or "1",
-        )
-
-        if ordine_key in seen_keys:
-            continue
-
-        seen_keys.add(ordine_key)
-
-        reparto = _dashboard_reparto_attivo(ordine) or "-"
-        reparto_label = _dashboard_reparto_label(reparto, reparto_labels)
-
-        buckets.setdefault(
-            reparto,
-            {
-                "label": reparto_label,
-                "reparto": reparto,
-                "codice_reparto": reparto,
-                "ordini_attivi": 0,
-                "ordini_sospesi": 0,
-                "ordini_pianificati": 0,
-                "ordini_totali": 0,
-            },
-        )
-
-        if "attiv" in stato:
-            buckets[reparto]["ordini_attivi"] += 1
-        elif "sospes" in stato:
-            buckets[reparto]["ordini_sospesi"] += 1
-        elif "pianificat" in stato:
-            buckets[reparto]["ordini_pianificati"] += 1
-
-    out = []
-
-    for row in buckets.values():
-        row["ordini_totali"] = (
-            int(row["ordini_attivi"] or 0)
-            + int(row["ordini_sospesi"] or 0)
-            + int(row["ordini_pianificati"] or 0)
-        )
-        out.append(row)
-
-    return sorted(
-        out,
-        key=lambda x: (-int(x["ordini_totali"] or 0), x["label"].lower()),
-    )[:12]
-
-
-def _dashboard_carico_per_risorsa_chart(carico_rows: list[dict]) -> list[dict]:
-    out = []
-    for row in carico_rows or []:
-        out.append(
-            {
-                "label": row.get("risorsa") or "-",
-                "ore_attive": round(float(row.get("ore_attive") or 0.0), 2),
-                "ore_sospese": round(float(row.get("ore_sospese") or 0.0), 2),
-                "ore_pianificate": round(float(row.get("ore_pianificate") or 0.0), 2),
-                "ore_totali": round(float(row.get("ore_totali") or 0.0), 2),
-            }
-        )
-
-    return sorted(out, key=lambda x: (-x["ore_totali"], x["label"].lower()))[:12]
-
-
-def _dashboard_ordini_per_risorsa_chart(carico_rows: list[dict]) -> list[dict]:
-    out = []
-
-    for row in carico_rows or []:
-        ordini_attivi = int(row.get("ordini_attivi") or 0)
-        ordini_sospesi = int(row.get("ordini_sospesi") or 0)
-        ordini_pianificati = int(row.get("ordini_pianificati") or 0)
-
-        out.append(
-            {
-                "label": row.get("risorsa") or "-",
-                "risorsa": row.get("risorsa") or "-",
-                "ordini_attivi": ordini_attivi,
-                "ordini_sospesi": ordini_sospesi,
-                "ordini_pianificati": ordini_pianificati,
-                "ordini_totali": ordini_attivi + ordini_sospesi + ordini_pianificati,
-            }
-        )
-
-    return sorted(
-        out,
-        key=lambda x: (-int(x["ordini_totali"] or 0), x["label"].lower()),
-    )[:12]
-
-
-def _dashboard_cruscotto_empty_payload() -> dict:
-    return {
-        "cards": {
-            "ordini_attivi": 0,
-            "ordini_sospesi": 0,
-            "ordini_pianificati": 0,
-            "tempo_previsto_residuo": 0.0,
-            "operatori_impegnati": 0,
-            "operatori_capacita": 0,
-            "ordini_critici": 0,
-            "risorse_sovraccariche": 0,
-            "ordini_in_ritardo": 0,
-            "ordini_scadenza_oggi": 0,
-            "ordini_senza_tempo_previsto": 0,
-            "ordini_collaudo": 0,
-        },
-        "charts": {
-            "carico_prossimi_giorni": [],
-            "stati_ordine": [],
-            "carico_per_risorsa": [],
-            "carico_per_reparto": [],
-            "saturazione_risorse": [],
-        },
-        "criticita": [],
-        "details": [],
-        "operatori": [],
-        "carico_risorsa": [],
-        "collaudo": [],
-        "capacity_calendar": [],
-        "filters": {},
-        "filter_options": _dashboard_empty_filter_options(),
-    }
-
-
-def _dashboard_is_collaudo(ordine: InputOdp) -> bool:
-    reparto = _dashboard_reparto_attivo(ordine)
-    risorsa = _dashboard_risorsa_attiva(ordine).lower()
-    lavorazione = _dashboard_lavorazione_attiva(ordine).lower()
-
-    return reparto == "70" or "coll" in risorsa or "coll" in lavorazione
-
-
-def _dashboard_capacity_users(
-    policy: RbacPolicy, filters: dict | None = None
-) -> list[User]:
-    """
-    Restituisce gli operatori attivi da considerare nel calcolo capacità.
-
-    Regole:
-    - considera solo utenti active = True;
-    - rispetta i reparti consentiti dalla policy;
-    - applica i filtri cruscotto;
-    - esclude utenti senza RepartoPrinc, salvo override operatore esplicito;
-    - include un utente senza reparto solo se ha capacità specifica operatore.
-    """
-
-    filters = filters or {}
-
-    allowed_reparti = {
-        _norm_text(code)
-        for code in getattr(policy, "allowed_reparti", [])
-        if _norm_text(code)
-    }
-
-    users = User.query.filter(User.active.is_(True)).order_by(User.username.asc()).all()
-
-    out = []
-
-    for user in users:
-        user_reparto = _norm_text(getattr(user, "RepartoPrinc", ""))
-        operator_code = str(int(user.id))
-
-        has_operator_capacity = _dashboard_capacity_rows_exist(
-            "operatore",
-            operator_code,
-        )
-
-        # Esclude admin, utenti tecnici o generici senza reparto,
-        # a meno che abbiano una capacità operatore configurata.
-        if not user_reparto and not has_operator_capacity:
-            continue
-
-        # Rispetta i reparti consentiti dalla policy.
-        # Se l'utente non ha reparto ma ha override operatore, passa.
-        if allowed_reparti and user_reparto and user_reparto not in allowed_reparti:
-            continue
-
-        if not _dashboard_user_matches_capacity_filters(user, filters):
-            continue
-
-        out.append(user)
-
-    return out
-
-
-def _dashboard_user_matches_capacity_filters(user: User, filters: dict | None) -> bool:
-    filters = filters or {}
-
-    operatore_filter = _dashboard_text_filter(filters.get("operatore"))
-    reparto_filter = _dashboard_text_filter(filters.get("reparto"))
-    risorsa_filter = _dashboard_text_filter(filters.get("risorsa"))
-
-    username = _norm_text(getattr(user, "username", ""))
-    reparto_code = _norm_text(getattr(user, "RepartoPrinc", ""))
-
-    if operatore_filter and operatore_filter not in username.lower():
-        return False
-
-    if reparto_filter:
-        reparto_label = reparto_code
-
-        if reparto_code:
-            reparto = Reparti.query.filter(
-                func.lower(Reparti.Codice) == reparto_code.lower()
-            ).first()
-
-            if reparto is not None:
-                reparto_label = (
-                    f"{_norm_text(getattr(reparto, 'Codice', ''))} "
-                    f"{_norm_text(getattr(reparto, 'Descrizione', ''))}"
-                )
-
-        if reparto_filter not in reparto_label.lower():
-            return False
-
-    if risorsa_filter:
-        risorsa_labels = []
-
-        for risorsa in getattr(user, "risorse", []) or []:
-            risorsa_labels.append(
-                f"{_norm_text(getattr(risorsa, 'Codice', ''))} "
-                f"{_norm_text(getattr(risorsa, 'Descrizione', ''))}"
-            )
-
-        if not any(risorsa_filter in label.lower() for label in risorsa_labels):
-            return False
-
-    return True
-
-
-def _dashboard_capacity_rows_exist(scope_type: str, scope_code: str) -> bool:
-    scope_type = _norm_text(scope_type)
-    scope_code = _norm_text(scope_code)
-
-    if not scope_type or not scope_code:
-        return False
-
+def _make_ordine_fase_key(id_documento, id_riga, fase) -> tuple[str, str, str]:
     return (
-        ProductionCapacityCalendar.query.filter_by(
-            scope_type=scope_type,
-            scope_code=scope_code,
-        ).first()
-        is not None
+        _norm_text(id_documento),
+        _norm_text(id_riga),
+        _norm_text(fase) or "1",
     )
 
 
-def _dashboard_capacity_for_operator(user: User) -> dict[int, float]:
-    """
-    Capacità settimanale del singolo operatore.
+def _priority_now_iso() -> str:
+    return datetime.now(ROME_TZ).isoformat(timespec="seconds")
 
-    Usa solo righe:
-    scope_type = "operatore"
-    scope_code = User.id
 
-    Se l'operatore non ha una configurazione specifica,
-    la sua capacità è 0.
-    """
-
-    if user is None:
-        return {i: 0.0 for i in range(7)}
-
-    operator_code = str(int(user.id))
-
-    if not _dashboard_capacity_rows_exist("operatore", operator_code):
-        return {i: 0.0 for i in range(7)}
-
-    return _dashboard_capacity_by_weekday(
-        scope_type="operatore",
-        scope_code=operator_code,
-        fallback_to_global=False,
-    )
-
-
-def _dashboard_capacity_by_weekday_for_policy(
-    policy: RbacPolicy,
-    filters: dict | None = None,
-) -> tuple[dict[int, float], int]:
-    """
-    Calcola la capacità produttiva giornaliera totale per il cruscotto.
-
-    Logica:
-    - prende gli operatori attivi coerenti con policy e filtri;
-    - per ogni operatore calcola la capacità settimanale con priorità:
-        1. capacità specifica operatore;
-        2. capacità reparto;
-        3. capacità globale;
-    - somma le ore per ogni giorno della settimana.
-
-    Ritorna:
-        (
-            {
-                0: ore_lunedì,
-                1: ore_martedì,
-                ...
-                6: ore_domenica,
-            },
-            numero_operatori_considerati
-        )
-    """
-
-    filters = filters or {}
-
-    totals = {weekday: 0.0 for weekday in range(7)}
-    operator_count = 0
-
-    users = _dashboard_capacity_users(policy, filters)
-
-    for user in users:
-        capacity = _dashboard_capacity_for_operator(user)
-
-        # Conta l'operatore solo se ha almeno una capacità settimanale valorizzata.
-        # Se vuoi contare anche operatori con 0 ore su tutta la settimana,
-        # rimuovi questo controllo.
-        has_capacity = any(
-            float(capacity.get(weekday, 0.0) or 0.0) > 0 for weekday in range(7)
-        )
-
-        if not has_capacity:
-            continue
-
-        operator_count += 1
-
-        for weekday in range(7):
-            totals[weekday] += float(capacity.get(weekday, 0.0) or 0.0)
-
-    return (
-        {weekday: round(hours, 2) for weekday, hours in totals.items()},
-        operator_count,
-    )
-
-
-def _dashboard_seed_model_filter_options(
-    options: dict,
-    *,
-    key: str,
-    model,
-) -> None:
-    """
-    Alimenta un filtro da una tabella anagrafica con Codice/Descrizione.
-    Esempi:
-    - reparto -> Reparti
-    - risorsa -> Risorse
-    - lavorazione -> Lavorazioni
-    """
-    rows = model.query.order_by(
-        func.lower(func.coalesce(model.Descrizione, model.Codice)),
-        func.lower(model.Codice),
-    ).all()
-
-    for row in rows:
-        codice = _norm_text(getattr(row, "Codice", ""))
-        descrizione = _norm_text(getattr(row, "Descrizione", ""))
-
-        if not codice:
-            continue
-
-        _dashboard_add_filter_option(
-            options,
-            key,
-            codice,
-            _dashboard_filter_label(codice, descrizione),
-        )
-
-
-def _dashboard_seed_user_filter_options(options: dict) -> None:
-    """
-    Alimenta il filtro Operatore da tutti gli utenti presenti in users.
-    Non filtra per active, ruolo, reparto o policy.
-    """
-    users = User.query.order_by(func.lower(User.username)).all()
-
-    for user in users:
-        username = _norm_text(getattr(user, "username", ""))
-
-        if not username:
-            continue
-
-        _dashboard_add_filter_option(
-            options,
-            "operatore",
-            username,
-            username,
-        )
-
-
-def _dashboard_seed_stato_filter_options(options: dict) -> None:
-    """
-    Stati standard usati dalla dashboard produzione.
-    Non vengono presi da TipologieStato perché quel model contiene solo 'tipo'
-    numerico e non la descrizione testuale usata nei dati dashboard.
-    """
-    for stato in ("Pianificata", "Attivo", "In Sospeso", "Chiusa"):
-        _dashboard_add_filter_option(
-            options,
-            "stato",
-            stato,
-            stato,
-        )
-
-
-def _dashboard_seed_master_filter_options(options: dict) -> None:
-    """
-    Filtri caricati da anagrafiche/models, indipendenti dalle righe visibili.
-    """
-    _dashboard_seed_model_filter_options(
-        options,
-        key="reparto",
-        model=Reparti,
-    )
-
-    _dashboard_seed_model_filter_options(
-        options,
-        key="risorsa",
-        model=Risorse,
-    )
-
-    _dashboard_seed_model_filter_options(
-        options,
-        key="lavorazione",
-        model=Lavorazioni,
-    )
-
-    _dashboard_seed_user_filter_options(options)
-    _dashboard_seed_stato_filter_options(options)
-
-
-def _dashboard_build_cruscotto_payload(policy: RbacPolicy) -> dict:
-    payload = _dashboard_cruscotto_empty_payload()
-    filters = _dashboard_cruscotto_filters_from_request()
-    payload["filters"] = filters
-
-    ordini = list(policy.filter_input_odp(_base_odp_query()).all())
-
-    today = _dashboard_today()
-
-    operatori = {}
-    carico_risorsa = {}
-    criticita = []
-    collaudo_rows = []
-    filtered_ordini = []
-    filter_options = _dashboard_new_filter_options_bucket()
-    filter_label_maps = _dashboard_filter_label_maps()
-    _dashboard_seed_master_filter_options(filter_options)
-
-    stati_chart = {
-        "Pianificata": 0,
-        "Attivo": 0,
-        "In Sospeso": 0,
-    }
-
-    for ordine in ordini:
-        if _dashboard_is_chiusa(ordine):
-            continue
-
-        stato_raw = _dashboard_stato_norm(ordine)
-        stato = stato_raw.lower()
-        ore = _dashboard_carico_ore(ordine)
-        data_fine = _dashboard_data_fine_prevista(ordine)
-        runtime = getattr(ordine, "runtime_row", None)
-        base_row = _dashboard_order_payload(ordine)
-        _dashboard_collect_filter_options_from_row(
-            filter_options,
-            base_row,
-            filter_label_maps,
-        )
-
-        if not _dashboard_row_matches_filters(base_row, filters):
-            continue
-
-        filtered_ordini.append(ordine)
-
-        is_attivo = "attiv" in stato
-        is_sospeso = "sospes" in stato
-        is_pianificata = "pianificat" in stato
-
-        if not (is_attivo or is_sospeso or is_pianificata):
-            continue
-        payload["details"].append(base_row)
-
-        if is_attivo:
-            payload["cards"]["ordini_attivi"] += 1
-            payload["cards"]["tempo_previsto_residuo"] += ore
-            stati_chart["Attivo"] += 1
-
-        elif is_sospeso:
-            payload["cards"]["ordini_sospesi"] += 1
-            stati_chart["In Sospeso"] += 1
-
-        elif is_pianificata:
-            payload["cards"]["ordini_pianificati"] += 1
-            stati_chart["Pianificata"] += 1
-
-        if ore <= 0:
-            payload["cards"]["ordini_senza_tempo_previsto"] += 1
-            criticita.append(_dashboard_order_payload(ordine, "Senza tempo previsto"))
-
-        if data_fine:
-            if data_fine == today:
-                payload["cards"]["ordini_scadenza_oggi"] += 1
-                criticita.append(_dashboard_order_payload(ordine, "Scade oggi"))
-
-            elif data_fine < today:
-                payload["cards"]["ordini_in_ritardo"] += 1
-                criticita.append(_dashboard_order_payload(ordine, "In ritardo"))
-
-        if is_attivo and runtime is not None:
-            operatore = _norm_text(getattr(runtime, "Utente_operazione", ""))
-            if operatore:
-                operatori.setdefault(
-                    operatore,
-                    {
-                        "operatore": operatore,
-                        "ordini_attivi": 0,
-                        "ore_attive": 0.0,
-                        "ordini": [],
-                    },
-                )
-                operatori[operatore]["ordini_attivi"] += 1
-                operatori[operatore]["ore_attive"] += ore
-                operatori[operatore]["ordini"].append(_dashboard_order_payload(ordine))
-
-        risorsa = _dashboard_risorsa_attiva(ordine) or "-"
-        carico_risorsa.setdefault(
-            risorsa,
-            {
-                "risorsa": risorsa,
-                "ordini_attivi": 0,
-                "ordini_sospesi": 0,
-                "ordini_pianificati": 0,
-                "ore_attive": 0.0,
-                "ore_sospese": 0.0,
-                "ore_pianificate": 0.0,
-            },
-        )
-
-        if is_attivo:
-            carico_risorsa[risorsa]["ordini_attivi"] += 1
-            carico_risorsa[risorsa]["ore_attive"] += ore
-        elif is_sospeso:
-            carico_risorsa[risorsa]["ordini_sospesi"] += 1
-            carico_risorsa[risorsa]["ore_sospese"] += ore
-        elif is_pianificata:
-            carico_risorsa[risorsa]["ordini_pianificati"] += 1
-            carico_risorsa[risorsa]["ore_pianificate"] += ore
-
-        if _dashboard_is_collaudo(ordine):
-            payload["cards"]["ordini_collaudo"] += 1
-            collaudo_rows.append(_dashboard_order_payload(ordine, "Collaudo"))
-
-        # Criticità: attivo da troppo tempo rispetto al previsto.
-        if is_attivo and runtime is not None:
-            last_activation = getattr(runtime, "data_ultima_attivazione", None)
-            started_at = None
-
-            if last_activation:
-                try:
-                    started_at = datetime.fromisoformat(
-                        str(last_activation)
-                    ).astimezone(ROME_TZ)
-                except Exception:
-                    started_at = None
-
-            if started_at and ore > 0:
-                elapsed_hours = (
-                    datetime.now(ROME_TZ) - started_at
-                ).total_seconds() / 3600.0
-
-                if elapsed_hours > ore:
-                    record = _dashboard_order_payload(ordine, "Attivo oltre previsto")
-                    record["ore_attive_effettive"] = round(elapsed_hours, 2)
-                    criticita.append(record)
-
-    payload["cards"]["tempo_previsto_residuo"] = round(
-        payload["cards"]["tempo_previsto_residuo"],
-        2,
-    )
-    payload["cards"]["operatori_impegnati"] = len(operatori)
-
-    payload["charts"]["stati_ordine"] = [
-        {"label": key, "value": value} for key, value in stati_chart.items()
-    ]
-
-    capacity_by_weekday, capacity_operator_count = (
-        _dashboard_capacity_by_weekday_for_policy(
-            policy,
-            filters,
-        )
-    )
-
-    payload["cards"]["operatori_capacita"] = capacity_operator_count
-
-    payload["charts"]["carico_prossimi_giorni"] = _dashboard_carico_prossimo_mese(
-        filtered_ordini,
-        capacity_by_weekday=capacity_by_weekday,
-        capacity_operator_count=capacity_operator_count,
-    )
-
-    payload["operatori"] = sorted(
-        [
-            {
-                **row,
-                "ore_attive": round(float(row["ore_attive"] or 0.0), 2),
-            }
-            for row in operatori.values()
-        ],
-        key=lambda x: (-x["ordini_attivi"], x["operatore"].lower()),
-    )
-
-    payload["carico_risorsa"] = sorted(
-        [
-            {
-                **row,
-                "ore_attive": round(float(row["ore_attive"] or 0.0), 2),
-                "ore_sospese": round(float(row["ore_sospese"] or 0.0), 2),
-                "ore_pianificate": round(float(row["ore_pianificate"] or 0.0), 2),
-                "ore_totali": round(
-                    float(row["ore_attive"] or 0.0)
-                    + float(row["ore_sospese"] or 0.0)
-                    + float(row["ore_pianificate"] or 0.0),
-                    2,
-                ),
-            }
-            for row in carico_risorsa.values()
-        ],
-        key=lambda x: (-x["ore_totali"], x["risorsa"].lower()),
-    )
-
-    payload["charts"]["carico_per_risorsa"] = _dashboard_carico_per_risorsa_chart(
-        payload["carico_risorsa"]
-    )
-
-    payload["charts"]["carico_per_reparto"] = _dashboard_carico_per_reparto(
-        filtered_ordini
-    )
-
-    payload["charts"]["ordini_per_reparto"] = _dashboard_ordini_per_reparto(
-        filtered_ordini
-    )
-
-    payload["charts"]["ordini_per_risorsa"] = _dashboard_ordini_per_risorsa_chart(
-        payload["carico_risorsa"]
-    )
-
-    payload["charts"]["saturazione_risorse"] = _dashboard_saturazione_risorse(
-        payload["carico_risorsa"]
-    )
-    payload["cards"]["risorse_sovraccariche"] = sum(
-        1
-        for row in payload["charts"]["saturazione_risorse"]
-        if float(row.get("saturazione") or 0.0) > 110
-    )
-
-    payload["criticita"] = sorted(
-        criticita,
-        key=lambda x: (
-            0 if x["tipo"] == "In ritardo" else 1,
-            -int(x.get("ritardo_giorni") or 0),
-            x.get("data_fine_prevista") or "9999-12-31",
-        ),
-    )[:100]
-    payload["cards"]["ordini_critici"] = len(payload["criticita"])
-    payload["filter_options"] = _dashboard_finalize_filter_options(filter_options)
-
-    payload["collaudo"] = collaudo_rows[:100]
-    payload["capacity_calendar"] = _capacity_calendar_payload()
-    payload["details"] = sorted(
-        payload["details"],
-        key=lambda x: (
-            x.get("data_fine_prevista") or "9999-12-31",
-            x.get("stato") or "",
-            x.get("ordine") or "",
-        ),
-    )[:500]
-
-    return payload
-
-
-def _kpi_macchine_prodotte(rt: OdpRuntimeLog, il: InputOdpLog | None) -> float:
-    """
-    Numero macchine prodotte.
-
-    Regola corretta per il KPI:
-    - conta 1 macchina per ogni chiusura_finale valida;
-    - non somma QuantitaConforme;
-    - non somma Quantita;
-    - non conta chiusura_macchina, per evitare doppioni su ordini multifase.
-    """
-    azione = _norm_text(getattr(rt, "Azione", "")).lower()
-
-    if azione != "chiusura_finale":
-        return 0.0
-
-    return 1.0
-
-
-def _kpi_parse_date(value) -> date | None:
-    raw = _norm_text(value)
-    if not raw:
-        return None
-
-    raw = raw[:19]
-
-    for fmt in ("%Y-%m-%d", "%Y-%m-%d %H:%M:%S", "%d/%m/%Y", "%d/%m/%Y %H:%M:%S"):
+def _parse_distinta_materiale(ordine) -> list[dict]:
+    distinta = []
+    if ordine.DistintaMateriale:
         try:
-            return datetime.strptime(raw, fmt).date()
-        except ValueError:
-            pass
-
-    return None
-
-
-def _kpi_parse_datetime(value) -> datetime | None:
-    raw = _norm_text(value)
-    if not raw:
-        return None
-
-    try:
-        dt = datetime.fromisoformat(raw)
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=ROME_TZ)
-        return dt.astimezone(ROME_TZ)
-    except Exception:
-        pass
-
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%d/%m/%Y %H:%M:%S", "%Y-%m-%d", "%d/%m/%Y"):
-        try:
-            dt = datetime.strptime(raw[:19], fmt)
-            return dt.replace(tzinfo=ROME_TZ)
-        except ValueError:
-            pass
-
-    return None
-
-
-def _kpi_date_range_from_request() -> tuple[date, date]:
-    today = _dashboard_today()
-
-    default_from = today - timedelta(days=365)
-    default_to = today
-
-    date_from = _kpi_parse_date(request.args.get("date_from")) or default_from
-    date_to = _kpi_parse_date(request.args.get("date_to")) or default_to
-
-    if date_to < date_from:
-        date_from, date_to = date_to, date_from
-
-    return date_from, date_to
-
-
-def _kpi_event_is_eligible(rt: OdpRuntimeLog, il: InputOdpLog | None = None) -> bool:
-    azione = _norm_text(getattr(rt, "Azione", "")).lower()
-    topic = _norm_text(getattr(rt, "Topic", "")).lower()
-    motivo = _norm_text(getattr(rt, "Motivo", "")).lower()
-    payload = _norm_text(getattr(rt, "PayloadJson", "")).lower()
-
-    if azione not in {"chiusura_finale", "chiusura_macchina"}:
-        return False
-
-    if "eliminato_gestionale" in azione:
-        return False
-
-    if "eliminato_gestionale" in topic:
-        return False
-
-    if "eliminato dal gestionale" in motivo:
-        return False
-
-    if "eliminato_gestionale" in payload:
-        return False
-
-    if il is not None:
-        chiusura_parziale = _norm_text(getattr(il, "ChiusuraParziale", "")).lower()
-        if chiusura_parziale in {"1", "true", "si", "sì", "yes"}:
-            return False
-
-    return True
-
-
-def _kpi_jsonish_list(value) -> list[str]:
-    raw = _norm_text(value)
-    if not raw:
-        return []
-
-    try:
-        parsed = json.loads(raw)
-    except Exception:
-        return [raw]
-
-    if not isinstance(parsed, list):
-        parsed = [parsed]
-
-    out = []
-    for item in parsed:
-        value = _norm_text(item)
-        if value:
-            out.append(value)
-
-    return out
-
-
-def _kpi_active_value_from_list(raw_values, raw_phases, fase: str) -> str:
-    values = _kpi_jsonish_list(raw_values)
-    phases = _parse_phase_list(raw_phases)
-    fase = _norm_text(fase)
-
-    if not values:
-        return ""
-
-    if phases and len(phases) == len(values):
-        for phase, value in zip(phases, values):
-            if _norm_text(phase) == fase:
-                return _norm_text(value)
-
-    fase_int = _fase_to_int(fase)
-    if fase_int is not None:
-        idx = fase_int - 1
-        if 0 <= idx < len(values):
-            return _norm_text(values[idx])
-
-    if len(values) == 1:
-        return _norm_text(values[0])
-
-    return ""
-
-
-def _kpi_reparto_for_log(rt: OdpRuntimeLog, il: InputOdpLog | None) -> str:
-    if il is not None:
-        fase = _norm_text(getattr(il, "FaseConsuntivata", "")) or _norm_text(
-            getattr(il, "FaseAttiva", "")
-        )
-        value = _kpi_active_value_from_list(
-            getattr(il, "CodReparto", ""),
-            getattr(il, "NumFase", ""),
-            fase,
-        )
-        return _first_code_from_cell(value) or _first_code_from_cell(
-            getattr(il, "CodReparto", "")
-        )
-
-    return _first_code_from_cell(getattr(rt, "CodReparto", ""))
-
-
-def _kpi_risorsa_for_log(il: InputOdpLog | None) -> str:
-    if il is None:
-        return ""
-
-    if _norm_text(getattr(il, "RisorsaAttiva", "")):
-        return _norm_text(getattr(il, "RisorsaAttiva", ""))
-
-    fase = _norm_text(getattr(il, "FaseConsuntivata", "")) or _norm_text(
-        getattr(il, "FaseAttiva", "")
-    )
-
-    value = _kpi_active_value_from_list(
-        getattr(il, "CodRisorsaProd", ""),
-        getattr(il, "NumFase", ""),
-        fase,
-    )
-
-    return _first_code_from_cell(value)
-
-
-def _kpi_lavorazione_for_log(il: InputOdpLog | None) -> str:
-    if il is None:
-        return ""
-
-    if _norm_text(getattr(il, "LavorazioneAttiva", "")):
-        return _norm_text(getattr(il, "LavorazioneAttiva", ""))
-
-    fase = _norm_text(getattr(il, "FaseConsuntivata", "")) or _norm_text(
-        getattr(il, "FaseAttiva", "")
-    )
-
-    value = _kpi_active_value_from_list(
-        getattr(il, "CodLavorazione", ""),
-        getattr(il, "NumFase", ""),
-        fase,
-    )
-
-    return _first_code_from_cell(value)
-
-
-def _kpi_tempo_previsto_ore(il: InputOdpLog | None) -> float:
-    if il is None:
-        return 0.0
-
-    fase = _norm_text(getattr(il, "FaseConsuntivata", "")) or _norm_text(
-        getattr(il, "FaseAttiva", "")
-    )
-
-    raw = _kpi_active_value_from_list(
-        getattr(il, "TempoPrevistoLavoraz", ""),
-        getattr(il, "NumFase", ""),
-        fase,
-    )
-
-    value = _safe_float(raw)
-
-    if value > 0:
-        return value
-
-    return _safe_float(getattr(il, "TempoPrevistoLavoraz", ""))
-
-
-def _kpi_tempo_reale_ore(rt: OdpRuntimeLog, il: InputOdpLog | None) -> float:
-    if il is not None:
-        value = _safe_float(getattr(il, "TempoFunzionamentoFinale", ""))
-        if value > 0:
-            return value
-
-    value = _safe_float(getattr(rt, "TempoFunzionamentoPost", ""))
-    if value > 0:
-        return value
-
-    elapsed_seconds = _safe_float(getattr(rt, "ElapsedSeconds", ""))
-    if elapsed_seconds > 0:
-        return elapsed_seconds / 3600.0
-
-    return 0.0
-
-
-def _kpi_closed_at(rt: OdpRuntimeLog, il: InputOdpLog | None) -> datetime | None:
-    if il is not None:
-        dt = _kpi_parse_datetime(getattr(il, "ClosedAt", ""))
-        if dt is not None:
-            return dt
-
-    return _kpi_parse_datetime(getattr(rt, "EventAt", ""))
-
-
-def _kpi_data_fine_prevista(il: InputOdpLog | None) -> date | None:
-    if il is None:
-        return None
-
-    return _kpi_parse_date(getattr(il, "DataFineSched", ""))
-
-
-def _kpi_is_collaudo(reparto: str, risorsa: str, lavorazione: str) -> bool:
-    return (
-        _norm_text(reparto) == "70"
-        or "coll" in _norm_text(risorsa).lower()
-        or "coll" in _norm_text(lavorazione).lower()
-    )
-
-
-def _kpi_matches_filters(row: dict, filters: dict) -> bool:
-    for key in ("reparto", "risorsa", "lavorazione", "operatore", "articolo", "stato"):
-        expected = _norm_text(filters.get(key)).lower()
-        if not expected:
-            continue
-
-        current = _norm_text(row.get(key)).lower()
-
-        if expected not in current:
-            return False
-
-    return True
-
-
-def _dashboard_kpi_empty_payload() -> dict:
-    return {
-        "cards": {
-            "ordini_chiusi": 0,
-            "ordini_in_ritardo": 0,
-            "percentuale_ritardo": 0.0,
-            "giorni_medi_ritardo": 0.0,
-            "tempo_previsto_totale": 0.0,
-            "tempo_reale_totale": 0.0,
-            "scostamento_totale": 0.0,
-            "scostamento_medio": 0.0,
-            "tempo_medio_ordine": 0.0,
-            "tempo_medio_fase": 0.0,
-            "tempo_medio_collaudo": 0.0,
-            "collaudi_chiusi_oggi": 0,
-            "affidabilita_tempi": 0.0,
-            "ordini_tempi_affidabili": 0,
-            "ordini_tempi_non_affidabili": 0,
-        },
-        "charts": {
-            "tempo_reale_vs_previsto": [],
-            "ritardo_medio_reparto": [],
-            "ritardo_medio_risorsa": [],
-            "top_risorse_scostamento": [],
-            "top_reparti_scostamento": [],
-            "top_lavorazioni_scostamento": [],
-            "affidabilita_tempi": [],
-        },
-        "details": [],
-        "aggregati": {
-            "reparti": [],
-            "risorse": [],
-            "lavorazioni": [],
-            "operatori": [],
-            "articoli": [],
-        },
-        "filter_options": _dashboard_empty_filter_options(),
-    }
-
-
-def _new_kpi_group_bucket(key: str) -> dict:
-    return {
-        "key": key,
-        "ordini": 0,
-        "ritardi": 0,
-        "giorni_ritardo_totali": 0.0,
-        "tempo_previsto": 0.0,
-        "tempo_reale": 0.0,
-        "scostamento": 0.0,
-    }
-
-
-def _apply_kpi_group(bucket: dict, row: dict) -> None:
-    bucket["ordini"] += 1
-    bucket["tempo_previsto"] += float(row.get("tempo_previsto_ore") or 0.0)
-    bucket["tempo_reale"] += float(row.get("tempo_reale_ore") or 0.0)
-    bucket["scostamento"] += float(row.get("scostamento_ore") or 0.0)
-
-    ritardo_giorni = float(row.get("ritardo_giorni") or 0.0)
-    if ritardo_giorni > 0:
-        bucket["ritardi"] += 1
-        bucket["giorni_ritardo_totali"] += ritardo_giorni
-
-
-def _finalize_kpi_group(bucket: dict) -> dict:
-    ordini = int(bucket.get("ordini") or 0)
-    ritardi = int(bucket.get("ritardi") or 0)
-
-    tempo_previsto = float(bucket.get("tempo_previsto") or 0.0)
-    tempo_reale = float(bucket.get("tempo_reale") or 0.0)
-    scostamento = float(bucket.get("scostamento") or 0.0)
-
-    return {
-        "key": bucket["key"],
-        "ordini": ordini,
-        "ritardi": ritardi,
-        "percentuale_ritardo": round((ritardi / ordini) * 100, 2) if ordini else 0.0,
-        "giorni_medi_ritardo": round((bucket["giorni_ritardo_totali"] / ritardi), 2)
-        if ritardi
-        else 0.0,
-        "tempo_previsto": round(tempo_previsto, 2),
-        "tempo_reale": round(tempo_reale, 2),
-        "scostamento": round(scostamento, 2),
-        "scostamento_percentuale": round((scostamento / tempo_previsto) * 100, 2)
-        if tempo_previsto > 0
-        else 0.0,
-    }
-
-
-def _build_dashboard_kpi_payload(*, detail_limit: int | None = 500) -> dict:
-    payload = _dashboard_kpi_empty_payload()
-    date_from, date_to = _kpi_date_range_from_request()
-    date_from_dt = datetime.combine(date_from, datetime.min.time()).replace(
-        tzinfo=ROME_TZ
-    )
-    date_to_dt = datetime.combine(date_to, datetime.max.time()).replace(tzinfo=ROME_TZ)
-
-    filters = {
-        "reparto": request.args.get("reparto"),
-        "risorsa": request.args.get("risorsa"),
-        "lavorazione": request.args.get("lavorazione"),
-        "operatore": request.args.get("operatore"),
-        "articolo": request.args.get("articolo"),
-        "stato": request.args.get("stato"),
-    }
-
-    rows = (
-        db.session.query(OdpRuntimeLog, InputOdpLog)
-        .outerjoin(
-            InputOdpLog,
-            and_(
-                InputOdpLog.OperationGroupId == OdpRuntimeLog.OperationGroupId,
-                InputOdpLog.IdDocumento == OdpRuntimeLog.IdDocumento,
-                InputOdpLog.IdRiga == OdpRuntimeLog.IdRiga,
-            ),
-        )
-        .filter(OdpRuntimeLog.Azione.in_(["chiusura_finale", "chiusura_macchina"]))
-        .order_by(OdpRuntimeLog.EventAt.desc(), OdpRuntimeLog.log_id.desc())
-        .all()
-    )
-
-    detail_rows = []
-    today = _dashboard_today()
-    filter_options = _dashboard_new_filter_options_bucket()
-    filter_label_maps = _dashboard_filter_label_maps()
-    _dashboard_seed_master_filter_options(filter_options)
-
-    groups = {
-        "reparti": {},
-        "risorse": {},
-        "lavorazioni": {},
-        "operatori": {},
-        "articoli": {},
-    }
-
-    collaudo_tempi = []
-    collaudi_chiusi_oggi = 0
-    for rt, il in rows:
-        if not _kpi_event_is_eligible(rt, il):
-            continue
-
-        closed_at = _kpi_closed_at(rt, il)
-        if closed_at is None:
-            continue
-
-        if closed_at < date_from_dt or closed_at > date_to_dt:
-            continue
-
-        reparto = _kpi_reparto_for_log(rt, il)
-        risorsa = _kpi_risorsa_for_log(il)
-        lavorazione = _kpi_lavorazione_for_log(il)
-        macchine_prodotte = _kpi_macchine_prodotte(rt, il)
-
-        tempo_previsto = _kpi_tempo_previsto_ore(il)
-        tempo_reale = _kpi_tempo_reale_ore(rt, il)
-        scostamento = tempo_reale - tempo_previsto
-
-        data_fine_prevista = _kpi_data_fine_prevista(il)
-        ritardo_giorni = 0
-
-        if data_fine_prevista and closed_at.date() > data_fine_prevista:
-            ritardo_giorni = (closed_at.date() - data_fine_prevista).days
-
-        articolo = (
-            _norm_text(getattr(il, "CodArt", ""))
-            if il
-            else _norm_text(getattr(rt, "CodArt", ""))
-        )
-        descrizione = _norm_text(getattr(il, "DesArt", "")) if il else ""
-        operatore = _norm_text(getattr(rt, "UtenteOperazione", ""))
-        stato = _norm_text(getattr(rt, "StatoOrdinePost", "")) or _norm_text(
-            getattr(rt, "StatoOdpPost", "")
-        )
-
-        row = {
-            "operation_group_id": _norm_text(getattr(rt, "OperationGroupId", "")),
-            "id_documento": _norm_text(getattr(rt, "IdDocumento", "")),
-            "id_riga": _norm_text(getattr(rt, "IdRiga", "")),
-            "rif_registraz": _norm_text(getattr(rt, "RifRegistraz", "")),
-            "ordine": f"{_norm_text(getattr(rt, 'IdDocumento', ''))}/{_norm_text(getattr(rt, 'IdRiga', ''))}",
-            "event_at": closed_at.isoformat(timespec="seconds"),
-            "data_chiusura": closed_at.date().isoformat(),
-            "azione": _norm_text(getattr(rt, "Azione", "")),
-            "reparto": reparto,
-            "risorsa": risorsa,
-            "lavorazione": lavorazione,
-            "operatore": operatore,
-            "articolo": articolo,
-            "descrizione": descrizione,
-            "stato": stato,
-            "fase": _norm_text(getattr(il, "FaseConsuntivata", ""))
-            if il
-            else _norm_text(getattr(rt, "FasePost", "")),
-            "tempo_previsto_ore": round(tempo_previsto, 2),
-            "tempo_reale_ore": round(tempo_reale, 2),
-            "macchine_prodotte": round(macchine_prodotte, 2),
-            "scostamento_ore": round(scostamento, 2),
-            "scostamento_percentuale": round((scostamento / tempo_previsto) * 100, 2)
-            if tempo_previsto > 0
-            else None,
-            "data_fine_prevista": data_fine_prevista.isoformat()
-            if data_fine_prevista
-            else "",
-            "ritardo_giorni": ritardo_giorni,
-            "is_ritardo": ritardo_giorni > 0,
-            "is_collaudo": _kpi_is_collaudo(reparto, risorsa, lavorazione),
-        }
-
-        _dashboard_collect_filter_options_from_row(
-            filter_options,
-            {
-                **row,
-                "cod_art": row.get("articolo"),
-            },
-            filter_label_maps,
-        )
-
-        if not _kpi_matches_filters(row, filters):
-            continue
-
-        detail_rows.append(row)
-
-        for group_name, group_key in (
-            ("reparti", reparto or "-"),
-            ("risorse", risorsa or "-"),
-            ("lavorazioni", lavorazione or "-"),
-            ("operatori", operatore or "-"),
-            ("articoli", articolo or "-"),
-        ):
-            groups[group_name].setdefault(group_key, _new_kpi_group_bucket(group_key))
-            _apply_kpi_group(groups[group_name][group_key], row)
-
-        if row["is_collaudo"]:
-            collaudo_tempi.append(tempo_reale)
-            if closed_at.date() == today:
-                collaudi_chiusi_oggi += 1
-
-    ordini = len(detail_rows)
-    ritardi = sum(1 for row in detail_rows if row["is_ritardo"])
-    macchine_prodotte = sum(
-        float(row.get("macchine_prodotte", 0.0) or 0.0) for row in detail_rows
-    )
-
-    tempo_previsto_totale = sum(
-        float(row["tempo_previsto_ore"] or 0.0) for row in detail_rows
-    )
-    tempo_reale_totale = sum(
-        float(row["tempo_reale_ore"] or 0.0) for row in detail_rows
-    )
-    scostamento_totale = tempo_reale_totale - tempo_previsto_totale
-
-    giorni_ritardo_totali = sum(
-        float(row["ritardo_giorni"] or 0.0) for row in detail_rows if row["is_ritardo"]
-    )
-
-    rows_con_tempo_previsto = [
-        row for row in detail_rows if float(row.get("tempo_previsto_ore") or 0.0) > 0
-    ]
-    ordini_tempi_affidabili = sum(
-        1
-        for row in rows_con_tempo_previsto
-        if float(row.get("tempo_reale_ore") or 0.0)
-        <= float(row.get("tempo_previsto_ore") or 0.0) * 1.10
-    )
-    ordini_tempi_non_affidabili = max(
-        len(rows_con_tempo_previsto) - ordini_tempi_affidabili,
-        0,
-    )
-    affidabilita_tempi = (
-        round((ordini_tempi_affidabili / len(rows_con_tempo_previsto)) * 100, 2)
-        if rows_con_tempo_previsto
-        else 0.0
-    )
-
-    payload["cards"] = {
-        "ordini_chiusi": ordini,
-        "ordini_in_ritardo": ritardi,
-        "percentuale_ritardo": round((ritardi / ordini) * 100, 2) if ordini else 0.0,
-        "giorni_medi_ritardo": round(giorni_ritardo_totali / ritardi, 2)
-        if ritardi
-        else 0.0,
-        "macchine_prodotte": round(macchine_prodotte, 2),
-        "tempo_previsto_totale": round(tempo_previsto_totale, 2),
-        "tempo_reale_totale": round(tempo_reale_totale, 2),
-        "tempo_reale_vs_previsto": round(tempo_reale_totale - tempo_previsto_totale, 2),
-        "scostamento_totale": round(scostamento_totale, 2),
-        "scostamento_percentuale": round(
-            (scostamento_totale / tempo_previsto_totale) * 100, 2
-        )
-        if tempo_previsto_totale > 0
-        else 0.0,
-        "scostamento_medio": round(scostamento_totale / ordini, 2) if ordini else 0.0,
-        "tempo_medio_ordine": round(tempo_reale_totale / ordini, 2) if ordini else 0.0,
-        "tempo_medio_fase": round(tempo_reale_totale / ordini, 2) if ordini else 0.0,
-        "tempo_medio_collaudo": round(sum(collaudo_tempi) / len(collaudo_tempi), 2)
-        if collaudo_tempi
-        else 0.0,
-        "collaudi_chiusi_oggi": collaudi_chiusi_oggi,
-        "affidabilita_tempi": affidabilita_tempi,
-        "ordini_tempi_affidabili": ordini_tempi_affidabili,
-        "ordini_tempi_non_affidabili": ordini_tempi_non_affidabili,
-    }
-
-    payload["charts"]["tempo_reale_vs_previsto"] = [
-        {
-            "label": "Previsto",
-            "value": round(tempo_previsto_totale, 2),
-        },
-        {
-            "label": "Reale",
-            "value": round(tempo_reale_totale, 2),
-        },
-    ]
-
-    payload["aggregati"] = {
-        name: sorted(
-            [_finalize_kpi_group(bucket) for bucket in group.values()],
-            key=lambda x: (-x["ordini"], x["key"].lower()),
-        )[:50]
-        for name, group in groups.items()
-    }
-
-    reparto_labels = _dashboard_reparti_label_map()
-
-    payload["charts"]["ritardo_medio_reparto"] = [
-        {
-            "label": _dashboard_reparto_label(row["key"], reparto_labels),
-            "codice_reparto": row["key"],
-            "value": row["giorni_medi_ritardo"],
-            "ordini": row["ordini"],
-            "ritardi": row["ritardi"],
-        }
-        for row in sorted(
-            payload["aggregati"]["reparti"],
-            key=lambda x: (
-                -float(x.get("giorni_medi_ritardo") or 0.0),
-                -int(x.get("ritardi") or 0),
-                -int(x.get("ordini") or 0),
-                x.get("key", "").lower(),
-            ),
-        )
-        if int(row.get("ordini") or 0) > 0
-    ][:10]
-
-    payload["charts"]["ritardo_medio_risorsa"] = [
-        {
-            "label": row["key"],
-            "value": row["giorni_medi_ritardo"],
-        }
-        for row in payload["aggregati"]["risorse"]
-        if row["giorni_medi_ritardo"] > 0
-    ]
-
-    payload["charts"]["top_risorse_scostamento"] = [
-        {
-            "label": row["key"],
-            "value": row["scostamento_percentuale"],
-            "scostamento_ore": row["scostamento"],
-        }
-        for row in sorted(
-            payload["aggregati"]["risorse"],
-            key=lambda x: (
-                -float(x.get("scostamento_percentuale") or 0.0),
-                -float(x.get("scostamento") or 0.0),
-                x.get("key", "").lower(),
-            ),
-        )
-        if float(row.get("scostamento_percentuale") or 0.0) > 0
-    ][:10]
-
-    payload["charts"]["top_reparti_scostamento"] = [
-        {
-            "label": _dashboard_reparto_label(row["key"], reparto_labels),
-            "codice_reparto": row["key"],
-            "value": row["scostamento_percentuale"],
-            "scostamento_ore": row["scostamento"],
-        }
-        for row in sorted(
-            payload["aggregati"]["reparti"],
-            key=lambda x: (
-                -float(x.get("scostamento_percentuale") or 0.0),
-                -float(x.get("scostamento") or 0.0),
-                x.get("key", "").lower(),
-            ),
-        )
-        if float(row.get("scostamento_percentuale") or 0.0) > 0
-    ][:10]
-
-    payload["charts"]["top_lavorazioni_scostamento"] = [
-        {
-            "label": row["key"],
-            "value": row["scostamento_percentuale"],
-            "scostamento_ore": row["scostamento"],
-        }
-        for row in sorted(
-            payload["aggregati"]["lavorazioni"],
-            key=lambda x: (
-                -float(x.get("scostamento_percentuale") or 0.0),
-                -float(x.get("scostamento") or 0.0),
-                x.get("key", "").lower(),
-            ),
-        )
-        if float(row.get("scostamento_percentuale") or 0.0) > 0
-    ][:10]
-
-    payload["charts"]["affidabilita_tempi"] = [
-        {"label": "Entro +10%", "value": ordini_tempi_affidabili},
-        {"label": "Oltre +10%", "value": ordini_tempi_non_affidabili},
-    ]
-
-    sorted_details = sorted(
-        detail_rows,
-        key=lambda x: x["event_at"],
-        reverse=True,
-    )
-
-    if detail_limit is not None:
-        sorted_details = sorted_details[:detail_limit]
-
-    payload["details"] = sorted_details
-
-    payload["filters"] = {
-        "date_from": date_from.isoformat(),
-        "date_to": date_to.isoformat(),
-        **{k: _norm_text(v) for k, v in filters.items()},
-    }
-    payload["filter_options"] = _dashboard_finalize_filter_options(filter_options)
-
-    return payload
-
-
-def _excel_safe(value):
-    if value is None:
-        return ""
-
-    if isinstance(value, bool):
-        return "Sì" if value else "No"
-
-    return value
-
-
-def _autosize_worksheet(ws):
-    for column_cells in ws.columns:
-        max_length = 0
-        column_letter = get_column_letter(column_cells[0].column)
-
-        for cell in column_cells:
-            value = cell.value
-            if value is None:
-                continue
-
-            max_length = max(max_length, len(str(value)))
-
-        ws.column_dimensions[column_letter].width = min(max_length + 2, 45)
-
-
-def _write_sheet_from_rows(ws, headers: list[tuple[str, str]], rows: list[dict]):
-    for col_idx, (_, label) in enumerate(headers, start=1):
-        cell = ws.cell(row=1, column=col_idx, value=label)
-        cell.font = Font(bold=True)
-
-    for row_idx, row in enumerate(rows or [], start=2):
-        for col_idx, (key, _) in enumerate(headers, start=1):
-            ws.cell(
-                row=row_idx,
-                column=col_idx,
-                value=_excel_safe(row.get(key)),
-            )
-
-    ws.freeze_panes = "A2"
-    _autosize_worksheet(ws)
-
-
-def _write_kpi_summary_sheet(ws, data: dict):
-    ws.title = "Riepilogo"
-
-    cards = data.get("cards") or {}
-    filters = data.get("filters") or {}
-
-    rows = [
-        ("Periodo da", filters.get("date_from", "")),
-        ("Periodo a", filters.get("date_to", "")),
-        ("Filtro reparto", filters.get("reparto", "")),
-        ("Filtro risorsa", filters.get("risorsa", "")),
-        ("Filtro lavorazione", filters.get("lavorazione", "")),
-        ("Filtro operatore", filters.get("operatore", "")),
-        ("Filtro articolo", filters.get("articolo", "")),
-        ("Filtro stato", filters.get("stato", "")),
-        ("", ""),
-        ("Ordini chiusi", cards.get("ordini_chiusi", 0)),
-        ("Macchine prodotte", cards.get("macchine_prodotte", 0)),
-        ("Ordini in ritardo", cards.get("ordini_in_ritardo", 0)),
-        ("% ritardo", cards.get("percentuale_ritardo", 0)),
-        ("Giorni medi ritardo", cards.get("giorni_medi_ritardo", 0)),
-        ("Tempo previsto totale", cards.get("tempo_previsto_totale", 0)),
-        ("Tempo reale totale", cards.get("tempo_reale_totale", 0)),
-        ("Scostamento totale", cards.get("scostamento_totale", 0)),
-        ("% scostamento", cards.get("scostamento_percentuale", 0)),
-        ("Scostamento medio", cards.get("scostamento_medio", 0)),
-        ("Tempo medio ordine", cards.get("tempo_medio_ordine", 0)),
-        ("Tempo medio fase", cards.get("tempo_medio_fase", 0)),
-        ("Tempo medio collaudo", cards.get("tempo_medio_collaudo", 0)),
-        ("Collaudi chiusi oggi", cards.get("collaudi_chiusi_oggi", 0)),
-    ]
-
-    ws.cell(row=1, column=1, value="Parametro").font = Font(bold=True)
-    ws.cell(row=1, column=2, value="Valore").font = Font(bold=True)
-
-    for idx, (label, value) in enumerate(rows, start=2):
-        ws.cell(row=idx, column=1, value=label)
-        ws.cell(row=idx, column=2, value=_excel_safe(value))
-
-    ws.freeze_panes = "A2"
-    _autosize_worksheet(ws)
-
-
-def _add_aggregate_sheet(wb, title: str, rows: list[dict]):
-    ws = wb.create_sheet(title=title)
-
-    headers = [
-        ("key", "Voce"),
-        ("ordini", "Ordini"),
-        ("ritardi", "Ordini in ritardo"),
-        ("percentuale_ritardo", "% ritardo"),
-        ("giorni_medi_ritardo", "Giorni medi ritardo"),
-        ("tempo_previsto", "Tempo previsto"),
-        ("tempo_reale", "Tempo reale"),
-        ("scostamento", "Scostamento"),
-        ("scostamento_percentuale", "% scostamento"),
-    ]
-
-    _write_sheet_from_rows(ws, headers, rows)
-
-
-@main_bp.get("/dashboard-produzione")
-@operator_or_login_required
-def dashboard_produzione():
-    policy = _current_policy()
-
-    allowed_sections = _dashboard_produzione_allowed_sections(policy)
-
-    if not allowed_sections["cruscotto"] and not allowed_sections["kpi"]:
-        abort(403)
-
-    requested_section = _norm_text(request.args.get("section")).lower()
-    default_section = _dashboard_produzione_default_section(policy)
-
-    if requested_section not in {"cruscotto", "kpi"}:
-        active_section = default_section
-    elif requested_section == "cruscotto" and not allowed_sections["cruscotto"]:
-        active_section = default_section
-    elif requested_section == "kpi" and not allowed_sections["kpi"]:
-        active_section = default_section
-    else:
-        active_section = requested_section
-
-    if not active_section:
-        abort(403)
-
-    return render_template(
-        "dashboard_produzione.j2",
-        active_section=active_section,
-        dashboard_payload=_dashboard_produzione_initial_payload(policy),
-        allowed_sections=allowed_sections,
-        tab_session=active_token(),
-        operator_user=active_user(),
-        operator_policy=policy,
-        policy=policy,
-    )
-
-
-@main_bp.get("/api/dashboard-produzione/cruscotto")
-@require_active_perm("dashboard_produzione")
-def api_dashboard_produzione_cruscotto():
-    policy = _current_policy()
-
-    data = _dashboard_build_cruscotto_payload(policy)
-
-    return jsonify(
-        {
-            "ok": True,
-            "data": _json_safe(data),
-        }
-    ), 200
-
-
-@main_bp.get("/api/dashboard-produzione/kpi")
-@require_active_perm("kpi_produzione")
-def api_dashboard_produzione_kpi():
-    data = _build_dashboard_kpi_payload()
-
-    return jsonify(
-        {
-            "ok": True,
-            "data": _json_safe(data),
-        }
-    ), 200
-
-
-@main_bp.get("/api/dashboard-produzione/kpi/export")
-@require_active_perm("kpi_export")
-def api_dashboard_produzione_kpi_export():
-    data = _build_dashboard_kpi_payload(detail_limit=None)
-
-    wb = Workbook()
-
-    ws_summary = wb.active
-    _write_kpi_summary_sheet(ws_summary, data)
-
-    ws_detail = wb.create_sheet(title="Dettaglio")
-    detail_headers = [
-        ("data_chiusura", "Data chiusura"),
-        ("azione", "Azione"),
-        ("ordine", "Ordine"),
-        ("id_documento", "IdDocumento"),
-        ("id_riga", "IdRiga"),
-        ("rif_registraz", "RifRegistraz"),
-        ("articolo", "CodArt"),
-        ("descrizione", "Descrizione"),
-        ("reparto", "Reparto"),
-        ("risorsa", "Risorsa"),
-        ("lavorazione", "Lavorazione"),
-        ("operatore", "Operatore"),
-        ("fase", "Fase"),
-        ("stato", "Stato"),
-        ("tempo_previsto_ore", "Tempo previsto ore"),
-        ("tempo_reale_ore", "Tempo reale ore"),
-        ("scostamento_ore", "Scostamento ore"),
-        ("scostamento_percentuale", "% scostamento"),
-        ("data_fine_prevista", "Data fine prevista"),
-        ("ritardo_giorni", "Ritardo giorni"),
-        ("is_collaudo", "Collaudo"),
-        ("operation_group_id", "OperationGroupId"),
-    ]
-    _write_sheet_from_rows(ws_detail, detail_headers, data.get("details") or [])
-
-    aggregati = data.get("aggregati") or {}
-    _add_aggregate_sheet(wb, "Reparti", aggregati.get("reparti") or [])
-    _add_aggregate_sheet(wb, "Risorse", aggregati.get("risorse") or [])
-    _add_aggregate_sheet(wb, "Lavorazioni", aggregati.get("lavorazioni") or [])
-    _add_aggregate_sheet(wb, "Operatori", aggregati.get("operatori") or [])
-    _add_aggregate_sheet(wb, "Articoli", aggregati.get("articoli") or [])
-
-    output = BytesIO()
-    wb.save(output)
-    output.seek(0)
-
-    filters = data.get("filters") or {}
-    date_from = filters.get("date_from", "")
-    date_to = filters.get("date_to", "")
-
-    filename = f"kpi_produzione_{date_from}_{date_to}.xlsx"
-
-    return send_file(
-        output,
-        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        as_attachment=True,
-        download_name=filename,
-    )
-
-
-def _snapshot_float(value) -> float:
-    try:
-        return float(value or 0)
-    except (TypeError, ValueError):
-        return 0.0
-
-
-def _snapshot_int(value) -> int:
-    try:
-        return int(value or 0)
-    except (TypeError, ValueError):
-        return 0
-
-
-def _snapshot_row_to_dict(row: ProductionKpiSnapshot) -> dict:
-    return {
-        "id": row.id,
-        "snapshot_month": row.snapshot_month,
-        "scope_type": row.scope_type,
-        "scope_code": row.scope_code,
-        "period_start": row.period_start,
-        "period_end": row.period_end,
-        "ordini_chiusi": _snapshot_int(row.ordini_chiusi),
-        "ordini_in_ritardo": _snapshot_int(row.ordini_in_ritardo),
-        "macchine_prodotte": round(
-            _snapshot_float(getattr(row, "macchine_prodotte", 0)), 2
-        ),
-        "percentuale_ritardo": round(_snapshot_float(row.percentuale_ritardo), 2),
-        "giorni_medi_ritardo": round(_snapshot_float(row.giorni_medi_ritardo), 2),
-        "tempo_previsto_totale": round(_snapshot_float(row.tempo_previsto_totale), 2),
-        "tempo_reale_totale": round(_snapshot_float(row.tempo_reale_totale), 2),
-        "scostamento_totale": round(_snapshot_float(row.scostamento_totale), 2),
-        "scostamento_percentuale": round(
-            _snapshot_float(row.scostamento_percentuale), 2
-        ),
-        "tempo_medio_ordine": round(_snapshot_float(row.tempo_medio_ordine), 2),
-        "tempo_medio_fase": round(_snapshot_float(row.tempo_medio_fase), 2),
-        "created_at": row.created_at or "",
-        "created_by": row.created_by or "",
-    }
-
-
-def _snapshot_change(current_value, previous_value) -> dict:
-    current_value = _snapshot_float(current_value)
-    previous_value = _snapshot_float(previous_value)
-
-    delta = current_value - previous_value
-
-    if previous_value:
-        delta_percent = (delta / previous_value) * 100
-    else:
-        delta_percent = 0.0
-
-    return {
-        "current": round(current_value, 2),
-        "previous": round(previous_value, 2),
-        "delta": round(delta, 2),
-        "delta_percent": round(delta_percent, 2),
-    }
-
-
-def _build_kpi_snapshot_payload() -> dict:
-    scope_type = _norm_text(request.args.get("scope_type")) or "global"
-    scope_code = _norm_text(request.args.get("scope_code")) or "*"
-    months_limit = _home_config_int(request.args.get("months"), 12)
-
-    if months_limit <= 0:
-        months_limit = 12
-
-    if months_limit > 60:
-        months_limit = 60
-
-    query = ProductionKpiSnapshot.query
-
-    if scope_type:
-        query = query.filter(ProductionKpiSnapshot.scope_type == scope_type)
-
-    if scope_code:
-        query = query.filter(ProductionKpiSnapshot.scope_code == scope_code)
-
-    rows = (
-        query.order_by(ProductionKpiSnapshot.snapshot_month.desc())
-        .limit(months_limit)
-        .all()
-    )
-
-    rows_sorted = sorted(rows, key=lambda r: r.snapshot_month)
-
-    data_rows = [_snapshot_row_to_dict(row) for row in rows_sorted]
-
-    latest = data_rows[-1] if data_rows else None
-    previous = data_rows[-2] if len(data_rows) >= 2 else None
-
-    comparison = {}
-
-    if latest:
-        comparison = {
-            "ordini_chiusi": _snapshot_change(
-                latest.get("ordini_chiusi"),
-                previous.get("ordini_chiusi") if previous else 0,
-            ),
-            "ordini_in_ritardo": _snapshot_change(
-                latest.get("ordini_in_ritardo"),
-                previous.get("ordini_in_ritardo") if previous else 0,
-            ),
-            "percentuale_ritardo": _snapshot_change(
-                latest.get("percentuale_ritardo"),
-                previous.get("percentuale_ritardo") if previous else 0,
-            ),
-            "tempo_reale_totale": _snapshot_change(
-                latest.get("tempo_reale_totale"),
-                previous.get("tempo_reale_totale") if previous else 0,
-            ),
-            "scostamento_totale": _snapshot_change(
-                latest.get("scostamento_totale"),
-                previous.get("scostamento_totale") if previous else 0,
-            ),
-            "macchine_prodotte": _snapshot_change(
-                latest.get("macchine_prodotte"),
-                previous.get("macchine_prodotte") if previous else 0,
-            ),
-        }
-
-    available_scopes = (
-        db.session.query(
-            ProductionKpiSnapshot.scope_type,
-            ProductionKpiSnapshot.scope_code,
-        )
-        .distinct()
-        .order_by(
-            ProductionKpiSnapshot.scope_type.asc(),
-            ProductionKpiSnapshot.scope_code.asc(),
-        )
-        .all()
-    )
-
-    return {
-        "filters": {
-            "scope_type": scope_type,
-            "scope_code": scope_code,
-            "months": months_limit,
-        },
-        "available_scopes": [
-            {
-                "scope_type": st,
-                "scope_code": sc,
-                "label": f"{st}: {sc}",
-            }
-            for st, sc in available_scopes
-        ],
-        "latest": latest,
-        "previous": previous,
-        "comparison": comparison,
-        "series": {
-            "ordini_chiusi": [
-                {
-                    "month": row["snapshot_month"],
-                    "value": row["ordini_chiusi"],
-                }
-                for row in data_rows
-            ],
-            "ordini_in_ritardo": [
-                {
-                    "month": row["snapshot_month"],
-                    "value": row["ordini_in_ritardo"],
-                }
-                for row in data_rows
-            ],
-            "percentuale_ritardo": [
-                {
-                    "month": row["snapshot_month"],
-                    "value": row["percentuale_ritardo"],
-                }
-                for row in data_rows
-            ],
-            "tempo_previsto_reale": [
-                {
-                    "month": row["snapshot_month"],
-                    "tempo_previsto": row["tempo_previsto_totale"],
-                    "tempo_reale": row["tempo_reale_totale"],
-                    "scostamento": row["scostamento_totale"],
-                }
-                for row in data_rows
-            ],
-            "macchine_prodotte": [
-                {
-                    "month": row["snapshot_month"],
-                    "value": row["macchine_prodotte"],
-                }
-                for row in data_rows
-            ],
-        },
-        "rows": data_rows,
-    }
-
-
-WEEKDAY_LABELS = {
-    0: "Lunedì",
-    1: "Martedì",
-    2: "Mercoledì",
-    3: "Giovedì",
-    4: "Venerdì",
-    5: "Sabato",
-    6: "Domenica",
-}
-
-
-def _capacity_float(value, default: float = 0.0) -> float:
-    raw = _norm_text(value).replace(",", ".")
-    if not raw:
-        return default
-
-    try:
-        out = float(raw)
-    except (TypeError, ValueError):
-        return default
-
-    return max(out, 0.0)
-
-
-def _capacity_scope_code_is_valid(scope_type: str, scope_code: str) -> bool:
-    scope_type = _norm_text(scope_type)
-    scope_code = _norm_text(scope_code)
-
-    if scope_type != "operatore":
-        return False
-
-    try:
-        user_id = int(scope_code)
-    except (TypeError, ValueError):
-        return False
-
-    return (
-        User.query.filter(
-            User.id == user_id,
-            User.active.is_(True),
-        ).first()
-        is not None
-    )
-
-
-def _capacity_row_to_dict(row: ProductionCapacityCalendar) -> dict:
-    return {
-        "id": row.id,
-        "scope_type": row.scope_type,
-        "scope_code": row.scope_code,
-        "weekday": int(row.weekday),
-        "weekday_label": WEEKDAY_LABELS.get(int(row.weekday), str(row.weekday)),
-        "hours_capacity": float(row.hours_capacity or 0.0),
-        "active": bool(row.active),
-        "updated_at": row.updated_at or "",
-        "updated_by": row.updated_by or "",
-    }
-
-
-def _capacity_settings_payload() -> dict:
-    rows = (
-        ProductionCapacityCalendar.query.filter(
-            ProductionCapacityCalendar.scope_type == "operatore"
-        )
-        .order_by(
-            ProductionCapacityCalendar.scope_code.asc(),
-            ProductionCapacityCalendar.weekday.asc(),
-        )
-        .all()
-    )
-
-    operatori = (
-        User.query.filter(User.active.is_(True)).order_by(User.username.asc()).all()
-    )
-
-    return {
-        "weekdays": [
-            {"weekday": key, "label": label} for key, label in WEEKDAY_LABELS.items()
-        ],
-        "capacity_rows": [_capacity_row_to_dict(row) for row in rows],
-        "operatori": [
-            {
-                "codice": str(int(u.id)),
-                "descrizione": f"{u.username or ''} - {u.RepartoPrinc or 'senza reparto'}",
-                "username": u.username or "",
-                "reparto_princ": u.RepartoPrinc or "",
-            }
-            for u in operatori
-        ],
-    }
-
-
-@main_bp.get("/api/impostazioni/production-capacity")
-@require_active_perm("kpi_config")
-def api_production_capacity_data():
-    return jsonify(
-        {
-            "ok": True,
-            "data": _capacity_settings_payload(),
-        }
-    ), 200
-
-
-@main_bp.post("/api/impostazioni/production-capacity")
-@require_active_perm("kpi_config")
-def api_save_production_capacity():
-    data = request.get_json(silent=True) or {}
-
-    scope_type = _norm_text(data.get("scope_type")).lower() or "operatore"
-
-    if scope_type != "operatore":
-        return jsonify(
-            {
-                "ok": False,
-                "error": "La capacità produttiva può essere configurata solo per operatore.",
-            }
-        ), 400
-
-    scope_code = _norm_text(data.get("scope_code"))
-
-    if not scope_code:
-        return jsonify({"ok": False, "error": "Codice scope obbligatorio."}), 400
-
-    if not _capacity_scope_code_is_valid(scope_type, scope_code):
-        return jsonify({"ok": False, "error": "Scope non valido o non esistente."}), 400
-
-    rows = data.get("rows") or []
-
-    if not isinstance(rows, list):
-        return jsonify({"ok": False, "error": "Formato righe non valido."}), 400
-
-    if not rows:
-        return jsonify({"ok": False, "error": "Nessuna riga capacità ricevuta."}), 400
-
-    now = _now_rome_dt().isoformat(timespec="seconds")
-    username = _current_username()
-
-    try:
-        for item in rows:
-            weekday = _home_config_int(item.get("weekday"), -1)
-
-            if weekday < 0 or weekday > 6:
-                return jsonify(
-                    {"ok": False, "error": "Giorno settimana non valido."}
-                ), 400
-
-            hours = _capacity_float(item.get("hours_capacity"), 0.0)
-            active = _parse_bool_flag(item.get("active", True))
-
-            row = ProductionCapacityCalendar.query.filter_by(
-                scope_type=scope_type,
-                scope_code=scope_code,
-                weekday=weekday,
-            ).first()
-
-            if row is None:
-                row = ProductionCapacityCalendar(
-                    scope_type=scope_type,
-                    scope_code=scope_code,
-                    weekday=weekday,
-                )
-                db.session.add(row)
-
-            row.hours_capacity = hours
-            row.active = active
-            row.updated_at = now
-            row.updated_by = username
-
-        db.session.commit()
-
-    except Exception as exc:
-        db.session.rollback()
-        current_app.logger.exception("Errore salvataggio production_capacity_calendar")
-        return jsonify({"ok": False, "error": f"Errore salvataggio: {exc}"}), 500
-
-    return jsonify(
-        {
-            "ok": True,
-            "message": "Capacità produttiva salvata.",
-            "data": _capacity_settings_payload(),
-        }
-    ), 200
-
-
-@main_bp.get("/api/dashboard-produzione/kpi/snapshots")
-@require_active_perm("kpi_produzione")
-def api_dashboard_produzione_kpi_snapshots():
-    data = _build_kpi_snapshot_payload()
-
-    return jsonify(
-        {
-            "ok": True,
-            "data": _json_safe(data),
-        }
-    ), 200
-
-
-@main_bp.get("/api/dash-reparto")
-@main_bp.get("/dash-reparto")
-@require_active_perm("dash_reparto")
-def dash_reparto():
-    user = active_user()
-    manageable_role_ids = user.manageable_role_ids
-    utenti_subordinati = []
-
-    if manageable_role_ids:
-        utenti_subordinati = (
-            User.query.join(user_roles, user_roles.c.user_id == User.id)
-            .filter(
-                User.active.is_(True),
-                User.id != user.id,
-                user_roles.c.role_id.in_(manageable_role_ids),
-            )
-            .distinct()
-            .order_by(User.username.asc())
-            .all()
-        )
-
-    utenti_data = {}
-    utenti_data[user.username] = {
-        "id": user.id,
-        "username": user.username,
-        "is_current": True,
-        "kpi": {
-            "attivi": 0,
-            "sospesi": 0,
-            "ore_lavorazione_attivi": 0.0,
-            "ore_lavorazione_sospesi": 0.0,
-            "minuti_attrezzaggio_attivi": 0.0,
-            "minuti_attrezzaggio_sospesi": 0.0,
-        },
-        "ordini_attivi": [],
-        "ordini_sospesi": [],
-    }
-
-    for utente in utenti_subordinati:
-        utenti_data[utente.username] = {
-            "id": utente.id,
-            "username": utente.username,
-            "is_current": False,
-            "kpi": {
-                "attivi": 0,
-                "sospesi": 0,
-                "ore_lavorazione_attivi": 0.0,
-                "ore_lavorazione_sospesi": 0.0,
-                "minuti_attrezzaggio_attivi": 0.0,
-                "minuti_attrezzaggio_sospesi": 0.0,
-                "giorni_impegno_attivi": 0.0,
-                "giorni_impegno_attivi_sospesi": 0.0,
-            },
-            "ordini_attivi": [],
-            "ordini_sospesi": [],
-        }
-
-    if utenti_data:
-        ordini = (
-            InputOdp.query.join(InputOdp.runtime_row)
-            .filter(
-                InputOdpRuntime.Stato_odp.in_(("Attivo", "In Sospeso")),
-                InputOdpRuntime.Utente_operazione.in_(list(utenti_data.keys())),
-            )
-            .all()
-        )
-
-        for ordine in ordini:
-            runtime = ordine.runtime_row
-            if runtime is None:
-                continue
-
-            username_operatore = _norm_text(runtime.Utente_operazione)
-            if username_operatore not in utenti_data:
-                continue
-
-            ore_lavorazione = _order_hours_snapshot_reparto(ordine)
-            minuti_attrezzaggio = _safe_float(getattr(ordine, "AttrezzaggioAttivo", ""))
-
-            record = {
-                "ordine": _ordine_ref_label(ordine),
-                "descrizione": _norm_text(ordine.DesArt),
-                "quantita": _norm_text(ordine.Quantita),
-                "risorsa": _first_not_blank(
-                    runtime.RisorsaAttiva,
-                    InputOdp._active_value_from_phase_list(
-                        ordine.CodRisorsaProd,
-                        ordine.FaseAttiva,
-                    ),
-                    default="-",
-                ),
-                "tempo_lavorazione": round(ore_lavorazione, 2),
-                "tempo_attrezzaggio": round(minuti_attrezzaggio, 2),
-            }
-
-            stato_runtime = _norm_text(runtime.Stato_odp).lower()
-
-            if stato_runtime == "attivo":
-                bucket_key = "ordini_attivi"
-                utenti_data[username_operatore]["kpi"]["ore_lavorazione_attivi"] += (
-                    ore_lavorazione
-                )
-                utenti_data[username_operatore]["kpi"][
-                    "minuti_attrezzaggio_attivi"
-                ] += minuti_attrezzaggio
-            else:
-                bucket_key = "ordini_sospesi"
-                utenti_data[username_operatore]["kpi"]["ore_lavorazione_sospesi"] += (
-                    ore_lavorazione
-                )
-                utenti_data[username_operatore]["kpi"][
-                    "minuti_attrezzaggio_sospesi"
-                ] += minuti_attrezzaggio
-
-            utenti_data[username_operatore][bucket_key].append(record)
-
-    for payload in utenti_data.values():
-        payload["kpi"]["attivi"] = len(payload["ordini_attivi"])
-        payload["kpi"]["sospesi"] = len(payload["ordini_sospesi"])
-        payload["kpi"]["ore_lavorazione_attivi"] = round(
-            payload["kpi"]["ore_lavorazione_attivi"],
-            2,
-        )
-        payload["kpi"]["ore_lavorazione_sospesi"] = round(
-            payload["kpi"]["ore_lavorazione_sospesi"],
-            2,
-        )
-        payload["kpi"]["minuti_attrezzaggio_attivi"] = round(
-            payload["kpi"]["minuti_attrezzaggio_attivi"],
-            2,
-        )
-        payload["kpi"]["minuti_attrezzaggio_sospesi"] = round(
-            payload["kpi"]["minuti_attrezzaggio_sospesi"],
-            2,
-        )
-        ore_attivi_tot = payload["kpi"]["ore_lavorazione_attivi"] + (
-            payload["kpi"]["minuti_attrezzaggio_attivi"] / 60.0
-        )
-
-        ore_attivi_sospesi_tot = payload["kpi"]["ore_lavorazione_sospesi"] + (
-            payload["kpi"]["minuti_attrezzaggio_sospesi"] / 60.0
-        )
-
-        payload["kpi"]["giorni_impegno_attivi"] = _hours_to_work_days(ore_attivi_tot)
-        payload["kpi"]["giorni_impegno_attivi_sospesi"] = _hours_to_work_days(
-            ore_attivi_sospesi_tot
-        )
-
-    lista_utenti = sorted(
-        utenti_data.values(),
-        key=lambda x: (
-            0 if x.get("is_current") else 1,
-            (x.get("username") or "").lower(),
-        ),
-    )
-
-    return render_template(
-        "dash_reparto.j2",
-        utenti_dashboard=lista_utenti,
-    )
-
-
-def _ordine_ref_label(ordine) -> str:
-    ref = format_ordine_ref_display_from_ordine(ordine)
-
-    if ref:
-        return ref
-
-    return f"{_norm_text(ordine.IdDocumento)} {_norm_text(ordine.IdRiga)}".strip()
-
-
-def _remaining_phase_codes_for_ordine(ordine) -> set[str]:
-    fasi = _phase_sequence_for_ordine(ordine)
-    fase_attiva_int = _fase_to_int(getattr(ordine, "FaseAttiva", "")) or 1
-
-    if not fasi:
-        return {str(fase_attiva_int)}
-
-    idx = 0
-    for i, fase in enumerate(fasi):
-        fase_int = _fase_to_int(fase)
-        if fase_int is not None and fase_int >= fase_attiva_int:
-            idx = i
-            break
-
-    out = set()
-    for fase in fasi[idx:]:
-        fase_int = _fase_to_int(fase)
-        if fase_int is not None:
-            out.add(str(fase_int))
-
-    return out or {str(fase_attiva_int)}
-
-
-def _normalize_acq_mag_code(value) -> str:
-    raw = _norm_text(value)
-    if not raw:
-        return ""
-
-    try:
-        num = Decimal(raw.replace(",", "."))
-        if num == num.to_integral_value():
-            return str(int(num))
-    except (InvalidOperation, ValueError):
-        pass
-
-    return raw
-
-
-def _material_key(cod_art: str, variante_art: str) -> tuple[str, str]:
-    return (
-        _norm_text(cod_art),
-        _normalize_variante_articolo_search(variante_art),
-    )
-
-
-ACQUISTI_MAGAZZINI_GIACENZA = ("0", "6", "10", "11", "12", "13")
-ACQUISTI_MAGAZZINI_MATERIALE = ("0",)
-
-
-def _build_acquisti_giacenze_map(
-    magazzini_codes: tuple[str, ...],
-) -> dict[str, dict[str, float]]:
-    grouped: dict[str, dict[str, float]] = {}
-    allowed_mags = {_normalize_acq_mag_code(mag) for mag in magazzini_codes}
-
-    for giacenza in AcqGiacenze.query.all():
-        cod_art = _norm_text(giacenza.CodArt)
-        cod_mag = _normalize_acq_mag_code(giacenza.CodMag)
-
-        if not cod_art or cod_mag not in allowed_mags:
-            continue
-
-        article_bucket = grouped.setdefault(
-            cod_art,
-            {mag: 0.0 for mag in allowed_mags},
-        )
-
-        article_bucket[cod_mag] += _safe_float(getattr(giacenza, "Giacenza", 0))
-
-    return grouped
-
-
-def _build_acquisti_materiale_mag0_map() -> dict[tuple[str, str], float]:
-    grouped: dict[tuple[str, str], float] = {}
-
-    for giacenza in AcqGiacenze.query.all():
-        cod_art = _norm_text(giacenza.CodArt)
-        variante_art = _normalize_variante_articolo_search(
-            getattr(giacenza, "VarianteArt", "")
-        )
-        cod_mag = _normalize_acq_mag_code(giacenza.CodMag)
-
-        if not cod_art or cod_mag != "0":
-            continue
-
-        key = _material_key(cod_art, variante_art)
-        grouped[key] = grouped.get(key, 0.0) + _safe_float(
-            getattr(giacenza, "Giacenza", 0)
-        )
-
-    return grouped
-
-
-def _new_acq_material_row(cod_art: str, variante_art: str) -> dict:
-    return {
-        "CodArt": _norm_text(cod_art),
-        "VarianteArt": _norm_text(variante_art),
-        "IndiceModifica": "",
-        "DesArt": "",
-        "QtyMag0": None,
-        "MaterialeDaConsumare": 0.0,
-        "MaterialeImpegnato": 0.0,
-        "MaterialeProdotto": 0.0,
-        "RimanenzaMateriale": 0.0,
-        "PianTempoApprovFisso": 0,
-        "LottoRiordino": 0.0,
-        "PuntoRiordino": 0.0,
-        "Mag0Missing": True,
-        "DistintaDettagli": [],
-        "OrdineDettagli": [],
-        "MagUM": "",
-    }
-
-
-def _build_acquisti_materiale_rows() -> list[dict]:
-    ordini = _base_odp_query().all()
-
-    articoli_map = {
-        _norm_text(row.CodArt): row
-        for row in AcqArticoli.query.all()
-        if _norm_text(row.CodArt)
-    }
-
-    giacenze_materiale_totali = _build_acquisti_materiale_mag0_map()
-    grouped: dict[tuple[str, str], dict] = {}
-
-    for ordine in ordini:
-        stato_norm = _norm_text(getattr(ordine, "StatoOrdine", "")).lower()
-        if stato_norm == "chiusa":
-            continue
-
-        if (
-            "attiv" not in stato_norm
-            and "pianificat" not in stato_norm
-            and "sospes" not in stato_norm
-        ):
-            continue
-
-        runtime = getattr(ordine, "runtime_row", None)
-
-        try:
-            qty_residua = _qty_da_lavorare_decimal(ordine, stato=runtime)
-        except ValueError:
-            continue
-
-        if qty_residua <= 0:
-            continue
-
-        try:
-            qty_totale = _parse_qty_decimal(getattr(ordine, "Quantita", "0"))
-        except ValueError:
-            qty_totale = qty_residua
-
-        ordine_ref = _ordine_ref_label(ordine)
-        cod_art_ordine = _norm_text(getattr(ordine, "CodArt", ""))
-        variante_ordine = _norm_text(getattr(ordine, "VarianteArt", ""))
-        des_art_ordine = _norm_text(getattr(ordine, "DesArt", ""))
-
-        # materiale prodotto dall'ordine
-        if cod_art_ordine:
-            key = _material_key(cod_art_ordine, variante_ordine)
-            row = grouped.setdefault(
-                key, _new_acq_material_row(cod_art_ordine, variante_ordine)
-            )
-
-            if not row["DesArt"]:
-                row["DesArt"] = des_art_ordine
-
-            row["MaterialeProdotto"] += float(qty_residua)
-            row["OrdineDettagli"].append(
-                {
-                    "Ordine": ordine_ref,
-                    "Stato": _norm_text(ordine.StatoOrdine),
-                    "Quantita": _decimal_to_text(qty_residua),
-                    "Tipo": "ordine",
-                    "DescrizioneOrdine": des_art_ordine,
-                }
-            )
-
-        # materiali in distinta per tutte le fasi residue
-        remaining_phases = _remaining_phase_codes_for_ordine(ordine)
-        distinta = _parse_distinta_materiale(ordine)
-
-        for comp in distinta:
-            if not isinstance(comp, dict):
-                continue
-
-            comp_phase = _fase_to_int(comp.get("NumFase"))
-            if comp_phase is None or str(comp_phase) not in remaining_phases:
-                continue
-
-            comp_cod_art = _norm_text(comp.get("CodArt", ""))
-            comp_variante = _norm_text(comp.get("VarianteArt", ""))
-            comp_des_art = _norm_text(comp.get("DesArt", ""))
-
-            if not comp_cod_art:
-                continue
-
-            qty_comp_residua = _scaled_component_qty(
-                comp.get("Quantita"),
-                q_lavorata=qty_residua,
-                q_tot=qty_totale,
-            )
-
-            if qty_comp_residua <= 0:
-                continue
-
-            key = _material_key(comp_cod_art, comp_variante)
-            row = grouped.setdefault(
-                key, _new_acq_material_row(comp_cod_art, comp_variante)
-            )
-            articolo_comp = articoli_map.get(comp_cod_art)
-
-            if not row["MagUM"]:
-                row["MagUM"] = _extract_comp_udm(comp, articolo=articolo_comp)
-
-            if not row["DesArt"]:
-                row["DesArt"] = comp_des_art
-
-            if "pianificat" in stato_norm:
-                row["MaterialeDaConsumare"] += float(qty_comp_residua)
-            elif "attiv" in stato_norm or "sospes" in stato_norm:
-                row["MaterialeImpegnato"] += float(qty_comp_residua)
-
-            articolo_ordine = articoli_map.get(cod_art_ordine)
-            if not row["MagUM"]:
-                row["MagUM"] = _first_not_blank_text(
-                    getattr(articolo_ordine, "MagUM", "") if articolo_ordine else "",
-                )
-
-            row["DistintaDettagli"].append(
-                {
-                    "Ordine": ordine_ref,
-                    "Stato": _norm_text(ordine.StatoOrdine),
-                    "Fase": str(comp_phase),
-                    "Quantita": _decimal_to_text(qty_comp_residua),
-                    "Tipo": "distinta",
-                    "DescrizioneOrdine": des_art_ordine,
-                    "MagUM": _extract_comp_udm(comp, articolo=articolo_comp),
-                }
-            )
-
-    rows_out = []
-
-    for _, row in grouped.items():
-        articolo = articoli_map.get(row["CodArt"])
-        giacenza_totale = giacenze_materiale_totali.get(
-            _material_key(
-                row["CodArt"],
-                _normalize_variante_art(row["VarianteArt"]),
-            )
-        )
-        if not row["MagUM"]:
-            row["MagUM"] = _first_not_blank_text(
-                getattr(articolo, "MagUM", "") if articolo else "",
-            )
-        row["IndiceModifica"] = _normalize_indice_articolo_search(
-            getattr(articolo, "IndiceModifica", "") if articolo else ""
-        )
-        row["LottoRiordino"] = float(getattr(articolo, "LottoRiordino", 0) or 0)
-        row["PuntoRiordino"] = float(getattr(articolo, "PuntoRiordino", 0) or 0)
-        row["PianTempoApprovFisso"] = int(
-            getattr(articolo, "PianTempoApprovFisso", 0) or 0
-        )
-
-        if giacenza_totale is not None:
-            row["QtyMag0"] = float(giacenza_totale)
-            row["Mag0Missing"] = False
-        else:
-            row["QtyMag0"] = None
-            row["Mag0Missing"] = True
-
-        qty_mag_for_balance = float(row["QtyMag0"] or 0)
-
-        row["RimanenzaMateriale"] = (
-            qty_mag_for_balance
-            + float(row["MaterialeProdotto"] or 0)
-            - float(row["MaterialeDaConsumare"] or 0)
-            - float(row["MaterialeImpegnato"] or 0)
-        )
-
-        row["QtyMag0Text"] = (
-            ""
-            if row["QtyMag0"] is None
-            else _decimal_to_text(Decimal(str(row["QtyMag0"])))
-        )
-        row["MaterialeDaConsumareText"] = _decimal_to_text(
-            Decimal(str(row["MaterialeDaConsumare"]))
-        )
-        row["MaterialeImpegnatoText"] = _decimal_to_text(
-            Decimal(str(row["MaterialeImpegnato"]))
-        )
-        row["MaterialeProdottoText"] = _decimal_to_text(
-            Decimal(str(row["MaterialeProdotto"]))
-        )
-        row["LottoRiordinoText"] = _decimal_to_text(Decimal(str(row["LottoRiordino"])))
-        row["PuntoRiordinoText"] = _decimal_to_text(Decimal(str(row["PuntoRiordino"])))
-
-        row["DistintaDettagli"].sort(
-            key=lambda x: (
-                (x.get("Ordine") or "").lower(),
-                (x.get("Fase") or "").lower(),
-            )
-        )
-        row["OrdineDettagli"].sort(key=lambda x: ((x.get("Ordine") or "").lower(),))
-        row["RimanenzaMaterialeText"] = _decimal_to_text(
-            Decimal(str(row["RimanenzaMateriale"]))
-        )
-        row["RimanenzaMaterialeCritica"] = row["RimanenzaMateriale"] <= 0
-        row["RimanenzaMaterialeSottoScorta"] = not row[
-            "RimanenzaMaterialeCritica"
-        ] and row["RimanenzaMateriale"] <= float(row["PuntoRiordino"] or 0)
-        row["ModalPayload"] = {
-            "cod_art": row["CodArt"],
-            "variante_art": row["VarianteArt"],
-            "indice_modifica": row["IndiceModifica"],
-            "des_art": row["DesArt"],
-            "mag_um": row["MagUM"],
-            "in_distinta": row["DistintaDettagli"],
-            "in_ordine": row["OrdineDettagli"],
-        }
-
-        rows_out.append(row)
-
-    rows_out.sort(
-        key=lambda x: (
-            0 if x["Mag0Missing"] else 1,
-            (x["CodArt"] or "").lower(),
-            (x["VarianteArt"] or "").lower(),
-        )
-    )
-
-    return rows_out
-
-
-def _first_not_blank_text(*values) -> str:
-    for value in values:
-        txt = _norm_text(value)
-        if txt:
-            return txt
-    return ""
-
-
-def _extract_comp_udm(comp: dict, articolo=None) -> str:
-    return _first_not_blank_text(
-        comp.get("TecniciUm"),
-        comp.get("MagUM"),
-        comp.get("Udm"),
-        comp.get("UM"),
-        getattr(articolo, "MagUM", ""),
-    )
-
-
-def _norm_variante_art(value) -> str:
-    if value is None:
-        return ""
-
-    text = str(value).strip()
-
-    if text.lower() in {"nan", "none", "null"}:
-        return ""
-    if text.upper() in {"X", "-"}:
-        return ""
-
-    return text
-
-
-def _normalize_variante_art(value) -> str:
-    variante = _norm_text(value)
-    if not variante:
-        return ""
-    if variante == "-" or variante.upper() == "X":
-        return ""
-    return variante
-
-
-def _build_acquisti_giacenze_rows() -> list[dict]:
-    magazzini = ["6", "0", "10", "11", "12", "13"]
-
-    articoli_by_codart = {_norm_text(a.CodArt): a for a in AcqArticoli.query.all()}
-
-    lookup_by_codart_variante = {}
-
-    for item in AcqArticoliLookup.query.all():
-        cod_art = _norm_text(item.CodArt)
-        variante_art = _normalize_variante_art(getattr(item, "VarianteArt", ""))
-
-        if not cod_art:
-            continue
-
-        lookup_by_codart_variante.setdefault(
-            (cod_art, variante_art),
-            item,
-        )
-
-    rows = {}
-
-    for giac in AcqGiacenze.query.all():
-        cod_art = _norm_text(giac.CodArt)
-        variante_art = _normalize_variante_art(getattr(giac, "VarianteArt", ""))
-        cod_mag = _norm_text(giac.CodMag)
-
-        if not cod_art:
-            continue
-
-        key = (cod_art, variante_art)
-
-        lookup = lookup_by_codart_variante.get(key) or lookup_by_codart_variante.get(
-            (cod_art, "")
-        )
-
-        articolo_base = articoli_by_codart.get(cod_art)
-
-        if key not in rows:
-            rows[key] = {
-                "CodArt": cod_art,
-                "VarianteArt": variante_art,
-                "IndiceModifica": _normalize_indice_articolo_search(
-                    getattr(articolo_base, "IndiceModifica", "")
-                    or getattr(lookup, "IndiceModifica", "")
-                ),
-                "DesArt": (
-                    _norm_text(getattr(lookup, "DesArt", ""))
-                    or _norm_text(getattr(articolo_base, "DesArt", ""))
-                ),
-                "MagUM": (
-                    _norm_text(getattr(lookup, "MagUM", ""))
-                    or _norm_text(getattr(articolo_base, "MagUM", ""))
-                ),
-                "Mag_6": 0.0,
-                "Mag_0": 0.0,
-                "Mag_10": 0.0,
-                "Mag_11": 0.0,
-                "Mag_12": 0.0,
-                "Mag_13": 0.0,
-                "PuntoRiordino": float(
-                    getattr(lookup, "PuntoRiordino", None)
-                    or getattr(articolo_base, "PuntoRiordino", 0)
-                    or 0
-                ),
-                "LottoRiordino": float(
-                    getattr(lookup, "LottoRiordino", None)
-                    or getattr(articolo_base, "LottoRiordino", 0)
-                    or 0
-                ),
-                "PianTempoApprovFisso": int(
-                    getattr(lookup, "PianTempoApprovFisso", None)
-                    or getattr(articolo_base, "PianTempoApprovFisso", 0)
-                    or 0
-                ),
-                "DataPrevistaApprovvigionamento": (
-                    _norm_text(getattr(lookup, "DataPrevistaApprovvigionamento", ""))
-                    or _norm_text(
-                        getattr(articolo_base, "DataPrevistaApprovvigionamento", "")
-                    )
-                ),
-            }
-
-        mag_key = f"Mag_{cod_mag}"
-
-        if mag_key in rows[key]:
-            rows[key][mag_key] += _safe_float(getattr(giac, "Giacenza", 0))
-
-    return sorted(
-        rows.values(),
-        key=lambda r: (
-            _norm_text(r.get("CodArt")).lower(),
-            _norm_text(r.get("VarianteArt")).lower(),
-        ),
-    )
-
-
-def _ordine_state_rank(stato: str) -> int:
-    s = _norm_text(stato).lower()
-    if "attiv" in s:
-        return 0
-    if "sospes" in s:
-        return 1
-    if "pianificat" in s:
-        return 2
-    return 9
-
-
-def _ordine_stato_effettivo(ordine) -> str:
-    runtime = getattr(ordine, "runtime_row", None)
-    stato_runtime = _norm_text(getattr(runtime, "Stato_odp", ""))
+            distinta = json.loads(ordine.DistintaMateriale)
+            if isinstance(distinta, str):
+                distinta = json.loads(distinta)
+        except (json.JSONDecodeError, TypeError):
+            distinta = []
+    return distinta if isinstance(distinta, list) else []
+
+
+def _stato_operativo_chiusura(ordine, stato=None) -> str:
+    """
+    Stato reale da usare per decidere se un ordine è chiudibile.
+
+    Priorità:
+    1. runtime.Stato_odp
+    2. ordine.StatoOrdine
+    """
+    stato_runtime = _norm_text(getattr(stato, "Stato_odp", ""))
     if stato_runtime:
         return stato_runtime
+
     return _norm_text(getattr(ordine, "StatoOrdine", ""))
 
 
-def _is_open_order_state(stato: str) -> bool:
-    s = _norm_text(stato).lower()
-    if s == "chiusa":
-        return False
+def _tempo_to_seconds(value) -> int:
+    raw = _norm_text(value).replace(",", ".")
+    if not raw:
+        return 0
+    try:
+        hours = Decimal(raw)
+    except InvalidOperation:
+        return 0
+    return int((hours * Decimal("3600")).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
-    return "attiv" in s or "pianificat" in s or "sospes" in s or "apert" in s
 
-
-def _build_acquisti_ordini_rows() -> dict:
-    ordini = _base_odp_query().all()
-
-    buckets = {
-        "montaggio_sl": [],
-        "montaggio_m": [],
-        "officina": [],
-        "carpenteria": [],
-    }
-
-    for ordine in ordini:
-        stato = _ordine_stato_effettivo(ordine)
-
-        if not _is_open_order_state(stato):
-            continue
-
-        runtime = getattr(ordine, "runtime_row", None)
-        qty = _qty_da_lavorare_text(ordine, stato=runtime)
-
-        fase_attiva = (
-            _norm_text(getattr(runtime, "FaseAttiva", ""))
-            or _norm_text(getattr(ordine, "FaseAttiva", ""))
-            or "1"
-        )
-
-        reparto_attivo_raw = _active_value_for_phase(
-            getattr(ordine, "CodReparto", ""),
-            getattr(ordine, "NumFase", ""),
-            fase_attiva,
-        )
-        reparto_attivo = _first_code_from_cell(
-            reparto_attivo_raw
-        ) or _first_code_from_cell(getattr(ordine, "CodReparto", ""))
-
-        ordine_produzione = _ordine_ref_label(ordine)
-
-        row_sl = {
-            "OrdineProduzione": ordine_produzione,
-            "CodArt": _norm_text(getattr(ordine, "CodArt", "")),
-            "VarianteArt": _norm_text(getattr(ordine, "VarianteArt", "")),
-            "Revisione": _normalize_indice_articolo_search(
-                getattr(ordine, "IndiceModifica", "")
-            ),
-            "DesArt": _norm_text(getattr(ordine, "DesArt", "")),
-            "Qty": qty,
-            "Stato": stato,
-        }
-
-        row_m = {
-            "OrdineProduzione": ordine_produzione,
-            "CodArt": _norm_text(getattr(ordine, "CodArt", "")),
-            "DesArt": _norm_text(getattr(ordine, "DesArt", "")),
-            "Qty": qty,
-            "Stato": stato,
-        }
-
-        is_macchina = (
-            _norm_text(getattr(ordine, "GestioneMatricola", "")).lower() == "si"
-        )
-
-        if reparto_attivo == "10":
-            if is_macchina:
-                buckets["montaggio_m"].append(row_m)
-            else:
-                buckets["montaggio_sl"].append(row_sl)
-
-        elif reparto_attivo == "20":
-            buckets["officina"].append(row_sl)
-
-        elif reparto_attivo == "30":
-            buckets["carpenteria"].append(row_sl)
-
-    for key in ("montaggio_sl", "officina", "carpenteria"):
-        buckets[key].sort(
-            key=lambda x: (
-                _ordine_state_rank(x.get("Stato", "")),
-                (x.get("OrdineProduzione") or "").lower(),
-                (x.get("CodArt") or "").lower(),
-                (x.get("VarianteArt") or "").lower(),
-                (x.get("Revisione") or "").lower(),
-                (x.get("DesArt") or "").lower(),
-            )
-        )
-
-    buckets["montaggio_m"].sort(
-        key=lambda x: (
-            _ordine_state_rank(x.get("Stato", "")),
-            (x.get("OrdineProduzione") or "").lower(),
-            (x.get("CodArt") or "").lower(),
-            (x.get("DesArt") or "").lower(),
-        )
+def _seconds_to_tempo_text(seconds: int) -> str:
+    if seconds <= 0:
+        return "0"
+    hours = (Decimal(seconds) / Decimal("3600")).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
     )
+    text = format(hours, "f")
+    return text.rstrip("0").rstrip(".") if "." in text else text
 
-    return buckets
 
+def _parse_registration_date_input(value) -> date | None:
+    raw = _norm_text(value)
+    if not raw:
+        return None
 
-@main_bp.get("/acquisti")
-@require_active_perm("home_acquisti")
-def home_acquisti():
-    giacenze_rows = _build_acquisti_giacenze_rows()
-    materiali_rows = _build_acquisti_materiale_rows()
-    ordini_rows = _build_acquisti_ordini_rows()
-
-    return render_template(
-        "home_acquisti.j2",
-        giacenze_rows=giacenze_rows,
-        materiali_rows=materiali_rows,
-        ordini_rows=ordini_rows,
-    )
-
-
-@main_bp.get("/api/acquisti/bridge")
-@require_active_perm("home_acquisti")
-def api_acquisti_bridge():
-    giacenze_rows = _build_acquisti_giacenze_rows()
-    materiali_rows = _build_acquisti_materiale_rows()
-    ordini_rows = _build_acquisti_ordini_rows()
-
-    fragments = {
-        "tbody_acquisti_giacenza": render_template(
-            "partials/_acquisti_giacenza_rows.j2",
-            giacenze_rows=giacenze_rows,
-        ),
-        "tbody_acquisti_materiale": render_template(
-            "partials/_acquisti_materiale_rows.j2",
-            materiali_rows=materiali_rows,
-        ),
-        "acquisti_ordini_section": render_template(
-            "partials/_acquisti_ordini_produzione.j2",
-            ordini_rows=ordini_rows,
-        ),
-    }
-
-    return jsonify(
-        {
-            "ok": True,
-            "refreshed_at": _now_rome_dt().isoformat(timespec="seconds"),
-            "fragments": fragments,
-        }
-    )
-
-
-def _contains_insensitive(value, needle: str) -> bool:
-    needle_norm = _norm_text(needle).lower()
-    if not needle_norm:
-        return True
-    return needle_norm in _norm_text(value).lower()
-
-
-def _filter_acquisti_giacenze_rows(
-    rows: list[dict],
-    *,
-    codart: str = "",
-    variante: str = "",
-    desart: str = "",
-    only_negative: bool = False,
-    only_understock: bool = False,
-    **legacy_kwargs,
-) -> list[dict]:
-    """
-    Filtra le righe giacenza per export Excel.
-
-    Accetta sia i nomi usati dalla query string/frontend:
-    - codart
-    - variante
-    - desart
-
-    sia eventuali nomi interni/vecchi:
-    - cod_art
-    - variante_art
-    - des_art
-    """
-
-    codart_filter = _norm_text(codart or legacy_kwargs.get("cod_art", ""))
-    variante_filter = _norm_text(
-        variante
-        or legacy_kwargs.get("variante_art", "")
-        or legacy_kwargs.get("variante", "")
-    )
-    desart_filter = _norm_text(desart or legacy_kwargs.get("des_art", ""))
-
-    out = []
-
-    for row in rows:
-        mag0 = float(row.get("Mag_0") or 0)
-        punto_riordino = float(row.get("PuntoRiordino") or 0)
-
-        is_negative_mag0 = mag0 < 0
-        is_understock_mag0 = (not is_negative_mag0) and (mag0 < punto_riordino)
-
-        if codart_filter and not _contains_insensitive(
-            row.get("CodArt"), codart_filter
-        ):
-            continue
-
-        if variante_filter and not _contains_insensitive(
-            row.get("VarianteArt"), variante_filter
-        ):
-            continue
-
-        if desart_filter and not _contains_insensitive(
-            row.get("DesArt"), desart_filter
-        ):
-            continue
-
-        if only_negative and not is_negative_mag0:
-            continue
-
-        if only_understock and not is_understock_mag0:
-            continue
-
-        out.append(row)
-
-    return out
-
-
-def _filter_acquisti_materiale_rows(
-    rows: list[dict],
-    *,
-    codart: str = "",
-    variante: str = "",
-    desart: str = "",
-    only_critical: bool = False,
-    only_understock: bool = False,
-) -> list[dict]:
-    out = []
-
-    for row in rows:
-        if not _contains_insensitive(row.get("CodArt"), codart):
-            continue
-        if not _contains_insensitive(row.get("VarianteArt"), variante):
-            continue
-        if not _contains_insensitive(row.get("DesArt"), desart):
-            continue
-        if only_critical and not bool(row.get("RimanenzaMaterialeCritica")):
-            continue
-        if only_understock and not bool(row.get("RimanenzaMaterialeSottoScorta")):
-            continue
-
-        out.append(row)
-
-    return out
-
-
-def _build_acquisti_excel_workbook(section: str, rows: list[dict]) -> Workbook:
-    wb = Workbook()
-    ws = wb.active
-    if section == "giacenza":
-        headers = [
-            "CodArt",
-            "Revisione",
-            "Variante",
-            "Descrizione",
-            "UdM",
-            "6-Accettazione",
-            "0-Principale",
-            "10-Scarti",
-            "11-Obsoleto",
-            "12-DEMO",
-            "13-Rottamare",
-            "Punto riordino",
-            "Lotto riordino",
-            "Lead time",
-            "Data prevista approvvigionamento",
-        ]
-        data_rows = [
-            [
-                row.get("CodArt", ""),
-                row.get("VarianteArt", ""),
-                row.get("IndiceModifica", ""),
-                row.get("DesArt", ""),
-                row.get("MagUM", ""),
-                row.get("Mag_6", 0),
-                row.get("Mag_0", 0),
-                row.get("Mag_10", 0),
-                row.get("Mag_11", 0),
-                row.get("Mag_12", 0),
-                row.get("Mag_13", 0),
-                row.get("PuntoRiordino", 0),
-                row.get("LottoRiordino", 0),
-                row.get("PianTempoApprovFisso", 0),
-                row.get("DataPrevistaApprovvigionamento", ""),
-            ]
-            for row in rows
-        ]
-
-    elif section == "materiale":
-        ws.title = "Materiale"
-        headers = [
-            "Articolo",
-            "Var.",
-            "Descrizione",
-            "UdM",
-            "Giacenza",
-            "Fabbisogno pianificato",
-            "Fabbisogno impegnato",
-            "Produzione prevista",
-            "Rimanenza finale",
-            "Scorta",
-            "Lead time",
-            "Lotto minimo",
-            "Dettaglio",
-        ]
-        data_rows = [
-            [
-                row.get("CodArt", ""),
-                row.get("VarianteArt", ""),
-                row.get("DesArt", ""),
-                row.get("MagUM", ""),
-                "Assente" if row.get("Mag0Missing") else row.get("QtyMag0Text", ""),
-                row.get("MaterialeDaConsumareText", ""),
-                row.get("MaterialeImpegnatoText", ""),
-                row.get("MaterialeProdottoText", ""),
-                row.get("RimanenzaMaterialeText", ""),
-                row.get("PuntoRiordinoText", ""),
-                row.get("PianTempoApprovFisso", 0),
-                row.get("LottoRiordinoText", ""),
-                "Ordini",
-            ]
-            for row in rows
-        ]
-    else:
-        raise ValueError(f"Sezione export non valida: {section}")
-
-    ws.append(headers)
-    for row in data_rows:
-        ws.append(row)
-
-    # stile intestazione
-    for cell in ws[1]:
-        cell.font = Font(bold=True)
-
-    ws.freeze_panes = "A2"
-
-    # larghezza colonne semplice
-    for column_cells in ws.columns:
-        max_len = 0
-        column_letter = column_cells[0].column_letter
-        for cell in column_cells:
-            value = "" if cell.value is None else str(cell.value)
-            if len(value) > max_len:
-                max_len = len(value)
-        ws.column_dimensions[column_letter].width = min(max(max_len + 2, 10), 40)
-
-    return wb
-
-
-@main_bp.get("/api/acquisti/export/<section>")
-@require_active_perm("home_acquisti")
-def api_export_acquisti_excel(section):
-    section = _norm_text(section).lower()
-
-    if section == "giacenza":
-        rows = _build_acquisti_giacenze_rows()
-        rows = _filter_acquisti_giacenze_rows(
-            rows,
-            codart=request.args.get("codart", ""),
-            variante=request.args.get("variante", ""),
-            desart=request.args.get("desart", ""),
-            only_negative=_parse_bool_flag(request.args.get("negative")),
-            only_understock=_parse_bool_flag(request.args.get("understock")),
-        )
-        file_name = f"acquisti_giacenza_{_now_rome_dt().strftime('%Y%m%d_%H%M%S')}.xlsx"
-
-    elif section == "materiale":
-        rows = _build_acquisti_materiale_rows()
-        rows = _filter_acquisti_materiale_rows(
-            rows,
-            codart=request.args.get("codart", ""),
-            variante=request.args.get("variante", ""),
-            desart=request.args.get("desart", ""),
-            only_critical=_parse_bool_flag(request.args.get("critical")),
-            only_understock=_parse_bool_flag(request.args.get("understock")),
-        )
-        file_name = (
-            f"acquisti_materiale_{_now_rome_dt().strftime('%Y%m%d_%H%M%S')}.xlsx"
-        )
-
-    else:
-        abort(404)
-
-    wb = _build_acquisti_excel_workbook(section, rows)
-
-    output = BytesIO()
-    wb.save(output)
-    output.seek(0)
-
-    return send_file(
-        output,
-        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        as_attachment=True,
-        download_name=file_name,
-    )
-
-
-@main_bp.get("/priorita")
-@require_active_perm("priorita_view")
-def priorita():
-    policy = _current_policy()
-    token = active_token()
-
-    redirect_kwargs = {}
-    if token:
-        redirect_kwargs["tab_session"] = token
-
-    if policy.can("priorita_edit"):
-        return redirect(url_for("main.priorita_edit", **redirect_kwargs))
-
-    return redirect(url_for("main.priorita_view", **redirect_kwargs))
-
-
-@main_bp.get("/priorita/view")
-@require_active_perm("priorita_view")
-def priorita_view():
-    policy = _current_policy()
-    user = active_user()
-
-    return render_template(
-        "priorita_view.j2",
-        policy=policy,
-        priorita_2_max=_priorita_2_max(),
-        current_operator_id=user.id,
-        current_operator_username=user.username or "",
-    )
-
-
-def _priorita_hidden_user_ids() -> set[int]:
-    """
-    Utenti da non mostrare nella gestione priorità.
-    Esempio: admin.
-    """
-    hidden_role_names = {name.lower() for name in PRIORITA_HIDDEN_ROLE_NAMES}
-
-    rows = (
-        db.session.query(User.id)
-        .join(user_roles, user_roles.c.user_id == User.id)
-        .join(Roles, Roles.id == user_roles.c.role_id)
-        .filter(func.lower(Roles.name).in_(hidden_role_names))
-        .all()
-    )
-
-    return {int(row[0]) for row in rows}
-
-
-@main_bp.get("/priorita/edit")
-@require_active_perm("priorita_edit")
-def priorita_edit():
-    policy = _current_policy()
-    user = active_user()
-
-    return render_template(
-        "priorita_edit.j2",
-        policy=policy,
-        priorita_2_max=_priorita_2_max(),
-        current_operator_id=user.id,
-        current_operator_username=user.username or "",
-    )
-
-
-@main_bp.get("/api/priorita/operatori")
-@require_active_perm("priorita_view")
-def api_priorita_operatori():
-    visible_ids = _priorita_visible_operator_ids_for_current_user()
-
-    operatori = (
-        User.query.filter(User.active.is_(True))
-        .filter(User.id.in_(visible_ids))
-        .order_by(func.lower(User.username))
-        .all()
-    )
-
-    return jsonify(
-        {
-            "operatori": [
-                {
-                    "id": operatore.id,
-                    "username": operatore.username,
-                }
-                for operatore in operatori
-            ]
-        }
-    )
-
-
-@main_bp.get("/api/priorita/operatori/<int:operatore_id>/ordini")
-@require_active_perm("priorita_view")
-def api_priorita_ordini_operatore(operatore_id: int):
-    operatore = _get_priorita_visible_operatore_or_403(operatore_id)
-    operatore_id = operatore.id
-
-    _cleanup_priorita_operatore(operatore)
-    _compact_priorita_operatore(operatore.id)
-    db.session.commit()
-
-    ordini = _ordini_pianificata_visibili_per_operatore(operatore)
-    priorita_map = _priorita_map_for_operatore(operatore.id)
-
-    payload = {
-        "available": [],
-        "p1": [],
-        "p2": [],
-        "p3": [],
-        "max_p2": _priorita_2_max(),
-        "can_edit": _current_policy().can("priorita_edit"),
-    }
-
-    for ordine in ordini:
-        key = _ordine_fase_key(ordine)
-        priorita_row = priorita_map.get(key)
-        item = _ordine_priorita_payload(ordine, priorita_row)
-
-        if priorita_row is None:
-            payload["available"].append(item)
-        elif priorita_row.Priorita == 1:
-            payload["p1"].append(item)
-        elif priorita_row.Priorita == 2:
-            payload["p2"].append(item)
-        elif priorita_row.Priorita == 3:
-            payload["p3"].append(item)
-
-    payload["available"].sort(key=lambda x: (x["ordine"], x["fase"]))
-    payload["p1"].sort(key=lambda x: x["posizione"] or 0)
-    payload["p2"].sort(key=lambda x: x["posizione"] or 0)
-    payload["p3"].sort(key=lambda x: x["posizione"] or 0)
-
-    return jsonify(payload)
-
-
-@main_bp.post("/api/priorita/operatori/<int:operatore_id>/salva")
-@require_active_perm("priorita_edit")
-def api_priorita_salva_operatore(operatore_id: int):
-    operatore = _get_priorita_visible_operatore_or_403(operatore_id)
-    operatore_id = operatore.id
-    operatore = User.query.get_or_404(operatore_id)
-    payload = request.get_json(silent=True) or {}
-
-    items = payload.get("items", [])
-
-    if not isinstance(items, list):
-        return jsonify({"ok": False, "error": "Payload items non valido."}), 400
-
-    valid_orders = _priorita_valid_keys_for_operatore(operatore)
-    seen = set()
-    staged = []
-
-    for item in items:
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y"):
         try:
-            priorita = int(item.get("priorita"))
-            posizione = int(item.get("posizione"))
-        except (TypeError, ValueError):
-            return jsonify(
-                {"ok": False, "error": "Priorità o posizione non valida."}
-            ), 400
+            return datetime.strptime(raw, fmt).date()
+        except ValueError:
+            continue
 
-        if priorita not in (1, 2, 3):
-            return jsonify({"ok": False, "error": "Priorità ammessa: 1, 2, 3."}), 400
-
-        key = _make_ordine_fase_key(
-            item.get("id_documento"),
-            item.get("id_riga"),
-            item.get("fase"),
-        )
-
-        if key in seen:
-            return jsonify({"ok": False, "error": "Ordine duplicato nella coda."}), 400
-
-        if key not in valid_orders:
-            return jsonify(
-                {
-                    "ok": False,
-                    "error": (
-                        "Uno degli ordini non è più Pianificata oppure "
-                        "non è più visibile per l'operatore selezionato."
-                    ),
-                }
-            ), 409
-
-        seen.add(key)
-        staged.append(
-            {
-                "key": key,
-                "priorita": priorita,
-                "posizione": posizione,
-            }
-        )
-
-    now_iso = _priority_now_iso()
-    username = _current_username("sync_priorita")
-
-    OdpPriorita.query.filter_by(operatore_id=operatore.id).delete(
-        synchronize_session=False
-    )
-
-    for row in staged:
-        id_documento, id_riga, fase = row["key"]
-
-        db.session.add(
-            OdpPriorita(
-                operatore_id=operatore.id,
-                IdDocumento=id_documento,
-                IdRiga=id_riga,
-                Fase=fase,
-                Priorita=row["priorita"],
-                Posizione=row["posizione"],
-                created_at=now_iso,
-                updated_at=now_iso,
-                updated_by=username,
-            )
-        )
-
-    db.session.flush()
-    _compact_priorita_operatore(operatore.id)
-    db.session.commit()
-
-    return jsonify({"ok": True})
+    raise ValueError("Data registrazione non valida.")
 
 
-def _priorita_manageable_role_ids_for_user(user: User) -> set[int]:
-    """
-    Restituisce tutti i ruoli sottostanti gestibili dall'utente,
-    usando la gerarchia roles_manageable_roles.
-
-    Non include i ruoli dell'utente stesso.
-    """
-    out: set[int] = set()
-
-    for role in getattr(user, "roles", None) or []:
-        for managed_role in getattr(role, "iter_manageable_roles", lambda: [])():
-            if managed_role is not None and managed_role.id is not None:
-                out.add(int(managed_role.id))
-
-    return out
-
-
-def _priorita_visible_operator_ids_for_current_user() -> set[int]:
-    """
-    Operatori visibili nella pagina modifica priorità.
-
-    Regole:
-    - chi ha priorita_tutti_operatori vede tutti gli utenti attivi,
-      tranne se stesso e tranne gli admin
-    - gli altri vedono se stessi + utenti sottostanti nella gerarchia roles_manageable_roles
-    - gli admin non vengono mai mostrati
-    """
-    user = active_user()
-    policy = _current_policy()
-
-    hidden_user_ids = _priorita_hidden_user_ids()
-
-    if policy.can("priorita_tutti_operatori"):
-        return {
-            int(user_id)
-            for user_id in db.session.execute(
-                select(User.id)
-                .where(User.active.is_(True))
-                .where(User.id != user.id)
-                .where(~User.id.in_(hidden_user_ids))
-            )
-            .scalars()
-            .all()
-        }
-
-    visible_ids: set[int] = {int(user.id)}
-
-    manageable_role_ids = _priorita_manageable_role_ids_for_user(user)
-
-    if manageable_role_ids:
-        users_with_managed_roles = set(
-            db.session.execute(
-                select(user_roles.c.user_id).where(
-                    user_roles.c.role_id.in_(manageable_role_ids)
-                )
-            )
-            .scalars()
-            .all()
-        )
-
-        users_with_not_managed_roles = set(
-            db.session.execute(
-                select(user_roles.c.user_id).where(
-                    ~user_roles.c.role_id.in_(manageable_role_ids)
-                )
-            )
-            .scalars()
-            .all()
-        )
-
-        visible_ids.update(
-            int(user_id)
-            for user_id in users_with_managed_roles - users_with_not_managed_roles
-        )
-
-    visible_ids.difference_update(hidden_user_ids)
-
-    return visible_ids
-
-
-def _get_priorita_visible_operatore_or_403(operatore_id: int) -> User:
-    """
-    Recupera l'operatore solo se è visibile all'utente corrente.
-    Serve per proteggere anche le chiamate manuali agli endpoint.
-    """
-    try:
-        operatore_id = int(operatore_id)
-    except (TypeError, ValueError):
-        abort(404)
-
-    visible_ids = _priorita_visible_operator_ids_for_current_user()
-
-    if operatore_id not in visible_ids:
-        abort(403)
-
-    operatore = User.query.filter(
-        User.id == operatore_id,
-        User.active.is_(True),
-    ).first()
-
-    if operatore is None:
-        abort(404)
-
-    return operatore
-
-
-@main_bp.post("/api/priorita/operatori/<int:operatore_id>/reset")
-@require_active_perm("priorita_edit")
-def api_priorita_reset_operatore(operatore_id):
-    operatore = _get_priorita_visible_operatore_or_403(operatore_id)
-
-    try:
-        deleted_count = OdpPriorita.query.filter(
-            OdpPriorita.operatore_id == operatore.id
-        ).delete(synchronize_session=False)
-
-        db.session.commit()
-
-        return jsonify(
-            {
-                "ok": True,
-                "deleted": deleted_count,
-            }
-        )
-
-    except Exception as exc:
-        db.session.rollback()
-        current_app.logger.exception(
-            "Errore reset priorità operatore_id=%s",
-            operatore_id,
-        )
-        return jsonify(
-            {
-                "ok": False,
-                "error": "Errore durante l'azzeramento delle priorità.",
-            }
-        ), 500
+from app_odp.routes_modules import (
+    acquisti,
+    priorita,
+    dashboard,
+    etichette,
+    impostazioni,
+    ordini,
+    erp,
+    documenti,
+    home,
+)

@@ -2,5 +2,6 @@
 <project version="4">
   <component name="RuffConfiguration">
     <option name="enabled" value="true" />
+    <option name="sortImports" value="false" />
   </component>
 </project>
