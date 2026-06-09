@@ -2279,6 +2279,38 @@ def _sync_delete_orders_closed_or_removed_by_gestionale(
     return righe_cancellate
 
 
+def _repair_runtime_risorsa_attiva(session) -> int:
+    """
+    Corregge le righe input_odp_runtime con RisorsaAttiva/LavorazioneAttiva NULL
+    che sono ancora in stato Pianificata, popolandole dal primo elemento
+    dei JSON array in input_odp.
+    Gestisce il caso in cui il seed iniziale fallisce per race condition
+    o per ordini multifase inseriti prima che il formato fosse stabile.
+    """
+    sql = sa.text("""
+                  UPDATE input_odp_runtime
+                  SET
+                      RisorsaAttiva = json_extract(
+                              (SELECT CodRisorsaProd FROM input_odp i
+                               WHERE i.IdDocumento = input_odp_runtime.IdDocumento
+                                 AND i.IdRiga = input_odp_runtime.IdRiga),
+                              '$[0]'
+                                      ),
+                      LavorazioneAttiva = json_extract(
+                              (SELECT CodLavorazione FROM input_odp i
+                               WHERE i.IdDocumento = input_odp_runtime.IdDocumento
+                                 AND i.IdRiga = input_odp_runtime.IdRiga),
+                              '$[0]'
+                                          )
+                  WHERE
+                      (RisorsaAttiva IS NULL OR RisorsaAttiva = '')
+                    AND Stato_odp = 'Pianificata'
+                  """)
+    result = session.execute(sql)
+    session.commit()
+    return result.rowcount
+
+
 def elaborazione_dati(session: Session) -> None:
     """
     Funzione per l'inserimento dei dati nella tabella input_odp da inserire a db
@@ -2442,6 +2474,9 @@ def elaborazione_dati(session: Session) -> None:
     righe_inserite_lotti = 0
     righe_aggiornate_lotti = 0
     righe_eliminate_lotti = 0
+    repaired = _repair_runtime_risorsa_attiva(session)
+    if repaired > 0:
+        logging.info("Repair RisorsaAttiva: corrette %d righe runtime", repaired)
 
     try:
         if not df_new_erp.empty:

@@ -84,6 +84,56 @@ def _is_business_day(day_value: date) -> bool:
     return day_value not in (day_value.year)
 
 
+def _home_rows_for_config(
+    policy: RbacPolicy,
+    config: HomeRepartoConfig,
+    *,
+    apply_priorita: bool = True,
+    sort_priorita: bool = True,
+) -> list[InputOdp]:
+    odp = list(_query_for_home_config(policy, config).all())
+
+    if apply_priorita:
+        odp = _apply_priorita_to_ordini(
+            list(odp),
+            _current_user_id(),
+            sort_result=sort_priorita,
+        )
+
+    return odp
+
+
+def _render_fragments_for_home_config(
+    config: HomeRepartoConfig,
+    odp: list[InputOdp],
+) -> dict:
+    renderer_key = _norm_text(getattr(config, "renderer", "")) or "empty"
+
+    if renderer_key == "montaggio":
+        method_settings = _home_method_settings_for_user(
+            config,
+            _current_policy(),
+            active_user(),
+        )
+
+        return _render_bridge_montaggio(
+            odp,
+            metodo_path_key=method_settings["path_key"],
+            metodo_prefisso=method_settings["prefisso"],
+        )
+
+    renderer = RENDERERS.get(renderer_key)
+    if renderer is None:
+        current_app.logger.warning(
+            "Renderer home non valido: tab_code=%s renderer=%s",
+            getattr(config, "tab_code", ""),
+            renderer_key,
+        )
+        return {}
+
+    return renderer(odp)
+
+
 def _easter_sunday(year: int) -> date:
     a = year % 19
     b = year // 100

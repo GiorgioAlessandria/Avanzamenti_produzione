@@ -1131,6 +1131,22 @@ def _dashboard_build_cruscotto_payload(policy: RbacPolicy) -> dict:
         float(capacity_by_weekday.get(today_weekday, 0.0) or 0.0),
         2,
     )
+    ore_previste_produzione = float(
+        payload["cards"].get("ore_previste_produzione") or 0.0
+    )
+
+    ore_disponibili_oggi = float(payload["cards"].get("ore_disponibili_oggi") or 0.0)
+
+    payload["cards"]["scostamento_ore_totale"] = round(
+        ore_disponibili_oggi - ore_previste_produzione,
+        2,
+    )
+
+    payload["cards"]["saturazione_totale"] = (
+        round((ore_previste_produzione / ore_disponibili_oggi) * 100, 2)
+        if ore_disponibili_oggi > 0
+        else 0.0
+    )
 
     payload["charts"]["carico_prossimi_giorni"] = _dashboard_carico_prossimo_mese(
         filtered_ordini,
@@ -1895,6 +1911,8 @@ def _dashboard_cruscotto_empty_payload() -> dict:
             "ordini_scadenza_oggi": 0,
             "ordini_senza_tempo_previsto": 0,
             "ordini_collaudo": 0,
+            "saturazione_totale": 0.0,
+            "scostamento_ore_totale": 0.0,
         },
         "charts": {
             "carico_prossimi_giorni": [],

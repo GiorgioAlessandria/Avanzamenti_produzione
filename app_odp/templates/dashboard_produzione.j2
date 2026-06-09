@@ -159,7 +159,7 @@
                             <div class="card-header">Riepilogo carico produzione</div>
 
                             <div class="card-body">
-                                <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-xl-5 g-2">
+                                <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-xl-6 g-2">
 
                                     <div class="col">
                                         <div class="dashboard-summary-card border rounded p-2 h-100 text-center d-flex flex-column justify-content-center align-items-center">
@@ -206,6 +206,16 @@
                                             <div class="small text-muted"
                                                  data-dashboard-card-sub="operatori_capacita">
                                                 0 operatori
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col">
+                                        <div class="dashboard-summary-card border rounded p-2 h-100 text-center d-flex flex-column justify-content-center align-items-center">
+                                            <div class="text-muted small">Saturazione totale oggi</div>
+
+                                            <div class="kpi-card-value"
+                                                 data-dashboard-card="saturazione_totale">
+                                                0%
                                             </div>
                                         </div>
                                     </div>
@@ -1255,6 +1265,17 @@
                     "data-dashboard-card-sub",
                     "operatori_capacita",
                     `${cards.operatori_capacita ?? 0} operatori`
+                );
+                setCard(
+                    "data-dashboard-card",
+                    "saturazione_totale",
+                    formatPercent(cards.saturazione_totale)
+                );
+
+                setCard(
+                    "data-dashboard-card-sub",
+                    "saturazione_totale_ore",
+                    `${formatHours(cards.ore_previste_produzione)} / ${formatHours(cards.ore_disponibili_oggi)}`
                 );
 
                 setCard("data-dashboard-card", "ordini_critici", cards.ordini_critici ?? 0);
