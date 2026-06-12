@@ -1,0 +1,475 @@
+{% extends "base.j2" %}
+
+{% block title %}Report settimanale{% endblock %}
+
+{% block content %}
+    <main class="container-fluid py-3"
+          id="report-settimanale-page"
+          data-bridge-url="{{ url_for('main.api_report_settimanale_bridge', tab_session=tab_session) }}"
+          data-can-select-user="{{ '1' if can_select_user else '0' }}"
+          data-default-user-id="{{ default_user_id }}">
+
+        <div class="d-flex justify-content-between align-items-start mb-3">
+            <div>
+                <h1 class="h4 mb-1">Report settimanale</h1>
+                <div class="text-muted small">
+                    Ultimi 7 giorni mobili: {{ period_start }} - {{ period_end }}
+                </div>
+            </div>
+        </div>
+
+        {% if can_select_user %}
+            <div class="card shadow-sm mb-3">
+                <div class="card-body">
+                    <div class="row g-2 align-items-end">
+                        <div class="col-12 col-md-4 col-lg-3">
+                            <label for="report-user"
+                                   class="form-label">Utente</label>
+                            <select class="form-select"
+                                    id="report-user">
+                                <option value="{{ default_user_id }}">Caricamento...</option>
+                            </select>
+                        </div>
+
+                        <div class="col-12 col-md-3 col-lg-2">
+                            <button type="button"
+                                    class="btn btn-primary w-100"
+                                    id="report-refresh">
+                                Aggiorna
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        {% else %}
+            <input type="hidden"
+                   id="report-user"
+                   value="{{ default_user_id }}">
+        {% endif %}
+
+        <section class="row g-3 mb-3"
+                 id="report-kpi">
+            <div class="col-6 col-md-4 col-xl">
+                <div class="card shadow-sm h-100">
+                    <div class="card-body text-center">
+                        <div class="text-muted small">Utente</div>
+                        <div class="fs-6 fw-semibold text-truncate"
+                             data-kpi="utente">-
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-6 col-md-4 col-xl">
+                <div class="card shadow-sm h-100">
+                    <div class="card-body text-center">
+                        <div class="text-muted small">Ordini lavorati</div>
+                        <div class="fs-4 fw-semibold"
+                             data-kpi="ordini_lavorati">0
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-6 col-md-4 col-xl">
+                <div class="card shadow-sm h-100">
+                    <div class="card-body text-center">
+                        <div class="text-muted small">Ore previste</div>
+                        <div class="fs-4 fw-semibold"
+                             data-kpi="ore_previste">0,00
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-6 col-md-4 col-xl">
+                <div class="card shadow-sm h-100">
+                    <div class="card-body text-center">
+                        <div class="text-muted small">Ore lavorate</div>
+                        <div class="fs-4 fw-semibold"
+                             data-kpi="ore_impiegate">0,00
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-6 col-md-4 col-xl">
+                <div class="card shadow-sm h-100">
+                    <div class="card-body text-center">
+                        <div class="text-muted small">Delta ore</div>
+                        <div class="fs-4 fw-semibold"
+                             data-kpi="delta_ore">0,00
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-6 col-md-4 col-xl">
+                <div class="card shadow-sm h-100">
+                    <div class="card-body text-center">
+                        <div class="text-muted small">Scostamento</div>
+                        <div class="fs-4 fw-semibold"
+                             data-kpi="scostamento_percentuale">-
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-6 col-md-4 col-xl">
+                <div class="card shadow-sm h-100">
+                    <div class="card-body text-center">
+                        <div class="text-muted small">Macchine</div>
+                        <div class="fs-4 fw-semibold"
+                             data-kpi="componenti_macchine">0,00
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-6 col-md-4 col-xl">
+                <div class="card shadow-sm h-100">
+                    <div class="card-body text-center">
+                        <div class="text-muted small">Semilavorati</div>
+                        <div class="fs-4 fw-semibold"
+                             data-kpi="componenti_semilavorati">0,00
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <div class="row g-3">
+            <div class="col-12">
+                <div class="card shadow-sm h-100">
+                    <div class="card-header fw-semibold">
+                        Ordini lavorati dall'utente
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover align-middle mb-0">
+                            <thead class="table-light">
+                            <tr>
+                                <th>Ordine</th>
+                                <th>Num. riga</th>
+                                <th>Articolo</th>
+                                <th>Tipo</th>
+                                <th>Fasi</th>
+                                <th>Stato</th>
+                                <th>Ultimo evento</th>
+                                <th class="text-end">Q.tà</th>
+                                <th class="text-end">Ore prev.</th>
+                                <th class="text-end">Ore lavorate</th>
+                                <th class="text-end">Delta</th>
+                                <th class="text-end">%</th>
+                            </tr>
+                            </thead>
+                            <tbody id="report-worked-orders-body">
+                            <tr>
+                                <td colspan="12"
+                                    class="text-center text-muted py-3">
+                                    Caricamento...
+                                </td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+{% endblock %}
+{% block extra_js %}
+    {{ super() }}
+
+    <script>
+        (function () {
+            const page = document.getElementById("report-settimanale-page");
+
+            if (!page) {
+                return;
+            }
+
+            const bridgeUrl = page.dataset.bridgeUrl;
+            const canSelectUser = page.dataset.canSelectUser === "1";
+            const defaultUserId = page.dataset.defaultUserId;
+
+            const userSelect = document.getElementById("report-user");
+            const refreshBtn = document.getElementById("report-refresh");
+
+            const workedOrdersBody = document.getElementById("report-worked-orders-body");
+
+            function formatNumber(value, decimals = 2) {
+                const numberValue = Number(value || 0);
+
+                return numberValue.toLocaleString("it-IT", {
+                    minimumFractionDigits: decimals,
+                    maximumFractionDigits: decimals,
+                });
+            }
+
+            function formatInteger(value) {
+                return Number(value || 0).toLocaleString("it-IT", {
+                    maximumFractionDigits: 0,
+                });
+            }
+
+            function formatPercent(value) {
+                if (value === null || value === undefined) {
+                    return "-";
+                }
+
+                return `${formatNumber(value, 2)}%`;
+            }
+
+            function applyDeltaClass(el, value) {
+                const numberValue = Number(value || 0);
+
+                el.classList.remove("text-warning", "text-success", "text-danger");
+
+                if (numberValue > 0) {
+                    el.classList.add("text-danger");
+                } else if (numberValue < 0) {
+                    el.classList.add("text-success");
+                }
+            }
+
+            function applyScostamentoClass(el, value) {
+                const numberValue = Number(value || 0);
+
+                el.classList.remove("text-warning", "text-success", "text-danger");
+
+                if (value === null || value === undefined) {
+                    return;
+                }
+
+                if (numberValue < 80) {
+                    el.classList.add("text-warning");
+                } else if (numberValue <= 110) {
+                    el.classList.add("text-success");
+                } else {
+                    el.classList.add("text-danger");
+                }
+            }
+
+            function setKpi(name, value) {
+                const el = page.querySelector(`[data-kpi="${name}"]`);
+
+                if (!el) {
+                    return;
+                }
+
+                el.classList.remove("text-warning", "text-success", "text-danger");
+
+                if (name === "utente") {
+                    el.textContent = value || "-";
+                    return;
+                }
+
+                if (name === "ordini_lavorati") {
+                    el.textContent = formatInteger(value);
+                    return;
+                }
+
+                if (name === "scostamento_percentuale") {
+                    el.textContent = formatPercent(value);
+                    applyScostamentoClass(el, value);
+                    return;
+                }
+
+                el.textContent = formatNumber(value, 2);
+
+                if (name === "delta_ore") {
+                    applyDeltaClass(el, value);
+                }
+            }
+
+            function renderKpi(kpi) {
+                setKpi("utente", kpi.utente);
+                setKpi("ordini_lavorati", kpi.ordini_lavorati);
+                setKpi("ore_previste", kpi.ore_previste);
+                setKpi("ore_impiegate", kpi.ore_impiegate);
+                setKpi("delta_ore", kpi.delta_ore);
+                setKpi("scostamento_percentuale", kpi.scostamento_percentuale);
+                setKpi("componenti_macchine", kpi.componenti_macchine);
+                setKpi("componenti_semilavorati", kpi.componenti_semilavorati);
+            }
+
+            function buildScostamentoCell(value) {
+                const span = document.createElement("span");
+
+                span.textContent = formatPercent(value);
+                applyScostamentoClass(span, value);
+
+                return span;
+            }
+
+            function buildDeltaCell(value) {
+                const span = document.createElement("span");
+
+                span.textContent = formatNumber(value, 2);
+                applyDeltaClass(span, value);
+
+                return span;
+            }
+
+            function appendTextCell(tr, value, className = "") {
+                const td = document.createElement("td");
+
+                if (className) {
+                    td.className = className;
+                }
+
+                td.textContent = value || "-";
+                tr.appendChild(td);
+
+                return td;
+            }
+
+            function appendArticleCell(tr, row) {
+                const td = document.createElement("td");
+                const code = document.createElement("div");
+                const description = document.createElement("div");
+
+                code.textContent = row.cod_art || "-";
+                description.className = "small text-muted";
+                description.textContent = row.descrizione || "";
+
+                td.appendChild(code);
+                td.appendChild(description);
+                tr.appendChild(td);
+            }
+
+            function appendNodeCell(tr, node, className = "") {
+                const td = document.createElement("td");
+
+                if (className) {
+                    td.className = className;
+                }
+
+                td.appendChild(node);
+                tr.appendChild(td);
+            }
+
+            function renderWorkedOrders(rows) {
+                workedOrdersBody.innerHTML = "";
+
+                if (!rows || rows.length === 0) {
+                    workedOrdersBody.innerHTML = `
+                        <tr>
+                            <td colspan="12" class="text-center text-muted py-3">
+                                Nessun ordine lavorato dall'utente negli ultimi 7 giorni.
+                            </td>
+                        </tr>
+                    `;
+                    return;
+                }
+
+                for (const row of rows) {
+                    const tr = document.createElement("tr");
+
+                    appendTextCell(tr, row.rif_ordine);
+                    appendTextCell(tr, row.num_progr_riga);
+                    appendArticleCell(tr, row);
+                    appendTextCell(tr, row.tipo);
+                    appendTextCell(tr, row.fasi_lavorate);
+                    appendTextCell(tr, row.stato);
+                    appendTextCell(tr, row.ultimo_evento);
+                    appendTextCell(tr, formatNumber(row.qta_finale, 2), "text-end");
+                    appendTextCell(tr, formatNumber(row.ore_previste, 2), "text-end");
+                    appendTextCell(tr, formatNumber(row.ore_impiegate, 2), "text-end");
+                    appendNodeCell(tr, buildDeltaCell(row.delta_ore), "text-end");
+                    appendNodeCell(tr, buildScostamentoCell(row.scostamento_percentuale), "text-end");
+
+                    workedOrdersBody.appendChild(tr);
+                }
+            }
+
+            function populateUserSelect(users, selectedUserId) {
+                if (!canSelectUser || !userSelect) {
+                    return;
+                }
+
+                const currentValue = String(selectedUserId || userSelect.value || defaultUserId);
+
+                userSelect.innerHTML = "";
+
+                if (!users || users.length === 0) {
+                    const option = document.createElement("option");
+                    option.value = "";
+                    option.textContent = "Nessun operatore disponibile";
+                    userSelect.appendChild(option);
+                    return;
+                }
+
+                for (const user of users) {
+                    const option = document.createElement("option");
+
+                    option.value = String(user.id);
+                    option.textContent = user.username || `Utente ${user.id}`;
+
+                    if (String(user.id) === currentValue) {
+                        option.selected = true;
+                    }
+
+                    userSelect.appendChild(option);
+                }
+            }
+
+            async function loadReport() {
+                const urlObj = new URL(bridgeUrl, window.location.origin);
+
+                if (userSelect && userSelect.value) {
+                    urlObj.searchParams.set("user_id", userSelect.value);
+                }
+
+                let url = `${urlObj.pathname}${urlObj.search}`;
+
+                if (window.avpAddTabSessionToUrl) {
+                    url = window.avpAddTabSessionToUrl(url);
+                }
+
+                const response = await fetch(url, {
+                    headers: {
+                        "Accept": "application/json",
+                    },
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Errore HTTP ${response.status}`);
+                }
+
+                const data = await response.json();
+
+                if (!data.ok) {
+                    throw new Error(data.error || "Errore caricamento report.");
+                }
+
+                populateUserSelect(data.users || [], data.selected_user_id);
+                renderKpi(data.kpi || {});
+                renderWorkedOrders(data.ordini_lavorati || []);
+            }
+
+            if (refreshBtn) {
+                refreshBtn.addEventListener("click", function () {
+                    loadReport().catch(function (error) {
+                        console.error(error);
+                        alert("Errore durante il caricamento del report settimanale.");
+                    });
+                });
+            }
+
+            if (canSelectUser && userSelect) {
+                userSelect.addEventListener("change", function () {
+                    loadReport().catch(function (error) {
+                        console.error(error);
+                        alert("Errore durante il caricamento del report settimanale.");
+                    });
+                });
+            }
+
+            loadReport().catch(function (error) {
+                console.error(error);
+            });
+        })();
+    </script>
+{% endblock %}

@@ -3512,4 +3512,5 @@ from app_odp.routes_modules import (
     erp,
     documenti,
     home,
+    report_settimanale,
 )
