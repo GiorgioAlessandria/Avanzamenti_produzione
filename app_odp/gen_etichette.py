@@ -104,21 +104,19 @@ def gen_etichette(
     img = Image.new("L", (w_px, h_px), 255)
     d = ImageDraw.Draw(img)
 
-    font_med = load_font(font_path, size=max(30, int(h_px * 0.065)))
-    font_small = load_font(font_path, size=max(25, int(h_px * 0.058)))
-    font_med_size = max(30, int(h_px * 0.065))
-    font_small_size = max(25, int(h_px * 0.058))
+    font_med = load_font(font_path, size=max(20, int(h_px * 0.055)))
+    font_small = load_font(font_path, size=max(15, int(h_px * 0.043)))
+    font_small_size = max(15, int(h_px * 0.058))
     x = w_px - 3
     y = h_px - 3
-    d.rectangle([(2, 2), (x, y)], outline=0, width=1)
+    d.rectangle([(1, 1), (x, y)], outline=0, width=1)
 
-    margin_x = 8
-    text_margin = 20
-    margin_y = 9
+    margin_x = 5
+    text_margin = 5
+    margin_y = 5
     middle_x = int((x / 2) + margin_x)
-    sesti_x = int((x / 6) + margin_x)
-    terzo_y = int((y / 3) + margin_y)
-    middle_y = int((y / 2) + margin_y)
+    sesti_x = int((x / 5) + margin_x)
+    terzo_y = int((y / 4))
     d.text((margin_x, margin_y), "Codice del componente", font=font_med, fill=0)
     d.multiline_text(
         (margin_x + text_margin, margin_y + font_small_size * 2),

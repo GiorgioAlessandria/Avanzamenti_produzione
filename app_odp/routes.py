@@ -18,7 +18,7 @@ from flask import (
 )
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import func, select, and_, exists, or_
-from app_odp.etichette import gen_etichette
+from app_odp.gen_etichette import gen_etichette
 from app_odp.models import (
     InputOdp,
     InputOdpRuntime,
@@ -81,7 +81,7 @@ def _format_date_it(day_value: date | None) -> str:
 def _is_business_day(day_value: date) -> bool:
     if day_value.weekday() >= 5:
         return False
-    return day_value not in (day_value.year)
+    return day_value not in _italian_holidays(day_value.year)
 
 
 def _home_rows_for_config(
@@ -3212,8 +3212,12 @@ def _resolve_label_file_path(filename: str) -> Path | None:
 
 def _apply_label_image_offset(img, offset_x_mm: float, offset_y_mm: float, dpi: int):
     """
-    Applica l'offset direttamente dentro al PNG.
-    La dimensione finale resta identica: 80x50 mm.
+    Applica offset al PNG mantenendo invariata la dimensione finale.
+
+    Offset positivo X = sposta a destra.
+    Offset negativo X = sposta a sinistra.
+    Offset positivo Y = sposta in basso.
+    Offset negativo Y = sposta in alto.
     """
     offset_x_px = int(round(float(offset_x_mm) / 25.4 * int(dpi)))
     offset_y_px = int(round(float(offset_y_mm) / 25.4 * int(dpi)))
@@ -3223,16 +3227,23 @@ def _apply_label_image_offset(img, offset_x_mm: float, offset_y_mm: float, dpi: 
 
     canvas = Image.new("RGB", img.size, "white")
 
-    src_left = 0
-    src_top = 0
-    src_right = max(0, img.width - offset_x_px)
-    src_bottom = max(0, img.height - offset_y_px)
+    src_left = max(0, -offset_x_px)
+    src_top = max(0, -offset_y_px)
+    src_right = (
+        min(img.width, img.width - offset_x_px) if offset_x_px > 0 else img.width
+    )
+    src_bottom = (
+        min(img.height, img.height - offset_y_px) if offset_y_px > 0 else img.height
+    )
+
+    dst_left = max(0, offset_x_px)
+    dst_top = max(0, offset_y_px)
 
     if src_right <= src_left or src_bottom <= src_top:
         return img
 
     cropped = img.crop((src_left, src_top, src_right, src_bottom))
-    canvas.paste(cropped, (offset_x_px, offset_y_px))
+    canvas.paste(cropped, (dst_left, dst_top))
 
     return canvas
 
@@ -3319,6 +3330,19 @@ def _print_label_png_to_windows_printer(file_path: Path) -> None:
     try:
         printable_w = printer_dc.GetDeviceCaps(win32con.HORZRES)
         printable_h = printer_dc.GetDeviceCaps(win32con.VERTRES)
+        expected_w = target_w_px
+        expected_h = target_h_px
+
+        max_w = int(expected_w * 1.35)
+        max_h = int(expected_h * 1.35)
+
+        if printable_w > max_w or printable_h > max_h:
+            raise RuntimeError(
+                "Formato pagina driver non coerente con etichetta. "
+                f"Atteso circa {expected_w}x{expected_h}px, "
+                f"driver restituisce {printable_w}x{printable_h}px. "
+                "Configura nel driver Windows della cab EOS1/300 un formato 80x50 mm."
+            )
 
         current_app.logger.info(
             "Stampa etichetta: file=%s printer=%s img=%sx%s target=%sx%s printable=%sx%s dpi=%s rotation=%s offset=%s,%s",
