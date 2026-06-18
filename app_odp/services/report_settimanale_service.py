@@ -396,6 +396,40 @@ def _qta_prodotta(row: InputOdpLog) -> float:
     return 0.0
 
 
+def _planned_hours_for_phase(
+    row: InputOdpLog,
+    phase_key: tuple[str, str, str] | None = None,
+) -> float:
+    """
+    Calcola le ore previste effettive per la fase.
+
+    Il gestionale fornisce TempoPrevistoLavoraz in minuti per singolo componente.
+    Il report deve mostrare ore totali previste:
+
+        minuti_per_pezzo * (QuantitaConforme + QuantitaNonConforme) / 60
+
+    Fallback: se conforme/non conforme non sono valorizzate, usa Quantita
+    per evitare ore previste a zero su log incompleti o ordini ancora aperti.
+    """
+    planned_minutes_per_piece = _parse_tempo_previsto_lavoraz_for_phase(
+        row,
+        phase_key=phase_key,
+    )
+
+    if planned_minutes_per_piece <= 0:
+        return 0.0
+
+    qta = _qta_prodotta(row)
+
+    if qta <= 0:
+        qta = _qta_finale(row)
+
+    if qta <= 0:
+        return 0.0
+
+    return (planned_minutes_per_piece * qta) / 60.0
+
+
 def _row_label(row: InputOdpLog) -> str:
     return _norm(row.RifRegistraz) or f"{_norm(row.IdDocumento)}.{_norm(row.IdRiga)}"
 
@@ -958,7 +992,7 @@ def build_report_settimanale_for_user(
         if phase_snapshot is None:
             continue
 
-        planned = _parse_tempo_previsto_lavoraz_for_phase(
+        planned = _planned_hours_for_phase(
             phase_snapshot,
             phase_key=phase_key,
         )
