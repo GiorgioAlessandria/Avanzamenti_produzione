@@ -1,0 +1,40 @@
+<div class="card shadow-sm h-100 d-flex flex-column"
+     style="min-height: 0;">
+    <div class="card-header d-flex justify-content-between align-items-center flex-shrink-0">
+        <h2 class="h4 mb-0">Scorte segnalate</h2>
+        <span class="text-muted small">
+            Letture QR dagli operatori
+        </span>
+    </div>
+
+    <div class="card-body py-2 d-flex flex-column flex-grow-1 overflow-hidden"
+         style="min-height: 0;">
+        <div class="table-responsive flex-grow-1 h-100 text-center"
+             style="overflow: auto; min-height: 0;">
+            <table class="table table-striped table-hover table-sortable align-middle mb-0"
+                   id="acquisti_scorte_table">
+                <thead>
+                <tr>
+                    <th data-sort="date">Data lettura</th>
+                    <th data-sort="text">Codice</th>
+                    <th data-sort="text">Var.</th>
+                    <th data-sort="text">Rev.</th>
+                    <th data-sort="text">Descrizione</th>
+                    <th data-sort="num">Scorta</th>
+                    <th data-sort="num">Lead time</th>
+                    <th data-sort="num">Lotto minimo</th>
+                    <th data-sort="text">Stato</th>
+                    <th data-sort="text">Segnalato da</th>
+                    <th data-sort="text">Reparto</th>
+                    <th data-sort="text">Note</th>
+                    <th data-sort="text">Azioni</th>
+                </tr>
+                </thead>
+
+                <tbody id="tbody_acquisti_scorte">
+                {% include "partials/_acquisti_scorte_rows.j2" %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>

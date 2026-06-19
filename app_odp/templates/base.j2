@@ -255,6 +255,15 @@
                         </svg>
                         <span>Metodo di utilizzo</span>
                     </button>
+                    {% if visible_policy and visible_policy.can('home') %}
+                        <button class="btn btn-outline-warning d-flex align-items-center gap-2"
+                                type="button"
+                                data-bs-toggle="modal"
+                                data-bs-target="#modalSegnalaScorta">
+                            <i class="bi bi-qr-code-scan"></i>
+                            <span>Segnala scorta</span>
+                        </button>
+                    {% endif %}
                     {% if active_tab|default('') == 'montaggio' %}
                         <button class="btn btn-outline-secondary d-flex align-items-center gap-2"
                                 type="button"
@@ -662,6 +671,59 @@
         return fetch(urlValue, options);
     };
 </script>
+{% if visible_policy and visible_policy.can('home') %}
+    <div class="modal fade"
+         id="modalSegnalaScorta"
+         tabindex="-1"
+         aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Segnala scorta materiale</h5>
+                    <button type="button"
+                            class="btn-close"
+                            data-bs-dismiss="modal"
+                            aria-label="Chiudi"></button>
+                </div>
+
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="scorta-qrcode-input"
+                               class="form-label fw-semibold">
+                            Lettura QR code
+                        </label>
+                        <textarea id="scorta-qrcode-input"
+                                  class="form-control"
+                                  rows="3"
+                                  autocomplete="off"
+                                  spellcheck="false"
+                                  placeholder="Scansiona qui il QR code del cartellino scorta"></textarea>
+                        <div class="form-text">
+                            Formato atteso: codice|variante|revisione
+                        </div>
+                    </div>
+
+                    <div id="scorta-feedback"
+                         class="alert d-none"
+                         role="alert"></div>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button"
+                            class="btn btn-outline-secondary"
+                            data-bs-dismiss="modal">
+                        Chiudi
+                    </button>
+                    <button type="button"
+                            class="btn btn-warning"
+                            id="btn-conferma-scorta">
+                        Conferma scorta
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endif %}
 {% block content %}{% endblock %}
 
 {% block extra_js %}
@@ -1915,6 +1977,127 @@
                 if (lottoEl) lottoEl.value = "";
                 if (tbodyEl) tbodyEl.innerHTML = "";
                 setLabelFeedback(feedbackEl, "");
+            });
+        });
+    </script>
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            const modalEl = document.getElementById("modalSegnalaScorta");
+            const inputEl = document.getElementById("scorta-qrcode-input");
+            const feedbackEl = document.getElementById("scorta-feedback");
+            const confirmBtn = document.getElementById("btn-conferma-scorta");
+
+            if (!modalEl || !inputEl || !feedbackEl || !confirmBtn) return;
+
+            function setFeedback(message, type = "success") {
+                feedbackEl.className = message ? `alert alert-${type}` : "alert d-none";
+                feedbackEl.textContent = message || "";
+            }
+
+            modalEl.addEventListener("shown.bs.modal", () => {
+                inputEl.focus();
+            });
+
+            modalEl.addEventListener("hidden.bs.modal", () => {
+                inputEl.value = "";
+                setFeedback("");
+                confirmBtn.disabled = false;
+            });
+
+            inputEl.addEventListener("keydown", (event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    confirmBtn.click();
+                }
+            });
+
+            confirmBtn.addEventListener("click", async () => {
+                const qrcode = inputEl.value.trim();
+
+                if (!qrcode) {
+                    setFeedback("Scansionare un QR code prima di confermare.", "warning");
+                    inputEl.focus();
+                    return;
+                }
+
+                confirmBtn.disabled = true;
+                setFeedback("");
+
+                try {
+                    const response = await window.avpFetch("/api/scorte/segnala", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "X-Requested-With": "XMLHttpRequest"
+                        },
+                        credentials: "same-origin",
+                        body: JSON.stringify({qrcode})
+                    });
+
+                    const data = await response.json();
+
+                    if (!response.ok || data.ok === false) {
+                        setFeedback(data.error || "Errore durante la segnalazione della scorta.", "danger");
+                        return;
+                    }
+
+                    const item = data.item || {};
+                    const msg = [
+                        data.message || "Scorta segnalata.",
+                        item.cod_art ? `Codice: ${item.cod_art}` : "",
+                        item.descrizione ? `Descrizione: ${item.descrizione}` : "",
+                        item.lookup_trovato === false ? "Attenzione: articolo non trovato nel lookup acquisti." : "",
+                    ].filter(Boolean).join(" - ");
+
+                    setFeedback(msg, data.duplicate ? "warning" : "success");
+                    inputEl.value = "";
+
+                    const scortaEvent = {
+                        type: "scorta-segnalata",
+                        at: Date.now(),
+                        created: Boolean(data.created),
+                        duplicate: Boolean(data.duplicate),
+                        item: data.item || {}
+                    };
+
+                    /*
+                     * Caso 1: stessa macchina / stesso browser.
+                     * Avvisa subito eventuali schede acquisti aperte.
+                     */
+                    try {
+                        if (window.BroadcastChannel) {
+                            const channel = new BroadcastChannel("avp_acquisti_events");
+                            channel.postMessage(scortaEvent);
+                            channel.close();
+                        }
+
+                        localStorage.setItem(
+                            "avp_acquisti_scorte_changed",
+                            JSON.stringify(scortaEvent)
+                        );
+
+                        localStorage.removeItem("avp_acquisti_scorte_changed");
+
+                    } catch (err) {
+                        console.warn("Notifica locale scorta non inviata:", err);
+                    }
+
+                    /*
+                     * Caso 2: se per qualche motivo siamo già nella pagina acquisti,
+                     * aggiorna direttamente.
+                     */
+                    if (window.refreshAcquistiTables) {
+                        window.refreshAcquistiTables({force: true});
+                    }
+
+                } catch (err) {
+                    console.error("Errore segnalazione scorta:", err);
+                    setFeedback("Errore di comunicazione con il server.", "danger");
+
+                } finally {
+                    confirmBtn.disabled = false;
+                    inputEl.focus();
+                }
             });
         });
     </script>

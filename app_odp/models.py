@@ -1551,6 +1551,36 @@ class AcqArticoliLookup(db.Model):
     synced_at = db.Column(db.Text)
 
 
+class AcqScortaSegnalata(db.Model):
+    __bind_key__ = "acq"
+    __tablename__ = "acq_scorte_segnalate"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+
+    DataLettura = db.Column(db.Text, nullable=False)
+    RawQrCode = db.Column(db.Text, nullable=False)
+
+    CodArt = db.Column(db.Text, nullable=False)
+    VarianteArt = db.Column(db.Text, nullable=False, default="")
+    IndiceModifica = db.Column(db.Text, nullable=False, default="")
+
+    DesArt = db.Column(db.Text)
+    PuntoRiordino = db.Column(db.Float)
+    LottoRiordino = db.Column(db.Float)
+    PianTempoApprovFisso = db.Column(db.Integer)
+
+    Stato = db.Column(db.Text, nullable=False, default="Aperta")
+    Annullata = db.Column(db.Boolean, nullable=False, default=False)
+
+    Note = db.Column(db.Text)
+
+    SegnalatoDa = db.Column(db.Text, nullable=False)
+    RepartoSegnalatore = db.Column(db.Text)
+
+    LookupTrovato = db.Column(db.Boolean, nullable=False, default=False)
+    StatoChangedAt = db.Column(db.Text)
+
+
 class OdpPriorita(db.Model):
     __tablename__ = "odp_priorita"
 

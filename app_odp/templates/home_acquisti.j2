@@ -30,6 +30,11 @@
                                     data-section="ordini">
                                 Ordini produzione
                             </button>
+                            <button class="btn btn-outline-primary js-acq-section-btn"
+                                    type="button"
+                                    data-section="scorte">
+                                Scorte segnalate
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -52,6 +57,10 @@
                         <div class="acq-filters-panel d-none"
                              data-section="ordini">
                             {% include "partials/_acquisti_filters_ordini.j2" %}
+                        </div>
+                        <div class="acq-filters-panel d-none"
+                             data-section="scorte">
+                            {% include "partials/_acquisti_filters_scorte.j2" %}
                         </div>
                     </div>
                 </section>
@@ -82,6 +91,11 @@
                              style="min-height: 0;">
                             {% include "partials/_acquisti_ordini_produzione.j2" %}
                         </div>
+                    </div>
+                    <div class="acq-section-panel d-none h-100"
+                         data-section="scorte"
+                         style="min-height: 0;">
+                        {% include "partials/_acquisti_scorte.j2" %}
                     </div>
                 </section>
             </div>
@@ -198,7 +212,7 @@
                 const bridgeUrl = root.dataset.bridgeUrl;
                 if (!bridgeUrl) return;
 
-                const POLL_MS = 30000;
+                const POLL_MS = 5000;
                 let isRefreshing = false;
 
                 function getAcquistiFilterSnapshot() {
@@ -372,10 +386,17 @@
                     window.applyAcquistiOrdiniFilters?.();
                 }
 
-                async function refreshAcquistiTables() {
-                    if (isRefreshing) return;
+                async function refreshAcquistiTables(options = {}) {
+                    const force = Boolean(options.force);
 
-                    if (document.querySelector("#modalAcqMateriale.show")) {
+                    if (isRefreshing) {
+                        if (force) {
+                            setTimeout(() => refreshAcquistiTables({force: true}), 250);
+                        }
+                        return;
+                    }
+
+                    if (!force && document.querySelector("#modalAcqMateriale.show")) {
                         return;
                     }
 
@@ -384,19 +405,27 @@
                     const sortSnapshot = getAcquistiSortSnapshot();
 
                     try {
-                        const response = await fetch(bridgeUrl, {
+                        const response = await window.avpFetch(bridgeUrl, {
                             method: "GET",
                             headers: {
                                 "Accept": "application/json",
                                 "X-Requested-With": "XMLHttpRequest",
                             },
+                            credentials: "same-origin",
                             cache: "no-store",
                         });
 
-                        if (!response.ok) return;
+                        if (!response.ok) {
+                            console.error("Bridge acquisti non riuscito:", response.status, response.statusText);
+                            return;
+                        }
 
                         const data = await response.json();
-                        if (!data || !data.ok) return;
+
+                        if (!data || data.ok === false) {
+                            console.error("Risposta bridge acquisti non valida:", data);
+                            return;
+                        }
 
                         const fragments = data.fragments || {};
 
@@ -404,14 +433,18 @@
                             const target = document.getElementById(targetId);
                             if (target) {
                                 target.innerHTML = html;
+                            } else {
+                                console.warn("Target fragment non trovato:", targetId);
                             }
                         });
 
                         restoreAcquistiFilterSnapshot(filterSnapshot);
                         restoreAcquistiSortSnapshot(sortSnapshot);
                         reapplyAllAcquistiFilters();
+
                     } catch (err) {
                         console.error("Errore refresh acquisti:", err);
+
                     } finally {
                         isRefreshing = false;
                     }
@@ -419,6 +452,40 @@
 
                 window.refreshAcquistiTables = refreshAcquistiTables;
                 window.setInterval(refreshAcquistiTables, POLL_MS);
+
+                function refreshScorteFromExternalEvent(eventData = {}) {
+                    if (eventData.type && eventData.type !== "scorta-segnalata") {
+                        return;
+                    }
+
+                    refreshAcquistiTables({force: true});
+                }
+
+                try {
+                    if (window.BroadcastChannel) {
+                        const channel = new BroadcastChannel("avp_acquisti_events");
+
+                        channel.addEventListener("message", (event) => {
+                            refreshScorteFromExternalEvent(event.data || {});
+                        });
+                    }
+
+                    window.addEventListener("storage", (event) => {
+                        if (event.key !== "avp_acquisti_scorte_changed") {
+                            return;
+                        }
+
+                        try {
+                            const data = JSON.parse(event.newValue || "{}");
+                            refreshScorteFromExternalEvent(data);
+                        } catch (err) {
+                            refreshAcquistiTables({force: true});
+                        }
+                    });
+
+                } catch (err) {
+                    console.warn("Listener notifiche scorte non attivato:", err);
+                }
 
                 // opzionale ma utile anche al primo caricamento
                 reapplyAllAcquistiFilters();
@@ -618,31 +685,100 @@
             }
 
             document.addEventListener("click", (event) => {
-                const btn = event.target.closest(".js-open-acq-material-modal");
-                if (!btn) return;
-
-                const modalEl = document.querySelector("#modalAcqMateriale.modal");
-                const titleExtraEl = document.getElementById("modal-acq-materiale-title-extra");
-                const bodyEl = document.getElementById("modal-acq-materiale-body");
-
-                if (!(modalEl instanceof HTMLElement)) {
-                    console.error("Modal #modalAcqMateriale non trovato o non valido.");
-                    return;
-                }
-
-                if (!titleExtraEl || !bodyEl) {
-                    console.error("Elementi interni del modal materiale non trovati.");
-                    return;
-                }
-
-                if (!window.bootstrap || !bootstrap.Modal) {
-                    console.error("Bootstrap Modal non disponibile. Verificare bootstrap.bundle.min.js.");
+                const giacenzaBtn = event.target.closest("#btn-export-acq-giacenza");
+                if (giacenzaBtn) {
+                    startAcquistiExcelExport("giacenza");
                     return;
                 }
 
                 const materialeBtn = event.target.closest("#btn-export-acq-materiale");
                 if (materialeBtn) {
                     startAcquistiExcelExport("materiale");
+                    return;
+                }
+
+                const scorteBtn = event.target.closest("#btn-export-acq-scorte");
+                if (scorteBtn) {
+                    startScorteExcelExport();
+                    return;
+                }
+            });
+        })();
+    </script>
+    <script>
+        (() => {
+            function getInputValue(id) {
+                return document.getElementById(id)?.value?.trim() || "";
+            }
+
+            function startScorteExcelExport() {
+                const params = new URLSearchParams();
+                params.set("codart", getInputValue("filter-acq-scorte-codart"));
+                params.set("variante", getInputValue("filter-acq-scorte-variante"));
+                params.set("desart", getInputValue("filter-acq-scorte-desart"));
+                params.set("stato", getInputValue("filter-acq-scorte-stato"));
+                params.set("segnalato_da", getInputValue("filter-acq-scorte-segnalato-da"));
+
+                window.location.href = `/api/acquisti/export/scorte?${params.toString()}`;
+            }
+
+            async function updateScorta(button) {
+                const id = button.dataset.id;
+                const action = button.dataset.action;
+                const row = button.closest("tr");
+                const note = row?.querySelector(".js-acq-scorta-note")?.value || "";
+
+                if (!id || !action) return;
+
+                if (action === "annulla" && !confirm("Annullare questa segnalazione?")) {
+                    return;
+                }
+
+                button.disabled = true;
+
+                try {
+                    const response = await window.avpFetch(`/api/acquisti/scorte/${id}`, {
+                        method: "PATCH",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "X-Requested-With": "XMLHttpRequest"
+                        },
+                        credentials: "same-origin",
+                        body: JSON.stringify({action, note})
+                    });
+
+                    const data = await response.json();
+
+                    if (!response.ok || data.ok === false) {
+                        alert(data.error || "Errore durante l'aggiornamento della scorta.");
+                        return;
+                    }
+
+                    if (window.refreshAcquistiTables) {
+                        await window.refreshAcquistiTables({force: true});
+                    } else {
+                        window.location.reload();
+                    }
+
+                } catch (err) {
+                    console.error("Errore aggiornamento scorta:", err);
+                    alert("Errore di comunicazione con il server.");
+
+                } finally {
+                    button.disabled = false;
+                }
+            }
+
+            document.addEventListener("click", (event) => {
+                const exportBtn = event.target.closest("#btn-export-acq-scorte");
+                if (exportBtn) {
+                    startScorteExcelExport();
+                    return;
+                }
+
+                const actionBtn = event.target.closest(".js-acq-scorta-action");
+                if (actionBtn) {
+                    updateScorta(actionBtn);
                 }
             });
         })();

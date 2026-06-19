@@ -7,8 +7,10 @@ from app_odp.models import (
     AcqArticoli,
     AcqArticoliLookup,
     AcqGiacenze,
+    AcqScortaSegnalata,
+    db,
 )
-
+from datetime import datetime, timedelta
 from app_odp.routes import (
     _active_value_for_phase,
     _base_odp_query,
@@ -18,6 +20,7 @@ from app_odp.routes import (
     _norm_text,
     _ordine_ref_label,
     _ordine_state_rank,
+    _now_rome_dt,
     _parse_distinta_materiale,
     _parse_qty_decimal,
     _safe_float,
@@ -692,6 +695,41 @@ def _build_acquisti_excel_workbook(section: str, rows: list[dict]) -> Workbook:
             ]
             for row in rows
         ]
+    elif section == "scorte":
+        ws.title = "Scorte"
+        headers = [
+            "Data lettura",
+            "Codice",
+            "Var.",
+            "Rev.",
+            "Descrizione",
+            "Scorta",
+            "Lead time",
+            "Lotto minimo",
+            "Stato",
+            "Annullata",
+            "Segnalato da",
+            "Reparto",
+            "Note",
+        ]
+        data_rows = [
+            [
+                row.get("DataLetturaText", ""),
+                row.get("CodArt", ""),
+                row.get("VarianteArt", ""),
+                row.get("IndiceModifica", ""),
+                row.get("DesArt", ""),
+                row.get("PuntoRiordinoText", ""),
+                row.get("PianTempoApprovFisso", ""),
+                row.get("LottoRiordinoText", ""),
+                row.get("Stato", ""),
+                "Sì" if row.get("Annullata") else "No",
+                row.get("SegnalatoDa", ""),
+                row.get("RepartoSegnalatore", ""),
+                row.get("Note", ""),
+            ]
+            for row in rows
+        ]
     else:
         raise ValueError(f"Sezione export non valida: {section}")
 
@@ -795,3 +833,301 @@ def _is_open_order_state(stato: str) -> bool:
         return False
 
     return "attiv" in s or "pianificat" in s or "sospes" in s or "apert"
+
+
+def _parse_scorta_qrcode(raw_qrcode: str) -> tuple[str, str, str]:
+    raw = _norm_text(raw_qrcode).replace("\n", "").replace("\r", "")
+
+    if not raw:
+        raise ValueError("QR code vuoto.")
+
+    parts = raw.split("|")
+
+    if len(parts) != 3:
+        raise ValueError(
+            "Formato QR non valido. Formato atteso: codice|variante|revisione."
+        )
+
+    cod_art = _norm_text(parts[0])
+    variante_art = _normalize_variante_articolo_search(parts[1])
+    indice_modifica = _normalize_indice_articolo_search(parts[2])
+
+    if not cod_art:
+        raise ValueError("Codice articolo mancante nel QR code.")
+
+    return cod_art, variante_art, indice_modifica
+
+
+def _find_scorta_lookup(cod_art: str, variante_art: str, indice_modifica: str):
+    rows = AcqArticoliLookup.query.filter_by(CodArt=cod_art).all()
+
+    if not rows:
+        return None
+
+    def row_variante(row) -> str:
+        return _normalize_variante_articolo_search(getattr(row, "VarianteArt", ""))
+
+    def row_revisione(row) -> str:
+        return _normalize_indice_articolo_search(getattr(row, "IndiceModifica", ""))
+
+    exact = [
+        row
+        for row in rows
+        if row_variante(row) == variante_art and row_revisione(row) == indice_modifica
+    ]
+
+    if len(exact) == 1:
+        return exact[0]
+
+    if len(exact) > 1:
+        raise ValueError(
+            f"Articolo ambiguo nel lookup: {cod_art}|{variante_art}|{indice_modifica}."
+        )
+
+    compatible = [
+        row
+        for row in rows
+        if (not variante_art or row_variante(row) == variante_art)
+        and (not indice_modifica or row_revisione(row) == indice_modifica)
+    ]
+
+    if len(compatible) == 1:
+        return compatible[0]
+
+    if not variante_art and not indice_modifica and len(rows) == 1:
+        return rows[0]
+
+    if len(compatible) > 1:
+        raise ValueError(
+            f"Articolo ambiguo: {cod_art}. Specificare variante e/o revisione nel QR."
+        )
+
+    return None
+
+
+def _scorta_operator_payload(user) -> tuple[str, str]:
+    segnalato_da = (
+        getattr(user, "username", None)
+        or getattr(user, "name", None)
+        or getattr(user, "email", None)
+        or str(getattr(user, "id", "utente_sconosciuto"))
+    )
+
+    reparto = _norm_text(getattr(user, "RepartoPrinc", ""))
+
+    return segnalato_da, reparto
+
+
+def _create_scorta_from_qrcode(
+    raw_qrcode: str, user
+) -> tuple[AcqScortaSegnalata, bool]:
+    cod_art, variante_art, indice_modifica = _parse_scorta_qrcode(raw_qrcode)
+    segnalato_da, reparto = _scorta_operator_payload(user)
+
+    existing = (
+        AcqScortaSegnalata.query.filter_by(
+            CodArt=cod_art,
+            VarianteArt=variante_art,
+            IndiceModifica=indice_modifica,
+            SegnalatoDa=segnalato_da,
+            Stato="Aperta",
+        )
+        .filter(AcqScortaSegnalata.Annullata.is_(False))
+        .first()
+    )
+
+    if existing:
+        return existing, False
+
+    lookup = _find_scorta_lookup(cod_art, variante_art, indice_modifica)
+    lookup_trovato = lookup is not None
+
+    now_iso = _now_rome_dt().isoformat(timespec="seconds")
+
+    row = AcqScortaSegnalata(
+        DataLettura=now_iso,
+        StatoChangedAt=now_iso,
+        RawQrCode=_norm_text(raw_qrcode),
+        CodArt=cod_art,
+        VarianteArt=variante_art,
+        IndiceModifica=indice_modifica,
+        DesArt=_norm_text(getattr(lookup, "DesArt", "")),
+        PuntoRiordino=getattr(lookup, "PuntoRiordino", None),
+        LottoRiordino=getattr(lookup, "LottoRiordino", None),
+        PianTempoApprovFisso=getattr(lookup, "PianTempoApprovFisso", None),
+        Stato="Aperta",
+        Annullata=False,
+        Note="",
+        SegnalatoDa=segnalato_da,
+        RepartoSegnalatore=reparto,
+        LookupTrovato=lookup_trovato,
+    )
+
+    db.session.add(row)
+    return row, True
+
+
+def _format_datetime_it(value: str) -> str:
+    raw = _norm_text(value)
+    if not raw:
+        return ""
+
+    try:
+        dt = datetime.fromisoformat(raw)
+        return dt.strftime("%d/%m/%Y %H:%M")
+    except ValueError:
+        return raw
+
+
+def _num_text(value) -> str:
+    if value is None:
+        return ""
+    return _decimal_to_text(Decimal(str(value)))
+
+
+def _scorta_to_row(row: AcqScortaSegnalata) -> dict:
+    return {
+        "Id": row.id,
+        "DataLettura": row.DataLettura,
+        "DataLetturaText": _format_datetime_it(row.DataLettura),
+        "RawQrCode": row.RawQrCode,
+        "CodArt": row.CodArt,
+        "VarianteArt": row.VarianteArt,
+        "IndiceModifica": row.IndiceModifica,
+        "DesArt": row.DesArt,
+        "PuntoRiordino": row.PuntoRiordino,
+        "PuntoRiordinoText": _num_text(row.PuntoRiordino),
+        "LottoRiordino": row.LottoRiordino,
+        "LottoRiordinoText": _num_text(row.LottoRiordino),
+        "PianTempoApprovFisso": row.PianTempoApprovFisso,
+        "Stato": row.Stato,
+        "Annullata": bool(row.Annullata),
+        "Note": row.Note or "",
+        "SegnalatoDa": row.SegnalatoDa,
+        "RepartoSegnalatore": row.RepartoSegnalatore,
+        "LookupTrovato": bool(row.LookupTrovato),
+        "ScortaApertaOltre3Giorni": _is_scorta_aperta_oltre_3_giorni(row),
+        "StatoChangedAt": row.StatoChangedAt,
+        "StatoChangedAtText": _format_datetime_it(row.StatoChangedAt),
+    }
+
+
+def _build_acquisti_scorte_rows() -> list[dict]:
+    rows = AcqScortaSegnalata.query.order_by(
+        AcqScortaSegnalata.DataLettura.desc(), AcqScortaSegnalata.id.desc()
+    ).all()
+
+    return [_scorta_to_row(row) for row in rows]
+
+
+def _filter_acquisti_scorte_rows(
+    rows: list[dict],
+    *,
+    codart: str = "",
+    variante: str = "",
+    desart: str = "",
+    stato: str = "",
+    segnalato_da: str = "",
+    include_annullate: bool = False,
+) -> list[dict]:
+    out = []
+
+    stato_filter = _norm_text(stato).lower()
+
+    for row in rows:
+        is_annullata = bool(row.get("Annullata"))
+
+        if stato_filter == "annullata":
+            if not is_annullata:
+                continue
+
+        else:
+            if is_annullata and not include_annullate:
+                continue
+
+            if stato_filter and _norm_text(row.get("Stato")).lower() != stato_filter:
+                continue
+
+        if not _contains_insensitive(row.get("CodArt"), codart):
+            continue
+
+        if not _contains_insensitive(row.get("VarianteArt"), variante):
+            continue
+
+        if not _contains_insensitive(row.get("DesArt"), desart):
+            continue
+
+        if not _contains_insensitive(row.get("SegnalatoDa"), segnalato_da):
+            continue
+
+        out.append(row)
+
+    return out
+
+
+def _is_scorta_aperta_oltre_3_giorni(row: AcqScortaSegnalata) -> bool:
+    if _norm_text(row.Stato).lower() != "aperta":
+        return False
+
+    if bool(row.Annullata):
+        return False
+
+    raw_date = _norm_text(row.DataLettura)
+    if not raw_date:
+        return False
+
+    try:
+        data_lettura = datetime.fromisoformat(raw_date)
+    except ValueError:
+        return False
+
+    now = _now_rome_dt()
+
+    # Se per qualche motivo DataLettura fosse salvata senza timezone,
+    # la rendiamo confrontabile con now.
+    if data_lettura.tzinfo is None:
+        data_lettura = data_lettura.replace(tzinfo=now.tzinfo)
+
+    return now - data_lettura > timedelta(days=3)
+
+
+def _parse_iso_datetime(value):
+    raw = _norm_text(value)
+    if not raw:
+        return None
+
+    try:
+        dt = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+
+    now = _now_rome_dt()
+
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=now.tzinfo)
+
+    return dt
+
+
+def _delete_scorte_chiuse_oltre_7_giorni() -> int:
+    now = _now_rome_dt()
+    limit = now - timedelta(days=7)
+
+    rows = AcqScortaSegnalata.query.filter(
+        (AcqScortaSegnalata.Annullata.is_(True))
+        | (AcqScortaSegnalata.Stato == "Ordinata")
+    ).all()
+
+    deleted = 0
+
+    for row in rows:
+        changed_at = _parse_iso_datetime(row.StatoChangedAt)
+
+        if changed_at is None:
+            continue
+
+        if changed_at <= limit:
+            db.session.delete(row)
+            deleted += 1
+
+    return deleted
