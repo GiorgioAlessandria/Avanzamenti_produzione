@@ -157,7 +157,8 @@ def api_scorte_segnala():
 
     except ValueError as exc:
         db.session.rollback()
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        main_bp.logger.warning("Errore di validazione in api_scorte_segnala", exc_info=exc)
+        return jsonify({"ok": False, "error": "Dati non validi per la segnalazione."}), 400
 
     except Exception:
         db.session.rollback()
