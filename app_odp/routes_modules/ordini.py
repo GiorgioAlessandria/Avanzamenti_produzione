@@ -167,7 +167,8 @@ def api_apri_gruppo_multiplo():
 
     except ValueError as exc:
         db.session.rollback()
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        current_app.logger.warning("Errore validazione apertura gruppo multiplo: %s", exc)
+        return jsonify({"ok": False, "error": "Richiesta non valida."}), 400
 
     except Exception as exc:
         db.session.rollback()
