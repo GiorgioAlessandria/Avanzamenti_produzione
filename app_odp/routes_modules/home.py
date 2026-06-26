@@ -6,23 +6,23 @@ from sqlalchemy import select
 from app_odp.models import db, Causaliattivita
 from app_odp.operator_session import (
     active_token,
+    active_policy,
     active_user,
     operator_perm_required,
 )
 from app_odp.services.documenti_service import _build_metodo_lookup
-from app_odp.routes import (
-    main_bp,
-    _current_policy,
-    _first_allowed_home_reparto_config,
+from app_odp.services.order_helpers import _norm_text
+from app_odp.services.common import _last_log_token
+from app_odp.services.home_service import (
     _home_method_settings_for_user,
-    _home_reparto_config_by_tab,
-    _home_rows_for_config,
     _home_ui_texts_for_user,
-    _last_log_token,
-    _norm_text,
+    _first_allowed_home_reparto_config,
+    _home_reparto_config_by_tab,
     _policy_can_access_home_config,
     _render_fragments_for_home_config,
+    _home_rows_for_config,
 )
+from app_odp.routes_blueprint import main_bp
 
 
 @main_bp.get("/api/home/<tab>/bridge")
@@ -32,7 +32,7 @@ def api_home_bridge(tab):
     if config is None:
         abort(404)
 
-    policy = _current_policy()
+    policy = active_policy()
 
     if not _policy_can_access_home_config(policy, config):
         abort(403)
@@ -67,7 +67,7 @@ def api_home_bridge(tab):
 @main_bp.get("/")
 @operator_perm_required("home")
 def home():
-    policy = _current_policy()
+    policy = active_policy()
     user = active_user()
 
     tab_raw = request.args.get("tab")

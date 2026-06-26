@@ -9,7 +9,7 @@
     <script>
         window.homeBridgeConfig = {
             url: {{ bridge_url|tojson }},
-            lastEventId: {{ bridge_last_event_id | int }},
+            lastEventId: {{ bridge_last_event_id|default("", true)|tojson }},
             intervalMs: 2000
         };
 
@@ -17,7 +17,7 @@
             const cfg = window.homeBridgeConfig;
             if (!cfg || !cfg.url) return;
 
-            let lastEventId = Number(cfg.lastEventId || 0);
+            let lastEventId = String(cfg.lastEventId || "");
             const intervalMs = Number(cfg.intervalMs || 2000);
             let inFlight = false;
 
@@ -164,8 +164,8 @@
 
                     const data = await res.json();
 
-                    if (typeof data.last_event_id === "number") {
-                        lastEventId = data.last_event_id;
+                    if (data.last_event_id !== undefined && data.last_event_id !== null) {
+                        lastEventId = String(data.last_event_id);
                     }
 
                     if (!data.changed) return;

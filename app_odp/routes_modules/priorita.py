@@ -8,40 +8,36 @@ from flask import (
     request,
     url_for,
 )
-from sqlalchemy import func, select
+from sqlalchemy import func
 from app_odp.services.priorita_service import (
+    _cleanup_priorita_operatore,
     _priorita_visible_operator_ids_for_current_user,
     _get_priorita_visible_operatore_or_403,
+    _compact_priorita_operatore,
+    _make_ordine_fase_key,
+    _priorita_2_max,
+    _priority_now_iso,
+    _ordine_fase_key,
+    _ordine_priorita_payload,
+    _ordini_pianificata_visibili_per_operatore,
+    _priorita_map_for_operatore,
+    _priorita_valid_keys_for_operatore,
 )
 from app_odp.models import (
     db,
     OdpPriorita,
     User,
 )
-from app_odp.operator_session import active_token, active_user
+from app_odp.operator_session import active_policy, active_token, active_user
 from app_odp.policy.decorator import require_active_perm
-
-from app_odp.routes import (
-    main_bp,
-    _compact_priorita_operatore,
-    _cleanup_priorita_operatore,
-    _current_policy,
-    _current_username,
-    _make_ordine_fase_key,
-    _ordine_fase_key,
-    _ordine_priorita_payload,
-    _ordini_pianificata_visibili_per_operatore,
-    _priorita_2_max,
-    _priorita_map_for_operatore,
-    _priorita_valid_keys_for_operatore,
-    _priority_now_iso,
-)
+from app_odp.routes_blueprint import main_bp
+from app_odp.services.session_helpers import _current_username
 
 
 @main_bp.get("/priorita")
 @require_active_perm("priorita_view")
 def priorita():
-    policy = _current_policy()
+    policy = active_policy()
     token = active_token()
 
     redirect_kwargs = {}
@@ -57,7 +53,7 @@ def priorita():
 @main_bp.get("/priorita/view")
 @require_active_perm("priorita_view")
 def priorita_view():
-    policy = _current_policy()
+    policy = active_policy()
     user = active_user()
 
     return render_template(
@@ -72,7 +68,7 @@ def priorita_view():
 @main_bp.get("/priorita/edit")
 @require_active_perm("priorita_edit")
 def priorita_edit():
-    policy = _current_policy()
+    policy = active_policy()
     user = active_user()
 
     return render_template(
@@ -127,7 +123,7 @@ def api_priorita_ordini_operatore(operatore_id: int):
         "p2": [],
         "p3": [],
         "max_p2": _priorita_2_max(),
-        "can_edit": _current_policy().can("priorita_edit"),
+        "can_edit": active_policy().can("priorita_edit"),
     }
 
     for ordine in ordini:

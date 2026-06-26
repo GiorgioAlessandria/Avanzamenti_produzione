@@ -1,7 +1,6 @@
 # filters.py (o dentro create_app)
 import json
 from datetime import datetime, date
-from icecream import ic
 
 
 def register_filters(app):

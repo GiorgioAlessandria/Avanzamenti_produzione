@@ -1,5 +1,63 @@
 {% for singolo_odp in odp %}
-    {% if singolo_odp.GestioneMatricola == "no" and singolo_odp.StatoOrdine != "Pianificata" and singolo_odp.StatoOrdine != "Chiusa" %}
+    {% if singolo_odp.IsWorkGroup|default(false) and singolo_odp.GestioneMatricola == "no" and singolo_odp.StatoOrdine != "Pianificata" and singolo_odp.StatoOrdine != "Chiusa" %}
+        {% set group_type_label = "Multiplo" if singolo_odp.WorkGroupType == "MULTIPLO" else "Mascherato" %}
+        {% set group_badge_class = "bg-primary" if singolo_odp.WorkGroupType == "MULTIPLO" else "bg-dark" %}
+        {% set group_state_class = "bg-success" if singolo_odp.WorkGroupStatus == "Attivo" else "bg-warning text-dark" %}
+        {% set pr = singolo_odp.PrioritaNumero|default('') %}
+        <tr class="workgroup-row table-info border-start border-4"
+            data-row-key="GROUP|{{ singolo_odp.WorkGroupUid }}"
+            data-is-work-group="1"
+            data-group-uid="{{ singolo_odp.WorkGroupUid }}"
+            data-group-type="{{ singolo_odp.WorkGroupType }}"
+            data-group-label="{{ singolo_odp.OrdineVisuale|e }}"
+            data-group-detail="{{ singolo_odp.DettaglioGruppoVisuale|tojson|forceescape }}"
+            data-statoordine="{{ singolo_odp.WorkGroupStatus }}"
+            data-stato="{{ singolo_odp.WorkGroupStatus }}"
+            data-priorita="{{ pr or '' }}"
+            data-tipodocumento="{{ singolo_odp.CodTipoDoc|default('') }}"
+            data-iddocumento="GROUP:{{ singolo_odp.WorkGroupUid }}"
+            data-idriga="GROUP"
+            data-numprogrriga=""
+            data-variante=""
+            data-ordine="{{ singolo_odp.OrdineVisuale }}"
+            data-codice="{{ singolo_odp.CodiciVisuale }}"
+            data-indicemodifica=""
+            data-descrizione="{{ singolo_odp.DesArt }}"
+            data-quantita="{{ singolo_odp.Quantita }}"
+            data-quantita-totale="{{ singolo_odp.Quantita }}"
+            data-fase="{{ singolo_odp.FaseAttiva|default('') }}"
+            data-datacons="{{ singolo_odp.DataFineSched }}"
+            data-risorsaprod="{{ singolo_odp.CodRisorsaProd }}"
+            data-operatore="{{ singolo_odp.OperatoreUsername|default('') }}">
+            <td class="pr-cell fw-bold text-center">{{ pr or '' }}</td>
+            <td class="text-start">
+                <button type="button"
+                        class="btn btn-sm btn-outline-dark me-1 js-open-workgroup-detail-modal"
+                        data-group-uid="{{ singolo_odp.WorkGroupUid }}"
+                        data-group-type="{{ singolo_odp.WorkGroupType }}"
+                        data-group-label="{{ singolo_odp.OrdineVisuale|e }}"
+                        data-group-detail="{{ singolo_odp.DettaglioGruppoVisuale|tojson|forceescape }}"
+                        title="Apri dettaglio gruppo">
+                    Dettaglio
+                </button>
+                <span class="badge {{ group_badge_class }} me-1">{{ group_type_label }}</span>
+                <strong>{{ singolo_odp.OrdineVisuale }}</strong>
+                <div class="small text-muted">{{ singolo_odp.WorkGroupUid }}</div>
+            </td>
+            <td>{{ singolo_odp.CodiciVisuale }}</td>
+            <td></td>
+            <td></td>
+            <td class="text-start">
+                <strong>{{ singolo_odp.DesArt }}</strong>
+                <div class="small text-muted">{{ singolo_odp.WorkGroupMembers|default([])|length }} ordini nel gruppo</div>
+            </td>
+            <td>{{ singolo_odp.Quantita }}</td>
+            <td>{{ singolo_odp.DataFineSched | db_date("%Y-%m-%d %H:%M:%S","%d/%m/%Y") }}</td>
+            <td>{{ singolo_odp.CodRisorsaProd }}</td>
+            <td data-col="stato"><span class="badge {{ group_state_class }}">{{ singolo_odp.WorkGroupStatus }}</span></td>
+            <td>{{ singolo_odp.OperatoreUsername|default('-') or '-' }}</td>
+        </tr>
+    {% elif singolo_odp.GestioneMatricola == "no" and singolo_odp.StatoOrdine != "Pianificata" and singolo_odp.StatoOrdine != "Chiusa" %}
         {% set operatore = singolo_odp.runtime_row.Utente_operazione if singolo_odp.runtime_row else "" %}
         {% set runtime = singolo_odp.runtime_row %}
         {% set pr_visible = runtime and runtime.PrioritaOperatoreIdInCarico|string == current_user.id|string %}

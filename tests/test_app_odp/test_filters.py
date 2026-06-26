@@ -37,17 +37,6 @@ MODULE_PATH = "app_odp.filters"
 
 
 @pytest.fixture()
-def mod(monkeypatch):
-    monkeypatch.setitem(
-        sys.modules,
-        "icecream",
-        SimpleNamespace(ic=lambda *args, **kwargs: None),
-    )
-    sys.modules.pop(MODULE_PATH, None)
-    return importlib.import_module(MODULE_PATH)
-
-
-@pytest.fixture()
 def app(mod):
     app = Flask(__name__)
     mod.register_filters(app)

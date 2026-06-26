@@ -838,6 +838,18 @@
                     data-bs-toggle="toast">
                 Attiva ordine semilavorati
             </button>
+{% if policy and policy.can('ordini_multipli') %}
+    <button class="btn btn-outline-primary m-2 js-open-gruppo-multiplo"
+            type="button">
+        Ordini multipli
+    </button>
+{% endif %}
+{% if policy and policy.can('ordini_mascherati') %}
+    <button class="btn btn-outline-secondary m-2 js-open-gruppo-mascherato"
+            type="button">
+        Ordine mascherato
+    </button>
+{% endif %}
         </div>
         <div class="col montaggio-col ms-0">
             <h2 class="w-100 mb-1">
@@ -998,6 +1010,18 @@
                     data-bs-toggle="toast">
                 {{ home_ui_texts.testo_presa_macchina or "Attiva ordine macchina" }}
             </button>
+{% if policy and policy.can('ordini_multipli') %}
+    <button class="btn btn-outline-primary m-2 js-open-gruppo-multiplo"
+            type="button">
+        Ordini multipli
+    </button>
+{% endif %}
+{% if policy and policy.can('ordini_mascherati') %}
+    <button class="btn btn-outline-secondary m-2 js-open-gruppo-mascherato"
+            type="button">
+        Ordine mascherato
+    </button>
+{% endif %}
         </div>
         <div class="col montaggio-col mb-1">
             <h2 class="w-100 mb-1">

@@ -4,13 +4,7 @@
 import qrcode
 import qrcode.constants
 from PIL import Image, ImageDraw, ImageFont
-import numpy as np
 import os
-
-try:
-    from icecream import ic
-except:
-    pass
 
 
 def mm_to_px(mm: float, dpi: int) -> int:
@@ -42,27 +36,6 @@ def make_qr(data: str, size_px: int) -> Image.Image:
     qr_img = qr.make_image(fill_color="black", back_color="white").convert("L")
     qr_img = qr_img.resize((size_px, size_px), resample=Image.NEAREST)
     return qr_img
-
-
-def pattern_grid(hash_hex: str, grid: int, scale: int) -> Image.Image:
-    bits_needed = grid * grid
-    bits = bin(int(hash_hex, 16))[2:]
-    if len(bits) < bits_needed:
-        reps = (bits_needed + len(bits) - 1) // len(bits)
-        bits = (bits * reps)[:bits_needed]
-    else:
-        bits = bits[:bits_needed]
-    arr = np.array([255 if b == "1" else 0 for b in bits], dtype=np.uint8).reshape(
-        (grid, grid)
-    )
-    img_small = Image.fromarray(arr, mode="L")
-    return img_small.resize((grid * scale, grid * scale), resample=Image.NEAREST)
-
-
-def gcd(a, b):
-    while b:
-        a, b = b, a % b
-    return a
 
 
 # -------------------------- layout --------------------------

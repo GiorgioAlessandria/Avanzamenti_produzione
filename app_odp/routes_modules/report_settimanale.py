@@ -10,7 +10,7 @@ from app_odp.operator_session import (
     active_token,
     operator_or_login_required,
 )
-from app_odp.routes import main_bp
+from app_odp.routes_blueprint import main_bp
 from app_odp.services.report_settimanale_service import (
     build_report_settimanale_for_user,
     get_report_users,

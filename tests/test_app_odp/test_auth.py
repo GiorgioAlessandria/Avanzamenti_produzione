@@ -40,20 +40,6 @@ MODULE_PATH = "app_odp.auth"
 #     verifica che /logout da anonimo sia protetto da login_required.
 
 
-@pytest.fixture()
-def mod(monkeypatch):
-    """
-    Importa il modulo sotto test predisponendo una dipendenza fittizia per `icecream`.
-    """
-    monkeypatch.setitem(
-        sys.modules,
-        "icecream",
-        SimpleNamespace(ic=lambda *args, **kwargs: None),
-    )
-    sys.modules.pop(MODULE_PATH, None)
-    return importlib.import_module(MODULE_PATH)
-
-
 class FakeUserRow:
     def __init__(self, user_id, username, active=True):
         self.id = user_id
