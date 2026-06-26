@@ -34,6 +34,22 @@ def _safe_txt_suffix(value: str, fallback: str = "export") -> str:
     return cleaned or fallback
 
 
+def _safe_txt_prefix(value: str, fallback: str = "AVPB") -> str:
+    raw = _norm_text(value)
+    if not raw:
+        return fallback
+
+    out = []
+    for ch in raw:
+        if ch.isalnum() or ch in ("-", "_"):
+            out.append(ch)
+        else:
+            out.append("_")
+
+    cleaned = "".join(out).strip("_")
+    return cleaned or fallback
+
+
 def _get_erp_export_dir() -> Path:
     """
     Recupera la cartella export dai config caricati nell'app factory.
@@ -51,8 +67,9 @@ def _get_erp_export_dir() -> Path:
 
 def _build_export_txt_path(prefix: str = "AVPB", suffix: str = "") -> Path:
     now_txt = _now_rome_dt().strftime("%Y%m%d_%H%M%S")
+    safe_prefix = _safe_txt_prefix(prefix, "AVPB")
     safe_suffix = _safe_txt_suffix(suffix, "export")
-    file_name = f"{prefix}_{safe_suffix}_{now_txt}.txt"
+    file_name = f"{safe_prefix}_{safe_suffix}_{now_txt}.txt"
 
     export_dir = _get_erp_export_dir().resolve()
     candidate_path = (export_dir / file_name).resolve()
