@@ -4,7 +4,8 @@ from io import BytesIO
 
 from flask import abort, jsonify, render_template, request, send_file
 
-from app_odp.routes import main_bp, _norm_text, _parse_bool_flag, _now_rome_dt
+from app_odp.routes_blueprint import main_bp
+from app_odp.services.order_helpers import _norm_text, _now_rome_dt, _parse_bool_flag
 
 from app_odp.services.acquisti_service import (
     _build_acquisti_giacenze_rows,

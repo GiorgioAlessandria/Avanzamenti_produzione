@@ -24,45 +24,14 @@ from app_odp.models import (
     ProductionCapacityCalendar,
 )
 from app_odp.operator_session import (
+    active_policy,
     active_user,
     revoke_operator_sessions_for_user,
 )
 from app_odp.policy.decorator import require_active_perm
 from app_odp.policy.policy import PROTECTED_ROLE_NAMES
-from app_odp.routes import (
-    _login_code_error_response,
-    _parse_bool_flag,
-    ROLE_LINK_CONFIG,
-    LOGIN_CODE_DUPLICATO_MSG,
-    _build_public_id_from_full_name,
-    _is_login_code_integrity_error,
-    _normalize_id_list,
-    _normalize_role_creation_links,
-    _norm_text,
-    _prepare_login_code_or_response,
-    _role_config_items_for_creation,
-    _valid_role_creation_ids,
-    main_bp,
-    HOME_CONFIG_METODO_OPTIONS,
-    HOME_CONFIG_RENDERER_OPTIONS,
-    HOME_CONFIG_TEMPLATE_OPTIONS,
-    HOME_RULE_APPLY_TO_OPTIONS,
-    HOME_RULE_PHASE_MODE_OPTIONS,
-    _build_home_config_settings_payload,
-    _current_policy,
-    _current_username,
-    _home_config_audit,
-    _home_config_bool,
-    _home_config_int,
-    _home_config_role_is_manageable,
-    _home_config_text,
-    _home_config_user_is_manageable,
-    _home_reparto_config_to_dict,
-    _home_visibility_rule_to_dict,
-    _normalize_home_tab_code,
-    _now_rome_dt,
-    _parse_home_rule_phase_values,
-)
+from app_odp.routes_blueprint import main_bp
+from app_odp.services.session_helpers import _current_username
 from app_odp.services.capacity_service import (
     _capacity_float,
     _capacity_scope_code_is_valid,
@@ -71,13 +40,46 @@ from app_odp.services.capacity_service import (
 from sqlalchemy import func, select, delete
 from sqlalchemy.exc import IntegrityError
 import re
+from app_odp.services.order_helpers import (
+    _norm_text,
+    _now_rome_dt,
+    _parse_bool_flag,
+)
+from app_odp.services.home_service import _normalize_home_tab_code
+from app_odp.services.impostazioni_service import (
+    _login_code_error_response,
+    ROLE_LINK_CONFIG,
+    LOGIN_CODE_DUPLICATO_MSG,
+    _build_public_id_from_full_name,
+    _is_login_code_integrity_error,
+    _normalize_id_list,
+    _normalize_role_creation_links,
+    _prepare_login_code_or_response,
+    _role_config_items_for_creation,
+    _valid_role_creation_ids,
+    HOME_CONFIG_METODO_OPTIONS,
+    HOME_CONFIG_RENDERER_OPTIONS,
+    HOME_CONFIG_TEMPLATE_OPTIONS,
+    HOME_RULE_APPLY_TO_OPTIONS,
+    HOME_RULE_PHASE_MODE_OPTIONS,
+    _build_home_config_settings_payload,
+    _home_config_audit,
+    _home_config_bool,
+    _home_config_int,
+    _home_config_role_is_manageable,
+    _home_config_text,
+    _home_config_user_is_manageable,
+    _home_reparto_config_to_dict,
+    _home_visibility_rule_to_dict,
+    _parse_home_rule_phase_values,
+)
 
 
 @main_bp.route("/impostazioni")
 @require_active_perm("impostazioni_utente")
 def impostazioni():
     user = active_user()
-    policy = _current_policy()
+    policy = active_policy()
     show_home_config_section = policy.can_view_home_config_section
     home_config_payload = (
         _build_home_config_settings_payload(policy) if show_home_config_section else {}
@@ -413,7 +415,7 @@ def impostazioni():
 @main_bp.post("/api/impostazioni/crea-utente")
 @require_active_perm("impostazioni_utente")
 def api_crea_utente():
-    policy = _current_policy()
+    policy = active_policy()
 
     if not policy.can_view_role_assignment_section:
         return jsonify({"ok": False, "error": "Permesso insufficiente."}), 403
@@ -635,7 +637,7 @@ def api_save_production_capacity():
 @main_bp.get("/api/impostazioni/home-config")
 @require_active_perm("configurazione_home")
 def api_home_config_data():
-    policy = _current_policy()
+    policy = active_policy()
 
     if not policy.can_view_home_config_section:
         return jsonify({"ok": False, "error": "Permesso insufficiente."}), 403
@@ -651,7 +653,7 @@ def api_home_config_data():
 @main_bp.post("/api/impostazioni/home-reparto-config")
 @require_active_perm("configurazione_home")
 def api_save_home_reparto_config():
-    policy = _current_policy()
+    policy = active_policy()
 
     if not policy.can_view_home_config_section:
         return jsonify({"ok": False, "error": "Permesso insufficiente."}), 403
@@ -788,7 +790,7 @@ def api_save_home_reparto_config():
 @main_bp.post("/api/impostazioni/home-visibility-rule")
 @require_active_perm("configurazione_home")
 def api_save_home_visibility_rule():
-    policy = _current_policy()
+    policy = active_policy()
 
     if not policy.can_view_home_config_section:
         return jsonify({"ok": False, "error": "Permesso insufficiente."}), 403
@@ -938,7 +940,7 @@ def api_save_home_visibility_rule():
 @main_bp.post("/api/impostazioni/home-visibility-rule/<int:rule_id>/toggle")
 @require_active_perm("configurazione_home")
 def api_toggle_home_visibility_rule(rule_id: int):
-    policy = _current_policy()
+    policy = active_policy()
 
     if not policy.can_view_home_config_section:
         return jsonify({"ok": False, "error": "Permesso insufficiente."}), 403
@@ -986,7 +988,7 @@ def api_toggle_home_visibility_rule(rule_id: int):
 @require_active_perm("impostazioni_utente")
 def api_reset_login_code():
     user = active_user()
-    policy = _current_policy()
+    policy = active_policy()
 
     if not policy.can_view_role_assignment_section:
         return jsonify({"ok": False, "error": "Permesso insufficiente."}), 403
@@ -1065,7 +1067,7 @@ def api_reset_login_code():
 @main_bp.post("/api/impostazioni/utente-attivo")
 @require_active_perm("impostazioni_utente")
 def api_set_utente_attivo():
-    policy = _current_policy()
+    policy = active_policy()
 
     if not policy.can_view_role_assignment_section:
         return jsonify({"ok": False, "error": "Permesso insufficiente."}), 403
@@ -1134,7 +1136,7 @@ def api_set_utente_attivo():
 @main_bp.post("/api/impostazioni/elimina-ruolo")
 @require_active_perm("impostazioni_utente")
 def api_elimina_ruolo():
-    policy = _current_policy()
+    policy = active_policy()
 
     if not policy.can_view_role_delete_section:
         return jsonify({"ok": False, "error": "Permesso insufficiente."}), 403
@@ -1259,7 +1261,7 @@ def api_elimina_ruolo():
 @main_bp.post("/api/impostazioni/assegna-ruolo")
 @require_active_perm("impostazioni_utente")
 def api_assegna_ruolo():
-    policy = _current_policy()
+    policy = active_policy()
 
     if not policy.can_view_role_assignment_section:
         return jsonify({"ok": False, "error": "Permesso insufficiente."}), 403
@@ -1335,7 +1337,7 @@ def api_assegna_ruolo():
 @main_bp.post("/api/impostazioni/crea-ruolo")
 @require_active_perm("impostazioni_utente")
 def api_crea_ruolo():
-    policy = _current_policy()
+    policy = active_policy()
 
     if not policy.can_view_role_creation_section:
         return jsonify({"ok": False, "error": "Permesso insufficiente."}), 403
@@ -1472,7 +1474,7 @@ def api_crea_ruolo():
 @main_bp.post("/api/impostazioni/utente-abac")
 @require_active_perm("impostazioni_utente")
 def api_save_user_abac():
-    policy = _current_policy()
+    policy = active_policy()
     data = request.get_json(silent=True) or {}
 
     role_id_raw = data.get("role_id")
@@ -1687,7 +1689,7 @@ def api_save_user_abac():
 @main_bp.post("/api/impostazioni/ruolo-link")
 @require_active_perm("impostazioni_utente")
 def api_save_role_links():
-    policy = _current_policy()
+    policy = active_policy()
 
     if not policy.can_view_role_links_section:
         return jsonify({"ok": False, "error": "Permesso insufficiente."}), 403

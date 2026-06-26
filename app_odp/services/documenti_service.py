@@ -11,16 +11,16 @@ from sqlalchemy import func
 from app_odp.models import AcqArticoliLookup
 from app_odp.operator_session import active_token
 
-from app_odp.routes import (
-    _base_odp_query,
-    _decimal_to_text,
+from app_odp.services.order_helpers import (
     _norm_text,
-    _ordine_ref_label,
-    _parse_distinta_materiale,
+    _decimal_to_text,
     _parse_qty_decimal,
     _normalize_indice_articolo_search,
     _normalize_variante_articolo_search,
+    _parse_distinta_materiale,
+    _ordine_ref_label,
 )
+from app_odp.services.ordini_query_service import _base_odp_query
 
 MONTAGGIO_PDF_INDEX_TTL_SECONDS = 60
 _montaggio_pdf_index_lock = Lock()

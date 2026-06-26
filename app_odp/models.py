@@ -1581,6 +1581,139 @@ class AcqScortaSegnalata(db.Model):
     StatoChangedAt = db.Column(db.Text)
 
 
+
+class OdpWorkGroup(db.Model):
+    """
+    Gruppo operativo interno per ordini multipli e ordini mascherati.
+    Il gestionale continua a ricevere export per singolo ordine.
+    """
+    __tablename__ = "odp_work_group"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    GroupUid = db.Column(db.Text, nullable=False, unique=True, index=True)
+    GroupType = db.Column(db.Text, nullable=False, index=True)  # MULTIPLO / MASCHERATO
+    Status = db.Column(db.Text, nullable=False, default="Attivo", index=True)
+
+    CreatedAt = db.Column(db.Text, nullable=False)
+    StartedAt = db.Column(db.Text)
+    LastActivationAt = db.Column(db.Text)
+    SuspendedAt = db.Column(db.Text)
+    ClosedAt = db.Column(db.Text)
+    DissolvedAt = db.Column(db.Text)
+
+    OperatoreId = db.Column(db.Integer)
+    OperatoreUsername = db.Column(db.Text)
+    Reparto = db.Column(db.Text)
+    Fase = db.Column(db.Text)
+    CausaleSospensione = db.Column(db.Text)
+    Note = db.Column(db.Text)
+
+    TotalRuntimeSeconds = db.Column(db.Integer, nullable=False, default=0)
+    InitialMemberCount = db.Column(db.Integer, nullable=False, default=1)
+
+    members = db.relationship(
+        "OdpWorkGroupMember",
+        primaryjoin="OdpWorkGroup.GroupUid == foreign(OdpWorkGroupMember.GroupUid)",
+        lazy="selectin",
+        cascade="all, delete-orphan",
+    )
+
+    __table_args__ = (
+        db.CheckConstraint(
+            "GroupType IN ('MULTIPLO', 'MASCHERATO')",
+            name="ck_odp_work_group_type",
+        ),
+        db.CheckConstraint(
+            "Status IN ('Attivo', 'In Sospeso', 'Chiuso', 'Sciolto')",
+            name="ck_odp_work_group_status",
+        ),
+        db.CheckConstraint(
+            "InitialMemberCount >= 1",
+            name="ck_odp_work_group_initial_member_count",
+        ),
+        db.CheckConstraint(
+            "TotalRuntimeSeconds >= 0",
+            name="ck_odp_work_group_total_runtime_seconds",
+        ),
+    )
+
+    def __repr__(self):
+        return f"<OdpWorkGroup {self.GroupUid} {self.GroupType} {self.Status}>"
+
+
+class OdpWorkGroupMember(db.Model):
+    """
+    Membro di un gruppo operativo.
+    TimeShareMode:
+    - SPLIT: tempo gruppo diviso sul numero iniziale membri;
+    - FULL: tutto il tempo gruppo va a questo ordine;
+    - ZERO: nessuna riga tempo/ore attribuite.
+    """
+    __tablename__ = "odp_work_group_member"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    GroupUid = db.Column(db.Text, nullable=False, index=True)
+
+    IdDocumento = db.Column(db.Text, nullable=False, index=True)
+    IdRiga = db.Column(db.Text, nullable=False, index=True)
+    NumProgrRiga = db.Column(db.Text)
+    RifRegistraz = db.Column(db.Text)
+
+    CodArt = db.Column(db.Text)
+    VarianteArt = db.Column(db.Text)
+    IndiceModifica = db.Column(db.Text)
+    DesArt = db.Column(db.Text)
+    Fase = db.Column(db.Text)
+
+    Role = db.Column(db.Text, nullable=False, default="MEMBER")  # MAIN / MASKED / MEMBER
+    TimeShareMode = db.Column(db.Text, nullable=False, default="SPLIT")  # SPLIT / FULL / ZERO
+    RuntimeSecondsAssigned = db.Column(db.Integer, nullable=False, default=0)
+    Status = db.Column(db.Text, nullable=False, default="Attivo", index=True)
+
+    QtyConforme = db.Column(db.Text)
+    QtyNonConforme = db.Column(db.Text)
+    Note = db.Column(db.Text)
+
+    CreatedAt = db.Column(db.Text, nullable=False)
+    ClosedAt = db.Column(db.Text)
+    SuspendedAt = db.Column(db.Text)
+    DissolvedAt = db.Column(db.Text)
+
+    __table_args__ = (
+        db.ForeignKeyConstraint(
+            ["GroupUid"],
+            ["odp_work_group.GroupUid"],
+            ondelete="CASCADE",
+        ),
+        db.UniqueConstraint(
+            "GroupUid",
+            "IdDocumento",
+            "IdRiga",
+            name="uq_odp_work_group_member_order",
+        ),
+        db.CheckConstraint(
+            "Role IN ('MAIN', 'MASKED', 'MEMBER')",
+            name="ck_odp_work_group_member_role",
+        ),
+        db.CheckConstraint(
+            "TimeShareMode IN ('SPLIT', 'FULL', 'ZERO')",
+            name="ck_odp_work_group_member_time_share",
+        ),
+        db.CheckConstraint(
+            "Status IN ('Attivo', 'In Sospeso', 'Chiuso', 'Sciolto')",
+            name="ck_odp_work_group_member_status",
+        ),
+        db.CheckConstraint(
+            "RuntimeSecondsAssigned >= 0",
+            name="ck_odp_work_group_member_runtime_seconds",
+        ),
+        db.Index("ix_odp_work_group_member_order_key", "IdDocumento", "IdRiga"),
+    )
+
+    def __repr__(self):
+        return f"<OdpWorkGroupMember {self.GroupUid} {self.IdDocumento}/{self.IdRiga}>"
+
+
 class OdpPriorita(db.Model):
     __tablename__ = "odp_priorita"
 

@@ -12,21 +12,18 @@ import time as time_mod
 import urllib.parse
 
 from sqlalchemy import create_engine
-try:
-    from icecream import ic
-except:
-    pass
+
 
 CONFIG_PATH = Path("static//filtri_sync.toml")
 
 
 def load_config() -> dict:
-    '''
+    """
     Caricamento e lettura file configurazioni
 
     :return: Ritorna un dizionario con le configurazioni
     :rtype: dict[Any, Any]
-    '''
+    """
     with CONFIG_PATH.open("rb") as f:
         return tomllib.load(f)
 
@@ -34,7 +31,8 @@ def load_config() -> dict:
 config = load_config()
 
 engine_app = create_engine(
-    "sqlite:///\\\\Serverspring02\\PythonDB\\Avanzamenti_produzione\\instance\\RBAC.db")
+    "sqlite:///\\\\Serverspring02\\PythonDB\\Avanzamenti_produzione\\instance\\RBAC.db"
+)
 
 params = urllib.parse.quote_plus(
     "DRIVER={ODBC Driver 18 for SQL Server};"
@@ -48,19 +46,30 @@ params = urllib.parse.quote_plus(
     "MultipleActiveResultSets=False;"
 )
 
-engine_sqlserver = create_engine(
-    "mssql+pyodbc:///?odbc_connect=" + params
-)
+engine_sqlserver = create_engine("mssql+pyodbc:///?odbc_connect=" + params)
 
 
 def leggi_view(
-        table: Literal["vwESRisorse", "vwESOdP", "vwESOdPFasi", "vwESLavorazioni", "vwESOdPComponenti",
-                       "vwESRisorse", "vwESReparti", "vwESCausaliAttivita", "vwESGiacenza", "vwESGiacenzaLotti",
-                       "vwESArticoli", "vwESMagazzini", "vwESFamiglia", "vwESMacroFamiglia"],
-        colonna_filtro_esclusi: Optional[str] = "",
-        colonna_filtro_stato: Optional[str] = ""
+    table: Literal[
+        "vwESRisorse",
+        "vwESOdP",
+        "vwESOdPFasi",
+        "vwESLavorazioni",
+        "vwESOdPComponenti",
+        "vwESRisorse",
+        "vwESReparti",
+        "vwESCausaliAttivita",
+        "vwESGiacenza",
+        "vwESGiacenzaLotti",
+        "vwESArticoli",
+        "vwESMagazzini",
+        "vwESFamiglia",
+        "vwESMacroFamiglia",
+    ],
+    colonna_filtro_esclusi: Optional[str] = "",
+    colonna_filtro_stato: Optional[str] = "",
 ) -> pd.DataFrame:
-    '''
+    """
     Lettura della view
 
     Legge la view in base ai parametri e da la view filtrata
@@ -73,29 +82,29 @@ def leggi_view(
     :type colonna_filtro_stato: str
     :return: Dataframe filtrato della view selezionata
     :rtype: DataFrame
-    '''
+    """
     query = f"""SELECT * FROM BernardiProd.dbo.{table}"""
     df = pd.read_sql(query, engine_sqlserver)
     if colonna_filtro_esclusi != "":
-        df = df[~df[colonna_filtro_esclusi].isin(
-            config["Elementi_esclusi"][colonna_filtro_esclusi])]
-        df = df.dropna(subset=[colonna_filtro_esclusi], how='any')
+        df = df[
+            ~df[colonna_filtro_esclusi].isin(
+                config["Elementi_esclusi"][colonna_filtro_esclusi]
+            )
+        ]
+        df = df.dropna(subset=[colonna_filtro_esclusi], how="any")
     if colonna_filtro_stato != "":
-        df = df[df[colonna_filtro_stato] ==
-                config["Elementi_selezionati"][colonna_filtro_stato]]
-        df = df.dropna(subset=[colonna_filtro_esclusi], how='any')
+        df = df[
+            df[colonna_filtro_stato]
+            == config["Elementi_selezionati"][colonna_filtro_stato]
+        ]
+        df = df.dropna(subset=[colonna_filtro_esclusi], how="any")
 
     df = df.reset_index(drop=True)
 
     return df
 
 
-def inserisci_o_ignora(
-        sqltable,
-        conn,
-        keys,
-        data_iter
-) -> None:
+def inserisci_o_ignora(sqltable, conn, keys, data_iter) -> None:
     """
     Inserimento delle righe a db se non già presenti altrimenti ignora
 
@@ -129,33 +138,52 @@ def inserimento_descrizione_famiglia(
     colonna_merge: str | list[str],
     lista_colonne_da_inserire: list[str],
     colonna_da_rinominare: Optional[str] = "",
-    colonna_rinominata: Optional[str] = ""
+    colonna_rinominata: Optional[str] = "",
 ) -> pd.DataFrame:
-    ''''''
+    """"""
     df_out = df.merge(
-        df_di_merge[lista_colonne_da_inserire], on=colonna_merge, how="left")
+        df_di_merge[lista_colonne_da_inserire], on=colonna_merge, how="left"
+    )
     if colonna_da_rinominare and colonna_rinominata:
-        df_out = df_out.rename(
-            columns={colonna_da_rinominare: colonna_rinominata})
+        df_out = df_out.rename(columns={colonna_da_rinominare: colonna_rinominata})
     return df_out
 
 
 def elaborazione_dati() -> None:
-    '''
+    """
     Funzione per l'inserimento dei dati nella tabella input_odp da inserire a db
-    '''
+    """
 
-    df_giacenza = leggi_view(
-        "vwESGiacenza")
+    df_giacenza = leggi_view("vwESGiacenza")
 
-    df_giacenzalotti = leggi_view(
-        table="vwESGiacenzaLotti")
+    df_giacenzalotti = leggi_view(table="vwESGiacenzaLotti")
 
-    df_giacenzatotale = (pd.concat(
-        [df_giacenza, df_giacenzalotti], ignore_index=True, sort=False).reset_index()
-        .pipe(inserimento_descrizione_famiglia, df_di_merge=leggi_view("vwESArticoli"), colonna_merge="CodArt", lista_colonne_da_inserire=["CodArt", "DesArt", "CodFamiglia"])
-        .pipe(inserimento_descrizione_famiglia, df_di_merge=leggi_view("vwESFamiglia"), colonna_merge="CodFamiglia", lista_colonne_da_inserire=["CodFamiglia", "CodMacrofamiglia", "Des"], colonna_da_rinominare="Des", colonna_rinominata="DesFamiglia")
-        .pipe(inserimento_descrizione_famiglia, df_di_merge=leggi_view("vwESMacroFamiglia"), colonna_merge="CodMacrofamiglia", lista_colonne_da_inserire=["CodMacrofamiglia", "Des"], colonna_da_rinominare="Des", colonna_rinominata="DesMacroFamiglia"))
+    df_giacenzatotale = (
+        pd.concat([df_giacenza, df_giacenzalotti], ignore_index=True, sort=False)
+        .reset_index()
+        .pipe(
+            inserimento_descrizione_famiglia,
+            df_di_merge=leggi_view("vwESArticoli"),
+            colonna_merge="CodArt",
+            lista_colonne_da_inserire=["CodArt", "DesArt", "CodFamiglia"],
+        )
+        .pipe(
+            inserimento_descrizione_famiglia,
+            df_di_merge=leggi_view("vwESFamiglia"),
+            colonna_merge="CodFamiglia",
+            lista_colonne_da_inserire=["CodFamiglia", "CodMacrofamiglia", "Des"],
+            colonna_da_rinominare="Des",
+            colonna_rinominata="DesFamiglia",
+        )
+        .pipe(
+            inserimento_descrizione_famiglia,
+            df_di_merge=leggi_view("vwESMacroFamiglia"),
+            colonna_merge="CodMacrofamiglia",
+            lista_colonne_da_inserire=["CodMacrofamiglia", "Des"],
+            colonna_da_rinominare="Des",
+            colonna_rinominata="DesMacroFamiglia",
+        )
+    )
     df_giacenzatotale.to_excel("excel/giacenzatotale.xlsx")
 
     try:

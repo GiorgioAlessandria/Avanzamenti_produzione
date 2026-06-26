@@ -3,14 +3,16 @@
 from app_odp.models import db
 from app_odp.odp_output import txt_generator
 from app_odp.operator_session import operator_perm_required
-from flask import current_app, jsonify, request
-from app_odp.routes import (
-    main_bp,
+from flask import jsonify, request
+from app_odp.routes_blueprint import main_bp
+from app_odp.services.erp_export_service import (
     _get_pending_avp_export_rows,
+    _write_txt_content,
+)
+from app_odp.services.order_helpers import (
     _norm_text,
     _now_rome_dt,
     _parse_bool_flag,
-    _write_txt_content,
 )
 
 

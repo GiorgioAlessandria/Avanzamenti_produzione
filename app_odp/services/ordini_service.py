@@ -1,16 +1,17 @@
 # app_odp/services/ordini_service.py
 
 from decimal import Decimal
-
-from app_odp.routes import (
-    _decimal_to_text,
-    _fase_to_int,
+from app_odp.services.order_helpers import (
     _norm_text,
-    _reset_runtime_for_next_phase,
-    _set_runtime_sospeso,
+    _fase_to_int,
     _sync_active_fields_for_phase,
+    _decimal_to_text,
     _phase_sequence_for_ordine,
     _get_phase_transition,
+)
+from app_odp.services.ordini_runtime_service import (
+    _reset_runtime_for_next_phase,
+    _set_runtime_sospeso,
 )
 
 

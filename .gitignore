@@ -179,12 +179,20 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
-
+backup/
 temp/
 db
 /output/
-*.*-shm
-*.*-wal
 *.sqbpro
 db_log.sqlite
 /app_odp/backup/RBAC.db
+_pycache__/
+*.pyc
+Thumbs.db
+*.sqbpro
+*.db
+*.sqlite
+*.db-wal
+*.db-shm
+*.sqlite-wal
+*.sqlite-shm

@@ -11,16 +11,15 @@ from app_odp.models import (
     db,
 )
 from datetime import datetime, timedelta
-from app_odp.routes import (
-    _active_value_for_phase,
+from app_odp.services.ordini_query_service import (
     _base_odp_query,
-    _decimal_to_text,
-    _first_code_from_cell,
-    _normalize_variante_articolo_search,
-    _norm_text,
+    )
+from decimal import Decimal, InvalidOperation
+from app_odp.services.order_helpers import (
     _ordine_ref_label,
-    _ordine_state_rank,
-    _now_rome_dt,
+    _norm_text,
+    _normalize_variante_articolo_search,
+    _decimal_to_text,
     _parse_distinta_materiale,
     _parse_qty_decimal,
     _safe_float,
@@ -30,9 +29,11 @@ from app_odp.routes import (
     _fase_to_int,
     _remaining_phase_codes_for_ordine,
     _normalize_indice_articolo_search,
+    _first_code_from_cell,
+    _active_value_for_phase,
+    _ordine_state_rank,
+    _now_rome_dt,
 )
-from decimal import Decimal, InvalidOperation
-
 
 def _build_acquisti_ordini_rows() -> dict:
     ordini = _base_odp_query().all()
