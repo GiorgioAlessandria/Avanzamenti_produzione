@@ -174,7 +174,10 @@ def api_apri_gruppo_multiplo():
         db.session.rollback()
         current_app.logger.exception("Errore apertura gruppo multiplo")
         return jsonify(
-            {"ok": False, "error": f"Errore apertura gruppo multiplo: {exc}"}
+            {
+                "ok": False,
+                "error": "Errore interno durante l'apertura del gruppo multiplo.",
+            }
         ), 500
 
     return jsonify(
