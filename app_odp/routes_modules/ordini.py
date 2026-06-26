@@ -277,13 +277,16 @@ def api_riattiva_gruppo_ordini(group_uid):
 
     except ValueError as exc:
         db.session.rollback()
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        current_app.logger.warning(
+            "Errore validazione riattivazione gruppo ordini: %s", exc
+        )
+        return jsonify({"ok": False, "error": "Richiesta non valida."}), 400
 
     except Exception as exc:
         db.session.rollback()
         current_app.logger.exception("Errore riattivazione gruppo ordini")
         return jsonify(
-            {"ok": False, "error": f"Errore riattivazione gruppo ordini: {exc}"}
+            {"ok": False, "error": "Errore interno durante la riattivazione del gruppo ordini."}
         ), 500
 
     return jsonify(
@@ -311,13 +314,16 @@ def api_sciogli_gruppo_per_chiusura_singola(group_uid):
 
     except ValueError as exc:
         db.session.rollback()
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        current_app.logger.warning(
+            "Errore validazione scioglimento gruppo ordini: %s", exc
+        )
+        return jsonify({"ok": False, "error": "Richiesta non valida."}), 400
 
     except Exception as exc:
         db.session.rollback()
         current_app.logger.exception("Errore scioglimento gruppo ordini")
         return jsonify(
-            {"ok": False, "error": f"Errore scioglimento gruppo ordini: {exc}"}
+            {"ok": False, "error": "Errore interno durante lo scioglimento del gruppo ordini."}
         ), 500
 
     return jsonify(
