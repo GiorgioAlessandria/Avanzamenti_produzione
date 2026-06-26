@@ -53,7 +53,15 @@ def _build_export_txt_path(prefix: str = "AVPB", suffix: str = "") -> Path:
     now_txt = _now_rome_dt().strftime("%Y%m%d_%H%M%S")
     safe_suffix = _safe_txt_suffix(suffix, "export")
     file_name = f"{prefix}_{safe_suffix}_{now_txt}.txt"
-    return _get_erp_export_dir() / file_name
+
+    export_dir = _get_erp_export_dir().resolve()
+    candidate_path = (export_dir / file_name).resolve()
+    try:
+        candidate_path.relative_to(export_dir)
+    except ValueError:
+        raise ValueError("Invalid export path: resolved path escapes export directory.")
+
+    return candidate_path
 
 
 def _write_txt_content(
