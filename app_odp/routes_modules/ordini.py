@@ -506,7 +506,13 @@ def api_chiudi_gruppo_ordini(group_uid):
 
     except ValueError as exc:
         db.session.rollback()
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        current_app.logger.warning(
+            "Errore di validazione durante chiusura gruppo ordini",
+            exc_info=True,
+        )
+        return jsonify(
+            {"ok": False, "error": "Dati richiesta non validi."}
+        ), 400
 
     except Exception as exc:
         db.session.rollback()
