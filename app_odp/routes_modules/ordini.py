@@ -518,7 +518,10 @@ def api_chiudi_gruppo_ordini(group_uid):
         db.session.rollback()
         current_app.logger.exception("Errore chiusura gruppo ordini")
         return jsonify(
-            {"ok": False, "error": f"Errore chiusura gruppo ordini: {exc}"}
+            {
+                "ok": False,
+                "error": "Errore interno durante la chiusura del gruppo ordini.",
+            }
         ), 500
 
     return jsonify(
