@@ -3,7 +3,7 @@
   <component name="de.achimonline.quickjinja.settings.QuickJinjaProjectSettingsState">
     <option name="settings">
       <QuickJinjaProjectSettings>
-        <option name="templateFilePath" value="$PROJECT_DIR$/.gitignore" />
+        <option name="templateFilePath" value="$PROJECT_DIR$/app_odp/odp_output.py" />
         <option name="templateSource" value="TEXT_SELECTION" />
       </QuickJinjaProjectSettings>
     </option>

@@ -236,7 +236,6 @@ def _component_ref_for_export(
     base_ref: str,
     payload: dict,
     component: dict,
-    progressive_index: int,
 ) -> str:
     if not _is_multiphase_payload(payload):
         return base_ref
@@ -244,7 +243,7 @@ def _component_ref_for_export(
     if not _component_is_phase_managed(component):
         return base_ref
 
-    return _ref_with_suffix(base_ref, progressive_index)
+    return _phase_ref_for_export(base_ref, payload)
 
 
 def txt_generator(
@@ -360,16 +359,12 @@ def txt_generator(
             ore_lavorate=str(tempo_funzionamento),
         )
         lines.append(product_time_line)
-    component_progressive_index = 1
     for component in distinta_base:
         if not isinstance(component, dict):
             continue
 
         cod_art_component = _text(component.get("CodArt"))
         variante_component = _text(component.get("VarianteArt"))
-        component_uses_progressive_ref = _is_multiphase_payload(
-            payload
-        ) and _component_is_phase_managed(component)
 
         righe_lotto_component = [
             riga
@@ -388,9 +383,7 @@ def txt_generator(
                     riferimento_ordine_base,
                     payload,
                     component,
-                    component_progressive_index,
                 )
-
                 component_line = row_writer(
                     tipo_record="RIG",
                     tipo_documento=710,
@@ -410,15 +403,11 @@ def txt_generator(
                     ore_lavorate=str(tempo_funzionamento),
                 )
                 lines.append(component_line)
-
-                if component_uses_progressive_ref:
-                    component_progressive_index += 1
         else:
             riferimento_ordine_component = _component_ref_for_export(
                 riferimento_ordine_base,
                 payload,
                 component,
-                component_progressive_index,
             )
             component_line = row_writer(
                 tipo_record="RIG",
@@ -439,8 +428,5 @@ def txt_generator(
                 ore_lavorate=str(tempo_funzionamento),
             )
             lines.append(component_line)
-
-            if component_uses_progressive_ref:
-                component_progressive_index += 1
 
     return lines
