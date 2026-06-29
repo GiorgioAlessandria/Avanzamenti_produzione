@@ -37,7 +37,10 @@ from app_odp.services.priorita_service import (
     _priorita_row_for_operatore_ordine,
     _snapshot_priorita_in_runtime,
 )
-from app_odp.services.ordini_runtime_service import _ensure_stato_attivo
+from app_odp.services.ordini_runtime_service import (
+    _accumulate_runtime_until,
+    _ensure_stato_attivo,
+)
 from app_odp.services.ordini_query_service import _base_odp_query
 from app_odp.services.home_service import _get_visible_odp_by_key
 
@@ -86,6 +89,14 @@ def _order_is_pianificata(ordine) -> bool:
     return _norm_text(getattr(ordine, "StatoOrdine", "")).lower() == "pianificata"
 
 
+def _order_can_enter_group(ordine) -> bool:
+    return _norm_text(getattr(ordine, "StatoOrdine", "")).lower() in {
+        "pianificata",
+        "attivo",
+        "in sospeso",
+    }
+
+
 def _active_group_for_order(id_documento: str, id_riga: str) -> OdpWorkGroup | None:
     member = (
         OdpWorkGroupMember.query.filter_by(
@@ -117,7 +128,7 @@ def get_active_group_for_order(id_documento: str, id_riga: str) -> OdpWorkGroup 
 def _ensure_order_can_enter_group(
     ordine, *, expected_reparto: str | None = None, expected_kind: str | None = None
 ) -> None:
-    if not _order_is_pianificata(ordine):
+    if not _order_can_enter_group(ordine):
         raise ValueError(
             f"Ordine {_order_label(ordine)} non inseribile: stato attuale '{ordine.StatoOrdine}'."
         )
@@ -212,6 +223,10 @@ def _activate_order_for_group(ordine, *, group_uid: str, now_dt: datetime) -> No
         fase=fase_corrente,
     )
 
+    elapsed_pre_group = 0
+    if stato is not None and _norm_text(stato.Stato_odp).lower().startswith("attiv"):
+        elapsed_pre_group = _accumulate_runtime_until(stato, now_dt)
+
     stato = _ensure_stato_attivo(
         ordine=ordine,
         stato=stato,
@@ -246,6 +261,19 @@ def _activate_order_for_group(ordine, *, group_uid: str, now_dt: datetime) -> No
         elapsed_seconds=0,
         note="Presa in carico da gruppo ordini",
     )
+    if elapsed_pre_group:
+        _append_group_runtime_log(
+            group_uid=group_uid,
+            ordine=ordine,
+            action="runtime_pre_gruppo",
+            event_at=now_iso,
+            stato_pre=stato_ordine_pre,
+            stato_post=GROUP_STATUS_ATTIVO,
+            qty_pre=qty_pre,
+            qty_post=_qty_da_lavorare_text(ordine, stato=stato),
+            elapsed_seconds=elapsed_pre_group,
+            note="Tempo singolo maturato prima del gruppo ordini",
+        )
 
 
 def _append_group_runtime_log(
@@ -694,17 +722,17 @@ def prepare_group_for_full_closure(
     """
     group = _get_group_or_error(group_uid)
 
-    if _norm_text(group.Status) != GROUP_STATUS_ATTIVO:
-        raise ValueError(
-            f"Gruppo non chiudibile: stato attuale '{group.Status}'. Riattivare il gruppo prima della chiusura."
-        )
+    group_status = _norm_text(group.Status)
+    if group_status not in {GROUP_STATUS_ATTIVO, GROUP_STATUS_SOSPESO}:
+        raise ValueError(f"Gruppo non chiudibile: stato attuale '{group.Status}'.")
 
     now_dt = _now_rome_dt()
-    assign_elapsed_group_runtime(
-        group,
-        now_dt=now_dt,
-        minuti_non_funzionamento=minuti_non_funzionamento,
-    )
+    if group_status == GROUP_STATUS_ATTIVO:
+        assign_elapsed_group_runtime(
+            group,
+            now_dt=now_dt,
+            minuti_non_funzionamento=minuti_non_funzionamento,
+        )
 
     for member in _members_for_closure(group):
         rt = _runtime_for_member(member)
@@ -716,6 +744,8 @@ def prepare_group_for_full_closure(
         if ordine is not None:
             ordine.StatoOrdine = GROUP_STATUS_ATTIVO
 
+    group.Status = GROUP_STATUS_ATTIVO
+    group.SuspendedAt = None
     return group
 
 
@@ -854,6 +884,9 @@ def available_orders_payload(policy, *, only_pianificata: bool = True) -> list[d
     # Usa la query base e poi verifica singolarmente l'accesso con _get_visible_odp_by_key.
     out = []
     for ordine in _base_odp_query().all():
+        if not _order_can_enter_group(ordine):
+            continue
+
         if only_pianificata and not _order_is_pianificata(ordine):
             continue
 
@@ -995,13 +1028,19 @@ class WorkGroupHomeRow:
                 or _norm_text(getattr(ordine, "FaseAttiva", ""))
                 or "1"
             )
+            gestione_lotto = (
+                _norm_text(getattr(ordine, "GestioneLotto", "")).lower() == "si"
+            )
+            gestione_matricola = (
+                _norm_text(getattr(ordine, "GestioneMatricola", "")).lower() == "si"
+            )
 
             self.DettaglioGruppoVisuale.append(
                 {
                     "id_documento": _norm_text(getattr(ordine, "IdDocumento", "")),
                     "id_riga": _norm_text(getattr(ordine, "IdRiga", "")),
                     "num_progr_riga": _norm_text(getattr(ordine, "NumProgrRiga", "")),
-                    "ordine": _normalize_indice_articolo_search(ordine),
+                    "ordine": _order_label(ordine),
                     "rif_registraz": _norm_text(getattr(ordine, "RifRegistraz", "")),
                     "cod_art": _norm_text(getattr(ordine, "CodArt", "")),
                     "variante": _norm_text(getattr(ordine, "VarianteArt", "")),
@@ -1014,6 +1053,7 @@ class WorkGroupHomeRow:
                     "fase_attiva": fase_attiva,
                     # Mantieni anche "fase" per compatibilità con il modal dettaglio.
                     "fase": fase_attiva,
+                    "matricola": _norm_text(getattr(ordine, "CodMatricola", "")),
                     # Distinta completa del singolo ordine.
                     # Il filtro per fase lo fa il frontend sul campo NumFase dei componenti.
                     "distinta_materiale": _norm_text(
@@ -1024,6 +1064,11 @@ class WorkGroupHomeRow:
                         ordine,
                         stato=stato,
                     ),
+                    "gestione_lotto": gestione_lotto,
+                    "gestione_matricola": gestione_matricola,
+                    "is_macchina": gestione_matricola,
+                    "richiede_lotti": gestione_lotto or gestione_matricola,
+                    "modalita_lotti": "m" if gestione_matricola else "sl",
                     "ruolo": _norm_text(getattr(member, "Role", "")),
                     "time_share_mode": _norm_text(getattr(member, "TimeShareMode", "")),
                 }

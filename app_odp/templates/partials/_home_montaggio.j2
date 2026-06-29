@@ -830,26 +830,32 @@
                     </tbody>
                 </table>
             </div>
-            <button class="btn btn-primary m-2"
-                    type="button"
-                    data-bs-target="#toast-1"
-                    data-use-selected="#ordini_da_eseguire_sl"
-                    data-fill-target="#toast-1"
-                    data-bs-toggle="toast">
-                Attiva ordine semilavorati
-            </button>
-{% if policy and policy.can('ordini_multipli') %}
-    <button class="btn btn-outline-primary m-2 js-open-gruppo-multiplo"
-            type="button">
-        Ordini multipli
-    </button>
-{% endif %}
-{% if policy and policy.can('ordini_mascherati') %}
-    <button class="btn btn-outline-secondary m-2 js-open-gruppo-mascherato"
-            type="button">
-        Ordine mascherato
-    </button>
-{% endif %}
+            <div class="d-flex flex-nowrap align-items-center gap-2 mb-2 overflow-x-auto">
+                <button class="btn btn-primary flex-shrink-0 text-nowrap"
+                        type="button"
+                        data-bs-target="#toast-1"
+                        data-use-selected="#ordini_da_eseguire_sl"
+                        data-fill-target="#toast-1"
+                        data-bs-toggle="toast">
+                    Attiva ordine semilavorati
+                </button>
+
+                {% if policy and policy.can('ordini_multipli') %}
+                    <button class="btn btn-outline-primary flex-shrink-0 text-nowrap js-open-gruppo-multiplo"
+                            data-workgroup-table="#ordini_da_eseguire_sl"
+                            type="button">
+                        Ordini multipli
+                    </button>
+                {% endif %}
+
+                {% if policy and policy.can('ordini_mascherati') %}
+                    <button class="btn btn-outline-secondary flex-shrink-0 text-nowrap js-open-gruppo-mascherato"
+                            data-workgroup-table="#ordini_da_eseguire_sl"
+                            type="button">
+                        Ordine mascherato
+                    </button>
+                {% endif %}
+            </div>
         </div>
         <div class="col montaggio-col ms-0">
             <h2 class="w-100 mb-1">
@@ -1002,26 +1008,32 @@
                     </tbody>
                 </table>
             </div>
-            <button class="btn btn-primary m-2"
-                    type="button"
-                    data-bs-target="#toast-1-m"
-                    data-use-selected="#ordini_da_eseguire_m"
-                    data-fill-target="#toast-1-m"
-                    data-bs-toggle="toast">
-                {{ home_ui_texts.testo_presa_macchina or "Attiva ordine macchina" }}
-            </button>
-{% if policy and policy.can('ordini_multipli') %}
-    <button class="btn btn-outline-primary m-2 js-open-gruppo-multiplo"
-            type="button">
-        Ordini multipli
-    </button>
-{% endif %}
-{% if policy and policy.can('ordini_mascherati') %}
-    <button class="btn btn-outline-secondary m-2 js-open-gruppo-mascherato"
-            type="button">
-        Ordine mascherato
-    </button>
-{% endif %}
+            <div class="d-flex flex-nowrap align-items-center gap-2 mb-2 overflow-x-auto">
+                <button class="btn btn-primary flex-shrink-0 text-nowrap"
+                        type="button"
+                        data-bs-target="#toast-1-m"
+                        data-use-selected="#ordini_da_eseguire_m"
+                        data-fill-target="#toast-1-m"
+                        data-bs-toggle="toast">
+                    {{ home_ui_texts.testo_presa_macchina or "Attiva ordine macchina" }}
+                </button>
+
+                {% if policy and policy.can('ordini_multipli') %}
+                    <button class="btn btn-outline-primary flex-shrink-0 text-nowrap js-open-gruppo-multiplo"
+                            data-workgroup-table="#ordini_da_eseguire_m"
+                            type="button">
+                        Ordini multipli
+                    </button>
+                {% endif %}
+
+                {% if policy and policy.can('ordini_mascherati') %}
+                    <button class="btn btn-outline-secondary flex-shrink-0 text-nowrap js-open-gruppo-mascherato"
+                            data-workgroup-table="#ordini_da_eseguire_m"
+                            type="button">
+                        Ordine mascherato
+                    </button>
+                {% endif %}
+            </div>
         </div>
         <div class="col montaggio-col mb-1">
             <h2 class="w-100 mb-1">
@@ -2998,6 +3010,542 @@
                 btn.disabled = false;
             }
         });
+    })();
+</script>
+<script>
+    (() => {
+        if (window.__avpWorkgroupCloseInit) return;
+        window.__avpWorkgroupCloseInit = true;
+
+        function parseGroupDetail(raw) {
+            try {
+                const parsed = JSON.parse(raw || "[]");
+                return Array.isArray(parsed) ? parsed : [];
+            } catch (_) {
+                return [];
+            }
+        }
+
+        document.addEventListener("click", function (event) {
+            const trigger = event.target.closest(
+                '[data-use-selected][data-fill-target][data-bs-target][data-bs-toggle="toast"]'
+            );
+            if (!trigger) return;
+
+            const targetSelector = trigger.getAttribute("data-fill-target") || "";
+            const isClosureToast = targetSelector === "#toast-4" || targetSelector === "#toast-7";
+
+            if (!isClosureToast) return;
+
+            const tableSelector = trigger.getAttribute("data-use-selected");
+            const table = document.querySelector(tableSelector);
+            const selectedRow = table?.querySelector("tbody tr.row-selected");
+
+            if (!selectedRow || selectedRow.dataset.isWorkGroup !== "1") return;
+
+            event.preventDefault();
+            event.stopPropagation();
+            event.stopImmediatePropagation();
+
+            openWorkgroupCloseModal({
+                groupUid: selectedRow.dataset.groupUid || "",
+                groupType: selectedRow.dataset.groupType || "",
+                groupLabel: selectedRow.dataset.groupLabel || selectedRow.dataset.ordine || "",
+                detail: parseGroupDetail(selectedRow.dataset.groupDetail),
+                sourceTarget: targetSelector
+            });
+        }, true);
+
+        let workgroupCloseState = {
+            groupUid: "",
+            sourceTarget: "",
+            detail: [],
+            lottiByOrder: {},
+            lottoUiByOrder: {},
+            rowCounter: 0
+        };
+
+        function orderKey(row) {
+            return `${row.id_documento || ""}|${row.id_riga || ""}`;
+        }
+
+        function openWorkgroupCloseModal({groupUid, groupType, groupLabel, detail, sourceTarget}) {
+            workgroupCloseState = {
+                groupUid,
+                sourceTarget: sourceTarget || "",
+                detail: detail || [],
+                lottiByOrder: {},
+                lottoUiByOrder: {},
+                rowCounter: 0
+            };
+
+            const modal = ensureWorkgroupCloseModal();
+
+            document.getElementById("modal-workgroup-close-title").textContent =
+                `Chiusura gruppo ${groupType || ""}`;
+
+            document.getElementById("modal-workgroup-close-subtitle").textContent =
+                [groupLabel, groupUid].filter(Boolean).join(" - ");
+
+            renderWorkgroupCloseRows();
+
+            bootstrap.Modal.getOrCreateInstance(modal).show();
+        }
+
+        function ensureWorkgroupCloseModal() {
+            let modal = document.getElementById("modalWorkgroupClose");
+            if (modal) return modal;
+
+            document.body.insertAdjacentHTML("beforeend", `
+            <div class="modal fade" id="modalWorkgroupClose" tabindex="-1" aria-hidden="true">
+              <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+                <div class="modal-content">
+                  <div class="modal-header">
+                    <div>
+                      <h5 class="modal-title" id="modal-workgroup-close-title">Chiusura gruppo</h5>
+                      <div class="small text-muted" id="modal-workgroup-close-subtitle"></div>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Chiudi"></button>
+                  </div>
+                  <div class="modal-body">
+                    <div id="modal-workgroup-close-feedback" class="alert alert-danger d-none"></div>
+                    <div id="modal-workgroup-close-body"></div>
+                  </div>
+                  <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annulla</button>
+                    <button type="button" class="btn btn-danger" id="btn-workgroup-close-confirm">
+                      Conferma chiusura gruppo
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>`);
+            document.getElementById("btn-workgroup-close-confirm")
+                .addEventListener("click", submitWorkgroupClose);
+
+            return document.getElementById("modalWorkgroupClose");
+        }
+
+        async function loadLottiForGroupRow(row) {
+            const resp = await window.avpFetch("/api/ordini/lotti-componenti", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-Requested-With": "XMLHttpRequest"
+                },
+                credentials: "same-origin",
+                body: JSON.stringify({
+                    id_documento: row.id_documento,
+                    id_riga: row.id_riga,
+                    modalita: row.modalita_lotti || "sl",
+                    num_progr_riga: row.num_progr_riga || ""
+                })
+            });
+
+            const data = await resp.json();
+
+            if (!resp.ok || data.ok === false) {
+                throw new Error(data.error || "Errore caricamento lotti.");
+            }
+
+            return Array.isArray(data.componenti) ? data.componenti : [];
+        }
+
+        function escHtml(value) {
+            return String(value ?? "")
+                .replaceAll("&", "&amp;")
+                .replaceAll("<", "&lt;")
+                .replaceAll(">", "&gt;")
+                .replaceAll('"', "&quot;")
+                .replaceAll("'", "&#039;");
+        }
+
+        function parseIntQty(v) {
+            const s = String(v ?? "").trim().replace(/\s+/g, "");
+            if (!s || s.includes(",") || s.includes(".") || !/^\d+$/.test(s)) return NaN;
+            const n = Number(s);
+            return Number.isSafeInteger(n) ? n : NaN;
+        }
+
+        function parseQtyOrZero(v) {
+            const n = parseIntQty(v);
+            return Number.isFinite(n) ? n : 0;
+        }
+
+        function parseSystemQty(v) {
+            let s = String(v ?? "").trim().replace(/\s+/g, "");
+            if (!s) return NaN;
+            if (s.includes(",") && s.includes(".")) s = s.replace(/\./g, "");
+            s = s.replace(",", ".");
+            const n = Number(s);
+            return Number.isFinite(n) ? n : NaN;
+        }
+
+        function sameQty(a, b) {
+            return Math.abs(Number(a || 0) - Number(b || 0)) < 0.000001;
+        }
+
+        function isGestioneLottoSi(comp) {
+            const flag = String(comp?.GestioneLotto ?? comp?.gestione_lotto ?? comp?.gestioneLotto ?? "")
+                .trim()
+                .toLowerCase();
+
+            return flag ? flag === "si" : Array.isArray(comp?.lotti) && comp.lotti.length > 0;
+        }
+
+        function getGroupLottiState(row) {
+            const key = orderKey(row);
+            if (!workgroupCloseState.lottoUiByOrder[key]) {
+                workgroupCloseState.lottoUiByOrder[key] = {
+                    data: [],
+                    hasLotti: false,
+                    hasSelectableLotti: false
+                };
+            }
+            return workgroupCloseState.lottoUiByOrder[key];
+        }
+
+        function getGroupQuantitaLavorata(row) {
+            const key = orderKey(row);
+            return parseQtyOrZero(getGroupRowValue(key, "quantita_conforme"))
+                + parseQtyOrZero(getGroupRowValue(key, "quantita_non_conforme"));
+        }
+
+        function getGroupQuantitaRichiestaComponente(row, comp) {
+            const baseQty = parseSystemQty(comp?.Quantita);
+            const qOrdTotale = parseSystemQty(row.quantita);
+            const qLavorata = getGroupQuantitaLavorata(row);
+
+            if (!Number.isFinite(baseQty) || baseQty <= 0) return 0;
+            if (!Number.isFinite(qLavorata) || qLavorata <= 0) return 0;
+            if (!Number.isFinite(qOrdTotale) || qOrdTotale <= 0) return Math.round(baseQty);
+
+            return Math.round((baseQty * qLavorata) / qOrdTotale);
+        }
+
+        function setGroupLottiAlert(root, message) {
+            const alertEl = root?.querySelector("[data-lotti-alert]");
+            if (!alertEl) return;
+            alertEl.textContent = message || "";
+            alertEl.style.display = message ? "" : "none";
+        }
+
+        function groupOrderEl(key) {
+            return Array.from(
+                document.querySelectorAll("#modal-workgroup-close-body [data-order-key]")
+            ).find(el => el.dataset.orderKey === key) || null;
+        }
+
+        function getGroupRowValue(key, field) {
+            return groupOrderEl(key)?.querySelector(`[data-field="${field}"]`)?.value?.trim() || "";
+        }
+
+        function getGroupRowChecked(key, field) {
+            return groupOrderEl(key)?.querySelector(`[data-field="${field}"]`)?.checked === true;
+        }
+
+        function getGroupRowCheckedDefault(key, field, defaultValue) {
+            const el = groupOrderEl(key)?.querySelector(`[data-field="${field}"]`);
+            return el ? el.checked === true : defaultValue;
+        }
+
+        function showGroupCloseFeedback(message) {
+            const el = document.getElementById("modal-workgroup-close-feedback");
+            if (!el) return;
+            el.textContent = message || "";
+            el.classList.toggle("d-none", !message);
+        }
+
+        function renderWorkgroupCloseRows() {
+            const body = document.getElementById("modal-workgroup-close-body");
+            if (!body) return;
+
+            const rowsHtml = workgroupCloseState.detail.map(row => {
+                const key = orderKey(row);
+                const qta = row.quantita || "";
+                const isMacchina = row.is_macchina === true
+                    || row.gestione_matricola === true
+                    || row.modalita_lotti === "m";
+                const timeZero = String(row.time_share_mode || row.TimeShareMode || "")
+                    .toUpperCase() === "ZERO";
+
+                const closeFields = isMacchina ? `
+                <div class="alert alert-info py-2 mb-2">
+                    Chiusura macchina: quantità e avanzamento seguono la logica ordine macchina.
+                </div>` : `
+                <div class="row g-2 align-items-end">
+                    <div class="col">
+                        <label class="form-label mb-1">Quantità conforme</label>
+                        <input class="form-control form-control-sm"
+                               data-field="quantita_conforme"
+                               value="${escHtml(qta)}">
+                    </div>
+                    <div class="col">
+                        <label class="form-label mb-1">Quantità non conforme</label>
+                        <input class="form-control form-control-sm"
+                               data-field="quantita_non_conforme"
+                               value="0">
+                    </div>
+                    <div class="col-auto">
+                        <div class="form-check">
+                            <input class="form-check-input"
+                                   type="checkbox"
+                                   data-field="chiusura_parziale">
+                            <label class="form-check-label">Parziale</label>
+                        </div>
+                    </div>
+                </div>`;
+
+                const registrationFields = `
+                <div class="row g-2 align-items-end mt-2">
+                    {% if has_modifica_data_chiusura_permission %}
+                    <div class="col">
+                        <label class="form-label mb-1">Data registrazione</label>
+                        <input type="date"
+                               class="form-control form-control-sm"
+                               data-field="data_registrazione">
+                    </div>
+                    {% endif %}
+                    {% if has_export_senza_tempo_permission %}
+                    <div class="col">
+                        <div class="form-check">
+                            <input class="form-check-input"
+                                   type="checkbox"
+                                   data-field="include_time_line"
+                                   ${timeZero ? "" : "checked"}
+                                   ${timeZero ? "disabled" : ""}>
+                            <label class="form-check-label">
+                                Inserisci tempo nel file ERP
+                            </label>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>`;
+
+                return `
+            <div class="border rounded p-2 mb-2" data-order-key="${escHtml(key)}">
+                <div class="fw-semibold">
+                    ${escHtml(row.ordine || "")} - ${escHtml(row.cod_art || "")}
+                </div>
+                <div class="small text-muted mb-2">
+                    ${escHtml(row.descrizione || "")} | Fase ${escHtml(row.fase || "")}
+                    ${row.matricola ? ` | Matricola ${escHtml(row.matricola)}` : ""}
+                </div>
+
+                ${closeFields}
+                ${registrationFields}
+
+                <div class="mt-2" data-lotti-box></div>
+            </div>
+        `;
+            }).join("");
+
+            body.innerHTML = `
+                <div class="mb-3">
+                    <label class="form-label mb-1" for="modal-workgroup-close-note">
+                        Note chiusura gruppo
+                    </label>
+                    <textarea class="form-control"
+                              id="modal-workgroup-close-note"
+                              rows="2"></textarea>
+                </div>
+                ${rowsHtml}
+            `;
+
+            workgroupCloseState.detail.forEach(row => {
+                if (row.richiede_lotti === true) {
+                    loadAndRenderGroupLotti(row);
+                }
+            });
+        }
+
+        async function loadAndRenderGroupLotti(row) {
+            const key = orderKey(row);
+            const box = groupOrderEl(key)?.querySelector("[data-lotti-box]");
+            if (!box) return;
+
+            box.innerHTML = `<div class="text-muted small">Caricamento lotti...</div>`;
+
+            try {
+                const componenti = (await loadLottiForGroupRow(row)).filter(isGestioneLottoSi);
+
+                if (!componenti.length) {
+                    box.innerHTML = `<div class="alert alert-warning mb-0">Nessun componente lotto disponibile.</div>`;
+                    return;
+                }
+
+                box.innerHTML = `
+                    <div class="fw-semibold mt-2 mb-1">Assegnazione lotti</div>
+                    <table class="table table-sm table-bordered align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Codice</th>
+                                <th>Lotto</th>
+                                <th>Giacenza</th>
+                                <th>Quantità</th>
+                                <th>Esito</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${componenti.map(comp => `
+                                <tr data-lotto-codart="${escHtml(comp.CodArt || "")}">
+                                    <td>${escHtml(comp.CodArt || "")}</td>
+                                    <td>
+                                        <select class="form-select form-select-sm" data-field="lotto">
+                                            <option value="">-- Seleziona --</option>
+                                            ${(comp.lotti || []).map(lotto => `
+                                                <option value="${escHtml(lotto.RifLottoAlfa || "")}"
+                                                        data-giacenza="${escHtml(lotto.Giacenza || "0")}"
+                                                        data-codmag="${escHtml(lotto.CodMag || "")}">
+                                                    ${escHtml(lotto.RifLottoAlfa || "")}
+                                                </option>
+                                            `).join("")}
+                                        </select>
+                                    </td>
+                                    <td data-field="giacenza">-</td>
+                                    <td>
+                                        <input class="form-control form-control-sm"
+                                               data-field="lotto_quantita"
+                                               value="${escHtml((row.modalita_lotti || "sl") === "m" ? (comp.Quantita || "") : String(getGroupQuantitaRichiestaComponente(row, comp) || ""))}">
+                                    </td>
+                                    <td>
+                                        <select class="form-select form-select-sm" data-field="esito">
+                                            <option value="ok">OK</option>
+                                            <option value="ko">KO</option>
+                                        </select>
+                                    </td>
+                                </tr>
+                            `).join("")}
+                        </tbody>
+                    </table>
+                `;
+
+                box.querySelectorAll('[data-field="lotto"]').forEach(select => {
+                    select.addEventListener("change", () => {
+                        const opt = select.options[select.selectedIndex];
+                        const tr = select.closest("tr");
+                        tr.querySelector('[data-field="giacenza"]').textContent =
+                            opt?.dataset?.giacenza || "-";
+                    });
+                });
+
+            } catch (err) {
+                box.innerHTML = `<div class="alert alert-danger mb-0">${escHtml(err.message)}</div>`;
+            }
+        }
+
+        function collectGroupLotti(row) {
+            const key = orderKey(row);
+            const root = groupOrderEl(key);
+            const rows = root ? root.querySelectorAll("[data-lotto-codart]") : [];
+            const payload = [];
+            if (rows.length === 0) {
+                showGroupCloseFeedback(`Lotti non caricati per ${row.ordine || row.cod_art || key}.`);
+                return false;
+            }
+
+            for (const tr of rows) {
+                const codArt = tr.dataset.lottoCodart || "";
+                const select = tr.querySelector('[data-field="lotto"]');
+                const lotto = select?.value || "";
+                const opt = select?.options?.[select.selectedIndex];
+                const qty = tr.querySelector('[data-field="lotto_quantita"]')?.value?.trim() || "";
+                const esito = tr.querySelector('[data-field="esito"]')?.value || "ok";
+
+                if (!lotto || !qty) {
+                    showGroupCloseFeedback(`Compilare lotto e quantità per ${codArt}.`);
+                    return false;
+                }
+
+                payload.push({
+                    CodArt: codArt,
+                    RifLottoAlfa: lotto,
+                    CodMag: opt?.dataset?.codmag || "",
+                    Quantita: qty,
+                    Esito: esito
+                });
+            }
+
+            workgroupCloseState.lottiByOrder[key] = payload;
+            return true;
+        }
+
+        async function submitWorkgroupClose() {
+            showGroupCloseFeedback("");
+
+            for (const row of workgroupCloseState.detail) {
+                if (row.richiede_lotti === true && !collectGroupLotti(row)) {
+                    return;
+                }
+            }
+
+            const groupNote = document.getElementById("modal-workgroup-close-note")?.value?.trim() || "";
+            const orders = workgroupCloseState.detail.map(row => {
+                const key = orderKey(row);
+                const isMacchina = row.is_macchina === true
+                    || row.gestione_matricola === true
+                    || row.modalita_lotti === "m";
+
+                return {
+                    id_documento: row.id_documento,
+                    id_riga: row.id_riga,
+                    num_progr_riga: row.num_progr_riga || "",
+                    fase: row.fase || row.fase_attiva || "",
+                    matricola: row.matricola || "",
+                    modalita_lotti: row.modalita_lotti || (isMacchina ? "m" : "sl"),
+                    quantita_conforme: isMacchina ? "" : getGroupRowValue(key, "quantita_conforme"),
+                    quantita_non_conforme: isMacchina ? "" : getGroupRowValue(key, "quantita_non_conforme"),
+                    chiusura_parziale: !isMacchina && getGroupRowChecked(key, "chiusura_parziale"),
+                    data_registrazione: getGroupRowValue(key, "data_registrazione"),
+                    include_time_line: getGroupRowCheckedDefault(key, "include_time_line", true),
+                    lotti: workgroupCloseState.lottiByOrder[key] || []
+                };
+            });
+
+            const partialFlags = orders.map(row => row.chiusura_parziale === true);
+            if (partialFlags.some(Boolean) && !partialFlags.every(Boolean)) {
+                showGroupCloseFeedback("La chiusura parziale del gruppo deve riguardare tutti gli ordini.");
+                return;
+            }
+
+            const resp = await window.avpFetch(`/api/ordini/gruppi/${encodeURIComponent(workgroupCloseState.groupUid)}/chiudi`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-Requested-With": "XMLHttpRequest"
+                },
+                credentials: "same-origin",
+                body: JSON.stringify({note: groupNote, orders})
+            });
+
+            const data = await resp.json();
+
+            if (!resp.ok || data.ok === false) {
+                showGroupCloseFeedback(data.error || "Errore durante la chiusura gruppo.");
+                return;
+            }
+
+            const exportErrors = [];
+            for (const row of (data.exports || [])) {
+                const exportResult = await exportAvpTxt({
+                    suffix: row.suffix || "officina",
+                    outboxId: row.outbox_id
+                });
+                if (!exportResult.ok) {
+                    exportErrors.push(exportResult.error || `Export non generato per ${row.outbox_id}.`);
+                }
+            }
+
+            bootstrap.Modal.getOrCreateInstance(document.getElementById("modalWorkgroupClose")).hide();
+
+            if (data.fragments && window.applyHomeFragments) {
+                window.applyHomeFragments(data.fragments);
+            }
+
+            if (exportErrors.length) {
+                alert(exportErrors.join("\n"));
+            }
+        }
     })();
 </script>
 <script>

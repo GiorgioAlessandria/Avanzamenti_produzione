@@ -2101,6 +2101,590 @@
             });
         });
     </script>
+    <script>
+        (() => {
+            if (window.__avpWorkgroupStatusActionsInit) return;
+            window.__avpWorkgroupStatusActionsInit = true;
+
+            const ACTIONS = {
+                "btn-conferma-sospensione-sl": {
+                    action: "sospendi",
+                    idSelectors: ["#toast2-iddocumento", "#toast-sosp-iddocumento"],
+                    causaleSelectors: ["#causale_attivita_sl", "#causale_attivita"],
+                    tempoSelectors: ["#toast-sosp-sl-tempo-fermo-macchina"],
+                    toastSelector: "#toast-2"
+                },
+                "btn-conferma-riattivazione-sl": {
+                    action: "riattiva",
+                    idSelectors: ["#toast-riatt-sl-iddocumento"],
+                    toastSelector: "#toast-3"
+                },
+                "btn-conferma-sospensione-m": {
+                    action: "sospendi",
+                    idSelectors: ["#toast-sosp-m-iddocumento"],
+                    causaleSelectors: ["#causale_attivita_m"],
+                    toastSelector: "#toast-5"
+                },
+                "btn-conferma-riattivazione-m": {
+                    action: "riattiva",
+                    idSelectors: ["#toast-riatt-m-iddocumento"],
+                    toastSelector: "#toast-6"
+                }
+            };
+
+            function firstValue(selectors) {
+                for (const selector of selectors || []) {
+                    const el = document.querySelector(selector);
+                    if (el && String(el.value || "").trim()) {
+                        return String(el.value || "").trim();
+                    }
+                }
+                return "";
+            }
+
+            function resetActionButtons() {
+                [
+                    "sospensione_ordine",
+                    "riattivazione_ordine",
+                    "sospensione_ordine_sl",
+                    "riattivazione_ordine_sl",
+                    "sospensione_ordine_m",
+                    "riattivazione_ordine_m"
+                ].forEach(id => {
+                    const btn = document.getElementById(id);
+                    if (btn) btn.disabled = true;
+                });
+            }
+
+            async function handleGroupAction(button, cfg, groupUid) {
+                button.disabled = true;
+
+                try {
+                    const payload = {};
+                    if (cfg.action === "sospendi") {
+                        payload.causale = firstValue(cfg.causaleSelectors);
+                        payload.tempo_non_funzionamento_minuti = firstValue(cfg.tempoSelectors) || "0";
+                    }
+
+                    const resp = await window.avpFetch(
+                        `/api/ordini/gruppi/${encodeURIComponent(groupUid)}/${cfg.action}`,
+                        {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "application/json",
+                                "X-Requested-With": "XMLHttpRequest"
+                            },
+                            credentials: "same-origin",
+                            body: JSON.stringify(payload)
+                        }
+                    );
+
+                    let data = {};
+                    try {
+                        data = await resp.json();
+                    } catch (_) {
+                        data = {};
+                    }
+
+                    if (!resp.ok || data.ok === false) {
+                        alert(data.error || "Errore durante l'operazione sul gruppo ordini.");
+                        return;
+                    }
+
+                    const toastEl = document.querySelector(cfg.toastSelector);
+                    if (toastEl) {
+                        bootstrap.Toast.getOrCreateInstance(toastEl).hide();
+                    }
+
+                    if (data.fragments && window.applyHomeFragments) {
+                        window.applyHomeFragments(data.fragments);
+                    }
+
+                    resetActionButtons();
+                } catch (err) {
+                    console.error("Errore operazione gruppo ordini:", err);
+                    alert("Errore di comunicazione con il server.");
+                } finally {
+                    button.disabled = false;
+                }
+            }
+
+            document.addEventListener("click", function (event) {
+                const button = event.target.closest(Object.keys(ACTIONS).map(id => `#${id}`).join(","));
+                if (!button) return;
+
+                const cfg = ACTIONS[button.id];
+                const idDocumento = firstValue(cfg.idSelectors);
+                if (!idDocumento.startsWith("GROUP:")) return;
+
+                event.preventDefault();
+                event.stopPropagation();
+                event.stopImmediatePropagation();
+
+                const groupUid = idDocumento.slice("GROUP:".length).trim();
+                if (!groupUid) {
+                    alert("Gruppo ordini non valido.");
+                    return;
+                }
+
+                handleGroupAction(button, cfg, groupUid);
+            }, true);
+        })();
+    </script>
+    <script>
+        (() => {
+            if (window.__avpWorkgroupOpenInit) return;
+            window.__avpWorkgroupOpenInit = true;
+
+            let currentMode = "";
+            let currentOrders = [];
+
+            function esc(value) {
+                const div = document.createElement("div");
+                div.textContent = value == null ? "" : String(value);
+                return div.innerHTML;
+            }
+
+            function ensureModal() {
+                let modal = document.getElementById("modalWorkgroupOpen");
+                if (modal) return modal;
+
+                document.body.insertAdjacentHTML("beforeend", `
+<div class="modal fade" id="modalWorkgroupOpen" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="modalWorkgroupOpenTitle">Gruppo ordini</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Chiudi"></button>
+      </div>
+      <div class="modal-body">
+        <div id="modal-workgroup-feedback" class="alert alert-warning d-none"></div>
+        <div class="table-responsive">
+          <table class="table table-sm table-hover align-middle mb-0">
+            <thead id="modal-workgroup-head"></thead>
+            <tbody id="modal-workgroup-body"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annulla</button>
+        <button type="button" class="btn btn-primary" id="btn-workgroup-confirm">Apri gruppo</button>
+      </div>
+    </div>
+  </div>
+</div>`);
+
+                document.getElementById("btn-workgroup-confirm")
+                    .addEventListener("click", submitWorkgroup);
+
+                return document.getElementById("modalWorkgroupOpen");
+            }
+
+            function showFeedback(message) {
+                const el = document.getElementById("modal-workgroup-feedback");
+                if (!el) return;
+                el.textContent = message || "";
+                el.classList.toggle("d-none", !message);
+            }
+
+            function orderFromRow(row) {
+                const statoCell = row.querySelector('td[data-col="stato"]');
+                return {
+                    id_documento: row.dataset.iddocumento || "",
+                    id_riga: row.dataset.idriga || "",
+                    ordine: row.dataset.ordine || row.dataset.rowKey || "",
+                    cod_art: row.dataset.codice || "",
+                    descrizione: row.dataset.descrizione || "",
+                    fase: row.dataset.fase || "",
+                    stato: row.dataset.statoordine || row.dataset.stato || statoCell?.textContent?.trim() || ""
+                };
+            }
+
+            function ordersFromTable(table) {
+                return Array.from(table.querySelectorAll("tbody tr[data-iddocumento][data-idriga]"))
+                    .filter(row => row.offsetParent !== null)
+                    .filter(row => row.dataset.isWorkGroup !== "1")
+                    .map(orderFromRow)
+                    .filter(order => order.id_documento && order.id_riga);
+            }
+
+            function relatedWorkgroupTables(tableSelector) {
+                const map = {
+                    "#ordini_da_eseguire": ["#ordini_da_eseguire", "#ordini_in_corso"],
+                    "#ordini_da_eseguire_sl": ["#ordini_da_eseguire_sl", "#ordini_in_corso_sl"],
+                    "#ordini_da_eseguire_m": ["#ordini_da_eseguire_m", "#ordini_in_corso_m"]
+                };
+                return (map[tableSelector] || [tableSelector])
+                    .map(selector => document.querySelector(selector))
+                    .filter(Boolean);
+            }
+
+            function ordersFromRelatedTables(tableSelector, fallbackTable) {
+                const seen = new Set();
+                return (tableSelector ? relatedWorkgroupTables(tableSelector) : [fallbackTable])
+                    .filter(Boolean)
+                    .flatMap(ordersFromTable)
+                    .filter(order => {
+                        const key = `${order.id_documento}|${order.id_riga}`;
+                        if (seen.has(key)) return false;
+                        seen.add(key);
+                        return true;
+                    });
+            }
+
+            function renderModal(mode, table, tableSelector) {
+                currentMode = mode;
+                currentOrders = ordersFromRelatedTables(tableSelector, table);
+
+                if (!currentOrders.length) {
+                    alert("Nessun ordine disponibile nella tabella corrente.");
+                    return false;
+                }
+
+                const title = document.getElementById("modalWorkgroupOpenTitle");
+                const head = document.getElementById("modal-workgroup-head");
+                const body = document.getElementById("modal-workgroup-body");
+                const confirm = document.getElementById("btn-workgroup-confirm");
+
+                showFeedback("");
+
+                if (mode === "multiplo") {
+                    title.textContent = "Ordini multipli";
+                    confirm.textContent = "Apri ordini multipli";
+                    head.innerHTML = `
+                    <tr>
+                      <th></th><th>Ordine</th><th>Codice</th><th>Descrizione</th><th>Fase</th><th>Stato</th>
+                    </tr>`;
+                    body.innerHTML = currentOrders.map((order, index) => `
+                    <tr>
+                      <td><input class="form-check-input" type="checkbox" value="${index}"></td>
+                      <td>${esc(order.ordine)}</td>
+                      <td>${esc(order.cod_art)}</td>
+                      <td class="text-start">${esc(order.descrizione)}</td>
+                      <td>${esc(order.fase)}</td>
+                      <td>${esc(order.stato)}</td>
+                    </tr>`).join("");
+                    return true;
+                }
+
+                title.textContent = "Ordine mascherato";
+                confirm.textContent = "Apri ordine mascherato";
+                head.innerHTML = `
+                <tr>
+                  <th>Principale</th><th>Mascherato</th><th>Ordine</th><th>Codice</th><th>Descrizione</th><th>Fase</th><th>Stato</th>
+                </tr>`;
+                body.innerHTML = currentOrders.map((order, index) => `
+                <tr>
+                  <td><input class="form-check-input" type="radio" name="wg-main" value="${index}"></td>
+                  <td><input class="form-check-input" type="radio" name="wg-mask" value="${index}"></td>
+                  <td>${esc(order.ordine)}</td>
+                  <td>${esc(order.cod_art)}</td>
+                  <td class="text-start">${esc(order.descrizione)}</td>
+                  <td>${esc(order.fase)}</td>
+                  <td>${esc(order.stato)}</td>
+                </tr>`).join("");
+                return true;
+            }
+
+            function orderKey(order) {
+                return {
+                    id_documento: order.id_documento,
+                    id_riga: order.id_riga
+                };
+            }
+
+            async function submitWorkgroup() {
+                let endpoint = "";
+                let payload = {};
+
+                if (currentMode === "multiplo") {
+                    const selected = Array.from(
+                        document.querySelectorAll("#modal-workgroup-body input[type='checkbox']:checked")
+                    ).map(input => currentOrders[Number(input.value)]).filter(Boolean);
+
+                    if (selected.length < 2 || selected.length > 3) {
+                        showFeedback("Seleziona da 2 a 3 ordini.");
+                        return;
+                    }
+
+                    endpoint = "/api/ordini/gruppi/multiplo/apri";
+                    payload = {orders: selected.map(orderKey)};
+                } else {
+                    const mainIndex = Number(document.querySelector("input[name='wg-main']:checked")?.value);
+                    const maskIndex = Number(document.querySelector("input[name='wg-mask']:checked")?.value);
+
+                    if (!Number.isInteger(mainIndex) || !Number.isInteger(maskIndex)) {
+                        showFeedback("Seleziona un ordine principale e un ordine mascherato.");
+                        return;
+                    }
+                    if (mainIndex === maskIndex) {
+                        showFeedback("Ordine principale e mascherato non possono coincidere.");
+                        return;
+                    }
+
+                    endpoint = "/api/ordini/gruppi/mascherato/apri";
+                    payload = {
+                        principale: orderKey(currentOrders[mainIndex]),
+                        mascherato: orderKey(currentOrders[maskIndex])
+                    };
+                }
+
+                const resp = await window.avpFetch(endpoint, {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"},
+                    credentials: "same-origin",
+                    body: JSON.stringify(payload)
+                });
+
+                const data = await resp.json().catch(() => ({}));
+
+                if (!resp.ok || data.ok === false) {
+                    showFeedback(data.error || "Errore apertura gruppo ordini.");
+                    return;
+                }
+
+                if (data.fragments && window.applyHomeFragments) {
+                    window.applyHomeFragments(data.fragments);
+                }
+
+                bootstrap.Modal.getOrCreateInstance(document.getElementById("modalWorkgroupOpen")).hide();
+                alert(data.message || "Gruppo aperto correttamente.");
+            }
+
+            document.addEventListener("click", function (event) {
+                const button = event.target.closest(".js-open-gruppo-multiplo, .js-open-gruppo-mascherato");
+                if (!button) return;
+
+                event.preventDefault();
+                const tableSelector = button.getAttribute("data-workgroup-table");
+                const table = tableSelector ? document.querySelector(tableSelector) : null;
+
+                if (!table) {
+                    alert("Tabella ordini non trovata.");
+                    return;
+                }
+
+                const mode = button.classList.contains("js-open-gruppo-multiplo") ? "multiplo" : "mascherato";
+                const modal = ensureModal();
+
+                if (renderModal(mode, table, tableSelector)) {
+                    bootstrap.Modal.getOrCreateInstance(modal).show();
+                }
+            });
+        })();
+    </script>
+    <script>
+        (() => {
+            if (window.__avpWorkgroupDetailInit) return;
+            window.__avpWorkgroupDetailInit = true;
+
+            function esc(value) {
+                const div = document.createElement("div");
+                div.textContent = value == null ? "" : String(value);
+                return div.innerHTML;
+            }
+
+            function labelRole(role) {
+                if (role === "MAIN") return "Principale";
+                if (role === "MASKED") return "Mascherato";
+                return "Membro";
+            }
+
+            function labelShare(mode) {
+                if (mode === "FULL") return "Tempo pieno";
+                if (mode === "ZERO") return "Nessun tempo";
+                return "Tempo diviso";
+            }
+
+            function parseDetail(raw) {
+                try {
+                    const parsed = JSON.parse(raw || "[]");
+                    return Array.isArray(parsed) ? parsed : [];
+                } catch (_) {
+                    return [];
+                }
+            }
+
+            function memberLabel(row) {
+                return [
+                    labelRole(row.ruolo || row.role || row.Role),
+                    row.ordine || row.Ordine || "",
+                    row.cod_art || row.CodArt || ""
+                ].filter(Boolean).join(" - ");
+            }
+
+            function showDetailFeedback(message) {
+                const el = document.getElementById("modal-workgroup-detail-feedback");
+                if (!el) return;
+                el.textContent = message || "";
+                el.classList.toggle("d-none", !message);
+            }
+
+            function ensureModal() {
+                let modal = document.getElementById("modalWorkgroupDetail");
+                if (modal) return modal;
+
+                document.body.insertAdjacentHTML("beforeend", `
+            <div class="modal fade" id="modalWorkgroupDetail" tabindex="-1" aria-hidden="true">
+              <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+                <div class="modal-content">
+                  <div class="modal-header">
+                    <div>
+                      <h5 class="modal-title" id="modal-workgroup-detail-title">Dettaglio gruppo</h5>
+                      <div class="small text-muted" id="modal-workgroup-detail-subtitle"></div>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Chiudi"></button>
+                  </div>
+                  <div class="modal-body">
+                    <div id="modal-workgroup-detail-feedback" class="alert alert-danger d-none"></div>
+                    <div class="table-responsive">
+                      <table class="table table-sm table-bordered align-middle mb-0">
+                        <thead class="table-light">
+                          <tr>
+                            <th>Ruolo</th><th>Ordine</th><th>Codice</th><th>Var.</th>
+                            <th>Rev.</th><th>Descrizione</th><th>Fase</th><th>Gestione tempo</th>
+                          </tr>
+                        </thead>
+                        <tbody id="modal-workgroup-detail-body"></tbody>
+                      </table>
+                    </div>
+                  </div>
+                  <div class="modal-footer justify-content-between gap-2 flex-wrap">
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                      <label class="form-label mb-0" for="modal-workgroup-dissolve-member">Lascia attivo</label>
+                      <select class="form-select form-select-sm w-auto" id="modal-workgroup-dissolve-member"></select>
+                      <button type="button" class="btn btn-outline-danger btn-sm" id="btn-workgroup-dissolve">
+                        Sciogli gruppo
+                      </button>
+                    </div>
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Chiudi</button>
+                  </div>
+                </div>
+              </div>
+            </div>`);
+
+                return document.getElementById("modalWorkgroupDetail");
+            }
+
+            document.addEventListener("click", function (event) {
+                const btn = event.target.closest(".js-open-workgroup-detail-modal");
+                if (!btn) return;
+
+                event.preventDefault();
+                event.stopPropagation();
+
+                const detail = parseDetail(btn.dataset.groupDetail);
+                const modal = ensureModal();
+                const groupUid = btn.dataset.groupUid || "";
+
+                showDetailFeedback("");
+                document.getElementById("modal-workgroup-detail-title").textContent =
+                    `Dettaglio gruppo ${btn.dataset.groupType || ""}`;
+
+                document.getElementById("modal-workgroup-detail-subtitle").textContent =
+                    [btn.dataset.groupLabel, groupUid].filter(Boolean).join(" - ");
+
+                document.getElementById("modal-workgroup-detail-body").innerHTML =
+                    detail.length
+                        ? detail.map(row => `
+                    <tr>
+                      <td>${esc(labelRole(row.ruolo || row.role || row.Role))}</td>
+                      <td>${esc(row.ordine || row.Ordine || "")}</td>
+                      <td>${esc(row.cod_art || row.CodArt || "")}</td>
+                      <td>${esc(row.variante || row.VarianteArt || "")}</td>
+                      <td>${esc(row.revisione || row.IndiceModifica || "")}</td>
+                      <td class="text-start">${esc(row.descrizione || row.DesArt || "")}</td>
+                      <td>${esc(row.fase || row.Fase || "")}</td>
+                      <td>${esc(labelShare(row.time_share_mode || row.TimeShareMode))}</td>
+                    </tr>`).join("")
+                        : `<tr><td colspan="8" class="text-center text-muted">Nessun dettaglio disponibile.</td></tr>`;
+
+                const select = document.getElementById("modal-workgroup-dissolve-member");
+                const dissolveBtn = document.getElementById("btn-workgroup-dissolve");
+                const members = detail.filter(row => row.id_documento && row.id_riga);
+                if (select) {
+                    select.innerHTML = members.map((row, idx) => `
+                        <option value="${idx}"
+                                data-id-documento="${esc(row.id_documento)}"
+                                data-id-riga="${esc(row.id_riga)}">
+                            ${esc(memberLabel(row))}
+                        </option>`).join("");
+                }
+                if (dissolveBtn) {
+                    dissolveBtn.dataset.groupUid = groupUid;
+                    dissolveBtn.disabled = !groupUid || members.length === 0;
+                }
+
+                bootstrap.Modal.getOrCreateInstance(modal).show();
+            }, true);
+
+            document.addEventListener("click", async function (event) {
+                const btn = event.target.closest("#btn-workgroup-dissolve");
+                if (!btn) return;
+
+                event.preventDefault();
+                showDetailFeedback("");
+
+                const groupUid = btn.dataset.groupUid || "";
+                const select = document.getElementById("modal-workgroup-dissolve-member");
+                const option = select?.selectedOptions?.[0];
+                const idDocumento = option?.dataset?.idDocumento || "";
+                const idRiga = option?.dataset?.idRiga || "";
+
+                if (!groupUid || !idDocumento || !idRiga) {
+                    showDetailFeedback("Selezione gruppo non valida.");
+                    return;
+                }
+
+                if (!confirm("Sciogliere il gruppo lasciando attivo l'ordine selezionato e sospendendo gli altri?")) {
+                    return;
+                }
+
+                btn.disabled = true;
+                try {
+                    const resp = await window.avpFetch(
+                        `/api/ordini/gruppi/${encodeURIComponent(groupUid)}/sciogli-membro`,
+                        {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "application/json",
+                                "X-Requested-With": "XMLHttpRequest"
+                            },
+                            credentials: "same-origin",
+                            body: JSON.stringify({
+                                id_documento: idDocumento,
+                                id_riga: idRiga
+                            })
+                        }
+                    );
+
+                    let data = {};
+                    try {
+                        data = await resp.json();
+                    } catch (_) {
+                        data = {};
+                    }
+
+                    if (!resp.ok || data.ok === false) {
+                        showDetailFeedback(data.error || "Errore durante lo scioglimento del gruppo.");
+                        return;
+                    }
+
+                    const modal = document.getElementById("modalWorkgroupDetail");
+                    if (modal) bootstrap.Modal.getOrCreateInstance(modal).hide();
+
+                    if (data.fragments && window.applyHomeFragments) {
+                        window.applyHomeFragments(data.fragments);
+                    }
+                } catch (err) {
+                    console.error("Errore scioglimento gruppo:", err);
+                    showDetailFeedback("Errore di comunicazione con il server.");
+                } finally {
+                    btn.disabled = false;
+                }
+            });
+        })();
+    </script>
 {% endblock %}
 <script src="{{ url_for('static', filename='assets/js/jquery.min.js') }}"></script>
 <script src="{{ url_for('static', filename='assets/bootstrap/js/bootstrap.bundle.min.js') }}"></script>

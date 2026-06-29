@@ -47,8 +47,8 @@
                 <div class="small text-muted">{{ singolo_odp.WorkGroupMembers|default([])|length }} ordini nel gruppo</div>
             </td>
             <td><span class="text-muted">Gruppo</span></td>
-            <td>{{ singolo_odp.FaseAttiva|default('') }}</td>
             <td>{{ singolo_odp.DataFineSched | db_date("%Y-%m-%d %H:%M:%S","%d/%m/%Y") }}</td>
+            <td>{{ singolo_odp.FaseAttiva|default('') }}</td>
             <td data-col="stato"><span class="badge {{ group_state_class }}">{{ singolo_odp.WorkGroupStatus }}</span></td>
             <td>{{ singolo_odp.OperatoreUsername|default('-') or '-' }}</td>
         </tr>
