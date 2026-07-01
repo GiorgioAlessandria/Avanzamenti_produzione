@@ -157,8 +157,12 @@ def api_scorte_segnala():
 
     except ValueError as exc:
         db.session.rollback()
-        main_bp.logger.warning("Errore di validazione in api_scorte_segnala", exc_info=exc)
-        return jsonify({"ok": False, "error": "Dati non validi per la segnalazione."}), 400
+        main_bp.logger.warning(
+            "Errore di validazione in api_scorte_segnala", exc_info=exc
+        )
+        return jsonify(
+            {"ok": False, "error": "Dati non validi per la segnalazione."}
+        ), 400
 
     except Exception:
         db.session.rollback()
@@ -196,7 +200,8 @@ def api_scorte_segnala():
 def api_acquisti_scorta_update(scorta_id):
     payload = request.get_json(silent=True) or {}
     action = _norm_text(payload.get("action")).lower()
-    note = _norm_text(payload.get("note"))
+    has_note = "note" in payload
+    note = _norm_text(payload.get("note")) if has_note else None
 
     row = AcqScortaSegnalata.query.get_or_404(scorta_id)
     now_iso = _now_rome_dt().isoformat(timespec="seconds")
@@ -212,16 +217,19 @@ def api_acquisti_scorta_update(scorta_id):
         row.StatoChangedAt = now_iso
 
     elif action == "annulla":
+        row.Stato = "Annullata"
         row.Annullata = True
         row.StatoChangedAt = now_iso
 
     elif action == "note":
-        pass
+        if not has_note:
+            return jsonify({"ok": False, "error": "Nota mancante."}), 400
 
     else:
         return jsonify({"ok": False, "error": "Azione non valida."}), 400
 
-    row.Note = note
+    if has_note:
+        row.Note = note
 
     try:
         db.session.commit()

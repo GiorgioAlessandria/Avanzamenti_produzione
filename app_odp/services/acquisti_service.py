@@ -13,7 +13,7 @@ from app_odp.models import (
 from datetime import datetime, timedelta
 from app_odp.services.ordini_query_service import (
     _base_odp_query,
-    )
+)
 from decimal import Decimal, InvalidOperation
 from app_odp.services.order_helpers import (
     _ordine_ref_label,
@@ -35,6 +35,7 @@ from app_odp.services.order_helpers import (
     _now_rome_dt,
 )
 
+
 def _build_acquisti_ordini_rows() -> dict:
     ordini = _base_odp_query().all()
 
@@ -47,6 +48,7 @@ def _build_acquisti_ordini_rows() -> dict:
 
     for ordine in ordini:
         stato = _ordine_stato_effettivo(ordine)
+        stato_norm = _norm_text(stato).lower()
 
         if not _is_open_order_state(stato):
             continue
@@ -200,6 +202,35 @@ def _new_acq_material_row(cod_art: str, variante_art: str) -> dict:
     }
 
 
+def _acq_revision_rank(value) -> tuple[int, str]:
+    rev = _normalize_indice_articolo_search(value).upper()
+    if not rev:
+        return (0, "")
+    if len(rev) == 1 and "A" <= rev <= "Z":
+        return (ord(rev) - ord("A") + 1, rev)
+    return (0, rev)
+
+
+def _latest_acq_lookup_by_codart_variante() -> dict[tuple[str, str], AcqArticoliLookup]:
+    out = {}
+
+    for item in AcqArticoliLookup.query.all():
+        cod_art = _norm_text(item.CodArt)
+        variante_art = _normalize_variante_art(getattr(item, "VarianteArt", ""))
+        if not cod_art:
+            continue
+
+        key = _material_key(cod_art, variante_art)
+        current = out.get(key)
+
+        if current is None or _acq_revision_rank(
+            item.IndiceModifica
+        ) > _acq_revision_rank(current.IndiceModifica):
+            out[key] = item
+
+    return out
+
+
 def _build_acquisti_materiale_rows() -> list[dict]:
     ordini = _base_odp_query().all()
 
@@ -208,20 +239,16 @@ def _build_acquisti_materiale_rows() -> list[dict]:
         for row in AcqArticoli.query.all()
         if _norm_text(row.CodArt)
     }
+    lookup_by_codart_variante = _latest_acq_lookup_by_codart_variante()
 
     giacenze_materiale_totali = _build_acquisti_materiale_mag0_map()
     grouped: dict[tuple[str, str], dict] = {}
 
     for ordine in ordini:
-        stato_norm = _norm_text(getattr(ordine, "StatoOrdine", "")).lower()
-        if stato_norm == "chiusa":
-            continue
+        stato = _ordine_stato_effettivo(ordine)
+        stato_norm = _norm_text(stato).lower()
 
-        if (
-            "attiv" not in stato_norm
-            and "pianificat" not in stato_norm
-            and "sospes" not in stato_norm
-        ):
+        if not _is_open_order_state(stato):
             continue
 
         runtime = getattr(ordine, "runtime_row", None)
@@ -307,13 +334,12 @@ def _build_acquisti_materiale_rows() -> list[dict]:
 
             if "pianificat" in stato_norm:
                 row["MaterialeDaConsumare"] += float(qty_comp_residua)
-            elif "attiv" in stato_norm or "sospes" in stato_norm:
+            else:
                 row["MaterialeImpegnato"] += float(qty_comp_residua)
 
-            articolo_ordine = articoli_map.get(cod_art_ordine)
             if not row["MagUM"]:
                 row["MagUM"] = _first_not_blank_text(
-                    getattr(articolo_ordine, "MagUM", "") if articolo_ordine else "",
+                    getattr(articolo_comp, "MagUM", "") if articolo_comp else "",
                 )
 
             row["DistintaDettagli"].append(
@@ -329,49 +355,56 @@ def _build_acquisti_materiale_rows() -> list[dict]:
             )
 
     rows_out = []
-
     for _, row in grouped.items():
         articolo = articoli_map.get(row["CodArt"])
+        lookup = lookup_by_codart_variante.get(
+            _material_key(row["CodArt"], row["VarianteArt"])
+        ) or lookup_by_codart_variante.get((row["CodArt"], ""))
+
         giacenza_totale = giacenze_materiale_totali.get(
-            _material_key(
-                row["CodArt"],
-                _normalize_variante_art(row["VarianteArt"]),
-            )
+            _material_key(row["CodArt"], _normalize_variante_art(row["VarianteArt"]))
         )
+
+        if not row["DesArt"]:
+            row["DesArt"] = _norm_text(getattr(lookup, "DesArt", ""))
+
         if not row["MagUM"]:
             row["MagUM"] = _first_not_blank_text(
+                getattr(lookup, "MagUM", "") if lookup else "",
                 getattr(articolo, "MagUM", "") if articolo else "",
             )
+
         row["IndiceModifica"] = _normalize_indice_articolo_search(
-            getattr(articolo, "IndiceModifica", "") if articolo else ""
+            (getattr(lookup, "IndiceModifica", "") if lookup else "")
+            or (getattr(articolo, "IndiceModifica", "") if articolo else "")
         )
-        row["LottoRiordino"] = float(getattr(articolo, "LottoRiordino", 0) or 0)
-        row["PuntoRiordino"] = float(getattr(articolo, "PuntoRiordino", 0) or 0)
+        row["LottoRiordino"] = float(
+            (getattr(lookup, "LottoRiordino", None) if lookup else None)
+            or (getattr(articolo, "LottoRiordino", 0) if articolo else 0)
+            or 0
+        )
+        row["PuntoRiordino"] = float(
+            (getattr(lookup, "PuntoRiordino", None) if lookup else None)
+            or (getattr(articolo, "PuntoRiordino", 0) if articolo else 0)
+            or 0
+        )
         row["PianTempoApprovFisso"] = int(
-            getattr(articolo, "PianTempoApprovFisso", 0) or 0
+            (getattr(lookup, "PianTempoApprovFisso", None) if lookup else None)
+            or (getattr(articolo, "PianTempoApprovFisso", 0) if articolo else 0)
+            or 0
         )
 
-        if giacenza_totale is not None:
-            row["QtyMag0"] = float(giacenza_totale)
-            row["Mag0Missing"] = False
-        else:
-            row["QtyMag0"] = None
-            row["Mag0Missing"] = True
-
-        qty_mag_for_balance = float(row["QtyMag0"] or 0)
+        row["QtyMag0"] = float(giacenza_totale or 0)
+        row["Mag0Missing"] = False
 
         row["RimanenzaMateriale"] = (
-            qty_mag_for_balance
+            float(row["QtyMag0"] or 0)
             + float(row["MaterialeProdotto"] or 0)
             - float(row["MaterialeDaConsumare"] or 0)
             - float(row["MaterialeImpegnato"] or 0)
         )
 
-        row["QtyMag0Text"] = (
-            ""
-            if row["QtyMag0"] is None
-            else _decimal_to_text(Decimal(str(row["QtyMag0"])))
-        )
+        row["QtyMag0Text"] = _decimal_to_text(Decimal(str(row["QtyMag0"])))
         row["MaterialeDaConsumareText"] = _decimal_to_text(
             Decimal(str(row["MaterialeDaConsumare"]))
         )
@@ -391,6 +424,7 @@ def _build_acquisti_materiale_rows() -> list[dict]:
             )
         )
         row["OrdineDettagli"].sort(key=lambda x: ((x.get("Ordine") or "").lower(),))
+
         row["RimanenzaMaterialeText"] = _decimal_to_text(
             Decimal(str(row["RimanenzaMateriale"]))
         )
@@ -398,6 +432,7 @@ def _build_acquisti_materiale_rows() -> list[dict]:
         row["RimanenzaMaterialeSottoScorta"] = not row[
             "RimanenzaMaterialeCritica"
         ] and row["RimanenzaMateriale"] <= float(row["PuntoRiordino"] or 0)
+
         row["ModalPayload"] = {
             "cod_art": row["CodArt"],
             "variante_art": row["VarianteArt"],
@@ -409,16 +444,6 @@ def _build_acquisti_materiale_rows() -> list[dict]:
         }
 
         rows_out.append(row)
-
-    rows_out.sort(
-        key=lambda x: (
-            0 if x["Mag0Missing"] else 1,
-            (x["CodArt"] or "").lower(),
-            (x["VarianteArt"] or "").lower(),
-        )
-    )
-
-    return rows_out
 
 
 def _build_acquisti_giacenze_rows() -> list[dict]:
@@ -445,7 +470,7 @@ def _build_acquisti_giacenze_rows() -> list[dict]:
     for giac in AcqGiacenze.query.all():
         cod_art = _norm_text(giac.CodArt)
         variante_art = _normalize_variante_art(getattr(giac, "VarianteArt", ""))
-        cod_mag = _norm_text(giac.CodMag)
+        cod_mag = _normalize_acq_mag_code(giac.CodMag)
 
         if not cod_art:
             continue
@@ -463,8 +488,8 @@ def _build_acquisti_giacenze_rows() -> list[dict]:
                 "CodArt": cod_art,
                 "VarianteArt": variante_art,
                 "IndiceModifica": _normalize_indice_articolo_search(
-                    getattr(articolo_base, "IndiceModifica", "")
-                    or getattr(lookup, "IndiceModifica", "")
+                    getattr(lookup, "IndiceModifica", "")
+                    or getattr(articolo_base, "IndiceModifica", "")
                 ),
                 "DesArt": (
                     _norm_text(getattr(lookup, "DesArt", ""))
@@ -625,8 +650,8 @@ def _build_acquisti_excel_workbook(section: str, rows: list[dict]) -> Workbook:
     if section == "giacenza":
         headers = [
             "CodArt",
-            "Revisione",
             "Variante",
+            "Revisione",
             "Descrizione",
             "UdM",
             "6-Accettazione",
@@ -666,6 +691,7 @@ def _build_acquisti_excel_workbook(section: str, rows: list[dict]) -> Workbook:
         headers = [
             "Articolo",
             "Var.",
+            "Rev.",
             "Descrizione",
             "UdM",
             "Giacenza",
@@ -682,8 +708,10 @@ def _build_acquisti_excel_workbook(section: str, rows: list[dict]) -> Workbook:
             [
                 row.get("CodArt", ""),
                 row.get("VarianteArt", ""),
+                row.get("IndiceModifica", ""),
                 row.get("DesArt", ""),
                 row.get("MagUM", ""),
+                row.get("QtyMag0Text", ""),
                 "Assente" if row.get("Mag0Missing") else row.get("QtyMag0Text", ""),
                 row.get("MaterialeDaConsumareText", ""),
                 row.get("MaterialeImpegnatoText", ""),

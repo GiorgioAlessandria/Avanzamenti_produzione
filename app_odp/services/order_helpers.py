@@ -258,7 +258,7 @@ def _normalize_variante_articolo_search(value) -> str:
 
 def _ordine_state_rank(stato: str) -> int:
     s = _norm_text(stato).lower()
-    if "attiv" in s:
+    if "attiv" in s or "apert" in s:
         return 0
     if "sospes" in s:
         return 1

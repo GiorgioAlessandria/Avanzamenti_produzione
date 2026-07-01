@@ -266,14 +266,23 @@
                 }
 
                 function parseDateDDMMYYYY(s) {
-                    const m = String(s).trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?/);
+                    const raw = String(s).trim();
+
+                    let m = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+                    if (m) {
+                        return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).getTime();
+                    }
+
+                    m = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?/);
                     if (!m) return NaN;
-                    const dd = Number(m[1]);
-                    const mm = Number(m[2]) - 1;
-                    const yyyy = Number(m[3]);
-                    const hh = m[4] ? Number(m[4]) : 0;
-                    const mi = m[5] ? Number(m[5]) : 0;
-                    return new Date(yyyy, mm, dd, hh, mi).getTime();
+
+                    return new Date(
+                        Number(m[3]),
+                        Number(m[2]) - 1,
+                        Number(m[1]),
+                        m[4] ? Number(m[4]) : 0,
+                        m[5] ? Number(m[5]) : 0
+                    ).getTime();
                 }
 
                 function guessType(value) {
@@ -386,13 +395,24 @@
                     window.applyAcquistiOrdiniFilters?.();
                 }
 
+                function hasUnsavedScortaNote() {
+                    return Boolean(document.querySelector(".js-acq-scorta-note[data-dirty='1']"));
+                }
+
                 async function refreshAcquistiTables(options = {}) {
                     const force = Boolean(options.force);
+                    const allowScortaNoteRefresh = Boolean(options.allowScortaNoteRefresh);
 
                     if (isRefreshing) {
                         if (force) {
-                            setTimeout(() => refreshAcquistiTables({force: true}), 250);
+                            setTimeout(
+                                () => refreshAcquistiTables({force: true, allowScortaNoteRefresh}),
+                                250
+                            );
                         }
+                        return;
+                    }
+                    if (!allowScortaNoteRefresh && hasUnsavedScortaNote()) {
                         return;
                     }
 
@@ -697,11 +717,6 @@
                     return;
                 }
 
-                const scorteBtn = event.target.closest("#btn-export-acq-scorte");
-                if (scorteBtn) {
-                    startScorteExcelExport();
-                    return;
-                }
             });
         })();
     </script>
@@ -713,11 +728,14 @@
 
             function startScorteExcelExport() {
                 const params = new URLSearchParams();
+                const stato = getInputValue("filter-acq-scorte-stato");
+
                 params.set("codart", getInputValue("filter-acq-scorte-codart"));
                 params.set("variante", getInputValue("filter-acq-scorte-variante"));
                 params.set("desart", getInputValue("filter-acq-scorte-desart"));
-                params.set("stato", getInputValue("filter-acq-scorte-stato"));
+                params.set("stato", stato);
                 params.set("segnalato_da", getInputValue("filter-acq-scorte-segnalato-da"));
+                params.set("include_annullate", stato === "" ? "true" : "false");
 
                 window.location.href = `/api/acquisti/export/scorte?${params.toString()}`;
             }
@@ -753,9 +771,13 @@
                         alert(data.error || "Errore durante l'aggiornamento della scorta.");
                         return;
                     }
+                    row?.querySelector(".js-acq-scorta-note")?.removeAttribute("data-dirty");
 
                     if (window.refreshAcquistiTables) {
-                        await window.refreshAcquistiTables({force: true});
+                        await window.refreshAcquistiTables({
+                            force: true,
+                            allowScortaNoteRefresh: true
+                        });
                     } else {
                         window.location.reload();
                     }
@@ -768,6 +790,13 @@
                     button.disabled = false;
                 }
             }
+
+            document.addEventListener("input", (event) => {
+                const noteEl = event.target.closest(".js-acq-scorta-note");
+                if (noteEl) {
+                    noteEl.dataset.dirty = "1";
+                }
+            });
 
             document.addEventListener("click", (event) => {
                 const exportBtn = event.target.closest("#btn-export-acq-scorte");
