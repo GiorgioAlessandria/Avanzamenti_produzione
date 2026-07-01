@@ -228,22 +228,8 @@ def _phase_ref_for_export(base_ref: str, payload: dict) -> str:
     return _ref_with_suffix(base_ref, payload.get("fase"))
 
 
-def _component_is_phase_managed(component: dict) -> bool:
-    return bool(_text(component.get("NumFase")))
-
-
-def _component_ref_for_export(
-    base_ref: str,
-    payload: dict,
-    component: dict,
-) -> str:
-    if not _is_multiphase_payload(payload):
-        return base_ref
-
-    if not _component_is_phase_managed(component):
-        return base_ref
-
-    return _phase_ref_for_export(base_ref, payload)
+def _component_ref_for_export(base_ref: str, component_row_index: int) -> str:
+    return _ref_with_suffix(base_ref, component_row_index)
 
 
 def txt_generator(
@@ -359,6 +345,8 @@ def txt_generator(
             ore_lavorate=str(tempo_funzionamento),
         )
         lines.append(product_time_line)
+
+    component_row_index = 0
     for component in distinta_base:
         if not isinstance(component, dict):
             continue
@@ -379,10 +367,10 @@ def txt_generator(
                 quantita_lotto = _text(riga_lotto_component.get("Quantita"))
                 magazzino_lotto = _text(riga_lotto_component.get("CodMag")) or magazzino
 
+                component_row_index += 1
                 riferimento_ordine_component = _component_ref_for_export(
                     riferimento_ordine_base,
-                    payload,
-                    component,
+                    component_row_index,
                 )
                 component_line = row_writer(
                     tipo_record="RIG",
@@ -404,10 +392,10 @@ def txt_generator(
                 )
                 lines.append(component_line)
         else:
+            component_row_index += 1
             riferimento_ordine_component = _component_ref_for_export(
                 riferimento_ordine_base,
-                payload,
-                component,
+                component_row_index,
             )
             component_line = row_writer(
                 tipo_record="RIG",

@@ -1,0 +1,524 @@
+{% extends "base.j2" %}
+
+{% block title %}Storico ordini{% endblock %}
+
+{% block styles %}
+    {{ super() }}
+    <style>
+        .storico-filter-card .form-label {
+            font-size: .85rem;
+            margin-bottom: .25rem;
+        }
+
+        .storico-events {
+            max-width: 260px;
+        }
+
+        .storico-timeline {
+            border-left: 2px solid var(--bs-border-color);
+            margin-left: .5rem;
+            padding-left: 1rem;
+        }
+
+        .storico-timeline-item {
+            position: relative;
+            padding-bottom: 1rem;
+        }
+
+        .storico-timeline-item::before {
+            content: "";
+            position: absolute;
+            left: -1.42rem;
+            top: .35rem;
+            width: .65rem;
+            height: .65rem;
+            border-radius: 50%;
+            background: var(--bs-primary);
+        }
+
+        .storico-payload {
+            max-height: 220px;
+            overflow: auto;
+            white-space: pre-wrap;
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+    <main class="container-fluid py-3"
+          id="storico-ordini-page"
+          data-list-url="{{ operator_url_for('main.api_storico_ordini') }}"
+          data-detail-url="{{ operator_url_for('main.api_storico_ordini_detail') }}">
+        <div class="d-flex justify-content-between align-items-start mb-3">
+            <div>
+                <h1 class="h4 mb-1">Storico ordini</h1>
+                <div class="text-muted small">Log operativi, chiusure, gruppi, lotti e matricole</div>
+            </div>
+        </div>
+
+        <div class="card shadow-sm mb-3 storico-filter-card">
+            <div class="card-body">
+                <div class="row g-2 align-items-end">
+                    <div class="col-12 col-md-2">
+                        <label class="form-label"
+                               for="storico-date-from">Da</label>
+                        <input class="form-control"
+                               type="date"
+                               id="storico-date-from"
+                               value="{{ default_date_from }}">
+                    </div>
+                    <div class="col-12 col-md-2">
+                        <label class="form-label"
+                               for="storico-date-to">A</label>
+                        <input class="form-control"
+                               type="date"
+                               id="storico-date-to"
+                               value="{{ default_date_to }}">
+                    </div>
+                    <div class="col-12 col-md-2">
+                        <label class="form-label"
+                               for="storico-q">Ordine / testo</label>
+                        <input class="form-control"
+                               id="storico-q"
+                               placeholder="Documento, riga, articolo">
+                    </div>
+                    <div class="col-12 col-md-2">
+                        <label class="form-label"
+                               for="storico-articolo">Articolo</label>
+                        <input class="form-control"
+                               id="storico-articolo">
+                    </div>
+                    <div class="col-12 col-md-2">
+                        <label class="form-label"
+                               for="storico-risorsa">Risorsa</label>
+                        <input class="form-control"
+                               id="storico-risorsa">
+                    </div>
+                    <div class="col-12 col-md-2">
+                        <label class="form-label"
+                               for="storico-operatore">Operatore</label>
+                        <input class="form-control"
+                               id="storico-operatore">
+                    </div>
+                    <div class="col-12 col-md-2">
+                        <label class="form-label"
+                               for="storico-reparto">Reparto</label>
+                        <input class="form-control"
+                               id="storico-reparto">
+                    </div>
+                    <div class="col-12 col-md-2">
+                        <label class="form-label"
+                               for="storico-evento">Evento</label>
+                        <input class="form-control"
+                               id="storico-evento">
+                    </div>
+                    <div class="col-12 col-md-2">
+                        <label class="form-label"
+                               for="storico-tipo-gruppo">Tipo gruppo</label>
+                        <select class="form-select"
+                                id="storico-tipo-gruppo">
+                            <option value="">Tutti</option>
+                            <option value="MULTIPLO">Multiplo</option>
+                            <option value="MASCHERATO">Mascherato</option>
+                            <option value="MISTO">Misto</option>
+                        </select>
+                    </div>
+                    <div class="col-12 col-md-2">
+                        <button type="button"
+                                class="btn btn-primary w-100"
+                                id="storico-apply">
+                            Applica
+                        </button>
+                    </div>
+                    <div class="col-12 col-md-2">
+                        <button type="button"
+                                class="btn btn-outline-secondary w-100"
+                                id="storico-reset">
+                            Reset
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card shadow-sm">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span class="fw-semibold">Risultati</span>
+                <span class="small text-muted"
+                      id="storico-count">-</span>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm table-hover align-middle mb-0">
+                    <thead class="table-light">
+                    <tr>
+                        <th>Ultimo evento</th>
+                        <th>Tipo</th>
+                        <th>Ordine / gruppo</th>
+                        <th>Articoli</th>
+                        <th>Risorse</th>
+                        <th>Operatori</th>
+                        <th>Eventi</th>
+                        <th class="text-end">Log</th>
+                        <th></th>
+                    </tr>
+                    </thead>
+                    <tbody id="storico-body">
+                    <tr>
+                        <td colspan="9"
+                            class="text-center text-muted py-3">Caricamento...</td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="card-footer d-flex justify-content-between align-items-center">
+                <button type="button"
+                        class="btn btn-outline-secondary btn-sm"
+                        id="storico-prev">Precedente</button>
+                <div class="small"
+                     id="storico-page">Pagina 1</div>
+                <button type="button"
+                        class="btn btn-outline-secondary btn-sm"
+                        id="storico-next">Successiva</button>
+            </div>
+        </div>
+    </main>
+
+    <div class="modal fade"
+         id="storico-detail-modal"
+         tabindex="-1"
+         aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <div>
+                        <h2 class="modal-title h5"
+                            id="storico-detail-title">Dettaglio log</h2>
+                        <div class="small text-muted"
+                             id="storico-detail-subtitle"></div>
+                    </div>
+                    <button type="button"
+                            class="btn-close"
+                            data-bs-dismiss="modal"
+                            aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="storico-detail-content"
+                         class="text-muted">Caricamento...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block extra_js %}
+    {{ super() }}
+    <script>
+        (function () {
+            const page = document.getElementById("storico-ordini-page");
+            if (!page) return;
+
+            const body = document.getElementById("storico-body");
+            const countEl = document.getElementById("storico-count");
+            const pageEl = document.getElementById("storico-page");
+            const prevBtn = document.getElementById("storico-prev");
+            const nextBtn = document.getElementById("storico-next");
+            const detailModalEl = document.getElementById("storico-detail-modal");
+            const detailTitle = document.getElementById("storico-detail-title");
+            const detailSubtitle = document.getElementById("storico-detail-subtitle");
+            const detailContent = document.getElementById("storico-detail-content");
+
+            let currentPage = 1;
+            let totalPages = 1;
+
+            function esc(value) {
+                return String(value ?? "").replace(/[&<>"']/g, ch => ({
+                    "&": "&amp;",
+                    "<": "&lt;",
+                    ">": "&gt;",
+                    '"': "&quot;",
+                    "'": "&#39;",
+                }[ch]));
+            }
+
+            function value(id) {
+                return (document.getElementById(id)?.value || "").trim();
+            }
+
+            function params() {
+                const p = new URLSearchParams({
+                    page: String(currentPage),
+                    page_size: "50",
+                    date_from: value("storico-date-from"),
+                    date_to: value("storico-date-to"),
+                    q: value("storico-q"),
+                    articolo: value("storico-articolo"),
+                    risorsa: value("storico-risorsa"),
+                    operatore: value("storico-operatore"),
+                    reparto: value("storico-reparto"),
+                    evento: value("storico-evento"),
+                    tipo_gruppo: value("storico-tipo-gruppo"),
+                });
+                return p;
+            }
+
+            function shortList(values) {
+                const arr = Array.isArray(values) ? values.filter(Boolean) : [];
+                if (!arr.length) return "-";
+                const visible = arr.slice(0, 3).map(esc).join("<br>");
+                return arr.length > 3 ? `${visible}<br><span class="text-muted">+${arr.length - 3}</span>` : visible;
+            }
+
+            async function loadList() {
+                body.innerHTML = `<tr><td colspan="9" class="text-center text-muted py-3">Caricamento...</td></tr>`;
+                const listSep = page.dataset.listUrl.includes("?") ? "&" : "?";
+                const url = `${page.dataset.listUrl}${listSep}${params().toString()}`;
+                let data = {};
+
+                try {
+                    const resp = await window.avpFetch(url);
+                    data = await resp.json().catch(() => ({
+                        ok: false,
+                        error: `Risposta non valida dal server (${resp.status})`,
+                    }));
+
+                    if (!resp.ok || !data.ok) {
+                        body.innerHTML = `<tr><td colspan="9" class="text-center text-danger py-3">${esc(data.error || "Errore caricamento")}</td></tr>`;
+                        return;
+                    }
+                } catch (err) {
+                    console.error("Errore caricamento storico ordini:", err);
+                    body.innerHTML = `<tr><td colspan="9" class="text-center text-danger py-3">Errore di comunicazione con il server.</td></tr>`;
+                    return;
+                }
+
+                totalPages = data.total_pages || 1;
+                countEl.textContent = `${data.total || 0} risultati`;
+                pageEl.textContent = `Pagina ${data.page || 1} di ${totalPages}`;
+                prevBtn.disabled = currentPage <= 1;
+                nextBtn.disabled = currentPage >= totalPages;
+
+                if (!data.rows.length) {
+                    body.innerHTML = `<tr><td colspan="9" class="text-center text-muted py-3">Nessun log trovato.</td></tr>`;
+                    return;
+                }
+
+                body.innerHTML = data.rows.map(row => `
+                    <tr>
+                        <td>${esc(row.last_event_at_display)}</td>
+                        <td>${esc(row.group_type_label || "Singolo")}</td>
+                        <td>
+                            <div class="fw-semibold">${esc(row.label)}</div>
+                            <div class="small text-muted">${shortList(row.orders)}</div>
+                        </td>
+                        <td>${shortList(row.articles)}</td>
+                        <td>${shortList(row.risorse)}</td>
+                        <td>${shortList(row.operatori)}</td>
+                        <td class="storico-events">${shortList(row.eventi)}</td>
+                        <td class="text-end">${esc(row.count)}</td>
+                        <td class="text-end">
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-primary js-storico-detail"
+                                    data-kind="${esc(row.kind)}"
+                                    data-group-uid="${esc(row.group_uid || "")}"
+                                    data-key="${esc(row.key)}">
+                                Dettaglio log
+                            </button>
+                        </td>
+                    </tr>
+                `).join("");
+            }
+
+            function detailParams(btn) {
+                const p = new URLSearchParams({kind: btn.dataset.kind || "order"});
+                if (btn.dataset.kind === "group") {
+                    p.set("group_uid", btn.dataset.groupUid || "");
+                } else {
+                    const key = btn.dataset.key || "";
+                    const raw = key.replace(/^order:/, "");
+                    const parts = raw.split("|");
+                    p.set("id_documento", parts[0] || "");
+                    p.set("id_riga", parts[1] || "");
+                }
+                return p;
+            }
+
+            function table(headers, rows, renderRow) {
+                if (!rows.length) return `<div class="text-muted small py-2">Nessun dato.</div>`;
+                return `
+                    <div class="table-responsive mb-3">
+                        <table class="table table-sm align-middle">
+                            <thead class="table-light"><tr>${headers.map(h => `<th>${esc(h)}</th>`).join("")}</tr></thead>
+                            <tbody>${rows.map(renderRow).join("")}</tbody>
+                        </table>
+                    </div>
+                `;
+            }
+
+            function renderDetail(data) {
+                const timeline = data.timeline || [];
+                const header = data.header || {};
+                detailTitle.textContent = header.title || "Dettaglio log";
+                detailSubtitle.textContent = header.kind === "group"
+                    ? `${header.group_type || ""} ${header.status ? "- " + header.status : ""}`
+                    : "Ordine singolo";
+
+                const membersHtml = header.members?.length ? `
+                    <h3 class="h6">Ordini del gruppo</h3>
+                    ${table(["Ordine", "Articolo", "Ruolo", "Tempo", "Stato"], header.members, m => `
+                        <tr>
+                            <td>${esc(m.ordine)}</td>
+                            <td>${esc(m.articolo)}<div class="small text-muted">${esc(m.descrizione)}</div></td>
+                            <td>${esc(m.ruolo)}</td>
+                            <td>${esc(m.time_share)}</td>
+                            <td>${esc(m.status)}</td>
+                        </tr>
+                    `)}
+                ` : "";
+
+                const timelineHtml = timeline.length ? timeline.map(ev => `
+                    <div class="storico-timeline-item">
+                        <div class="d-flex justify-content-between gap-2">
+                            <div>
+                                <div class="fw-semibold">${esc(ev.azione_label)}</div>
+                                <div>${esc(ev.descrizione)}</div>
+                                <div class="small text-muted">${esc(ev.ordine)} - ${esc(ev.articolo || "")}</div>
+                            </div>
+                            <div class="text-muted small text-end">${esc(ev.event_at_display)}</div>
+                        </div>
+                        ${ev.payload_pretty ? `
+                            <details class="mt-2">
+                                <summary class="small">Payload tecnico</summary>
+                                <pre class="bg-light border rounded p-2 mt-1 storico-payload">${esc(ev.payload_pretty)}</pre>
+                            </details>
+                        ` : ""}
+                    </div>
+                `).join("") : `<div class="text-muted">Nessun evento runtime.</div>`;
+
+                const inputHtml = table(
+                    ["Data", "Ordine", "Articolo", "Fase", "Risorsa", "OK", "KO", "Tempo", "Utente", "Matricola", "Note"],
+                    data.input_logs || [],
+                    row => `
+                        <tr>
+                            <td>${esc(row.closed_at_display)}</td>
+                            <td>${esc(row.ordine)}</td>
+                            <td>${esc(row.articolo)}<div class="small text-muted">${esc(row.descrizione)}</div></td>
+                            <td>${esc(row.fase)}</td>
+                            <td>${esc(row.risorsa)}</td>
+                            <td>${esc(row.q_ok)}</td>
+                            <td>${esc(row.q_ko)}</td>
+                            <td>${esc(row.tempo_finale)}</td>
+                            <td>${esc(row.utente)}</td>
+                            <td>${esc(row.matricola)}</td>
+                            <td>${esc(row.note)}</td>
+                        </tr>
+                    `
+                );
+
+                const usedLotsHtml = table(
+                    ["Data", "Ordine", "Articolo", "Lotto", "Quantita", "Esito", "Fase", "Utente"],
+                    data.lotti_usati || [],
+                    row => `
+                        <tr>
+                            <td>${esc(row.closed_at_display)}</td>
+                            <td>${esc(row.ordine)}</td>
+                            <td>${esc(row.articolo)}</td>
+                            <td>${esc(row.lotto)}</td>
+                            <td>${esc(row.quantita)}</td>
+                            <td>${esc(row.esito)}</td>
+                            <td>${esc(row.fase)}</td>
+                            <td>${esc(row.utente)}</td>
+                        </tr>
+                    `
+                );
+
+                const generatedLotsHtml = table(
+                    ["Data", "Ordine", "Articolo", "Lotto", "Quantita", "Fase", "Utente", "Etichetta"],
+                    data.lotti_generati || [],
+                    row => `
+                        <tr>
+                            <td>${esc(row.closed_at_display)}</td>
+                            <td>${esc(row.ordine)}</td>
+                            <td>${esc(row.articolo)}</td>
+                            <td>${esc(row.lotto)}</td>
+                            <td>${esc(row.quantita)}</td>
+                            <td>${esc(row.fase)}</td>
+                            <td>${esc(row.utente)}</td>
+                            <td>${esc(row.label)}</td>
+                        </tr>
+                    `
+                );
+
+                detailContent.innerHTML = `
+                    ${membersHtml}
+                    <h3 class="h6">Timeline eventi</h3>
+                    <div class="storico-timeline mb-3">${timelineHtml}</div>
+                    <h3 class="h6">Snapshot e documenti di avanzamento</h3>
+                    ${inputHtml}
+                    <h3 class="h6">Lotti usati</h3>
+                    ${usedLotsHtml}
+                    <h3 class="h6">Lotti generati / matricole</h3>
+                    ${generatedLotsHtml}
+                `;
+            }
+
+            async function openDetail(btn) {
+                detailTitle.textContent = "Dettaglio log";
+                detailSubtitle.textContent = "";
+                detailContent.innerHTML = "Caricamento...";
+                const detailModal = bootstrap.Modal.getOrCreateInstance(detailModalEl);
+                detailModal.show();
+
+                const detailSep = page.dataset.detailUrl.includes("?") ? "&" : "?";
+                const url = `${page.dataset.detailUrl}${detailSep}${detailParams(btn).toString()}`;
+
+                try {
+                    const resp = await window.avpFetch(url);
+                    const data = await resp.json().catch(() => ({
+                        ok: false,
+                        error: `Risposta non valida dal server (${resp.status})`,
+                    }));
+                    if (!resp.ok || !data.ok) {
+                        detailContent.innerHTML = `<div class="text-danger">${esc(data.error || "Errore caricamento dettaglio")}</div>`;
+                        return;
+                    }
+                    renderDetail(data);
+                } catch (err) {
+                    console.error("Errore dettaglio storico ordini:", err);
+                    detailContent.innerHTML = `<div class="text-danger">Errore di comunicazione con il server.</div>`;
+                }
+            }
+
+            document.getElementById("storico-apply").addEventListener("click", () => {
+                currentPage = 1;
+                loadList();
+            });
+            document.getElementById("storico-reset").addEventListener("click", () => {
+                ["storico-q", "storico-articolo", "storico-risorsa", "storico-operatore", "storico-reparto", "storico-evento"].forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) el.value = "";
+                });
+                document.getElementById("storico-tipo-gruppo").value = "";
+                currentPage = 1;
+                loadList();
+            });
+            prevBtn.addEventListener("click", () => {
+                if (currentPage > 1) {
+                    currentPage -= 1;
+                    loadList();
+                }
+            });
+            nextBtn.addEventListener("click", () => {
+                if (currentPage < totalPages) {
+                    currentPage += 1;
+                    loadList();
+                }
+            });
+            body.addEventListener("click", event => {
+                const btn = event.target.closest(".js-storico-detail");
+                if (btn) openDetail(btn);
+            });
+
+            loadList();
+        })();
+    </script>
+{% endblock %}

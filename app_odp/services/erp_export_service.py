@@ -220,9 +220,9 @@ def _phase_export_flags(
     Determina se questa fase deve generare product_line nel TXT ERP.
 
     Regola:
-    - chiusura parziale: mai product_line
     - monofase: product_line
     - multifase: product_line solo sull'ultima fase
+    - chiusura parziale: product_line con salda_riga=0 e quantità effettive
     """
     is_last_phase, next_phase = _get_phase_transition(ordine, fase_corrente)
     phase_sequence = _phase_sequence_for_ordine(ordine)
@@ -231,7 +231,7 @@ def _phase_export_flags(
         "is_last_phase": bool(is_last_phase),
         "fase_successiva": next_phase or "",
         "phase_sequence": phase_sequence,
-        "emit_product_line": bool(is_last_phase and not chiusura_parziale),
+        "emit_product_line": bool(is_last_phase),
     }
 
 
@@ -275,7 +275,7 @@ def _build_phase_payload(
         phase_sequence = _phase_sequence_for_ordine(ordine)
 
     if emit_product_line is None:
-        emit_product_line = bool(is_last_phase and not chiusura_parziale)
+        emit_product_line = bool(is_last_phase)
     return {
         "kind": "consuntivo_fase",
         "id_documento": ordine.IdDocumento,

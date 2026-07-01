@@ -47,9 +47,11 @@ from app_odp.services.order_helpers import (
 from app_odp.services.ordini_gruppi_service import (
     available_orders_payload,
     create_mascherato_group,
+    create_misto_group,
     create_multiplo_group,
     dissolve_group_for_single_member_close,
     finalize_group_after_member_closures,
+    finalize_group_after_single_member_closure,
     first_order_for_group,
     get_active_group_for_order,
     group_members_for_close_payload,
@@ -59,6 +61,7 @@ from app_odp.services.ordini_gruppi_service import (
     member_payload_key,
     member_requires_time_line,
     prepare_group_for_full_closure,
+    prepare_group_member_for_single_closure,
     reactivate_group,
     suspend_group,
 )
@@ -132,17 +135,8 @@ def _dissolve_group_for_single_close(id_documento: str, id_riga: str) -> dict:
     if active_group is None:
         return {"skip_min_active_time": False, "force_include_time_line": None}
 
-    member = next(
-        (
-            row
-            for row in active_group.members
-            if _norm_text(row.IdDocumento) == _norm_text(id_documento)
-            and _norm_text(row.IdRiga) == _norm_text(id_riga)
-        ),
-        None,
-    )
-    force_include_time_line = False if member is not None and not member_requires_time_line(member) else None
-
+    # La chiusura singola scioglie il gruppo: da questo punto l'ordine segue
+    # le regole di un ordine normale, anche se nel gruppo era un mascherato ZERO.
     dissolve_group_for_single_member_close(
         active_group.GroupUid,
         id_documento=id_documento,
@@ -150,7 +144,7 @@ def _dissolve_group_for_single_close(id_documento: str, id_riga: str) -> dict:
     )
     return {
         "skip_min_active_time": True,
-        "force_include_time_line": force_include_time_line,
+        "force_include_time_line": None,
     }
 
 
@@ -218,6 +212,49 @@ def api_apri_gruppo_multiplo():
     )
 
 
+@main_bp.post("/api/ordini/gruppi/misto/apri")
+@operator_perm_required("ordini_multipli")
+def api_apri_gruppo_misto():
+    data = request.get_json(silent=True) or {}
+    policy = active_policy()
+
+    if not policy.can("ordini_mascherati"):
+        return jsonify({"ok": False, "error": "Permesso ordini mascherati mancante."}), 403
+
+    try:
+        group = create_misto_group(
+            data.get("condivisi") or data.get("orders") or [],
+            data.get("mascherato") or {},
+            policy,
+        )
+        db.session.commit()
+
+    except ValueError as exc:
+        db.session.rollback()
+        current_app.logger.warning(
+            "Errore validazione apertura gruppo misto: %s", exc
+        )
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("Errore apertura gruppo misto")
+        return jsonify(
+            {
+                "ok": False,
+                "error": "Errore interno durante l'apertura del gruppo misto.",
+            }
+        ), 500
+
+    return jsonify(
+        _group_response_payload(
+            group,
+            policy,
+            message="Gruppo misto aperto correttamente.",
+        )
+    )
+
+
 @main_bp.post("/api/ordini/gruppi/mascherato/apri")
 @operator_perm_required("ordini_mascherati")
 def api_apri_gruppo_mascherato():
@@ -252,10 +289,11 @@ def api_apri_gruppo_mascherato():
     )
 
 
-@main_bp.post("/api/ordini/gruppi/<group_uid>/sospendi")
-@operator_perm_required("home")
-def api_sospendi_gruppo_ordini(group_uid):
-    data = request.get_json(silent=True) or {}
+def _group_uid_from_payload(data: dict) -> str:
+    return _norm_text(data.get("group_uid") or data.get("groupUid"))
+
+
+def _sospendi_gruppo_ordini_response(group_uid: str, data: dict):
     policy = active_policy()
 
     tempo_non_funzionamento_raw = data.get("tempo_non_funzionamento_minuti")
@@ -295,9 +333,7 @@ def api_sospendi_gruppo_ordini(group_uid):
     )
 
 
-@main_bp.post("/api/ordini/gruppi/<group_uid>/riattiva")
-@operator_perm_required("home")
-def api_riattiva_gruppo_ordini(group_uid):
+def _riattiva_gruppo_ordini_response(group_uid: str):
     policy = active_policy()
 
     try:
@@ -330,10 +366,49 @@ def api_riattiva_gruppo_ordini(group_uid):
     )
 
 
+@main_bp.post("/api/ordini/gruppi/sospendi")
+@operator_perm_required("home")
+def api_sospendi_gruppo_ordini_payload():
+    data = request.get_json(silent=True) or {}
+    group_uid = _group_uid_from_payload(data)
+    if not group_uid:
+        return jsonify({"ok": False, "error": "Gruppo ordini non valido."}), 400
+    return _sospendi_gruppo_ordini_response(group_uid, data)
+
+
+@main_bp.post("/api/ordini/gruppi/<group_uid>/sospendi")
+@operator_perm_required("home")
+def api_sospendi_gruppo_ordini(group_uid):
+    return _sospendi_gruppo_ordini_response(
+        group_uid,
+        request.get_json(silent=True) or {},
+    )
+
+
+@main_bp.post("/api/ordini/gruppi/riattiva")
+@operator_perm_required("home")
+def api_riattiva_gruppo_ordini_payload():
+    data = request.get_json(silent=True) or {}
+    group_uid = _group_uid_from_payload(data)
+    if not group_uid:
+        return jsonify({"ok": False, "error": "Gruppo ordini non valido."}), 400
+    return _riattiva_gruppo_ordini_response(group_uid)
+
+
+@main_bp.post("/api/ordini/gruppi/<group_uid>/riattiva")
+@operator_perm_required("home")
+def api_riattiva_gruppo_ordini(group_uid):
+    return _riattiva_gruppo_ordini_response(group_uid)
+
+
+@main_bp.post("/api/ordini/gruppi/sciogli-membro")
 @main_bp.post("/api/ordini/gruppi/<group_uid>/sciogli-membro")
 @operator_perm_required("home")
-def api_sciogli_gruppo_per_chiusura_singola(group_uid):
+def api_sciogli_gruppo_per_chiusura_singola(group_uid=None):
     data = request.get_json(silent=True) or {}
+    group_uid = group_uid or _group_uid_from_payload(data)
+    if not group_uid:
+        return jsonify({"ok": False, "error": "Gruppo ordini non valido."}), 400
     policy = active_policy()
 
     try:
@@ -373,9 +448,164 @@ def api_sciogli_gruppo_per_chiusura_singola(group_uid):
     )
 
 
+@main_bp.post("/api/ordini/gruppi/chiudi-membro")
+@main_bp.post("/api/ordini/gruppi/<group_uid>/chiudi-membro")
+@operator_perm_required("home")
+def api_chiudi_membro_gruppo(group_uid=None):
+    data = request.get_json(silent=True) or {}
+    group_uid = group_uid or _group_uid_from_payload(data)
+    if not group_uid:
+        return jsonify({"ok": False, "message": "Gruppo ordini non valido."}), 400
+    policy = active_policy()
+    order_payload = data.get("order") or data.get("ordine") or data
+    if not isinstance(order_payload, dict):
+        return jsonify({"ok": False, "message": "Payload ordine non valido."}), 400
+
+    try:
+        tempo_non_funzionamento_raw = (
+            data.get("tempo_non_funzionamento_minuti")
+            or order_payload.get("tempo_non_funzionamento_minuti")
+        )
+        minuti_non_funzionamento = _parse_minuti_non_funzionamento(tempo_non_funzionamento_raw)
+        id_documento = _norm_text(order_payload.get("id_documento") or data.get("id_documento"))
+        id_riga = _norm_text(order_payload.get("id_riga") or data.get("id_riga"))
+        if not id_documento or not id_riga:
+            raise ValueError("Ordine del gruppo non valido.")
+
+        group, member = prepare_group_member_for_single_closure(
+            group_uid,
+            id_documento=id_documento,
+            id_riga=id_riga,
+            minuti_non_funzionamento=minuti_non_funzionamento,
+        )
+        ordine_member = _get_visible_odp_by_key(policy, member.IdDocumento, member.IdRiga)
+        if ordine_member is None:
+            raise ValueError("Ordine del gruppo non trovato.")
+
+        member_payload = dict(order_payload)
+        member_payload["id_documento"] = member.IdDocumento
+        member_payload["id_riga"] = member.IdRiga
+        member_payload["note"] = _norm_text(member_payload.get("note") or data.get("note") or "")
+        member_payload["chiusura_parziale"] = False
+        member_payload["tempo_non_funzionamento_minuti"] = 0
+        member_payload["_group_close_context"] = {
+            "group_uid": group_uid,
+            "member_id": member.id,
+            "single_member": True,
+        }
+        if data.get("data_registrazione") and not member_payload.get("data_registrazione"):
+            member_payload["data_registrazione"] = data.get("data_registrazione")
+
+        force_time_line = None if member_requires_time_line(member) else False
+        is_machine = _norm_text(getattr(ordine_member, "GestioneMatricola", "")).lower() == "si"
+        if is_machine:
+            member_payload["matricola"] = _norm_text(
+                member_payload.get("matricola")
+                or member_payload.get("cod_matricola")
+                or getattr(ordine_member, "CodMatricola", "")
+            )
+            member_payload["fase"] = _norm_text(
+                member_payload.get("fase")
+                or _fase_corrente_for_export(ordine_member)
+            )
+            result = _chiudi_ordine_montaggio_macchina_da_payload(
+                member_payload,
+                policy=policy,
+                commit=False,
+                force_include_time_line=force_time_line,
+                skip_min_active_time=True,
+            )
+            export_suffix = "montaggio_m"
+        else:
+            result = _chiudi_ordine_da_payload(
+                member_payload,
+                policy=policy,
+                commit=False,
+                force_include_time_line=force_time_line,
+                skip_min_active_time=True,
+            )
+            export_suffix = (
+                "montaggio_sl"
+                if _tab_from_ordine(ordine_member) == "montaggio"
+                else "officina"
+            )
+
+        status_code = _response_status_code(result)
+        if status_code >= 400:
+            db.session.rollback()
+            return result
+
+        result_payload = _response_json_payload(result)
+        result_payload["export_suffix"] = export_suffix
+        is_partial_member_closure = (
+            _parse_bool_flag(member_payload.get("chiusura_parziale"))
+            or _norm_text(result_payload.get("stato_ordine")).lower()
+            == "in sospeso"
+        )
+        if is_partial_member_closure:
+            raise ValueError("La chiusura del singolo ordine deve essere totale.")
+
+        mark_group_member_closed(
+            member,
+            q_ok=(
+                member_payload.get("quantita_conforme")
+                or member_payload.get("qta_conforme")
+                or ""
+            ),
+            q_nok=(
+                member_payload.get("quantita_non_conforme")
+                or member_payload.get("qta_non_conforme")
+                or ""
+            ),
+            note=member_payload.get("note") or "",
+        )
+        finalize_group_after_single_member_closure(group, member)
+
+        fragment_order = first_order_for_group(group) or ordine_member
+        fragments = {}
+        if fragment_order is not None:
+            _tab, fragments = _fragments_for_ordine_tab(policy, fragment_order)
+
+        exports: list[dict[str, object]] = []
+        outbox_id = result_payload.get("outbox_id")
+        if outbox_id:
+            exports.append(
+                {
+                    "outbox_id": outbox_id,
+                    "id_documento": member.IdDocumento,
+                    "id_riga": member.IdRiga,
+                    "num_progr_riga": result_payload.get("num_progr_riga"),
+                    "fase": result_payload.get("fase"),
+                    "stato_ordine": result_payload.get("stato_ordine"),
+                    "suffix": export_suffix,
+                }
+            )
+
+        db.session.commit()
+        return jsonify(
+            {
+                "ok": True,
+                "message": "Ordine del gruppo chiuso correttamente.",
+                "group": group_to_dict(group),
+                "results": [result_payload],
+                "outbox_ids": [item["outbox_id"] for item in exports],
+                "exports": exports,
+                "fragments": fragments,
+            }
+        )
+    except ValueError as exc:
+        db.session.rollback()
+        return jsonify({"ok": False, "message": str(exc)}), 400
+    except Exception as exc:
+        db.session.rollback()
+        current_app.logger.exception("Errore chiusura singolo membro gruppo %s", group_uid)
+        return jsonify({"ok": False, "message": f"Errore durante la chiusura del singolo ordine: {exc}"}), 500
+
+
+@main_bp.post("/api/ordini/gruppi/chiudi")
 @main_bp.post("/api/ordini/gruppi/<group_uid>/chiudi")
 @operator_perm_required("home")
-def api_chiudi_gruppo_ordini(group_uid):
+def api_chiudi_gruppo_ordini(group_uid=None):
     """
     Chiude tutti i membri del gruppo usando la stessa logica della chiusura
     ordine singolo. Ogni membro genera il proprio outbox/AVP; il gruppo resta
@@ -400,6 +630,9 @@ def api_chiudi_gruppo_ordini(group_uid):
     }
     """
     data = request.get_json(silent=True) or {}
+    group_uid = group_uid or _group_uid_from_payload(data)
+    if not group_uid:
+        return jsonify({"ok": False, "error": "Gruppo ordini non valido."}), 400
     policy = active_policy()
     orders_payload = data.get("orders") or data.get("ordini") or []
 
@@ -2663,25 +2896,27 @@ def api_lotti_componenti():
         _norm_text(getattr(ordine, "GestioneMatricola", "")).lower() == "si"
     )
 
-    force_show_section = ordine_gestione_lotto or ordine_gestione_matricola
-
-    if not force_show_section:
-        return jsonify(
-            {
-                "ok": True,
-                "gestioneLotto": False,
-                "gestioneMatricola": False,
-                "force_show_section": False,
-                "haComponentiLotto": False,
-                "componenti": [],
-            }
-        )
-
     componenti_lotto = _componenti_lotto_per_ordine(
         ordine,
         include_senza_lotti=True,
         ignore_parent_gestione_lotto=ordine_gestione_matricola or is_macchina,
     )
+    ha_componenti_distinta_lotto = bool(componenti_lotto)
+    force_show_section = ordine_gestione_lotto or (
+        ordine_gestione_matricola and ha_componenti_distinta_lotto
+    )
+
+    if not force_show_section:
+        return jsonify(
+            {
+                "ok": True,
+                "gestioneLotto": ordine_gestione_lotto,
+                "gestioneMatricola": ordine_gestione_matricola,
+                "force_show_section": False,
+                "haComponentiLotto": False,
+                "componenti": [],
+            }
+        )
 
     ha_componenti_lotto = any(
         isinstance(c.get("lotti"), list) and len(c["lotti"]) > 0

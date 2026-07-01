@@ -1,14 +1,14 @@
 {% for singolo_odp in odp %}
     {% if singolo_odp.IsWorkGroup|default(false) and singolo_odp.StatoOrdine != "Pianificata" and singolo_odp.StatoOrdine != "Chiusa" %}
-        {% set group_type_label = "Multiplo" if singolo_odp.WorkGroupType == "MULTIPLO" else "Mascherato" %}
-        {% set group_badge_class = "bg-primary" if singolo_odp.WorkGroupType == "MULTIPLO" else "bg-dark" %}
-        {% set group_state_class = "bg-success" if singolo_odp.WorkGroupStatus == "Attivo" else "bg-warning text-dark" %}
+        {% set group_type_display = singolo_odp.WorkGroupDisplayType|default(singolo_odp.WorkGroupType) %}
+        {% set group_type_label = singolo_odp.WorkGroupTypeLabel|default("Multiplo" if singolo_odp.WorkGroupType == "MULTIPLO" else "Mascherato") %}
+        {% set group_badge_class = "bg-info text-dark" if group_type_display == "MISTO" else ("bg-primary" if singolo_odp.WorkGroupType == "MULTIPLO" else "bg-dark") %}
         {% set pr = singolo_odp.PrioritaNumero|default('') %}
         <tr class="workgroup-row table-info border-start border-4"
             data-row-key="GROUP|{{ singolo_odp.WorkGroupUid }}"
             data-is-work-group="1"
             data-group-uid="{{ singolo_odp.WorkGroupUid }}"
-            data-group-type="{{ singolo_odp.WorkGroupType }}"
+            data-group-type="{{ group_type_display }}"
             data-group-label="{{ singolo_odp.OrdineVisuale|e }}"
             data-group-detail="{{ singolo_odp.DettaglioGruppoVisuale|tojson|forceescape }}"
             data-statoordine="{{ singolo_odp.WorkGroupStatus }}"
@@ -34,7 +34,7 @@
                 <button type="button"
                         class="btn btn-sm btn-outline-dark me-1 js-open-workgroup-detail-modal"
                         data-group-uid="{{ singolo_odp.WorkGroupUid }}"
-                        data-group-type="{{ singolo_odp.WorkGroupType }}"
+                        data-group-type="{{ group_type_display }}"
                         data-group-label="{{ singolo_odp.OrdineVisuale|e }}"
                         data-group-detail="{{ singolo_odp.DettaglioGruppoVisuale|tojson|forceescape }}"
                         title="Apri dettaglio gruppo">
@@ -55,7 +55,7 @@
             <td>{{ singolo_odp.DataFineSched | db_date("%Y-%m-%d %H:%M:%S","%d/%m/%Y") }}</td>
             <td></td>
             <td>{{ singolo_odp.CodRisorsaProd }}</td>
-            <td data-col="stato"><span class="badge {{ group_state_class }}">{{ singolo_odp.WorkGroupStatus }}</span></td>
+            <td data-col="stato">{{ singolo_odp.WorkGroupStatus }}</td>
             <td>{{ singolo_odp.OperatoreUsername|default('-') or '-' }}</td>
         </tr>
     {% elif singolo_odp.StatoOrdine != "Pianificata" and singolo_odp.StatoOrdine != "Chiusa" %}

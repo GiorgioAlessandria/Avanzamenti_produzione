@@ -22,6 +22,7 @@
             {% set is_priorita_view = request.endpoint == 'main.priorita_view' %}
             {% set is_priorita_edit = request.endpoint == 'main.priorita_edit' %}
             {% set is_priorita = is_priorita_view or is_priorita_edit %}
+            {% set is_storico_ordini = request.endpoint == 'main.storico_ordini_page' %}
 
 
             {% if nav_policy and nav_policy.can('priorita_view') and (not is_priorita or can_return_produzione) %}
@@ -311,6 +312,35 @@
                     </div>
                 </div>
             {% endif %}
+
+            {% if nav_policy and nav_policy.can('storico_ordini') and not is_storico_ordini %}
+                <div class="row d-flex w-100 h-100 justify-content-start align-items-center ms-0 me-0 mb-0"
+                     style="width: auto;height: auto;font-size: 25px;">
+                    <div class="col-md-12 text-start d-flex justify-content-start align-items-center ps-0 pe-0"
+                         style="width: auto;height: auto;font-size: 25px;">
+                        <svg xmlns="http://www.w3.org/2000/svg"
+                             width="1em"
+                             height="1em"
+                             viewBox="0 0 24 24"
+                             fill="none"
+                             stroke="currentColor"
+                             stroke-width="2"
+                             stroke-linecap="round"
+                             stroke-linejoin="round"
+                             style="font-size: 25px;">
+                            <path d="M3 3v18h18"></path>
+                            <path d="M7 8h10"></path>
+                            <path d="M7 12h7"></path>
+                            <path d="M7 16h4"></path>
+                        </svg>
+                        <a href="{{ operator_url_for('main.storico_ordini_page') }}"
+                           style="color: rgb(0,0,0);font-size: 25px;">
+                            <span style="color: rgb(33, 37, 41);">Storico ordini</span>
+                        </a>
+                    </div>
+                </div>
+            {% endif %}
+
             {% if nav_policy and (nav_policy.can('dashboard_produzione') or nav_policy.can('kpi_produzione')) %}
                 <div class="row d-flex w-100 h-100 justify-content-start align-items-center ms-0 me-0 mb-0"
                      style="width: auto;height: auto;font-size: 25px;">

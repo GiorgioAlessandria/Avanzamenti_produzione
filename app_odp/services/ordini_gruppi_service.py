@@ -43,6 +43,11 @@ from app_odp.services.ordini_runtime_service import (
 )
 from app_odp.services.ordini_query_service import _base_odp_query
 from app_odp.services.home_service import _get_visible_odp_by_key
+from app_odp.services.erp_export_service import _build_operation_group_id
+from app_odp.services.ordini_log_service import (
+    _add_input_odp_suspend_log,
+    _add_input_odp_takeover_log,
+)
 
 GROUP_TYPE_MULTIPLO = "MULTIPLO"
 GROUP_TYPE_MASCHERATO = "MASCHERATO"
@@ -249,7 +254,7 @@ def _activate_order_for_group(ordine, *, group_uid: str, now_dt: datetime) -> No
         ordine.FaseAttiva,
     )
 
-    _append_group_runtime_log(
+    _append_group_state_log(
         group_uid=group_uid,
         ordine=ordine,
         action="presa_in_carico_gruppo",
@@ -258,7 +263,6 @@ def _activate_order_for_group(ordine, *, group_uid: str, now_dt: datetime) -> No
         stato_post=GROUP_STATUS_ATTIVO,
         qty_pre=qty_pre,
         qty_post=_qty_da_lavorare_text(ordine, stato=stato),
-        elapsed_seconds=0,
         note="Presa in carico da gruppo ordini",
     )
     if elapsed_pre_group:
@@ -274,6 +278,10 @@ def _activate_order_for_group(ordine, *, group_uid: str, now_dt: datetime) -> No
             elapsed_seconds=elapsed_pre_group,
             note="Tempo singolo maturato prima del gruppo ordini",
         )
+
+
+def _group_operation_group_id(ordine, action: str, event_at: str) -> str:
+    return _build_operation_group_id(ordine=ordine, action=action, when_iso=event_at)
 
 
 def _append_group_runtime_log(
@@ -301,7 +309,7 @@ def _append_group_runtime_log(
 
     db.session.add(
         OdpRuntimeLog(
-            OperationGroupId=f"{action}:{group_uid}:{event_at}",
+            OperationGroupId=_group_operation_group_id(ordine, action, event_at),
             EventSequence=1,
             Topic="ordine_gruppo",
             Scope=_order_reparto(ordine),
@@ -332,6 +340,65 @@ def _append_group_runtime_log(
             VarianteArt=_norm_text(getattr(ordine, "VarianteArt", "")),
             NumProgrRiga=_norm_text(getattr(ordine, "NumProgrRiga", "")),
         )
+    )
+
+
+def _append_group_state_log(
+    *,
+    group_uid: str,
+    ordine,
+    action: str,
+    event_at: str,
+    stato_pre: str,
+    stato_post: str,
+    qty_pre: str,
+    qty_post: str,
+    note: str,
+    causale: str = "",
+    minuti_non_funzionamento: int | None = None,
+    secondi_non_funzionamento: int | None = None,
+):
+    operation_group_id = _group_operation_group_id(ordine, action, event_at)
+    stato_post_norm = _norm_text(stato_post)
+
+    if stato_post_norm == GROUP_STATUS_ATTIVO:
+        _add_input_odp_takeover_log(
+            operation_group_id=operation_group_id,
+            ordine=ordine,
+            stato_ordine_pre=stato_pre,
+            stato_ordine_post=stato_post,
+            qty_pre=qty_pre,
+            qty_post=qty_post,
+            taken_by=_current_username(),
+            taken_at=event_at,
+            note_evento=note,
+        )
+    elif stato_post_norm == GROUP_STATUS_SOSPESO:
+        _add_input_odp_suspend_log(
+            operation_group_id=operation_group_id,
+            ordine=ordine,
+            stato_ordine_pre=stato_pre,
+            stato_ordine_post=stato_post,
+            qty_pre=qty_pre,
+            qty_post=qty_post,
+            suspended_by=_current_username(),
+            suspended_at=event_at,
+            causale=causale,
+            minuti_non_funzionamento=minuti_non_funzionamento,
+            secondi_non_funzionamento=secondi_non_funzionamento,
+            note_evento=note,
+        )
+
+    _append_group_runtime_log(
+        group_uid=group_uid,
+        ordine=ordine,
+        action=action,
+        event_at=event_at,
+        stato_pre=stato_pre,
+        stato_post=stato_post,
+        qty_pre=qty_pre,
+        qty_post=qty_post,
+        note=note,
     )
 
 
@@ -397,6 +464,93 @@ def create_multiplo_group(order_keys: list[dict], policy) -> OdpWorkGroup:
                 now_iso=now_iso,
             )
         )
+
+    db.session.flush()
+    return group
+
+
+def create_misto_group(
+    shared_keys: list[dict], masked_key: dict, policy
+) -> OdpWorkGroup:
+    if not isinstance(shared_keys, list) or len(shared_keys) != 2:
+        raise ValueError(
+            "Selezionare esattamente 2 ordini con tempo condiviso per il gruppo misto."
+        )
+
+    shared_ordini = [
+        _get_visible_odp_by_key(
+            policy,
+            _norm_text(item.get("id_documento")),
+            _norm_text(item.get("id_riga")),
+        )
+        for item in shared_keys
+    ]
+    masked = _get_visible_odp_by_key(
+        policy,
+        _norm_text(masked_key.get("id_documento")),
+        _norm_text(masked_key.get("id_riga")),
+    )
+
+    ordini = [*shared_ordini, masked]
+    seen = set()
+    for ordine in ordini:
+        key = _order_key(ordine)
+        if key in seen:
+            raise ValueError("Lo stesso ordine è stato selezionato più volte.")
+        seen.add(key)
+
+    expected_reparto = _order_reparto(shared_ordini[0])
+    expected_kind = _order_kind(shared_ordini[0])
+    for ordine in ordini:
+        _ensure_order_can_enter_group(
+            ordine,
+            expected_reparto=expected_reparto,
+            expected_kind=expected_kind,
+        )
+
+    now_dt = _now_rome_dt()
+    now_iso = now_dt.isoformat(timespec="seconds")
+    group_uid = _group_uid("MIX", ordini)
+
+    group = OdpWorkGroup(
+        GroupUid=group_uid,
+        GroupType=GROUP_TYPE_MULTIPLO,
+        Status=GROUP_STATUS_ATTIVO,
+        CreatedAt=now_iso,
+        StartedAt=now_iso,
+        LastActivationAt=now_iso,
+        OperatoreId=_current_user_id(),
+        OperatoreUsername=_current_username(),
+        Reparto=expected_reparto,
+        Fase="",
+        Note="MISTO",
+        InitialMemberCount=len(shared_ordini),
+        TotalRuntimeSeconds=0,
+    )
+    db.session.add(group)
+
+    for ordine in shared_ordini:
+        _activate_order_for_group(ordine, group_uid=group_uid, now_dt=now_dt)
+        db.session.add(
+            _create_member(
+                group_uid,
+                ordine,
+                role=ROLE_MEMBER,
+                share_mode=SHARE_SPLIT,
+                now_iso=now_iso,
+            )
+        )
+
+    _activate_order_for_group(masked, group_uid=group_uid, now_dt=now_dt)
+    db.session.add(
+        _create_member(
+            group_uid,
+            masked,
+            role=ROLE_MASKED,
+            share_mode=SHARE_ZERO,
+            now_iso=now_iso,
+        )
+    )
 
     db.session.flush()
     return group
@@ -591,9 +745,12 @@ def suspend_group(
     )
     now_iso = now_dt.isoformat(timespec="seconds")
 
+    stop_seconds = max(0, int(minuti_non_funzionamento or 0)) * 60
     for member in _group_active_members(group):
         rt = _runtime_for_member(member)
         ordine = _order_for_member(member)
+        stato_pre = _norm_text(getattr(ordine, "StatoOrdine", ""))
+        qty_pre = _qty_da_lavorare_text(ordine, stato=rt) if ordine is not None else ""
         if rt is not None:
             rt.Stato_odp = GROUP_STATUS_SOSPESO
             rt.Utente_operazione = _current_username()
@@ -601,6 +758,20 @@ def suspend_group(
         member.SuspendedAt = now_iso
         if ordine is not None:
             ordine.StatoOrdine = GROUP_STATUS_SOSPESO
+            _append_group_state_log(
+                group_uid=group.GroupUid,
+                ordine=ordine,
+                action="sospensione_gruppo",
+                event_at=now_iso,
+                stato_pre=stato_pre,
+                stato_post=GROUP_STATUS_SOSPESO,
+                qty_pre=qty_pre,
+                qty_post=_qty_da_lavorare_text(ordine, stato=rt),
+                note="Sospensione gruppo ordini",
+                causale=_norm_text(causale),
+                minuti_non_funzionamento=minuti_non_funzionamento,
+                secondi_non_funzionamento=stop_seconds,
+            )
 
     group.Status = GROUP_STATUS_SOSPESO
     group.SuspendedAt = now_iso
@@ -626,6 +797,8 @@ def reactivate_group(group_uid: str) -> OdpWorkGroup:
             continue
 
         fase_corrente = _fase_corrente_for_export(ordine)
+        stato_pre = _norm_text(getattr(ordine, "StatoOrdine", ""))
+        qty_pre = _qty_da_lavorare_text(ordine, stato=rt)
         rt = _ensure_stato_attivo(
             ordine=ordine,
             stato=rt,
@@ -638,6 +811,17 @@ def reactivate_group(group_uid: str) -> OdpWorkGroup:
         member.Status = GROUP_STATUS_ATTIVO
         member.SuspendedAt = None
         ordine.StatoOrdine = GROUP_STATUS_ATTIVO
+        _append_group_state_log(
+            group_uid=group.GroupUid,
+            ordine=ordine,
+            action="riattivazione_gruppo",
+            event_at=now_iso,
+            stato_pre=stato_pre,
+            stato_post=GROUP_STATUS_ATTIVO,
+            qty_pre=qty_pre,
+            qty_post=_qty_da_lavorare_text(ordine, stato=rt),
+            note="Riattivazione gruppo ordini",
+        )
 
     group.Status = GROUP_STATUS_ATTIVO
     group.LastActivationAt = now_iso
@@ -650,8 +834,9 @@ def dissolve_group_for_single_member_close(
 ) -> OdpWorkGroup:
     """
     Scioglie il gruppo per consentire la chiusura singola di un membro.
-    Il membro indicato resta Attivo ma con tempo già assegnato; gli altri membri
-    vengono messi in sospeso e potranno essere gestiti singolarmente.
+    Il membro indicato resta Attivo, con il tempo gruppo già assegnato e una
+    nuova attivazione da ordine singolo; gli altri membri vengono messi in
+    sospeso e potranno essere gestiti singolarmente.
     """
     group = _get_group_or_error(group_uid)
     target = None
@@ -675,14 +860,28 @@ def dissolve_group_for_single_member_close(
         rt = _runtime_for_member(member)
         ordine = _order_for_member(member)
 
+        stato_pre = _norm_text(getattr(ordine, "StatoOrdine", "")) if ordine is not None else ""
+        qty_pre = _qty_da_lavorare_text(ordine, stato=rt) if ordine is not None else ""
+
         if member.id == target.id:
             member.Status = GROUP_STATUS_SCIOLTO
             member.DissolvedAt = now_iso
             if rt is not None:
                 rt.Stato_odp = GROUP_STATUS_ATTIVO
-                rt.data_ultima_attivazione = None
+                rt.data_ultima_attivazione = now_iso
             if ordine is not None:
                 ordine.StatoOrdine = GROUP_STATUS_ATTIVO
+                _append_group_state_log(
+                    group_uid=group.GroupUid,
+                    ordine=ordine,
+                    action="scioglimento_gruppo_attiva_membro",
+                    event_at=now_iso,
+                    stato_pre=stato_pre,
+                    stato_post=GROUP_STATUS_ATTIVO,
+                    qty_pre=qty_pre,
+                    qty_post=_qty_da_lavorare_text(ordine, stato=rt),
+                    note="Scioglimento gruppo: ordine attivo per chiusura singola",
+                )
             continue
 
         if _norm_text(member.Status) in {GROUP_STATUS_ATTIVO, GROUP_STATUS_SOSPESO}:
@@ -693,12 +892,176 @@ def dissolve_group_for_single_member_close(
                 rt.data_ultima_attivazione = None
             if ordine is not None:
                 ordine.StatoOrdine = GROUP_STATUS_SOSPESO
+                _append_group_state_log(
+                    group_uid=group.GroupUid,
+                    ordine=ordine,
+                    action="scioglimento_gruppo_sospende_membro",
+                    event_at=now_iso,
+                    stato_pre=stato_pre,
+                    stato_post=GROUP_STATUS_SOSPESO,
+                    qty_pre=qty_pre,
+                    qty_post=_qty_da_lavorare_text(ordine, stato=rt),
+                    note="Scioglimento gruppo: ordine residuo sospeso",
+                )
 
     group.Status = GROUP_STATUS_SCIOLTO
     group.DissolvedAt = now_iso
     group.LastActivationAt = None
     return group
 
+
+
+def prepare_group_member_for_single_closure(
+    group_uid: str,
+    *,
+    id_documento: str,
+    id_riga: str,
+    minuti_non_funzionamento: int | float | None = 0,
+) -> tuple[OdpWorkGroup, OdpWorkGroupMember]:
+    group = _get_group_or_error(group_uid)
+    if _norm_text(group.Status) not in {GROUP_STATUS_ATTIVO, GROUP_STATUS_SOSPESO}:
+        raise ValueError("Il gruppo non e' chiudibile nello stato attuale.")
+
+    id_documento_norm = _norm_text(id_documento)
+    id_riga_norm = _norm_text(id_riga)
+    target = next(
+        (
+            member
+            for member in group.members
+            if _norm_text(member.Status) in {GROUP_STATUS_ATTIVO, GROUP_STATUS_SOSPESO}
+            and _norm_text(member.IdDocumento) == id_documento_norm
+            and _norm_text(member.IdRiga) == id_riga_norm
+        ),
+        None,
+    )
+    if target is None:
+        raise ValueError("Ordine non presente tra i membri aperti del gruppo.")
+
+    now_dt = _now_rome_dt()
+    if _norm_text(group.Status) == GROUP_STATUS_ATTIVO:
+        assign_elapsed_group_runtime(
+            group,
+            now_dt=now_dt,
+            minuti_non_funzionamento=minuti_non_funzionamento or 0,
+        )
+
+    rt = _runtime_for_member(target)
+    if rt is not None:
+        rt.Stato_odp = GROUP_STATUS_ATTIVO
+        rt.data_ultima_attivazione = None
+        rt.Utente_operazione = _current_username()
+    ordine = _order_for_member(target)
+    if ordine is not None:
+        ordine.StatoOrdine = GROUP_STATUS_ATTIVO
+
+    return group, target
+
+
+def _set_open_member_state(member: OdpWorkGroupMember, status: str, *, activation_iso: str | None) -> None:
+    member.Status = status
+    rt = _runtime_for_member(member)
+    if rt is not None:
+        rt.Stato_odp = status
+        rt.data_ultima_attivazione = activation_iso if status == GROUP_STATUS_ATTIVO else None
+        rt.Utente_operazione = _current_username()
+    ordine = _order_for_member(member)
+    if ordine is not None:
+        ordine.StatoOrdine = status
+
+
+def finalize_group_after_single_member_closure(
+    group: OdpWorkGroup,
+    closed_member: OdpWorkGroupMember,
+) -> OdpWorkGroup:
+    now_iso = _now_iso()
+    open_members = [
+        member
+        for member in sorted(group.members, key=lambda item: (item.id or 0))
+        if _norm_text(member.Status) in {GROUP_STATUS_ATTIVO, GROUP_STATUS_SOSPESO}
+    ]
+
+    if not open_members:
+        group.Status = GROUP_STATUS_CHIUSO
+        group.ClosedAt = now_iso
+        group.LastActivationAt = None
+        return group
+
+    if len(open_members) <= 1:
+        for member in open_members:
+            member.Status = GROUP_STATUS_SCIOLTO
+            member.DissolvedAt = now_iso
+            rt = _runtime_for_member(member)
+            ordine = _order_for_member(member)
+            stato_pre = _norm_text(getattr(ordine, "StatoOrdine", "")) if ordine is not None else ""
+            qty_pre = _qty_da_lavorare_text(ordine, stato=rt) if ordine is not None else ""
+            if rt is not None:
+                rt.Stato_odp = GROUP_STATUS_SOSPESO
+                rt.data_ultima_attivazione = None
+                rt.Utente_operazione = _current_username()
+            if ordine is not None:
+                ordine.StatoOrdine = GROUP_STATUS_SOSPESO
+                _append_group_state_log(
+                    group_uid=group.GroupUid,
+                    ordine=ordine,
+                    action="chiusura_membro_scioglie_gruppo",
+                    event_at=now_iso,
+                    stato_pre=stato_pre,
+                    stato_post=GROUP_STATUS_SOSPESO,
+                    qty_pre=qty_pre,
+                    qty_post=_qty_da_lavorare_text(ordine, stato=rt),
+                    note="Chiusura membro gruppo: ordine residuo sospeso",
+                )
+
+        group.Status = GROUP_STATUS_SCIOLTO
+        group.DissolvedAt = now_iso
+        group.LastActivationAt = None
+        return group
+
+    zero_members = [
+        member
+        for member in open_members
+        if _norm_text(member.TimeShareMode).upper() == SHARE_ZERO
+    ]
+    timed_members = [
+        member
+        for member in open_members
+        if _norm_text(member.TimeShareMode).upper() != SHARE_ZERO
+    ]
+
+    if len(open_members) == 2 and len(zero_members) == 1 and len(timed_members) == 1:
+        main_member = timed_members[0]
+        masked_member = zero_members[0]
+        group.GroupType = GROUP_TYPE_MASCHERATO
+        group.InitialMemberCount = 2
+        group.Fase = _norm_text(_fase_corrente_for_export(_order_for_member(main_member)))
+        main_member.Role = ROLE_MAIN
+        main_member.TimeShareMode = SHARE_FULL
+        masked_member.Role = ROLE_MASKED
+        masked_member.TimeShareMode = SHARE_ZERO
+    else:
+        group.GroupType = GROUP_TYPE_MULTIPLO
+        group.InitialMemberCount = len(open_members)
+        group.Fase = ""
+        for member in open_members:
+            member.Role = ROLE_MEMBER
+            member.TimeShareMode = SHARE_SPLIT
+
+    should_reactivate = any(_norm_text(member.Status) == GROUP_STATUS_ATTIVO for member in open_members)
+    if should_reactivate:
+        group.Status = GROUP_STATUS_ATTIVO
+        group.LastActivationAt = now_iso
+        group.SuspendedAt = None
+        for member in open_members:
+            _set_open_member_state(member, GROUP_STATUS_ATTIVO, activation_iso=now_iso)
+    else:
+        group.Status = GROUP_STATUS_SOSPESO
+        group.LastActivationAt = None
+        if not _norm_text(group.SuspendedAt):
+            group.SuspendedAt = now_iso
+        for member in open_members:
+            _set_open_member_state(member, GROUP_STATUS_SOSPESO, activation_iso=None)
+
+    return group
 
 def _members_for_closure(group: OdpWorkGroup) -> list[OdpWorkGroupMember]:
     return [
@@ -982,6 +1345,16 @@ class WorkGroupHomeRow:
 
         self.WorkGroupUid = _norm_text(group.GroupUid)
         self.WorkGroupType = _norm_text(group.GroupType)
+        self.IsMixedWorkGroup = self.WorkGroupType == GROUP_TYPE_MULTIPLO and any(
+            _norm_text(getattr(m, "TimeShareMode", "")).upper() == SHARE_ZERO
+            for m in self._members
+        )
+        self.WorkGroupDisplayType = "MISTO" if self.IsMixedWorkGroup else self.WorkGroupType
+        self.WorkGroupTypeLabel = (
+            "Misto"
+            if self.IsMixedWorkGroup
+            else ("Multiplo" if self.WorkGroupType == "MULTIPLO" else "Mascherato")
+        )
         self.WorkGroupStatus = _norm_text(group.Status)
         self.WorkGroupMembers = self._members
         self.WorkGroupOrdini = self._ordini
@@ -999,13 +1372,15 @@ class WorkGroupHomeRow:
         self.IndiceModifica = ""
 
         self.DesArt = (
-            "Ordine multiplo"
-            if self.WorkGroupType == "MULTIPLO"
-            else "Ordine mascherato"
+            "Ordine misto"
+            if self.IsMixedWorkGroup
+            else (
+                "Ordine multiplo"
+                if self.WorkGroupType == "MULTIPLO"
+                else "Ordine mascherato"
+            )
         )
-        self.TipoOrdineVisuale = (
-            "Multiplo" if self.WorkGroupType == "MULTIPLO" else "Mascherato"
-        )
+        self.TipoOrdineVisuale = self.WorkGroupTypeLabel
 
         self.OrdineVisuale = " + ".join(_ordine_ref_label(o) for o in self._ordini)
 
@@ -1085,7 +1460,7 @@ class WorkGroupHomeRow:
         self.RisorsaAttiva = self.CodRisorsaProd
 
         self.AttrezzaggioAttivo = ""
-        self.CodMatricola = "Gruppo"
+        self.CodMatricola = self._calc_matricole()
         self.FaseAttiva = self._calc_fase()
         self.DistintaMateriale = "[]"
 
@@ -1104,6 +1479,14 @@ class WorkGroupHomeRow:
             getattr(self._main, "runtime_row", None) if self._main is not None else None
         )
         return _norm_text(getattr(runtime, "Utente_operazione", ""))
+
+    def _calc_matricole(self) -> str:
+        matricole = []
+        for ordine in self._ordini:
+            matricola = _norm_text(getattr(ordine, "CodMatricola", ""))
+            if matricola and matricola not in matricole:
+                matricole.append(matricola)
+        return " + ".join(matricole) or "Gruppo"
 
     def _calc_priorita(self):
         priorities = []
