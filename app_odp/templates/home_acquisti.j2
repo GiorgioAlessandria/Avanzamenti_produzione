@@ -151,6 +151,26 @@
             const sectionPanels = document.querySelectorAll(".acq-section-panel");
             const filterPanels = document.querySelectorAll(".acq-filters-panel");
 
+            function randomizeScorteSparkles(btn) {
+                for (let i = 1; i <= 10; i += 1) {
+                    btn.style.setProperty(`--acq-scorte-sparkle-${i}-x`, `${8 + Math.random() * 84}%`);
+                    btn.style.setProperty(`--acq-scorte-sparkle-${i}-y`, `${12 + Math.random() * 76}%`);
+                }
+            }
+
+            function updateScorteAlertState() {
+                const hasOverdueScorte = Boolean(
+                    document.querySelector("#acquisti_scorte_table tbody tr[data-scorta-overdue='1']")
+                );
+
+                [...sectionButtons, ...headerButtons]
+                    .filter((btn) => btn.dataset.section === "scorte")
+                    .forEach((btn) => {
+                        btn.classList.toggle("acq-scorte-alert", hasOverdueScorte);
+                        if (hasOverdueScorte) randomizeScorteSparkles(btn);
+                    });
+            }
+
             function setButtonState(buttons, sectionName) {
                 buttons.forEach((btn) => {
                     const isActive = btn.dataset.section === sectionName;
@@ -163,6 +183,7 @@
             function setActiveSection(sectionName) {
                 setButtonState(sectionButtons, sectionName);
                 setButtonState(headerButtons, sectionName);
+                updateScorteAlertState();
 
                 sectionPanels.forEach((panel) => {
                     panel.classList.toggle("d-none", panel.dataset.section !== sectionName);
@@ -180,6 +201,11 @@
             });
 
             setActiveSection("giacenza");
+            window.setInterval(() => {
+                document.querySelectorAll(".js-acq-section-btn[data-section='scorte'].acq-scorte-alert")
+                    .forEach(randomizeScorteSparkles);
+            }, 650);
+            window.updateAcqScorteAlertState = updateScorteAlertState;
         })();
         (() => {
             function applyAcqGiacenzaRowState() {
@@ -393,6 +419,7 @@
                     window.applyAcqGiacenzaRowState?.();
                     window.applyRowColors?.();
                     window.applyAcquistiOrdiniFilters?.();
+                    window.updateAcqScorteAlertState?.();
                 }
 
                 function hasUnsavedScortaNote() {
@@ -740,11 +767,62 @@
                 window.location.href = `/api/acquisti/export/scorte?${params.toString()}`;
             }
 
+            function playScortaOrdinataAnimation(row, button) {
+                if (!row || !button || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+                    row?.classList.remove("table-danger");
+                    row?.classList.add("table-success");
+                    return Promise.resolve();
+                }
+
+                const cell = button.closest("td");
+                if (!cell) return Promise.resolve();
+
+                const scene = document.createElement("span");
+                scene.className = "acq-scorta-worker-scene";
+                scene.setAttribute("aria-hidden", "true");
+                scene.innerHTML = [
+                    '<span class="acq-scorta-red-button"></span>',
+                    '<span class="acq-scorta-stickman">',
+                    '<span class="acq-scorta-stickman-head"></span>',
+                    '<span class="acq-scorta-stickman-body"></span>',
+                    '<span class="acq-scorta-stickman-arm acq-scorta-stickman-arm-left"></span>',
+                    '<span class="acq-scorta-stickman-arm acq-scorta-stickman-arm-right"></span>',
+                    '<span class="acq-scorta-stickman-leg acq-scorta-stickman-leg-left"></span>',
+                    '<span class="acq-scorta-stickman-leg acq-scorta-stickman-leg-right"></span>',
+                    '</span>'
+                ].join("");
+
+                const cellRect = cell.getBoundingClientRect();
+                const buttonRect = button.getBoundingClientRect();
+                scene.style.left = `${Math.max(0, buttonRect.left - cellRect.left - 94)}px`;
+                scene.style.top = `${buttonRect.top - cellRect.top + buttonRect.height / 2}px`;
+
+                cell.classList.add("acq-scorta-action-anim-cell");
+                button.classList.add("acq-scorta-ordering-button");
+                cell.appendChild(scene);
+
+                window.setTimeout(() => {
+                    row.classList.remove("table-danger");
+                    row.classList.add("table-success", "acq-scorta-ordering-complete");
+                    row.dataset.scortaOverdue = "0";
+                }, 760);
+
+                return new Promise((resolve) => {
+                    window.setTimeout(() => {
+                        scene.remove();
+                        cell.classList.remove("acq-scorta-action-anim-cell");
+                        button.classList.remove("acq-scorta-ordering-button");
+                        resolve();
+                    }, 1550);
+                });
+            }
+
             async function updateScorta(button) {
                 const id = button.dataset.id;
                 const action = button.dataset.action;
                 const row = button.closest("tr");
                 const note = row?.querySelector(".js-acq-scorta-note")?.value || "";
+                const animateOrdinata = action === "ordinata" && row?.dataset.scortaOverdue === "1";
 
                 if (!id || !action) return;
 
@@ -772,6 +850,10 @@
                         return;
                     }
                     row?.querySelector(".js-acq-scorta-note")?.removeAttribute("data-dirty");
+
+                    if (animateOrdinata) {
+                        await playScortaOrdinataAnimation(row, button);
+                    }
 
                     if (window.refreshAcquistiTables) {
                         await window.refreshAcquistiTables({

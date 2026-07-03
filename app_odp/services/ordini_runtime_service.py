@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from app_odp.models import db, InputOdpRuntime
+from app_odp.models import db, InputOdpRuntime, OdpWorkGroup, OdpWorkGroupMember
 from app_odp.services.order_helpers import (
     _norm_text,
     _qty_da_lavorare_text,
@@ -11,6 +11,103 @@ from app_odp.services.order_helpers import (
 from flask import jsonify
 
 MIN_SECONDS_BEFORE_CLOSE_WITHOUT_TIME_PERMISSION = 180
+ACTIVE_OPERATOR_BLOCK_MESSAGE = (
+    "Operatore gia impegnato su un altro ordine attivo. "
+    "Sospendere o chiudere l'ordine prima di aprirne uno nuovo."
+)
+ORDER_ACTIVE_OTHER_OPERATOR_MESSAGE = (
+    "Ordine gia attivo da un altro operatore. "
+    "Mettere in sospeso l'altro ordine prima di attivare quello desiderato."
+)
+
+
+def _runtime_order_key(id_documento: str, id_riga: str) -> tuple[str, str]:
+    return _norm_text(id_documento), _norm_text(id_riga)
+
+
+def _active_group_uid_for_order(id_documento: str, id_riga: str) -> str:
+    member = (
+        OdpWorkGroupMember.query.filter_by(
+            IdDocumento=_norm_text(id_documento),
+            IdRiga=_norm_text(id_riga),
+        )
+        .filter(OdpWorkGroupMember.Status == "Attivo")
+        .order_by(OdpWorkGroupMember.id.desc())
+        .first()
+    )
+    if member is None:
+        return ""
+
+    group = OdpWorkGroup.query.filter_by(GroupUid=member.GroupUid).first()
+    if group is None or _norm_text(group.Status) != "Attivo":
+        return ""
+
+    return _norm_text(group.GroupUid)
+
+
+def _active_operator_activity_keys(username: str) -> set[tuple]:
+    username_norm = _norm_text(username)
+    if not username_norm:
+        return set()
+
+    keys = set()
+    rows = InputOdpRuntime.query.filter_by(
+        Stato_odp="Attivo",
+        Utente_operazione=username_norm,
+    ).all()
+
+    for row in rows:
+        group_uid = _active_group_uid_for_order(row.IdDocumento, row.IdRiga)
+        if group_uid:
+            keys.add(("group", group_uid))
+        else:
+            keys.add(("order", *_runtime_order_key(row.IdDocumento, row.IdRiga)))
+
+    return keys
+
+
+def _ensure_order_not_active_for_other_operator(
+    id_documento: str, id_riga: str, username: str
+) -> None:
+    runtime = InputOdpRuntime.query.filter_by(
+        IdDocumento=_norm_text(id_documento),
+        IdRiga=_norm_text(id_riga),
+    ).first()
+    if runtime is None:
+        return
+
+    if _norm_text(runtime.Stato_odp).lower() != "attivo":
+        return
+
+    owner = _norm_text(runtime.Utente_operazione)
+    if owner and owner != _norm_text(username):
+        raise ValueError(ORDER_ACTIVE_OTHER_OPERATOR_MESSAGE)
+
+
+def _ensure_operator_has_no_conflicting_active(
+    username: str, allowed_order_keys=()
+) -> None:
+    allowed = {_runtime_order_key(doc, row) for doc, row in allowed_order_keys}
+
+    for key in _active_operator_activity_keys(username):
+        if key[0] == "order" and (key[1], key[2]) in allowed:
+            continue
+        raise ValueError(ACTIVE_OPERATOR_BLOCK_MESSAGE)
+
+
+def _ensure_operator_can_activate_order(
+    id_documento: str, id_riga: str, username: str
+) -> None:
+    key = _runtime_order_key(id_documento, id_riga)
+    _ensure_order_not_active_for_other_operator(*key, username)
+    _ensure_operator_has_no_conflicting_active(username, [key])
+
+
+def _ensure_operator_can_activate_group(order_keys, username: str) -> None:
+    keys = [_runtime_order_key(doc, row) for doc, row in order_keys]
+    for id_documento, id_riga in keys:
+        _ensure_order_not_active_for_other_operator(id_documento, id_riga, username)
+    _ensure_operator_has_no_conflicting_active(username, keys)
 
 
 def _ensure_stato_attivo(

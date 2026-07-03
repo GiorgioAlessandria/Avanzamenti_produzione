@@ -71,6 +71,7 @@ from app_odp.services.session_helpers import (
 )
 from app_odp.services.ordini_runtime_service import (
     _ensure_stato_attivo,
+    _ensure_operator_can_activate_order,
     _runtime_snapshot,
     _apply_stop_minutes_to_runtime,
     _accumulate_runtime_until,
@@ -291,6 +292,14 @@ def api_apri_gruppo_mascherato():
 
 def _group_uid_from_payload(data: dict) -> str:
     return _norm_text(data.get("group_uid") or data.get("groupUid"))
+
+
+def _operator_active_block_response(exc: ValueError):
+    message = str(exc)
+    return (
+        jsonify({"ok": False, "changed": False, "error": message, "message": message}),
+        409,
+    )
 
 
 def _sospendi_gruppo_ordini_response(group_uid: str, data: dict):
@@ -923,6 +932,16 @@ def api_prendi_ordine():
     stato_norm = stato_attuale.lower()
     changed = False
     message = None
+    if stato_norm in {"pianificata", "attivo"}:
+        try:
+            _ensure_operator_can_activate_order(
+                ordine.IdDocumento,
+                ordine.IdRiga,
+                _current_username(),
+            )
+        except ValueError as exc:
+            return _operator_active_block_response(exc)
+
     if _norm_text(getattr(ordine, "CodReparto", "")) in {"10", "20", "30", "70"}:
         if not _ordine_has_distinta_materiale(ordine):
             event_at = datetime.now(ROME_TZ).isoformat(timespec="seconds")
@@ -1558,6 +1577,16 @@ def api_riattiva_ordine():
     changed = False
     message = None
 
+    if stato_norm in {"in sospeso", "attivo"}:
+        try:
+            _ensure_operator_can_activate_order(
+                ordine.IdDocumento,
+                ordine.IdRiga,
+                _current_username(),
+            )
+        except ValueError as exc:
+            return _operator_active_block_response(exc)
+
     if stato_norm == "in sospeso":
         now_dt = _now_rome_dt()
 
@@ -1734,6 +1763,16 @@ def api_riattiva_ordine_montaggio_macchina():
     stato_norm = stato_attuale.lower()
     changed = False
     message = None
+
+    if stato_norm in {"in sospeso", "attivo"}:
+        try:
+            _ensure_operator_can_activate_order(
+                ordine.IdDocumento,
+                ordine.IdRiga,
+                _current_username(),
+            )
+        except ValueError as exc:
+            return _operator_active_block_response(exc)
 
     if stato_norm == "in sospeso":
         now_dt = _now_rome_dt()

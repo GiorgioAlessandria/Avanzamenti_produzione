@@ -15,6 +15,7 @@ from app_odp.services.ordini_query_service import (
     _base_odp_query,
 )
 from decimal import Decimal, InvalidOperation
+from uuid import uuid4
 from app_odp.services.order_helpers import (
     _ordine_ref_label,
     _norm_text,
@@ -864,6 +865,16 @@ def _is_open_order_state(stato: str) -> bool:
     return "attiv" in s or "pianificat" in s or "sospes" in s or "apert"
 
 
+SCORTA_SEGNALAZIONE_LIBERA_MIN_LEN = 3
+SCORTA_SEGNALAZIONE_LIBERA_MAX_LEN = 300
+SCORTA_SEGNALAZIONE_LIBERA_CODART_PREFIX = "__MANUALE__:"
+
+
+def _is_scorta_segnalazione_libera(row) -> bool:
+    cod_art = _norm_text(getattr(row, "CodArt", ""))
+    return not cod_art or cod_art.startswith(SCORTA_SEGNALAZIONE_LIBERA_CODART_PREFIX)
+
+
 def _parse_scorta_qrcode(raw_qrcode: str) -> tuple[str, str, str]:
     raw = _norm_text(raw_qrcode).replace("\n", "").replace("\r", "")
 
@@ -948,8 +959,49 @@ def _scorta_operator_payload(user) -> tuple[str, str]:
 
 
 def _create_scorta_from_qrcode(
-    raw_qrcode: str, user
+    raw_qrcode: str, user, *, allow_free_text: bool = False
 ) -> tuple[AcqScortaSegnalata, bool]:
+    raw_text = _norm_text(raw_qrcode)
+
+    if not raw_text:
+        raise ValueError("QR code o descrizione vuoti.")
+
+    if "|" not in raw_text:
+        if not allow_free_text:
+            raise PermissionError(
+                "Inserimento manuale non abilitato per questo operatore."
+            )
+
+        descrizione = " ".join(raw_text.replace("\n", " ").replace("\r", " ").split())
+
+        if len(descrizione) < SCORTA_SEGNALAZIONE_LIBERA_MIN_LEN:
+            raise ValueError("Descrizione materiale troppo breve.")
+
+        if len(descrizione) > SCORTA_SEGNALAZIONE_LIBERA_MAX_LEN:
+            raise ValueError("Descrizione materiale troppo lunga.")
+
+        segnalato_da, reparto = _scorta_operator_payload(user)
+        now_iso = _now_rome_dt().isoformat(timespec="seconds")
+
+        row = AcqScortaSegnalata(
+            DataLettura=now_iso,
+            StatoChangedAt=now_iso,
+            RawQrCode=descrizione,
+            CodArt=f"{SCORTA_SEGNALAZIONE_LIBERA_CODART_PREFIX}{uuid4().hex}",
+            VarianteArt="",
+            IndiceModifica="",
+            DesArt=descrizione,
+            Stato="Aperta",
+            Annullata=False,
+            Note="",
+            SegnalatoDa=segnalato_da,
+            RepartoSegnalatore=reparto,
+            LookupTrovato=False,
+        )
+
+        db.session.add(row)
+        return row, True
+
     cod_art, variante_art, indice_modifica = _parse_scorta_qrcode(raw_qrcode)
     segnalato_da, reparto = _scorta_operator_payload(user)
 
@@ -1015,12 +1067,13 @@ def _num_text(value) -> str:
 
 
 def _scorta_to_row(row: AcqScortaSegnalata) -> dict:
+    is_segnalazione_libera = _is_scorta_segnalazione_libera(row)
     return {
         "Id": row.id,
         "DataLettura": row.DataLettura,
         "DataLetturaText": _format_datetime_it(row.DataLettura),
         "RawQrCode": row.RawQrCode,
-        "CodArt": row.CodArt,
+        "CodArt": "" if is_segnalazione_libera else row.CodArt,
         "VarianteArt": row.VarianteArt,
         "IndiceModifica": row.IndiceModifica,
         "DesArt": row.DesArt,
@@ -1101,23 +1154,21 @@ def _is_scorta_aperta_oltre_3_giorni(row: AcqScortaSegnalata) -> bool:
     if bool(row.Annullata):
         return False
 
-    raw_date = _norm_text(row.DataLettura)
+    raw_date = _norm_text(row.StatoChangedAt) or _norm_text(row.DataLettura)
     if not raw_date:
         return False
 
     try:
-        data_lettura = datetime.fromisoformat(raw_date)
+        data_riferimento = datetime.fromisoformat(raw_date)
     except ValueError:
         return False
 
     now = _now_rome_dt()
 
-    # Se per qualche motivo DataLettura fosse salvata senza timezone,
-    # la rendiamo confrontabile con now.
-    if data_lettura.tzinfo is None:
-        data_lettura = data_lettura.replace(tzinfo=now.tzinfo)
+    if data_riferimento.tzinfo is None:
+        data_riferimento = data_riferimento.replace(tzinfo=now.tzinfo)
 
-    return now - data_lettura > timedelta(days=3)
+    return now - data_riferimento >= timedelta(days=3)
 
 
 def _parse_iso_datetime(value):

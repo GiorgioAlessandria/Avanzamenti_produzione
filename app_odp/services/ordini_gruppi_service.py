@@ -40,6 +40,7 @@ from app_odp.services.priorita_service import (
 from app_odp.services.ordini_runtime_service import (
     _accumulate_runtime_until,
     _ensure_stato_attivo,
+    _ensure_operator_can_activate_group,
 )
 from app_odp.services.ordini_query_service import _base_odp_query
 from app_odp.services.home_service import _get_visible_odp_by_key
@@ -424,6 +425,11 @@ def create_multiplo_group(order_keys: list[dict], policy) -> OdpWorkGroup:
             raise ValueError("Lo stesso ordine è stato selezionato più volte.")
         seen.add(key)
 
+    _ensure_operator_can_activate_group(
+        [_order_key(ordine) for ordine in ordini],
+        _current_username(),
+    )
+
     expected_reparto = _order_reparto(ordini[0])
     expected_kind = _order_kind(ordini[0])
     for ordine in ordini:
@@ -499,6 +505,11 @@ def create_misto_group(
             raise ValueError("Lo stesso ordine è stato selezionato più volte.")
         seen.add(key)
 
+    _ensure_operator_can_activate_group(
+        [_order_key(ordine) for ordine in ordini],
+        _current_username(),
+    )
+
     expected_reparto = _order_reparto(shared_ordini[0])
     expected_kind = _order_kind(shared_ordini[0])
     for ordine in ordini:
@@ -572,6 +583,11 @@ def create_mascherato_group(main_key: dict, masked_key: dict, policy) -> OdpWork
         raise ValueError(
             "Ordine principale e ordine mascherato non possono coincidere."
         )
+
+    _ensure_operator_can_activate_group(
+        [_order_key(main), _order_key(masked)],
+        _current_username(),
+    )
 
     _ensure_order_can_enter_group(main)
     _ensure_order_can_enter_group(masked)
@@ -776,6 +792,8 @@ def suspend_group(
     group.Status = GROUP_STATUS_SOSPESO
     group.SuspendedAt = now_iso
     group.CausaleSospensione = _norm_text(causale)
+    group.OperatoreId = _current_user_id()
+    group.OperatoreUsername = _current_username()
     return group
 
 
@@ -784,6 +802,15 @@ def reactivate_group(group_uid: str) -> OdpWorkGroup:
 
     if _norm_text(group.Status) != GROUP_STATUS_SOSPESO:
         raise ValueError(f"Gruppo non riattivabile: stato attuale '{group.Status}'.")
+
+    _ensure_operator_can_activate_group(
+        [
+            (_norm_text(member.IdDocumento), _norm_text(member.IdRiga))
+            for member in group.members
+            if _norm_text(member.Status) == GROUP_STATUS_SOSPESO
+        ],
+        _current_username(),
+    )
 
     now_dt = _now_rome_dt()
     now_iso = now_dt.isoformat(timespec="seconds")
@@ -826,6 +853,8 @@ def reactivate_group(group_uid: str) -> OdpWorkGroup:
     group.Status = GROUP_STATUS_ATTIVO
     group.LastActivationAt = now_iso
     group.SuspendedAt = None
+    group.OperatoreId = _current_user_id()
+    group.OperatoreUsername = _current_username()
     return group
 
 

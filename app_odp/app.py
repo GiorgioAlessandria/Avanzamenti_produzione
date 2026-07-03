@@ -70,6 +70,7 @@ def setup_request_logging(app):
 def _ensure_builtin_permissions() -> None:
     builtins = {
         "storico_ordini": "Storico ordini",
+        "scorte_segnalazione_libera": "Segnalazione scorte con testo libero",
     }
     existing = {
         row.Codice

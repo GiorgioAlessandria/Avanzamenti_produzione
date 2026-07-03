@@ -645,6 +645,96 @@
 </div>
 <script>
     window.AVP_TAB_SESSION = "{{ tab_session|default('') }}";
+    window.AVP_ACTIVE_USERNAME = {{ (operator_user.username if operator_user else (current_user.username if current_user.is_authenticated else ""))|tojson }};
+    window.AVP_ACTIVE_OPERATOR_BLOCK_MESSAGE = "Operatore gia impegnato su un altro ordine attivo. Sospendere o chiudere l'ordine prima di aprirne uno nuovo.";
+
+    function avpOrderKeyFromObject(order) {
+        if (!order) return "";
+        const doc = order.id_documento || order.idDocumento || order.IdDocumento || "";
+        const row = order.id_riga || order.idRiga || order.IdRiga || "";
+        return doc && row ? `${doc}|${row}` : "";
+    }
+
+    function avpJsonBody(options) {
+        try {
+            return typeof options?.body === "string" ? JSON.parse(options.body) : {};
+        } catch (_) {
+            return {};
+        }
+    }
+
+    window.avpHasConflictingActiveActivity = function (allowedOrders) {
+        const username = String(window.AVP_ACTIVE_USERNAME || "").trim().toLowerCase();
+        if (!username) return false;
+
+        const allowed = new Set((allowedOrders || []).map(avpOrderKeyFromObject).filter(Boolean));
+        const blocked = new Set();
+
+        document.querySelectorAll("tr[data-operatore]").forEach((row) => {
+            const rowUser = String(row.dataset.operatore || "").trim().toLowerCase();
+            if (rowUser !== username) return;
+
+            const stato = String(
+                row.dataset.statoordine ||
+                row.dataset.stato ||
+                row.querySelector('[data-col="stato"]')?.textContent ||
+                ""
+            ).trim().toLowerCase();
+            if (!stato.includes("attiv")) return;
+
+            if (row.dataset.isWorkGroup === "1") {
+                blocked.add(`GROUP:${row.dataset.groupUid || row.dataset.rowKey || ""}`);
+                return;
+            }
+
+            const key = `${row.dataset.iddocumento || ""}|${row.dataset.idriga || ""}`;
+            if (key && !allowed.has(key)) {
+                blocked.add(key);
+            }
+        });
+
+        return blocked.size > 0;
+    };
+
+    function avpOrdersAllowedForActivation(pathname, payload) {
+        if (pathname === "/api/ordini/gruppi/multiplo/apri") {
+            return payload.orders || [];
+        }
+        if (pathname === "/api/ordini/gruppi/misto/apri") {
+            return [...(payload.condivisi || payload.orders || []), payload.mascherato || {}];
+        }
+        if (pathname === "/api/ordini/gruppi/mascherato/apri") {
+            return [payload.principale || {}, payload.mascherato || {}];
+        }
+        return [];
+    }
+
+    window.avpActivationBlockMessage = function (urlValue, options) {
+        const method = String(options?.method || "GET").toUpperCase();
+        if (method !== "POST") return "";
+
+        const pathname = new URL(urlValue, window.location.origin).pathname;
+        const activationPaths = new Set([
+            "/api/ordini/presa",
+            "/api/ordini/riattiva",
+            "/api/ordini/montaggio/macchina/riattiva",
+            "/api/ordini/gruppi/riattiva"
+        ]);
+        const isGroupReactivate = pathname.startsWith("/api/ordini/gruppi/") && pathname.endsWith("/riattiva");
+        const isGroupOpen = pathname === "/api/ordini/gruppi/multiplo/apri" ||
+            pathname === "/api/ordini/gruppi/misto/apri" ||
+            pathname === "/api/ordini/gruppi/mascherato/apri";
+
+        if (!activationPaths.has(pathname) && !isGroupReactivate && !isGroupOpen) {
+            return "";
+        }
+
+        const allowedOrders = isGroupOpen ? avpOrdersAllowedForActivation(pathname, avpJsonBody(options)) : [];
+        return window.avpHasConflictingActiveActivity(allowedOrders)
+            ? window.AVP_ACTIVE_OPERATOR_BLOCK_MESSAGE
+            : "";
+    };
+
 
     window.avpAddTabSessionToUrl = function (urlValue) {
         const token = window.AVP_TAB_SESSION || "";
@@ -661,6 +751,14 @@
         options = options || {};
         options.headers = options.headers || {};
 
+        const blockMessage = window.avpActivationBlockMessage?.(urlValue, options);
+        if (blockMessage) {
+            return Promise.resolve(new Response(
+                JSON.stringify({ok: false, changed: false, error: blockMessage, message: blockMessage}),
+                {status: 409, headers: {"Content-Type": "application/json"}}
+            ));
+        }
+
         const token = window.AVP_TAB_SESSION || "";
 
         if (token) {
@@ -671,6 +769,7 @@
         return fetch(urlValue, options);
     };
 </script>
+{% set can_scorta_segnalazione_libera = visible_policy and visible_policy.can('scorte_segnalazione_libera') %}
 {% if visible_policy and visible_policy.can('home') %}
     <div class="modal fade"
          id="modalSegnalaScorta"
@@ -690,16 +789,24 @@
                     <div class="mb-3">
                         <label for="scorta-qrcode-input"
                                class="form-label fw-semibold">
-                            Lettura QR code
+                            {% if can_scorta_segnalazione_libera %}
+                                QR code o descrizione materiale
+                            {% else %}
+                                Lettura QR code
+                            {% endif %}
                         </label>
                         <textarea id="scorta-qrcode-input"
                                   class="form-control"
                                   rows="3"
                                   autocomplete="off"
                                   spellcheck="false"
-                                  placeholder="Scansiona qui il QR code del cartellino scorta"></textarea>
+                                  placeholder="{% if can_scorta_segnalazione_libera %}Scansiona il QR code o scrivi la descrizione del componente{% else %}Scansiona qui il QR code del cartellino scorta{% endif %}"></textarea>
                         <div class="form-text">
-                            Formato atteso: codice|variante|revisione
+                            {% if can_scorta_segnalazione_libera %}
+                                Formato QR: codice|variante|revisione. In alternativa scrivi la descrizione del componente.
+                            {% else %}
+                                Formato atteso: codice|variante|revisione
+                            {% endif %}
                         </div>
                     </div>
 
@@ -1986,6 +2093,7 @@
             const inputEl = document.getElementById("scorta-qrcode-input");
             const feedbackEl = document.getElementById("scorta-feedback");
             const confirmBtn = document.getElementById("btn-conferma-scorta");
+            const canScortaSegnalazioneLibera = {{ (can_scorta_segnalazione_libera)|tojson }};
 
             if (!modalEl || !inputEl || !feedbackEl || !confirmBtn) return;
 
@@ -2015,7 +2123,35 @@
                 const qrcode = inputEl.value.trim();
 
                 if (!qrcode) {
-                    setFeedback("Scansionare un QR code prima di confermare.", "warning");
+                    setFeedback(
+                        canScortaSegnalazioneLibera
+                            ? "Inserire un QR code o una descrizione prima di confermare."
+                            : "Scansionare un QR code prima di confermare.",
+                        "warning"
+                    );
+                    inputEl.focus();
+                    return;
+                }
+
+                const isQrCode = qrcode.includes("|");
+
+                if (!isQrCode && !canScortaSegnalazioneLibera) {
+                    setFeedback(
+                        "Inserimento manuale non abilitato. Usare il formato codice|variante|revisione.",
+                        "warning"
+                    );
+                    inputEl.focus();
+                    return;
+                }
+
+                if (!isQrCode && qrcode.length < 3) {
+                    setFeedback("Descrizione materiale troppo breve.", "warning");
+                    inputEl.focus();
+                    return;
+                }
+
+                if (!isQrCode && qrcode.length > 300) {
+                    setFeedback("Descrizione materiale troppo lunga.", "warning");
                     inputEl.focus();
                     return;
                 }
