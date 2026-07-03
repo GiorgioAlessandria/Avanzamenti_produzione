@@ -567,43 +567,61 @@ def create_misto_group(
     return group
 
 
-def create_mascherato_group(main_key: dict, masked_key: dict, policy) -> OdpWorkGroup:
+def create_mascherato_group(main_key: dict, masked_keys, policy) -> OdpWorkGroup:
+    if isinstance(masked_keys, dict):
+        masked_keys = [masked_keys]
+    if not isinstance(masked_keys, list) or not masked_keys:
+        raise ValueError("Selezionare almeno un ordine mascherato.")
+
     main = _get_visible_odp_by_key(
         policy,
         _norm_text(main_key.get("id_documento")),
         _norm_text(main_key.get("id_riga")),
     )
-    masked = _get_visible_odp_by_key(
-        policy,
-        _norm_text(masked_key.get("id_documento")),
-        _norm_text(masked_key.get("id_riga")),
-    )
-
-    if _order_key(main) == _order_key(masked):
-        raise ValueError(
-            "Ordine principale e ordine mascherato non possono coincidere."
+    masked_ordini = [
+        _get_visible_odp_by_key(
+            policy,
+            _norm_text(masked_key.get("id_documento")),
+            _norm_text(masked_key.get("id_riga")),
         )
+        for masked_key in masked_keys
+        if isinstance(masked_key, dict)
+    ]
+    if not masked_ordini:
+        raise ValueError("Selezionare almeno un ordine mascherato.")
+
+    ordini = [main, *masked_ordini]
+    seen = set()
+    for ordine in ordini:
+        key = _order_key(ordine)
+        if key in seen:
+            raise ValueError(
+                "Ordine principale e ordini mascherati non possono coincidere."
+            )
+        seen.add(key)
 
     _ensure_operator_can_activate_group(
-        [_order_key(main), _order_key(masked)],
+        [_order_key(ordine) for ordine in ordini],
         _current_username(),
     )
 
+    expected_reparto = _order_reparto(main)
+    expected_kind = _order_kind(main)
     _ensure_order_can_enter_group(main)
-    _ensure_order_can_enter_group(masked)
-
-    if _order_reparto(main) != _order_reparto(masked):
-        raise ValueError(
-            "Ordine principale e mascherato devono appartenere allo stesso reparto."
-        )
-    if _order_kind(main) != _order_kind(masked):
-        raise ValueError(
-            "Non è possibile mascherare insieme una macchina e un semilavorato."
-        )
+    for masked in masked_ordini:
+        _ensure_order_can_enter_group(masked)
+        if _order_reparto(masked) != expected_reparto:
+            raise ValueError(
+                "Ordine principale e mascherati devono appartenere allo stesso reparto."
+            )
+        if _order_kind(masked) != expected_kind:
+            raise ValueError(
+                "Non e' possibile mascherare insieme una macchina e un semilavorato."
+            )
 
     now_dt = _now_rome_dt()
     now_iso = now_dt.isoformat(timespec="seconds")
-    group_uid = _group_uid("MASK", [main, masked])
+    group_uid = _group_uid("MASK", ordini)
 
     group = OdpWorkGroup(
         GroupUid=group_uid,
@@ -614,30 +632,34 @@ def create_mascherato_group(main_key: dict, masked_key: dict, policy) -> OdpWork
         LastActivationAt=now_iso,
         OperatoreId=_current_user_id(),
         OperatoreUsername=_current_username(),
-        Reparto=_order_reparto(main),
+        Reparto=expected_reparto,
         Fase=_fase_corrente_for_export(main),
-        InitialMemberCount=2,
+        InitialMemberCount=len(ordini),
         TotalRuntimeSeconds=0,
     )
     db.session.add(group)
 
     _activate_order_for_group(main, group_uid=group_uid, now_dt=now_dt)
-    _activate_order_for_group(masked, group_uid=group_uid, now_dt=now_dt)
-
     db.session.add(
         _create_member(
             group_uid, main, role=ROLE_MAIN, share_mode=SHARE_FULL, now_iso=now_iso
         )
     )
-    db.session.add(
-        _create_member(
-            group_uid, masked, role=ROLE_MASKED, share_mode=SHARE_ZERO, now_iso=now_iso
+
+    for masked in masked_ordini:
+        _activate_order_for_group(masked, group_uid=group_uid, now_dt=now_dt)
+        db.session.add(
+            _create_member(
+                group_uid,
+                masked,
+                role=ROLE_MASKED,
+                share_mode=SHARE_ZERO,
+                now_iso=now_iso,
+            )
         )
-    )
 
     db.session.flush()
     return group
-
 
 def _assigned_seconds_for_member(
     group: OdpWorkGroup, member: OdpWorkGroupMember, elapsed_seconds: int
@@ -1057,16 +1079,16 @@ def finalize_group_after_single_member_closure(
         if _norm_text(member.TimeShareMode).upper() != SHARE_ZERO
     ]
 
-    if len(open_members) == 2 and len(zero_members) == 1 and len(timed_members) == 1:
+    if len(timed_members) == 1 and zero_members:
         main_member = timed_members[0]
-        masked_member = zero_members[0]
         group.GroupType = GROUP_TYPE_MASCHERATO
-        group.InitialMemberCount = 2
+        group.InitialMemberCount = len(open_members)
         group.Fase = _norm_text(_fase_corrente_for_export(_order_for_member(main_member)))
         main_member.Role = ROLE_MAIN
         main_member.TimeShareMode = SHARE_FULL
-        masked_member.Role = ROLE_MASKED
-        masked_member.TimeShareMode = SHARE_ZERO
+        for masked_member in zero_members:
+            masked_member.Role = ROLE_MASKED
+            masked_member.TimeShareMode = SHARE_ZERO
     else:
         group.GroupType = GROUP_TYPE_MULTIPLO
         group.InitialMemberCount = len(open_members)

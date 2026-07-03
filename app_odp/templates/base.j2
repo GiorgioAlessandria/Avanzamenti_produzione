@@ -704,7 +704,10 @@
             return [...(payload.condivisi || payload.orders || []), payload.mascherato || {}];
         }
         if (pathname === "/api/ordini/gruppi/mascherato/apri") {
-            return [payload.principale || {}, payload.mascherato || {}];
+            const masked = Array.isArray(payload.mascherati)
+                ? payload.mascherati
+                : (payload.mascherato ? [payload.mascherato] : []);
+            return [payload.principale || {}, ...masked];
         }
         return [];
     }
@@ -2527,16 +2530,16 @@
                     return true;
                 }
 
-                title.textContent = "Ordine mascherato";
-                confirm.textContent = "Apri ordine mascherato";
+                title.textContent = "Ordini mascherati";
+                confirm.textContent = "Apri ordini mascherati";
                 head.innerHTML = `
                 <tr>
-                  <th>Principale</th><th>Mascherato</th><th>Ordine</th><th>Codice</th><th>Descrizione</th><th>Fase</th><th>Stato</th>
+                  <th>Principale</th><th>Mascherati</th><th>Ordine</th><th>Codice</th><th>Descrizione</th><th>Fase</th><th>Stato</th>
                 </tr>`;
                 body.innerHTML = currentOrders.map((order, index) => `
                 <tr>
                   <td><input class="form-check-input" type="radio" name="wg-main" value="${index}"></td>
-                  <td><input class="form-check-input" type="radio" name="wg-mask" value="${index}"></td>
+                  <td><input class="form-check-input" type="checkbox" data-role="wg-mask" value="${index}"></td>
                   <td>${esc(order.ordine)}</td>
                   <td>${esc(order.cod_art)}</td>
                   <td class="text-start">${esc(order.descrizione)}</td>
@@ -2601,21 +2604,29 @@
                     };
                 } else {
                     const mainIndex = Number(document.querySelector("input[name='wg-main']:checked")?.value);
-                    const maskIndex = Number(document.querySelector("input[name='wg-mask']:checked")?.value);
+                    const maskIndexes = Array.from(
+                        document.querySelectorAll("#modal-workgroup-body input[data-role='wg-mask']:checked")
+                    ).map(input => Number(input.value));
 
-                    if (!Number.isInteger(mainIndex) || !Number.isInteger(maskIndex)) {
-                        showFeedback("Seleziona un ordine principale e un ordine mascherato.");
+                    if (!Number.isInteger(mainIndex) || maskIndexes.length < 1) {
+                        showFeedback("Seleziona un ordine principale e almeno un ordine mascherato.");
                         return;
                     }
-                    if (mainIndex === maskIndex) {
+                    if (maskIndexes.includes(mainIndex)) {
                         showFeedback("Ordine principale e mascherato non possono coincidere.");
+                        return;
+                    }
+
+                    const masked = maskIndexes.map(index => currentOrders[index]).filter(Boolean);
+                    if (!currentOrders[mainIndex] || masked.length !== maskIndexes.length) {
+                        showFeedback("Selezione ordine mascherato non valida.");
                         return;
                     }
 
                     endpoint = "/api/ordini/gruppi/mascherato/apri";
                     payload = {
                         principale: orderKey(currentOrders[mainIndex]),
-                        mascherato: orderKey(currentOrders[maskIndex])
+                        mascherati: masked.map(orderKey)
                     };
                 }
 

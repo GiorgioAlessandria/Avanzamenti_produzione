@@ -263,9 +263,13 @@ def api_apri_gruppo_mascherato():
     policy = active_policy()
 
     try:
+        masked_payload = data.get("mascherati")
+        if masked_payload is None:
+            masked_payload = data.get("mascherato") or {}
+
         group = create_mascherato_group(
             data.get("principale") or {},
-            data.get("mascherato") or {},
+            masked_payload,
             policy,
         )
         db.session.commit()
