@@ -336,7 +336,7 @@ def _build_export_distinta_base(
 
     out = []
 
-    for comp in distinta:
+    for progressivo_riga, comp in enumerate(distinta, start=1):
         if not isinstance(comp, dict):
             continue
 
@@ -353,6 +353,11 @@ def _build_export_distinta_base(
         out.append(
             {
                 **comp,
+                "ProgressivoRiga": _norm_text(
+                    comp.get("IdRigacomponente")
+                    or comp.get("ProgressivoRiga")
+                    or progressivo_riga
+                ),
                 "Quantita": _decimal_to_text(qty_scalata),
                 "VarianteArt": _norm_text(comp.get("VarianteArt", "")),
             }

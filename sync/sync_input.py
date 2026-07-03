@@ -2366,6 +2366,7 @@ def elaborazione_dati(session: Session) -> None:
             "GestioneLotto",
             "VarianteArt",
             "IndiceModifica",
+            "IdRigacomponente",
         ],
     )
 

@@ -228,8 +228,17 @@ def _phase_ref_for_export(base_ref: str, payload: dict) -> str:
     return _ref_with_suffix(base_ref, payload.get("fase"))
 
 
-def _component_ref_for_export(base_ref: str, component_row_index: int) -> str:
-    return _ref_with_suffix(base_ref, component_row_index)
+def _component_row_index(component: dict, fallback: int) -> int:
+    for key in ("IdRigacomponente", "ProgressivoRiga", "IdRigaComponente"):
+        value_int = _to_int(component.get(key))
+        if value_int is not None and value_int > 0:
+            return value_int
+
+    return fallback
+
+
+def _component_ref_for_export(base_ref: str, component: dict, fallback: int) -> str:
+    return _ref_with_suffix(base_ref, _component_row_index(component, fallback))
 
 
 def txt_generator(
@@ -354,6 +363,13 @@ def txt_generator(
         cod_art_component = _text(component.get("CodArt"))
         variante_component = _text(component.get("VarianteArt"))
 
+        component_row_index += 1
+        riferimento_ordine_component = _component_ref_for_export(
+            riferimento_ordine_base,
+            component,
+            component_row_index,
+        )
+
         righe_lotto_component = [
             riga
             for riga in lotti_components
@@ -366,12 +382,6 @@ def txt_generator(
                 lotto_component = _text(riga_lotto_component.get("RifLottoAlfa"))
                 quantita_lotto = _text(riga_lotto_component.get("Quantita"))
                 magazzino_lotto = _text(riga_lotto_component.get("CodMag")) or magazzino
-
-                component_row_index += 1
-                riferimento_ordine_component = _component_ref_for_export(
-                    riferimento_ordine_base,
-                    component_row_index,
-                )
                 component_line = row_writer(
                     tipo_record="RIG",
                     tipo_documento=710,
@@ -392,11 +402,6 @@ def txt_generator(
                 )
                 lines.append(component_line)
         else:
-            component_row_index += 1
-            riferimento_ordine_component = _component_ref_for_export(
-                riferimento_ordine_base,
-                component_row_index,
-            )
             component_line = row_writer(
                 tipo_record="RIG",
                 tipo_documento=710,
