@@ -1513,6 +1513,28 @@
             const n = Number(s);
             return Number.isFinite(n) ? n : NaN;
         }
+        function getCompUdm(comp) {
+            return String(comp?.TecniciUm ?? comp?.UdM ?? comp?.Udm ?? comp?.UM ?? comp?.MagUM ?? comp?.UnitaMisura ?? "").trim();
+        }
+
+        function isIntegerQtyComp(comp) {
+            const udm = getCompUdm(comp).toUpperCase().replace(/\s+/g, "").replace(/\.+$/g, "");
+            return udm === "N" || udm === "PZ";
+        }
+
+        function formatQtyForComp(qty, comp) {
+            if (!Number.isFinite(qty)) return 0;
+            return isIntegerQtyComp(comp) ? Math.round(qty) : Number(qty.toFixed(4));
+        }
+
+        function parseQtyForComp(v, comp) {
+            return isIntegerQtyComp(comp) ? parseIntQty(v) : parseSystemQty(v);
+        }
+
+        function parseQtyForCompOrZero(v, comp) {
+            const n = parseQtyForComp(v, comp);
+            return Number.isFinite(n) ? n : 0;
+        }
 
         function sanitizeIntegerInput(el) {
             if (!el) return;
@@ -1569,14 +1591,14 @@
             if (!Number.isFinite(qLavorata) || qLavorata <= 0) return 0;
 
             if (!Number.isFinite(qOrdTotale) || qOrdTotale <= 0) {
-                return Math.round(baseQty);
+                return formatQtyForComp(baseQty, comp);
             }
 
             const richiesto = (baseQty * qLavorata) / qOrdTotale;
 
             if (!Number.isFinite(richiesto)) return 0;
 
-            return Math.round(richiesto);
+            return formatQtyForComp(richiesto, comp);
         }
 
         function resetQuantitaInputs() {
@@ -1632,7 +1654,7 @@
             <td class="text-end giacenza-cell-sl" style="font-size: 20px;">-</td>
             <td>
                 <input type="number" class="form-control form-control-sm lotto-qty-sl text-end"
-                       min="0" step="1" value="" placeholder="0" style="width: 90px;">
+                       min="0" step="0.0001" value="" placeholder="0" style="width: 90px;">
             </td>
             <td>
                 <select class="form-select form-select-sm lotto-esito-sl" style="width: 70px;">
@@ -1648,7 +1670,6 @@
             </td>
         `;
             tbody.appendChild(tr);
-            sanitizeIntegerInput(tr.querySelector(".lotto-qty-sl"));
             return tr;
         }
 
@@ -1739,7 +1760,8 @@
             const totals = {};
             tbody.querySelectorAll("tr").forEach(row => {
                 const cod = row.dataset.codart || "";
-                const qty = parseQtyOrZero(row.querySelector(".lotto-qty-sl")?.value);
+                const comp = _lottiData.find(c => String(c.CodArt || "") === cod) || {};
+                const qty = parseQtyForCompOrZero(row.querySelector(".lotto-qty-sl")?.value, comp);
                 const esito = row.querySelector(".lotto-esito-sl")?.value || "ok";
 
                 if (!totals[cod]) totals[cod] = {ok: 0, ko: 0, totale: 0};
@@ -1865,10 +1887,12 @@
                 const giacenza = parseQtyOrZero(row.querySelector(".giacenza-cell-sl")?.textContent);
                 const esito = row.querySelector(".lotto-esito-sl")?.value || "ok";
                 const qtyRaw = row.querySelector(".lotto-qty-sl")?.value;
-                const qty = parseIntQty(qtyRaw);
+                const comp = _lottiData.find(c => String(c.CodArt || "") === cod) || {};
+                const qty = parseQtyForComp(qtyRaw, comp);
 
-                if (!Number.isInteger(qty) || qty <= 0) {
-                    errors.push(`${cod} lotto ${lottoVal}: inserire una quantità intera > 0.`);
+                if (!Number.isFinite(qty) || qty <= 0) {
+                    const tipoQty = isIntegerQtyComp(comp) ? "intera " : "";
+                    errors.push(`${cod} lotto ${lottoVal}: inserire una quantità ${tipoQty}> 0.`);
                     return;
                 }
 
@@ -1879,9 +1903,6 @@
 
                 if (!lottoVal) return;
 
-                if (qty <= 0) {
-                    errors.push(`${cod} lotto ${lottoVal}: inserire qtà > 0.`);
-                }
 
                 if (qty > giacenza) {
                     errors.push(`${cod} lotto ${lottoVal}: qtà ${qty} > giacenza ${giacenza}.`);
@@ -1920,7 +1941,7 @@
                     CodArt: cod,
                     RifLottoAlfa: lottoVal,
                     CodMag: codMag,
-                    Quantita: qty,
+                    Quantita: String(formatQtyForComp(qty, comp)),
                     Esito: esito
                 });
             });
@@ -2330,6 +2351,28 @@
             const n = Number(s);
             return Number.isFinite(n) ? n : NaN;
         }
+        function getCompUdm(comp) {
+            return String(comp?.TecniciUm ?? comp?.UdM ?? comp?.Udm ?? comp?.UM ?? comp?.MagUM ?? comp?.UnitaMisura ?? "").trim();
+        }
+
+        function isIntegerQtyComp(comp) {
+            const udm = getCompUdm(comp).toUpperCase().replace(/\s+/g, "").replace(/\.+$/g, "");
+            return udm === "N" || udm === "PZ";
+        }
+
+        function formatQtyForComp(qty, comp) {
+            if (!Number.isFinite(qty)) return 0;
+            return isIntegerQtyComp(comp) ? Math.round(qty) : Number(qty.toFixed(4));
+        }
+
+        function parseQtyForComp(v, comp) {
+            return isIntegerQtyComp(comp) ? parseIntQty(v) : parseSystemQty(v);
+        }
+
+        function parseQtyForCompOrZero(v, comp) {
+            const n = parseQtyForComp(v, comp);
+            return Number.isFinite(n) ? n : 0;
+        }
 
         function sameQty(a, b) {
             return Math.abs(Number(a || 0) - Number(b || 0)) < 0.000001;
@@ -2370,9 +2413,9 @@
 
             if (!Number.isFinite(baseQty) || baseQty <= 0) return 0;
             if (!Number.isFinite(qLavorata) || qLavorata <= 0) return 0;
-            if (!Number.isFinite(qOrdTotale) || qOrdTotale <= 0) return Math.round(baseQty);
+            if (!Number.isFinite(qOrdTotale) || qOrdTotale <= 0) return formatQtyForComp(baseQty, comp);
 
-            return Math.round((baseQty * qLavorata) / qOrdTotale);
+            return formatQtyForComp((baseQty * qLavorata) / qOrdTotale, comp);
         }
 
         function setGroupLottiAlert(root, message) {
@@ -2695,7 +2738,7 @@
                                     <td>
                                         <input class="form-control form-control-sm"
                                                data-field="lotto_quantita"
-                                               value="${escHtml((row.modalita_lotti || "sl") === "m" ? (comp.Quantita || "") : String(getGroupQuantitaRichiestaComponente(row, comp) || ""))}">
+                                               value="${escHtml(String(formatQtyForComp((row.modalita_lotti || "sl") === "m" ? parseSystemQty(comp.Quantita) : getGroupQuantitaRichiestaComponente(row, comp), comp) || ""))}">
                                     </td>
                                     ${isMacchinaLotti ? "" : `
                                     <td>
@@ -2746,11 +2789,14 @@
                 const select = tr.querySelector('[data-field="lotto"]');
                 const lotto = select?.value || "";
                 const opt = select?.options?.[select.selectedIndex];
-                const qty = tr.querySelector('[data-field="lotto_quantita"]')?.value?.trim() || "";
+                const qtyRaw = tr.querySelector('[data-field="lotto_quantita"]')?.value?.trim() || "";
+                const comp = state.data.find(c => String(c.CodArt || "") === codArt) || {};
+                const qty = parseQtyForComp(qtyRaw, comp);
                 const esito = tr.querySelector('[data-field="esito"]')?.value || "ok";
 
-                if (!lotto || !qty) {
-                    showGroupCloseFeedback(`Compilare lotto e quantità per ${codArt}.`);
+                if (!lotto || !Number.isFinite(qty) || qty <= 0) {
+                    const tipoQty = isIntegerQtyComp(comp) ? " intera" : "";
+                    showGroupCloseFeedback(`Compilare lotto e quantità${tipoQty} > 0 per ${codArt}.`);
                     return false;
                 }
 
@@ -2758,7 +2804,7 @@
                     CodArt: codArt,
                     RifLottoAlfa: lotto,
                     CodMag: opt?.dataset?.codmag || "",
-                    Quantita: qty,
+                    Quantita: String(formatQtyForComp(qty, comp)),
                     Esito: esito
                 });
             }

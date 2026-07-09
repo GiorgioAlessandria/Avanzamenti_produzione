@@ -23,14 +23,17 @@ def app_ctx(tmp_path):
         yield app
 
 
-def test_parse_qty_decimal_accepts_blank_comma_and_invalid(mod):
-    assert mod._parse_qty_decimal("") == Decimal("0")
-    assert mod._parse_qty_decimal("1,25") == Decimal("1.25")
-    assert mod._parse_qty_decimal("7") == Decimal("7")
+def test_parse_qty_decimal_accepts_blank_comma_and_invalid():
+    from app_odp.services import order_helpers as helpers
+
+    assert helpers._parse_qty_decimal("") == Decimal("0")
+    assert helpers._parse_qty_decimal("1,25") == Decimal("1.25")
+    assert helpers._parse_qty_decimal("10,00") == Decimal("10.00")
+    assert helpers._parse_qty_decimal("1.234,00") == Decimal("1234.00")
+    assert helpers._parse_qty_decimal("7") == Decimal("7")
 
     with pytest.raises(ValueError, match="Quantità non valida"):
-        mod._parse_qty_decimal("abc")
-
+        helpers._parse_qty_decimal("abc")
 
 def test_parse_qty_integer_decimal_requires_integral(mod):
     assert mod._parse_qty_integer_decimal("5") == Decimal("5")
@@ -40,27 +43,145 @@ def test_parse_qty_integer_decimal_requires_integral(mod):
         mod._parse_qty_integer_decimal("5.5", field_name="pezzi")
 
 
-def test_parse_bool_flag_and_decimal_to_text(mod):
-    assert mod._parse_bool_flag(True) is True
-    assert mod._parse_bool_flag("Sì") is True
-    assert mod._parse_bool_flag("on") is True
-    assert mod._parse_bool_flag("0") is False
-    assert mod._parse_bool_flag(None) is False
+def test_parse_bool_flag_and_decimal_to_text():
+    from app_odp.services import order_helpers as helpers
 
-    assert mod._decimal_to_text(Decimal("0")) == "0"
-    assert mod._decimal_to_text(Decimal("12.3400")) == "12.34"
-    assert mod._decimal_to_text(5) == "5"
+    assert helpers._parse_bool_flag(True) is True
+    assert helpers._parse_bool_flag("Sì") is True
+    assert helpers._parse_bool_flag("on") is True
+    assert helpers._parse_bool_flag("0") is False
+    assert helpers._parse_bool_flag(None) is False
 
+    assert helpers._decimal_to_text(Decimal("0")) == "0"
+    assert helpers._decimal_to_text(Decimal("12.00")) == "12"
+    assert helpers._decimal_to_text(Decimal("12.3400")) == "12.34"
+    assert helpers._decimal_to_text("10,00") == "10"
+    assert helpers._decimal_to_text(5) == "5"
 
-def test_qty_da_lavorare_helpers_fallback_to_quantita(mod):
+def test_qty_da_lavorare_helpers_fallback_to_quantita():
+    from app_odp.services import order_helpers as helpers
+
     ordine = SimpleNamespace(QtyDaLavorare="", Quantita="12,5")
-    assert mod._qty_da_lavorare_text(ordine) == "12,5"
-    assert mod._qty_da_lavorare_decimal(ordine) == Decimal("12.5")
+    assert helpers._qty_da_lavorare_text(ordine) == "12,5"
+    assert helpers._qty_da_lavorare_decimal(ordine) == Decimal("12.5")
 
     ordine2 = SimpleNamespace(QtyDaLavorare="7", Quantita="12")
-    assert mod._qty_da_lavorare_text(ordine2) == "7"
-    assert mod._qty_da_lavorare_decimal(ordine2) == Decimal("7")
+    assert helpers._qty_da_lavorare_text(ordine2) == "7"
+    assert helpers._qty_da_lavorare_decimal(ordine2) == Decimal("7")
 
+    ordine3 = SimpleNamespace(QtyDaLavorare="10,00", Quantita="12")
+    assert helpers._qty_da_lavorare_text(ordine3) == "10"
+    assert helpers._qty_da_lavorare_decimal(ordine3) == Decimal("10")
+
+
+
+def test_qty_udm_helpers_accept_decimals_only_for_decimal_units():
+    from app_odp.services import order_helpers as helpers
+
+    assert helpers._qty_requires_integer_udm("N.") is True
+    assert helpers._qty_requires_integer_udm("PZ.") is True
+    assert helpers._qty_requires_integer_udm("KG") is False
+    assert helpers._component_udm({"TecniciUm": "KG"}) == "KG"
+
+    assert helpers._parse_qty_for_udm("2", "PZ.") == Decimal("2")
+    with pytest.raises(ValueError):
+        helpers._parse_qty_for_udm("2,5", "PZ.")
+
+    assert helpers._parse_qty_for_udm("2,5", "KG") == Decimal("2.5")
+    assert helpers._decimal_to_text_for_udm(Decimal("2.5000"), "KG") == "2.5"
+    assert helpers._decimal_to_text_for_udm(Decimal("2.00"), "N.") == "2"
+
+
+def test_componenti_lotto_per_ordine_keeps_decimal_giacenza_for_decimal_udm(monkeypatch):
+    from app_odp.services import ordini_lotti_service as service
+
+    class FakeQuery:
+        def __init__(self, rows_by_code):
+            self.rows_by_code = rows_by_code
+            self.cod_art = ""
+
+        def filter_by(self, CodArt):
+            self.cod_art = CodArt
+            return self
+
+        def all(self):
+            return self.rows_by_code.get(self.cod_art, [])
+
+    fake_giacenze = {
+        "MAT-KG": [SimpleNamespace(RifLottoAlfa="L-KG", Giacenza="2,75", CodMag="M1")],
+        "MAT-PZ": [SimpleNamespace(RifLottoAlfa="L-PZ", Giacenza="3,00", CodMag="M1")],
+    }
+    monkeypatch.setattr(
+        service,
+        "GiacenzaLotti",
+        SimpleNamespace(query=FakeQuery(fake_giacenze)),
+    )
+    ordine = SimpleNamespace(
+        GestioneLotto="si",
+        FaseAttiva="1",
+        DistintaMateriale=json.dumps(
+            [
+                {
+                    "CodArt": "MAT-KG",
+                    "DesArt": "Materiale kg",
+                    "Quantita": "1,25",
+                    "NumFase": "1",
+                    "GestioneLotto": "si",
+                    "TecniciUm": "KG",
+                },
+                {
+                    "CodArt": "MAT-PZ",
+                    "DesArt": "Materiale pezzi",
+                    "Quantita": "3",
+                    "NumFase": "1",
+                    "GestioneLotto": "si",
+                    "TecniciUm": "PZ.",
+                },
+            ]
+        ),
+    )
+
+    rows = service._componenti_lotto_per_ordine(ordine, include_senza_lotti=True)
+    by_code = {row["CodArt"]: row for row in rows}
+
+    assert by_code["MAT-KG"]["TecniciUm"] == "KG"
+    assert by_code["MAT-KG"]["lotti"][0]["Giacenza"] == "2.75"
+    assert by_code["MAT-PZ"]["TecniciUm"] == "PZ."
+    assert by_code["MAT-PZ"]["lotti"][0]["Giacenza"] == "3"
+
+
+def test_partial_distinta_scaling_uses_original_order_total_after_partial():
+    from app_odp.routes_modules.ordini import _quantita_totale_ordine_decimal
+    from app_odp.services.erp_export_service import _build_export_distinta_base
+
+    ordine = SimpleNamespace(
+        Quantita="10",
+        QtyDaLavorare="6",
+        DistintaMateriale=json.dumps(
+            [
+                {
+                    "CodArt": "CMP-001",
+                    "DesArt": "Componente",
+                    "Quantita": "10",
+                    "NumFase": "1",
+                    "GestioneLotto": "no",
+                }
+            ]
+        ),
+    )
+
+    q_ordine_totale = _quantita_totale_ordine_decimal(ordine, Decimal("6"))
+    export_distinta = json.loads(
+        _build_export_distinta_base(
+            ordine=ordine,
+            fase_corrente="1",
+            q_lavorata=Decimal("3"),
+            q_tot=q_ordine_totale,
+        )
+    )
+
+    assert q_ordine_totale == Decimal("10")
+    assert export_distinta[0]["Quantita"] == "3"
 
 def test_parse_distinta_materiale_handles_plain_double_encoded_and_bad_json(mod):
     plain = SimpleNamespace(DistintaMateriale='[{"CodArt": "A1"}]')
@@ -3412,8 +3533,19 @@ def test_api_chiudi_ordine_partial_success_writes_outbox_logs_and_keeps_runtime_
     ordine = make_ordine(
         StatoOrdine="Attivo",
         Quantita="10",
-        QtyDaLavorare="10",
+        QtyDaLavorare="6",
         GestioneLotto="no",
+        DistintaMateriale=json.dumps(
+            [
+                {
+                    "CodArt": "CMP-001",
+                    "DesArt": "Componente",
+                    "Quantita": "10",
+                    "NumFase": "1",
+                    "GestioneLotto": "no",
+                }
+            ]
+        ),
     )
     stato = SimpleNamespace(
         IdDocumento=ordine.IdDocumento,
@@ -3428,6 +3560,7 @@ def test_api_chiudi_ordine_partial_success_writes_outbox_logs_and_keeps_runtime_
     )
     outbox = SimpleNamespace(outbox_id=901, status="pending")
     pushed = []
+    captured = {}
 
     monkeypatch.setattr(mod, "_get_visible_odp_by_key", lambda *a, **k: ordine)
     monkeypatch.setattr(mod, "_componenti_lotto_per_ordine", lambda *a, **k: [])
@@ -3444,11 +3577,12 @@ def test_api_chiudi_ordine_partial_success_writes_outbox_logs_and_keeps_runtime_
         return 60
 
     def fake_queue_export(ordine, fase_corrente, payload):
+        captured["payload"] = payload
         return outbox
 
     def fake_transition(**kwargs):
         kwargs["ordine"].StatoOrdine = "In Sospeso"
-        kwargs["ordine"].QtyDaLavorare = "6"
+        kwargs["ordine"].QtyDaLavorare = kwargs["qty_residua_text"]
         kwargs["ordine"].FaseAttiva = kwargs["fase_corrente"]
         kwargs["stato"].Stato_odp = "In Sospeso"
         kwargs["stato"].Fase = kwargs["fase_corrente"]
@@ -3474,7 +3608,7 @@ def test_api_chiudi_ordine_partial_success_writes_outbox_logs_and_keeps_runtime_
         json={
             "id_documento": ordine.IdDocumento,
             "id_riga": ordine.IdRiga,
-            "quantita_conforme": "4",
+            "quantita_conforme": "3",
             "quantita_non_conforme": "0",
             "note": "parziale test",
             "chiusura_parziale": True,
@@ -3492,24 +3626,27 @@ def test_api_chiudi_ordine_partial_success_writes_outbox_logs_and_keeps_runtime_
     assert payload["chiusura_parziale"] is True
     assert payload["fase"] == "1"
     assert payload["fase_successiva"] == "1"
-    assert payload["qty_da_lavorare"] == "6"
+    assert payload["qty_da_lavorare"] == "3"
     assert payload["outbox_id"] == 901
     assert payload["outbox_status"] == "pending"
 
+    export_distinta = json.loads(captured["payload"]["distinta_base"])
+    assert export_distinta[0]["Quantita"] == "3"
+
     assert ordine.StatoOrdine == "In Sospeso"
-    assert ordine.QtyDaLavorare == "6"
+    assert ordine.QtyDaLavorare == "3"
     assert fake_db.flush_count == 1
     assert fake_db.commit_count == 1
     assert fake_db.deleted == []
     assert pushed
     assert pushed[0]["topic"] == "fase_consuntivata_parziale"
-    assert pushed[0]["extra_payload"]["qty_da_lavorare_pre"] == "10"
-    assert pushed[0]["extra_payload"]["qty_da_lavorare_post"] == "6"
+    assert pushed[0]["extra_payload"]["qty_da_lavorare_pre"] == "6"
+    assert pushed[0]["extra_payload"]["qty_da_lavorare_post"] == "3"
     assert pushed[0]["extra_payload"]["chiusura_parziale"] is True
 
     input_logs = [obj for obj in fake_db.added if hasattr(obj, "NoteChiusura")]
     assert input_logs
-    assert input_logs[-1].NoteChiusura.startswith("[PARZIALE] residuo=6;")
+    assert input_logs[-1].NoteChiusura.startswith("[PARZIALE] residuo=3;")
 
 
 def test_api_chiudi_ordine_partial_generates_lotto_prodotto_with_only_ok_parent_lots(

@@ -1,3 +1,4 @@
+{% set show_decimal_control = giacenze_rows|selectattr("HasMagazziniDecimaliNonValidi")|list|length %}
 {% if giacenze_rows %}
     {% for row in giacenze_rows %}
         {% set mag0 = row.Mag_0 if row.Mag_0 is not none else 0 %}
@@ -11,12 +12,17 @@
             data-revisione="{{ row.IndiceModifica or '' }}"
 
             data-negative="{{ '1' if is_negative_mag0 else '0' }}"
-            data-understock="{{ '1' if is_understock_mag0 else '0' }}">
+            data-understock="{{ '1' if is_understock_mag0 else '0' }}"
+            data-decimal-control="{{ '1' if row.HasMagazziniDecimaliNonValidi else '0' }}">
             <td>{{ row.CodArt or '' }}</td>
             <td>{{ row.VarianteArt or '' }}</td>
             <td>{{ row.IndiceModifica or '' }}</td>
             <td>{{ row.DesArt or '' }}</td>
             <td>{{ row.MagUM or '' }}</td>
+            <td class="js-acq-decimal-control-col{% if not show_decimal_control %} d-none{% endif %}{% if row.HasMagazziniDecimaliNonValidi %} text-danger fw-semibold{% endif %}"
+                title="{{ row.MagazziniDecimaliNonValidiText or '' }}">
+                {{ row.MagazziniDecimaliNonValidiText or '' }}
+            </td>
             <td class="{% if row.Mag_6 < 0 %}text-danger fw-bold{% endif %}">
                 {{ row.Mag_6 }}
             </td>
@@ -44,8 +50,8 @@
         </tr>
     {% endfor %}
 {% else %}
-    <tr>
-        <td colspan="15"
+    <tr data-empty="1">
+        <td colspan="{{ 16 if show_decimal_control else 15 }}"
             class="text-center text-muted py-4">
             Nessuna giacenza disponibile.
         </td>

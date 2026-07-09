@@ -31,10 +31,12 @@ from app_odp.services.ordini_service import (
 from app_odp.services.order_helpers import (
     ROME_TZ,
     _decimal_to_text,
+    _component_udm,
     _norm_text,
     _now_rome_dt,
     _parse_bool_flag,
     _parse_qty_decimal,
+    _parse_qty_for_udm,
     _qty_da_lavorare_decimal,
     _qty_da_lavorare_text,
     _sync_active_fields_for_phase,
@@ -122,6 +124,14 @@ def _response_json_payload(result) -> dict:
     if callable(getter):
         return getter(silent=True) or {}
     return {}
+
+
+def _quantita_totale_ordine_decimal(ordine, fallback: Decimal) -> Decimal:
+    try:
+        q_ordine = _parse_qty_decimal(getattr(ordine, "Quantita", ""))
+    except ValueError:
+        return fallback
+    return q_ordine if q_ordine > 0 else fallback
 
 
 def _merge_fragment_payload(target: dict, source_result) -> None:
@@ -1972,6 +1982,7 @@ def _chiudi_ordine_da_payload(
         q_tot = _qty_da_lavorare_decimal(ordine, stato=stato)
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 400
+    q_ordine_totale = _quantita_totale_ordine_decimal(ordine, q_tot)
 
     try:
         q_ok = (
@@ -2002,7 +2013,7 @@ def _chiudi_ordine_da_payload(
         ordine=ordine,
         fase_corrente=fase_corrente,
         q_lavorata=q_lavorata,
-        q_tot=q_tot,
+        q_tot=q_ordine_totale,
     )
     if chiusura_parziale:
         if q_lavorata <= 0:
@@ -2031,6 +2042,11 @@ def _chiudi_ordine_da_payload(
         ordine,
         include_senza_lotti=True,
     )
+    componenti_lotto_by_cod = {
+        _norm_text(comp.get("CodArt")): comp
+        for comp in componenti_richiesti_lotto
+        if isinstance(comp, dict)
+    }
     if componenti_richiesti_lotto and not lotti_input:
         return (
             jsonify(
@@ -2046,9 +2062,11 @@ def _chiudi_ordine_da_payload(
         for lotto_row in lotti_input:
             cod_art = _norm_text(lotto_row.get("CodArt"))
             rif_lotto = _norm_text(lotto_row.get("RifLottoAlfa"))
+            udm = _component_udm(componenti_lotto_by_cod.get(cod_art, lotto_row))
             try:
-                qty = _parse_qty_integer_decimal(
+                qty = _parse_qty_for_udm(
                     lotto_row.get("Quantita"),
+                    udm,
                     f"Quantità lotto {cod_art}/{rif_lotto}",
                 )
             except ValueError as e:
@@ -2078,6 +2096,7 @@ def _chiudi_ordine_da_payload(
                     400,
                 )
 
+            lotto_row["Quantita"] = _decimal_to_text(qty)
             cod_mag = _norm_text(lotto_row.get("CodMag"))
 
             lotto_query = GiacenzaLotti.query.filter_by(
@@ -2594,6 +2613,11 @@ def _chiudi_ordine_montaggio_macchina_da_payload(
         include_senza_lotti=True,
         ignore_parent_gestione_lotto=True,
     )
+    componenti_lotto_by_cod = {
+        _norm_text(comp.get("CodArt")): comp
+        for comp in componenti_richiesti_lotto
+        if isinstance(comp, dict)
+    }
     if componenti_richiesti_lotto and not lotti_input:
         return (
             jsonify(
@@ -2609,8 +2633,13 @@ def _chiudi_ordine_montaggio_macchina_da_payload(
         for lotto_row in lotti_input:
             cod_art = _norm_text(lotto_row.get("CodArt"))
             rif_lotto = _norm_text(lotto_row.get("RifLottoAlfa"))
+            udm = _component_udm(componenti_lotto_by_cod.get(cod_art, lotto_row))
             try:
-                qty = _parse_qty_decimal(lotto_row.get("Quantita"))
+                qty = _parse_qty_for_udm(
+                    lotto_row.get("Quantita"),
+                    udm,
+                    f"Quantità lotto {cod_art}/{rif_lotto}",
+                )
             except ValueError as e:
                 return jsonify(
                     {"ok": False, "error": f"Quantità lotto non valida: {e}"}
@@ -2632,6 +2661,7 @@ def _chiudi_ordine_montaggio_macchina_da_payload(
                     }
                 ), 400
 
+            lotto_row["Quantita"] = _decimal_to_text(qty)
             cod_mag = _norm_text(lotto_row.get("CodMag"))
 
             lotto_query = GiacenzaLotti.query.filter_by(
@@ -2669,6 +2699,7 @@ def _chiudi_ordine_montaggio_macchina_da_payload(
         q_tot = _qty_da_lavorare_decimal(ordine, stato=stato)
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 400
+    q_ordine_totale = _quantita_totale_ordine_decimal(ordine, q_tot)
 
     q_ok = q_tot
     q_nok = Decimal("0")
@@ -2724,7 +2755,7 @@ def _chiudi_ordine_montaggio_macchina_da_payload(
         ordine=ordine,
         fase_corrente=fase_corrente,
         q_lavorata=q_lavorata,
-        q_tot=q_tot,
+        q_tot=q_ordine_totale,
     )
     payload = _build_phase_payload(
         ordine=ordine,

@@ -74,7 +74,11 @@
                     <div class="acq-section-panel h-100"
                          data-section="giacenza"
                          style="min-height: 0;">
-                        {% include "partials/_acquisti_giacenza.j2" %}
+                        <div id="acquisti_giacenza_section"
+                             class="h-100"
+                             style="min-height: 0;">
+                            {% include "partials/_acquisti_giacenza.j2" %}
+                        </div>
                     </div>
 
                     <div class="acq-section-panel d-none h-100"
@@ -211,6 +215,14 @@
             function applyAcqGiacenzaRowState() {
                 const table = document.getElementById("acquisti_giacenza_table");
                 if (!table) return;
+
+                const showDecimalControl = Boolean(table.querySelector("tbody tr[data-decimal-control='1']"));
+                table.querySelectorAll(".js-acq-decimal-control-col").forEach((cell) => {
+                    cell.classList.toggle("d-none", !showDecimalControl);
+                });
+
+                const emptyCell = table.querySelector("tbody tr[data-empty='1'] td");
+                if (emptyCell) emptyCell.colSpan = showDecimalControl ? 16 : 15;
 
                 table.querySelectorAll("tbody tr").forEach((row) => {
                     row.classList.remove("row-acq-negative", "row-acq-understock");

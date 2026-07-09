@@ -23,6 +23,7 @@ from app_odp.services.order_helpers import (
     _decimal_to_text,
     _parse_distinta_materiale,
     _parse_qty_decimal,
+    _qty_requires_integer_udm,
     _safe_float,
     _qty_da_lavorare_text,
     _qty_da_lavorare_decimal,
@@ -136,6 +137,51 @@ def _build_acquisti_ordini_rows() -> dict:
 
 ACQUISTI_MAGAZZINI_GIACENZA = ("0", "6", "10", "11", "12", "13")
 ACQUISTI_MAGAZZINI_MATERIALE = ("0",)
+ACQUISTI_MAGAZZINI_GIACENZA_CONTROLLO = ("6", "0", "10", "11", "12", "13")
+ACQUISTI_MAGAZZINI_GIACENZA_LABELS = {
+    "6": "6-Accettazione",
+    "0": "0-Principale",
+    "10": "10-Scarti",
+    "11": "11-Obsoleto",
+    "12": "12-DEMO",
+    "13": "13-Rottamare",
+}
+
+
+def _decimal_fraction_text(value) -> str:
+    try:
+        qty = _parse_qty_decimal(value)
+    except ValueError:
+        return ""
+
+    if qty == qty.to_integral_value():
+        return ""
+
+    return _decimal_to_text(qty)
+
+
+def _acquisti_giacenza_decimal_warnings(row: dict) -> list[str]:
+    if not _qty_requires_integer_udm(row.get("MagUM")):
+        return []
+
+    warnings = []
+    for mag in ACQUISTI_MAGAZZINI_GIACENZA_CONTROLLO:
+        qty_text = _decimal_fraction_text(row.get(f"Mag_{mag}", 0))
+        if qty_text:
+            label = ACQUISTI_MAGAZZINI_GIACENZA_LABELS.get(mag, mag)
+            warnings.append(f"{label}: {qty_text}")
+
+    return warnings
+
+
+def _apply_acquisti_giacenza_controls(row: dict) -> dict:
+    warnings = _acquisti_giacenza_decimal_warnings(row)
+    row["MagazziniDecimaliNonValidi"] = warnings
+    row["HasMagazziniDecimaliNonValidi"] = bool(warnings)
+    row["MagazziniDecimaliNonValidiText"] = (
+        "UdM intera con decimali: " + ", ".join(warnings) if warnings else ""
+    )
+    return row
 
 
 def _build_acquisti_giacenze_map(
@@ -534,6 +580,9 @@ def _build_acquisti_giacenze_rows() -> list[dict]:
         if mag_key in rows[key]:
             rows[key][mag_key] += _safe_float(getattr(giac, "Giacenza", 0))
 
+    for row in rows.values():
+        _apply_acquisti_giacenza_controls(row)
+
     return sorted(
         rows.values(),
         key=lambda r: (
@@ -649,12 +698,16 @@ def _build_acquisti_excel_workbook(section: str, rows: list[dict]) -> Workbook:
     wb = Workbook()
     ws = wb.active
     if section == "giacenza":
+        show_decimal_control = any(
+            row.get("HasMagazziniDecimaliNonValidi") for row in rows
+        )
         headers = [
             "CodArt",
             "Variante",
             "Revisione",
             "Descrizione",
             "UdM",
+            *(["Controllo"] if show_decimal_control else []),
             "6-Accettazione",
             "0-Principale",
             "10-Scarti",
@@ -673,6 +726,11 @@ def _build_acquisti_excel_workbook(section: str, rows: list[dict]) -> Workbook:
                 row.get("IndiceModifica", ""),
                 row.get("DesArt", ""),
                 row.get("MagUM", ""),
+                *(
+                    [row.get("MagazziniDecimaliNonValidiText", "")]
+                    if show_decimal_control
+                    else []
+                ),
                 row.get("Mag_6", 0),
                 row.get("Mag_0", 0),
                 row.get("Mag_10", 0),

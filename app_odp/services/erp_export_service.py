@@ -14,7 +14,8 @@ from app_odp.services.order_helpers import (
     _parse_distinta_materiale,
     _fase_to_int,
     _scaled_component_qty,
-    _decimal_to_text,
+    _component_udm,
+    _decimal_to_text_for_udm,
 )
 
 
@@ -358,7 +359,7 @@ def _build_export_distinta_base(
                     or comp.get("ProgressivoRiga")
                     or progressivo_riga
                 ),
-                "Quantita": _decimal_to_text(qty_scalata),
+                "Quantita": _decimal_to_text_for_udm(qty_scalata, _component_udm(comp)),
                 "VarianteArt": _norm_text(comp.get("VarianteArt", "")),
             }
         )

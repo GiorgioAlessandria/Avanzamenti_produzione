@@ -143,8 +143,8 @@ def _qty_da_lavorare_text(ordine, stato=None) -> str:
     if stato is not None:
         qty_runtime = _norm_text(getattr(stato, "QtyDaLavorare", ""))
         if qty_runtime:
-            return qty_runtime
-    return _norm_text(getattr(ordine, "QtyDaLavorare", "")) or _norm_text(
+            return _qty_text(qty_runtime)
+    return _qty_text(getattr(ordine, "QtyDaLavorare", "")) or _qty_text(
         ordine.Quantita
     )
 
@@ -178,7 +178,7 @@ def _seconds_to_tempo_text(seconds: int) -> str:
 
 
 def _parse_qty_decimal(value) -> Decimal:
-    raw = _norm_text(value).replace(",", ".")
+    raw = _decimal_input_text(value)
     if raw == "":
         return Decimal("0")
     try:
@@ -194,13 +194,65 @@ def _parse_qty_integer_decimal(value, field_name: str = "Quantità") -> Decimal:
     return q
 
 
+def _normalize_udm(value) -> str:
+    return _norm_text(value).upper().replace(" ", "").rstrip(".")
+
+
+def _qty_requires_integer_udm(udm) -> bool:
+    return _normalize_udm(udm) in {"N", "PZ"}
+
+
+def _component_udm(row) -> str:
+    keys = ("TecniciUm", "UdM", "Udm", "UM", "MagUM", "UnitaMisura")
+    for key in keys:
+        value = row.get(key) if isinstance(row, dict) else getattr(row, key, "")
+        text = _norm_text(value)
+        if text:
+            return text
+    return ""
+
+
+def _parse_qty_for_udm(value, udm, field_name: str = "Quantità") -> Decimal:
+    if _qty_requires_integer_udm(udm):
+        return _parse_qty_integer_decimal(value, field_name)
+    return _parse_qty_decimal(value)
+
+
+def _decimal_to_text_for_udm(value: Decimal, udm) -> str:
+    if not isinstance(value, Decimal):
+        value = _parse_qty_decimal(value)
+    if _qty_requires_integer_udm(udm):
+        value = value.to_integral_value(rounding=ROUND_HALF_UP)
+    return _decimal_to_text(value)
+
+
 def _decimal_to_text(value: Decimal) -> str:
     if not isinstance(value, Decimal):
-        value = Decimal(str(value))
+        value = _parse_qty_decimal(value)
     s = format(value.normalize(), "f") if value != 0 else "0"
     if "." in s:
         s = s.rstrip("0").rstrip(".")
     return s or "0"
+
+
+def _decimal_input_text(value) -> str:
+    raw = _norm_text(value).replace(" ", "")
+    if "," in raw and "." in raw:
+        if raw.rfind(",") > raw.rfind("."):
+            return raw.replace(".", "").replace(",", ".")
+        return raw.replace(",", "")
+    return raw.replace(",", ".")
+
+
+def _qty_text(value) -> str:
+    raw = _norm_text(value)
+    if not raw:
+        return ""
+    try:
+        text = _decimal_to_text(raw)
+    except ValueError:
+        return raw
+    return text.replace(".", ",") if "," in raw and "." not in raw else text
 
 
 def _safe_float(value) -> float:

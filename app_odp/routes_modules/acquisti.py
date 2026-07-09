@@ -119,6 +119,10 @@ def api_acquisti_bridge():
     scorte_rows = _build_acquisti_scorte_rows()
 
     fragments = {
+        "acquisti_giacenza_section": render_template(
+            "partials/_acquisti_giacenza.j2",
+            giacenze_rows=giacenze_rows,
+        ),
         "tbody_acquisti_giacenza": render_template(
             "partials/_acquisti_giacenza_rows.j2",
             giacenze_rows=giacenze_rows,
