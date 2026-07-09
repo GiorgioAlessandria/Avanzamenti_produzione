@@ -10,12 +10,12 @@ from app_odp.operator_session import (
     operator_perm_required,
 )
 
-from app_odp.routes import (
-    main_bp,
-    _norm_text,
+from app_odp.routes_blueprint import main_bp
+from app_odp.services.etichette_service import (
     _print_label_png_to_windows_printer,
     _resolve_label_file_path,
 )
+from app_odp.services.order_helpers import _norm_text
 
 
 @main_bp.get("/etichette/<path:filename>")

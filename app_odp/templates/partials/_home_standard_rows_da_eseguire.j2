@@ -1,5 +1,5 @@
 {% for singolo_odp in odp %}
-    {% if singolo_odp.StatoOrdine == "Pianificata" %}
+    {% if not (singolo_odp.IsWorkGroup|default(false)) and singolo_odp.StatoOrdine == "Pianificata" %}
         {% set pr = singolo_odp.PrioritaNumero if singolo_odp.PrioritaNumero is defined else none %}
         {% set pr_class =
             'table-danger' if pr == 1 else

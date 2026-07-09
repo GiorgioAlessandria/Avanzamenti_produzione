@@ -1,0 +1,96 @@
+{% if scorte_rows %}
+    {% for row in scorte_rows %}
+        <tr data-id="{{ row.Id }}"
+            data-codart="{{ row.CodArt or '' }}"
+            data-variante="{{ row.VarianteArt or '' }}"
+            data-revisione="{{ row.IndiceModifica or '' }}"
+            data-desart="{{ row.DesArt or '' }}"
+            data-stato="{% if row.Annullata %}Annullata{% else %}{{ row.Stato or '' }}{% endif %}"
+            data-annullata="{{ '1' if row.Annullata else '0' }}"
+            data-segnalatoda="{{ row.SegnalatoDa or '' }}"
+            class="
+                {% if row.Annullata %}
+                    table-secondary text-muted
+                {% elif row.Stato == 'Ordinata' %}
+                    table-success
+                {% elif row.ScortaApertaOltre3Giorni %}
+                    table-danger
+                {% elif not row.LookupTrovato %}
+                    table-warning
+                {% endif %}">
+            <td>{{ row.DataLetturaText }}</td>
+            <td>{{ row.CodArt }}</td>
+            <td>{{ row.VarianteArt }}</td>
+            <td>{{ row.IndiceModifica }}</td>
+            <td>
+                {{ row.DesArt or '' }}
+                {% if not row.LookupTrovato %}
+                    <div class="small text-danger">Non trovato nel lookup</div>
+                {% endif %}
+            </td>
+            <td>{{ row.PuntoRiordinoText }}</td>
+            <td>{{ row.PianTempoApprovFisso or '' }}</td>
+            <td>{{ row.LottoRiordinoText }}</td>
+            <td>
+                {% if row.Annullata %}
+                    Annullata
+                {% else %}
+                    {{ row.Stato }}
+                    {% if row.ScortaApertaOltre3Giorni %}
+                        <div class="small fw-semibold text-danger">
+                            Aperta da oltre 3 giorni
+                        </div>
+                    {% endif %}
+                {% endif %}
+            </td>
+            <td>{{ row.SegnalatoDa }}</td>
+            <td>{{ row.RepartoSegnalatore }}</td>
+            <td style="min-width: 220px;">
+                <textarea class="form-control form-control-sm js-acq-scorta-note"
+                          rows="1">{{ row.Note }}</textarea>
+            </td>
+            <td class="text-nowrap">
+                {% if not row.Annullata %}
+                    {% if row.Stato == 'Aperta' %}
+                        <button type="button"
+                                class="btn btn-sm btn-success js-acq-scorta-action"
+                                data-id="{{ row.Id }}"
+                                data-action="ordinata">
+                            Ordinata
+                        </button>
+                    {% else %}
+                        <button type="button"
+                                class="btn btn-sm btn-outline-secondary js-acq-scorta-action"
+                                data-id="{{ row.Id }}"
+                                data-action="aperta">
+                            Riapri
+                        </button>
+                    {% endif %}
+
+                    <button type="button"
+                            class="btn btn-sm btn-outline-primary js-acq-scorta-action"
+                            data-id="{{ row.Id }}"
+                            data-action="note">
+                        Salva note
+                    </button>
+
+                    <button type="button"
+                            class="btn btn-sm btn-outline-danger js-acq-scorta-action"
+                            data-id="{{ row.Id }}"
+                            data-action="annulla">
+                        Annulla
+                    </button>
+                {% else %}
+                    <span class="text-muted">Annullata</span>
+                {% endif %}
+            </td>
+        </tr>
+    {% endfor %}
+{% else %}
+    <tr>
+        <td colspan="13"
+            class="text-center text-muted py-4">
+            Nessuna scorta segnalata.
+        </td>
+    </tr>
+{% endif %}

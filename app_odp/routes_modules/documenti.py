@@ -14,11 +14,7 @@ from app_odp.operator_session import (
     operator_perm_required,
 )
 
-from app_odp.routes import (
-    main_bp,
-    _decimal_to_text,
-    _norm_text,
-)
+from app_odp.routes_blueprint import main_bp
 
 from app_odp.services.documenti_service import (
     _build_articolo_ordini_attivi_rows,
@@ -32,6 +28,10 @@ from app_odp.services.documenti_service import (
     _normalize_indice_articolo_search,
     _normalize_indice_modifica_for_pdf,
     _normalize_variante_articolo_search,
+)
+from app_odp.services.order_helpers import (
+    _norm_text,
+    _decimal_to_text,
 )
 
 

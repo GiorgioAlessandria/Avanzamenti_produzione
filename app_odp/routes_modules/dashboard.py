@@ -8,16 +8,12 @@ from openpyxl import Workbook
 from app_odp.operator_session import (
     active_token,
     active_user,
+    active_policy,
     operator_or_login_required,
 )
 from app_odp.policy.decorator import require_active_perm
 
-from app_odp.routes import (
-    main_bp,
-    _current_policy,
-    _json_safe,
-    _norm_text,
-)
+from app_odp.routes_blueprint import main_bp
 
 from app_odp.services.dashboard_service import (
     _add_aggregate_sheet,
@@ -30,9 +26,7 @@ from app_odp.services.dashboard_service import (
     _write_kpi_summary_sheet,
     _write_sheet_from_rows,
 )
-from app_odp.routes import (
-    main_bp,
-    _current_policy,
+from app_odp.services.order_helpers import (
     _first_not_blank,
     _json_safe,
     _norm_text,
@@ -68,7 +62,7 @@ def _order_hours_snapshot_reparto(ordine: InputOdp) -> float:
 @main_bp.get("/dashboard-produzione")
 @operator_or_login_required
 def dashboard_produzione():
-    policy = _current_policy()
+    policy = active_policy()
 
     allowed_sections = _dashboard_produzione_allowed_sections(policy)
 
@@ -105,7 +99,7 @@ def dashboard_produzione():
 @main_bp.get("/api/dashboard-produzione/cruscotto")
 @require_active_perm("dashboard_produzione")
 def api_dashboard_produzione_cruscotto():
-    policy = _current_policy()
+    policy = active_policy()
 
     data = _dashboard_build_cruscotto_payload(policy)
 
