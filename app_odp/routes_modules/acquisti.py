@@ -17,10 +17,11 @@ from app_odp.services.acquisti_service import (
     _filter_acquisti_scorte_rows,
     _build_acquisti_excel_workbook,
     _create_scorta_from_qrcode,
+    _scorta_to_row,
     _delete_scorte_chiuse_oltre_7_giorni,
 )
 from app_odp.models import db, AcqScortaSegnalata
-from app_odp.operator_session import active_user
+from app_odp.operator_session import active_policy, active_user
 from app_odp.policy.decorator import require_active_perm
 
 
@@ -118,6 +119,10 @@ def api_acquisti_bridge():
     scorte_rows = _build_acquisti_scorte_rows()
 
     fragments = {
+        "acquisti_giacenza_section": render_template(
+            "partials/_acquisti_giacenza.j2",
+            giacenze_rows=giacenze_rows,
+        ),
         "tbody_acquisti_giacenza": render_template(
             "partials/_acquisti_giacenza_rows.j2",
             giacenze_rows=giacenze_rows,
@@ -152,19 +157,29 @@ def api_scorte_segnala():
     raw_qrcode = payload.get("qrcode", "")
 
     try:
-        row, created = _create_scorta_from_qrcode(raw_qrcode, active_user())
+        row, created = _create_scorta_from_qrcode(
+            raw_qrcode,
+            active_user(),
+            allow_free_text=active_policy().can("scorte_segnalazione_libera"),
+        )
         db.session.commit()
+
+    except PermissionError as exc:
+        db.session.rollback()
+        return jsonify({"ok": False, "error": str(exc)}), 403
 
     except ValueError as exc:
         db.session.rollback()
-        main_bp.logger.warning("Errore di validazione in api_scorte_segnala", exc_info=exc)
-        return jsonify({"ok": False, "error": "Dati non validi per la segnalazione."}), 400
+        main_bp.logger.warning("Errore di validazione in api_scorte_segnala")
+        return jsonify({"ok": False, "error": str(exc)}), 400
 
     except Exception:
         db.session.rollback()
         return jsonify(
             {"ok": False, "error": "Errore durante il salvataggio della scorta."}
         ), 500
+
+    item = _scorta_to_row(row)
 
     return jsonify(
         {
@@ -177,26 +192,26 @@ def api_scorte_segnala():
                 else "Segnalazione già aperta per questo operatore."
             ),
             "item": {
-                "id": row.id,
-                "cod_art": row.CodArt,
-                "variante": row.VarianteArt,
-                "revisione": row.IndiceModifica,
-                "descrizione": row.DesArt,
-                "stato": row.Stato,
-                "segnalato_da": row.SegnalatoDa,
-                "reparto": row.RepartoSegnalatore,
-                "lookup_trovato": bool(row.LookupTrovato),
+                "id": item["Id"],
+                "cod_art": item["CodArt"],
+                "variante": item["VarianteArt"],
+                "revisione": item["IndiceModifica"],
+                "descrizione": item["DesArt"],
+                "stato": item["Stato"],
+                "segnalato_da": item["SegnalatoDa"],
+                "reparto": item["RepartoSegnalatore"],
+                "lookup_trovato": item["LookupTrovato"],
             },
         }
     )
-
 
 @main_bp.patch("/api/acquisti/scorte/<int:scorta_id>")
 @require_active_perm("home_acquisti")
 def api_acquisti_scorta_update(scorta_id):
     payload = request.get_json(silent=True) or {}
     action = _norm_text(payload.get("action")).lower()
-    note = _norm_text(payload.get("note"))
+    has_note = "note" in payload
+    note = _norm_text(payload.get("note")) if has_note else None
 
     row = AcqScortaSegnalata.query.get_or_404(scorta_id)
     now_iso = _now_rome_dt().isoformat(timespec="seconds")
@@ -212,16 +227,20 @@ def api_acquisti_scorta_update(scorta_id):
         row.StatoChangedAt = now_iso
 
     elif action == "annulla":
+        if row.Stato not in {"Aperta", "Ordinata"}:
+            row.Stato = "Aperta"
         row.Annullata = True
         row.StatoChangedAt = now_iso
 
     elif action == "note":
-        pass
+        if not has_note:
+            return jsonify({"ok": False, "error": "Nota mancante."}), 400
 
     else:
         return jsonify({"ok": False, "error": "Azione non valida."}), 400
 
-    row.Note = note
+    if has_note:
+        row.Note = note
 
     try:
         db.session.commit()

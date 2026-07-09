@@ -56,10 +56,11 @@ def api_export_avp_txt():
             export_rows,
             include_time_line=include_time_line,
         )
+        export_suffix = f"{suffix}_{outbox_id}"
         path_txt = _write_txt_content(
             list_line,
             prefix="AVPB",
-            suffix=suffix,
+            suffix=export_suffix,
             encoding="utf-8",
         )
 

@@ -106,4 +106,5 @@ from app_odp.routes_modules import (
     documenti,
     home,
     report_settimanale,
+    storico_ordini,
 )

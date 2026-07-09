@@ -228,22 +228,17 @@ def _phase_ref_for_export(base_ref: str, payload: dict) -> str:
     return _ref_with_suffix(base_ref, payload.get("fase"))
 
 
-def _component_is_phase_managed(component: dict) -> bool:
-    return bool(_text(component.get("NumFase")))
+def _component_row_index(component: dict, fallback: int) -> int:
+    for key in ("IdRigacomponente", "ProgressivoRiga", "IdRigaComponente"):
+        value_int = _to_int(component.get(key))
+        if value_int is not None and value_int > 0:
+            return value_int
+
+    return fallback
 
 
-def _component_ref_for_export(
-    base_ref: str,
-    payload: dict,
-    component: dict,
-) -> str:
-    if not _is_multiphase_payload(payload):
-        return base_ref
-
-    if not _component_is_phase_managed(component):
-        return base_ref
-
-    return _phase_ref_for_export(base_ref, payload)
+def _component_ref_for_export(base_ref: str, component: dict, fallback: int) -> str:
+    return _ref_with_suffix(base_ref, _component_row_index(component, fallback))
 
 
 def txt_generator(
@@ -359,12 +354,21 @@ def txt_generator(
             ore_lavorate=str(tempo_funzionamento),
         )
         lines.append(product_time_line)
+
+    component_row_index = 0
     for component in distinta_base:
         if not isinstance(component, dict):
             continue
 
         cod_art_component = _text(component.get("CodArt"))
         variante_component = _text(component.get("VarianteArt"))
+
+        component_row_index += 1
+        riferimento_ordine_component = _component_ref_for_export(
+            riferimento_ordine_base,
+            component,
+            component_row_index,
+        )
 
         righe_lotto_component = [
             riga
@@ -378,12 +382,6 @@ def txt_generator(
                 lotto_component = _text(riga_lotto_component.get("RifLottoAlfa"))
                 quantita_lotto = _text(riga_lotto_component.get("Quantita"))
                 magazzino_lotto = _text(riga_lotto_component.get("CodMag")) or magazzino
-
-                riferimento_ordine_component = _component_ref_for_export(
-                    riferimento_ordine_base,
-                    payload,
-                    component,
-                )
                 component_line = row_writer(
                     tipo_record="RIG",
                     tipo_documento=710,
@@ -404,11 +402,6 @@ def txt_generator(
                 )
                 lines.append(component_line)
         else:
-            riferimento_ordine_component = _component_ref_for_export(
-                riferimento_ordine_base,
-                payload,
-                component,
-            )
             component_line = row_writer(
                 tipo_record="RIG",
                 tipo_documento=710,

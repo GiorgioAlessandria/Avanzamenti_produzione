@@ -64,7 +64,7 @@
                     </div>
                     <div class="card-body py-2 flex-grow-1 overflow-hidden">
                         <div class="table-responsive acq-montaggio-sl-scroll">
-                            <table class="table table-sm text-center table-striped table-hover table-sortable table-state-rowcolor align-middle mb-0"
+                            <table class="table table-sm text-center table-striped table-hover table-sortable table-selectable table-state-rowcolor align-middle mb-0"
                                    id="acquisti_ordini_montaggio_sl_table">
                                 <thead>
                                 <tr>
@@ -80,7 +80,8 @@
                                 <tbody id="tbody_acquisti_ordini_montaggio_sl">
                                 {% if ordini_rows.montaggio_sl %}
                                     {% for row in ordini_rows.montaggio_sl %}
-                                        <tr data-ordineproduzione="{{ row.OrdineProduzione|e }}">
+                                        <tr data-row-key="{{ row.OrdineProduzione|e }}"
+                                            data-ordineproduzione="{{ row.OrdineProduzione|e }}">
                                             <td>{{ row.OrdineProduzione }}</td>
                                             <td>{{ row.CodArt }}</td>
                                             <td>{{ row.VarianteArt }}</td>
@@ -110,7 +111,7 @@
                     </div>
                     <div class="card-body py-2 flex-grow-1 overflow-hidden">
                         <div class="table-responsive acq-montaggio-m-scroll">
-                            <table class="table table-sm text-center table-striped table-hover table-sortable table-state-rowcolor align-middle mb-0"
+                            <table class="table table-sm text-center table-striped table-hover table-sortable table-selectable table-state-rowcolor align-middle mb-0"
                                    id="acquisti_ordini_montaggio_m_table">
                                 <thead>
                                 <tr>
@@ -124,7 +125,8 @@
                                 <tbody id="tbody_acquisti_ordini_montaggio_m">
                                 {% if ordini_rows.montaggio_m %}
                                     {% for row in ordini_rows.montaggio_m %}
-                                        <tr data-ordineproduzione="{{ row.OrdineProduzione|e }}">
+                                        <tr data-row-key="{{ row.OrdineProduzione|e }}"
+                                            data-ordineproduzione="{{ row.OrdineProduzione|e }}">
                                             <td>{{ row.OrdineProduzione }}</td>
                                             <td>{{ row.CodArt }}</td>
                                             <td>{{ row.DesArt }}</td>
@@ -158,7 +160,7 @@
                 <div class="card-body py-2 flex-grow-1 overflow-hidden">
                     <div class="table-responsive h-100"
                          style="overflow: auto;">
-                        <table class="table table-sm text-center table-striped table-hover table-sortable table-state-rowcolor align-middle mb-0"
+                        <table class="table table-sm text-center table-striped table-hover table-sortable table-selectable table-state-rowcolor align-middle mb-0"
                                id="acquisti_ordini_officina_table">
                             <thead>
                             <tr>
@@ -174,7 +176,8 @@
                             <tbody id="tbody_acquisti_ordini_officina">
                             {% if ordini_rows.officina %}
                                 {% for row in ordini_rows.officina %}
-                                    <tr data-ordineproduzione="{{ row.OrdineProduzione|e }}">
+                                    <tr data-row-key="{{ row.OrdineProduzione|e }}"
+                                            data-ordineproduzione="{{ row.OrdineProduzione|e }}">
                                         <td>{{ row.OrdineProduzione }}</td>
                                         <td>{{ row.CodArt }}</td>
                                         <td>{{ row.VarianteArt }}</td>
@@ -208,7 +211,7 @@
                 <div class="card-body py-2 flex-grow-1 overflow-hidden">
                     <div class="table-responsive h-100"
                          style="overflow: auto;">
-                        <table class="table table-sm table-striped table-hover table-sortable table-state-rowcolor align-middle mb-0"
+                        <table class="table table-sm table-striped table-hover table-sortable table-selectable table-state-rowcolor align-middle mb-0"
                                id="acquisti_ordini_carpenteria_table">
                             <thead>
                             <tr>
@@ -224,7 +227,8 @@
                             <tbody id="tbody_acquisti_ordini_carpenteria">
                             {% if ordini_rows.carpenteria %}
                                 {% for row in ordini_rows.carpenteria %}
-                                    <tr data-ordineproduzione="{{ row.OrdineProduzione|e }}">
+                                    <tr data-row-key="{{ row.OrdineProduzione|e }}"
+                                            data-ordineproduzione="{{ row.OrdineProduzione|e }}">
                                         <td>{{ row.OrdineProduzione }}</td>
                                         <td>{{ row.CodArt }}</td>
                                         <td>{{ row.VarianteArt }}</td>

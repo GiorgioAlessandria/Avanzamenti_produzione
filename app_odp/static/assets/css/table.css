@@ -98,6 +98,320 @@ table.table-state-rowcolor tbody tr.row-state-sospeso {
     color: #000 !important;
 }
 
+@keyframes acqScorteAlertPulse {
+    0%, 100% {
+        box-shadow: inset 0 0 0 9999px rgba(220, 53, 69, 0.18);
+    }
+    50% {
+        box-shadow: inset 0 0 0 9999px rgba(220, 53, 69, 0.82);
+    }
+}
+
+@keyframes acqScorteButtonPulse {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.25);
+    }
+    50% {
+        box-shadow: 0 0 0 0.35rem rgba(220, 53, 69, 0.45);
+    }
+}
+
+@keyframes acqScortaWorkerWalk {
+    0% {
+        opacity: 0;
+        transform: translate(82px, -50%) scale(0.72);
+    }
+    16%, 76% {
+        opacity: 1;
+    }
+    42% {
+        transform: translate(34px, -50%) scale(1);
+    }
+    58% {
+        transform: translate(24px, -50%) scale(1);
+    }
+    100% {
+        opacity: 0;
+        transform: translate(82px, -50%) scale(0.72);
+    }
+}
+
+@keyframes acqScortaRedButtonPress {
+    0%, 42% {
+        transform: translateY(0);
+        box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.2), 0 5px 0 #7f1d1d;
+    }
+    58%, 76% {
+        transform: translateY(5px);
+        box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.2), 0 1px 0 #7f1d1d;
+    }
+    100% {
+        transform: translateY(0);
+        box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.2), 0 5px 0 #7f1d1d;
+    }
+}
+
+@keyframes acqScorteSparkleDriftA {
+    0%, 100% {
+        opacity: 0.22;
+        transform: translate3d(-8%, 3%, 0) rotate(-4deg);
+    }
+    37% {
+        opacity: 0.88;
+    }
+    68% {
+        opacity: 0.45;
+    }
+}
+
+@keyframes acqScorteSparkleDriftB {
+    0%, 100% {
+        opacity: 0.2;
+        transform: translate3d(7%, -4%, 0) rotate(6deg);
+    }
+    43% {
+        opacity: 0.82;
+    }
+    79% {
+        opacity: 0.36;
+    }
+}
+
+.js-acq-section-btn[data-section="scorte"].acq-scorte-alert {
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
+    background-color: #dc3545 !important;
+    border-color: #dc3545 !important;
+    color: #fff !important;
+    font-weight: 700;
+    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.35);
+    animation: acqScorteButtonPulse 1s infinite;
+}
+
+.js-acq-section-btn[data-section="scorte"].acq-scorte-alert::before,
+.js-acq-section-btn[data-section="scorte"].acq-scorte-alert::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+}
+
+.js-acq-section-btn[data-section="scorte"].acq-scorte-alert::before {
+    background:
+        radial-gradient(circle at var(--acq-scorte-sparkle-1-x, 8%) var(--acq-scorte-sparkle-1-y, 22%), #fff 0 2px, transparent 3px),
+        radial-gradient(circle at var(--acq-scorte-sparkle-2-x, 31%) var(--acq-scorte-sparkle-2-y, 9%), #fff4aa 0 1.8px, transparent 3px),
+        radial-gradient(circle at var(--acq-scorte-sparkle-3-x, 58%) var(--acq-scorte-sparkle-3-y, 34%), #fff 0 1.7px, transparent 2.8px),
+        radial-gradient(circle at var(--acq-scorte-sparkle-4-x, 82%) var(--acq-scorte-sparkle-4-y, 17%), #fff4aa 0 2px, transparent 3.2px),
+        radial-gradient(circle at var(--acq-scorte-sparkle-5-x, 73%) var(--acq-scorte-sparkle-5-y, 72%), #fff 0 1.6px, transparent 2.8px),
+        linear-gradient(117deg, transparent 42%, rgba(255, 255, 255, 0.42) 50%, transparent 59%);
+    filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.95));
+    animation: acqScorteSparkleDriftA 1.47s ease-in-out infinite;
+}
+
+.js-acq-section-btn[data-section="scorte"].acq-scorte-alert::after {
+    background:
+        radial-gradient(circle at var(--acq-scorte-sparkle-6-x, 18%) var(--acq-scorte-sparkle-6-y, 64%), #fff 0 1.7px, transparent 2.8px),
+        radial-gradient(circle at var(--acq-scorte-sparkle-7-x, 44%) var(--acq-scorte-sparkle-7-y, 78%), #fff4aa 0 2px, transparent 3px),
+        radial-gradient(circle at var(--acq-scorte-sparkle-8-x, 69%) var(--acq-scorte-sparkle-8-y, 46%), #fff 0 2.2px, transparent 3.4px),
+        radial-gradient(circle at var(--acq-scorte-sparkle-9-x, 91%) var(--acq-scorte-sparkle-9-y, 58%), #fff4aa 0 1.6px, transparent 2.7px),
+        radial-gradient(circle at var(--acq-scorte-sparkle-10-x, 37%) var(--acq-scorte-sparkle-10-y, 41%), #fff 0 1.7px, transparent 2.9px);
+    filter: drop-shadow(0 0 4px rgba(255, 244, 170, 0.95));
+    animation: acqScorteSparkleDriftB 1.91s ease-in-out -0.54s infinite;
+}
+
+/* Scorte segnalate: colori stato pieni, senza effetto striped/hover */
+#acquisti_scorte_table tbody tr.table-secondary > * {
+    --bs-table-bg: #e2e3e5 !important;
+    --bs-table-striped-bg: #e2e3e5 !important;
+    --bs-table-hover-bg: #e2e3e5 !important;
+    --bs-table-color: #000 !important;
+    background-color: #e2e3e5 !important;
+    color: #000 !important;
+}
+
+#acquisti_scorte_table tbody tr.table-success > * {
+    --bs-table-bg: #d1e7dd !important;
+    --bs-table-striped-bg: #d1e7dd !important;
+    --bs-table-hover-bg: #d1e7dd !important;
+    --bs-table-color: #000 !important;
+    background-color: #d1e7dd !important;
+    color: #000 !important;
+}
+
+#acquisti_scorte_table tbody tr.table-warning > * {
+    --bs-table-bg: #fff3cd !important;
+    --bs-table-striped-bg: #fff3cd !important;
+    --bs-table-hover-bg: #fff3cd !important;
+    --bs-table-color: #000 !important;
+    background-color: #fff3cd !important;
+    color: #000 !important;
+}
+
+#acquisti_scorte_table tbody tr.table-danger > * {
+    --bs-table-bg: #f8d7da !important;
+    --bs-table-striped-bg: #f8d7da !important;
+    --bs-table-hover-bg: #f8d7da !important;
+    --bs-table-color: #000 !important;
+    background-color: #f8d7da !important;
+    color: #000 !important;
+}
+
+#acquisti_scorte_table .acq-scorta-action-anim-cell {
+    position: relative;
+    overflow: visible;
+}
+
+#acquisti_scorte_table .acq-scorta-ordering-button {
+    position: relative;
+    z-index: 7;
+}
+
+.acq-scorta-worker-scene {
+    position: absolute;
+    width: 112px;
+    height: 52px;
+    pointer-events: none;
+    transform: translateY(-50%);
+    z-index: 6;
+}
+
+.acq-scorta-red-button {
+    position: absolute;
+    left: 9px;
+    top: 20px;
+    width: 24px;
+    height: 14px;
+    border: 2px solid #7f1d1d;
+    border-radius: 999px 999px 7px 7px;
+    background: #dc3545;
+    animation: acqScortaRedButtonPress 1.5s ease-in-out forwards;
+}
+
+.acq-scorta-red-button::after {
+    content: "";
+    position: absolute;
+    left: 4px;
+    right: 4px;
+    bottom: -9px;
+    height: 5px;
+    border-radius: 3px;
+    background: #212529;
+}
+
+.acq-scorta-stickman {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: 30px;
+    height: 38px;
+    animation: acqScortaWorkerWalk 1.5s ease-in-out forwards;
+}
+
+.acq-scorta-stickman-head {
+    position: absolute;
+    left: 10px;
+    top: 0;
+    width: 10px;
+    height: 10px;
+    border: 2px solid #111;
+    border-radius: 50%;
+    background: #fff;
+}
+
+.acq-scorta-stickman-body,
+.acq-scorta-stickman-arm,
+.acq-scorta-stickman-leg {
+    position: absolute;
+    left: 14px;
+    background: #111;
+    border-radius: 2px;
+    transform-origin: center;
+}
+
+.acq-scorta-stickman-body {
+    top: 10px;
+    width: 2px;
+    height: 14px;
+}
+
+.acq-scorta-stickman-arm {
+    top: 15px;
+    width: 17px;
+    height: 2px;
+}
+
+.acq-scorta-stickman-arm-left {
+    transform: translateX(-12px) rotate(35deg);
+}
+
+.acq-scorta-stickman-arm-right {
+    transform: translateX(2px) rotate(-28deg);
+}
+
+.acq-scorta-stickman-leg {
+    top: 23px;
+    width: 2px;
+    height: 16px;
+    transform-origin: top center;
+}
+
+.acq-scorta-stickman-leg-left {
+    transform: translateX(-4px) rotate(18deg);
+}
+
+.acq-scorta-stickman-leg-right {
+    transform: translateX(4px) rotate(-18deg);
+}
+
+#acquisti_scorte_table tbody tr.acq-scorta-ordering-complete > * {
+    --bs-table-bg: #d1e7dd !important;
+    --bs-table-striped-bg: #d1e7dd !important;
+    --bs-table-hover-bg: #d1e7dd !important;
+    background-color: #d1e7dd !important;
+}
+
+#acquisti_scorte_table tbody tr[data-scorta-overdue="1"] > * {
+    animation: acqScorteAlertPulse var(--acq-scorte-row-pulse-duration, 0.62s) infinite;
+    animation-delay: var(--acq-scorte-row-pulse-delay, 0s);
+}
+
+#acquisti_scorte_table tbody tr[data-scorta-overdue="1"]:nth-child(7n+1) {
+    --acq-scorte-row-pulse-duration: 0.58s;
+    --acq-scorte-row-pulse-delay: -0.08s;
+}
+
+#acquisti_scorte_table tbody tr[data-scorta-overdue="1"]:nth-child(7n+2) {
+    --acq-scorte-row-pulse-duration: 0.66s;
+    --acq-scorte-row-pulse-delay: -0.12s;
+}
+
+#acquisti_scorte_table tbody tr[data-scorta-overdue="1"]:nth-child(7n+3) {
+    --acq-scorte-row-pulse-duration: 0.52s;
+    --acq-scorte-row-pulse-delay: -0.35s;
+}
+
+#acquisti_scorte_table tbody tr[data-scorta-overdue="1"]:nth-child(7n+4) {
+    --acq-scorte-row-pulse-duration: 0.72s;
+    --acq-scorte-row-pulse-delay: -0.21s;
+}
+
+#acquisti_scorte_table tbody tr[data-scorta-overdue="1"]:nth-child(7n+5) {
+    --acq-scorte-row-pulse-duration: 0.6s;
+    --acq-scorte-row-pulse-delay: -0.28s;
+}
+
+#acquisti_scorte_table tbody tr[data-scorta-overdue="1"]:nth-child(7n+6) {
+    --acq-scorte-row-pulse-duration: 0.48s;
+    --acq-scorte-row-pulse-delay: -0.16s;
+}
+
+#acquisti_scorte_table tbody tr[data-scorta-overdue="1"]:nth-child(7n) {
+    --acq-scorte-row-pulse-duration: 0.76s;
+    --acq-scorte-row-pulse-delay: -0.41s;
+}
+
 /* Priorità nelle home: colori pieni, non alternati da table-striped/table-hover */
 #ordini_da_eseguire tbody tr.table-danger > *,
 #ordini_da_eseguire_sl tbody tr.table-danger > *,

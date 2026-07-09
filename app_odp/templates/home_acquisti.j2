@@ -74,7 +74,11 @@
                     <div class="acq-section-panel h-100"
                          data-section="giacenza"
                          style="min-height: 0;">
-                        {% include "partials/_acquisti_giacenza.j2" %}
+                        <div id="acquisti_giacenza_section"
+                             class="h-100"
+                             style="min-height: 0;">
+                            {% include "partials/_acquisti_giacenza.j2" %}
+                        </div>
                     </div>
 
                     <div class="acq-section-panel d-none h-100"
@@ -151,6 +155,26 @@
             const sectionPanels = document.querySelectorAll(".acq-section-panel");
             const filterPanels = document.querySelectorAll(".acq-filters-panel");
 
+            function randomizeScorteSparkles(btn) {
+                for (let i = 1; i <= 10; i += 1) {
+                    btn.style.setProperty(`--acq-scorte-sparkle-${i}-x`, `${8 + Math.random() * 84}%`);
+                    btn.style.setProperty(`--acq-scorte-sparkle-${i}-y`, `${12 + Math.random() * 76}%`);
+                }
+            }
+
+            function updateScorteAlertState() {
+                const hasOverdueScorte = Boolean(
+                    document.querySelector("#acquisti_scorte_table tbody tr[data-scorta-overdue='1']")
+                );
+
+                [...sectionButtons, ...headerButtons]
+                    .filter((btn) => btn.dataset.section === "scorte")
+                    .forEach((btn) => {
+                        btn.classList.toggle("acq-scorte-alert", hasOverdueScorte);
+                        if (hasOverdueScorte) randomizeScorteSparkles(btn);
+                    });
+            }
+
             function setButtonState(buttons, sectionName) {
                 buttons.forEach((btn) => {
                     const isActive = btn.dataset.section === sectionName;
@@ -163,6 +187,7 @@
             function setActiveSection(sectionName) {
                 setButtonState(sectionButtons, sectionName);
                 setButtonState(headerButtons, sectionName);
+                updateScorteAlertState();
 
                 sectionPanels.forEach((panel) => {
                     panel.classList.toggle("d-none", panel.dataset.section !== sectionName);
@@ -180,11 +205,24 @@
             });
 
             setActiveSection("giacenza");
+            window.setInterval(() => {
+                document.querySelectorAll(".js-acq-section-btn[data-section='scorte'].acq-scorte-alert")
+                    .forEach(randomizeScorteSparkles);
+            }, 650);
+            window.updateAcqScorteAlertState = updateScorteAlertState;
         })();
         (() => {
             function applyAcqGiacenzaRowState() {
                 const table = document.getElementById("acquisti_giacenza_table");
                 if (!table) return;
+
+                const showDecimalControl = Boolean(table.querySelector("tbody tr[data-decimal-control='1']"));
+                table.querySelectorAll(".js-acq-decimal-control-col").forEach((cell) => {
+                    cell.classList.toggle("d-none", !showDecimalControl);
+                });
+
+                const emptyCell = table.querySelector("tbody tr[data-empty='1'] td");
+                if (emptyCell) emptyCell.colSpan = showDecimalControl ? 16 : 15;
 
                 table.querySelectorAll("tbody tr").forEach((row) => {
                     row.classList.remove("row-acq-negative", "row-acq-understock");
@@ -214,6 +252,22 @@
 
                 const POLL_MS = 5000;
                 let isRefreshing = false;
+                const REFRESH_IDLE_MS = 12000;
+                let lastUserActivityAt = 0;
+
+                function markUserActivity() {
+                    lastUserActivityAt = Date.now();
+                }
+
+                function userIsInteracting() {
+                    return Date.now() - lastUserActivityAt < REFRESH_IDLE_MS;
+                }
+
+                root.addEventListener("scroll", markUserActivity, true);
+                root.addEventListener("input", markUserActivity, true);
+                root.addEventListener("change", markUserActivity, true);
+                root.addEventListener("pointerdown", markUserActivity, true);
+                root.addEventListener("wheel", markUserActivity, {capture: true, passive: true});
 
                 function getAcquistiFilterSnapshot() {
                     const snapshot = {};
@@ -266,14 +320,23 @@
                 }
 
                 function parseDateDDMMYYYY(s) {
-                    const m = String(s).trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?/);
+                    const raw = String(s).trim();
+
+                    let m = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+                    if (m) {
+                        return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).getTime();
+                    }
+
+                    m = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?/);
                     if (!m) return NaN;
-                    const dd = Number(m[1]);
-                    const mm = Number(m[2]) - 1;
-                    const yyyy = Number(m[3]);
-                    const hh = m[4] ? Number(m[4]) : 0;
-                    const mi = m[5] ? Number(m[5]) : 0;
-                    return new Date(yyyy, mm, dd, hh, mi).getTime();
+
+                    return new Date(
+                        Number(m[3]),
+                        Number(m[2]) - 1,
+                        Number(m[1]),
+                        m[4] ? Number(m[4]) : 0,
+                        m[5] ? Number(m[5]) : 0
+                    ).getTime();
                 }
 
                 function guessType(value) {
@@ -374,6 +437,35 @@
                     });
                 }
 
+                function getAcquistiScrollSnapshot() {
+                    const snapshot = {};
+                    document.querySelectorAll("#acquisti-content-container table[id]").forEach((table) => {
+                        const scroller = table.closest(".table-responsive");
+                        if (!scroller) return;
+                        snapshot[table.id] = {
+                            top: scroller.scrollTop,
+                            left: scroller.scrollLeft,
+                        };
+                    });
+                    return snapshot;
+                }
+
+                function restoreAcquistiScrollSnapshot(snapshot) {
+                    const apply = () => {
+                        Object.entries(snapshot || {}).forEach(([tableId, pos]) => {
+                            const table = document.getElementById(tableId);
+                            const scroller = table?.closest(".table-responsive");
+                            if (!scroller) return;
+                            scroller.scrollTop = Number(pos.top) || 0;
+                            scroller.scrollLeft = Number(pos.left) || 0;
+                        });
+                    };
+                    window.requestAnimationFrame(() => {
+                        apply();
+                        window.setTimeout(apply, 50);
+                    });
+                }
+
                 function reapplyAllAcquistiFilters() {
                     const tableIds = getAllAcquistiTargetTableIds();
 
@@ -384,18 +476,33 @@
                     window.applyAcqGiacenzaRowState?.();
                     window.applyRowColors?.();
                     window.applyAcquistiOrdiniFilters?.();
+                    window.updateAcqScorteAlertState?.();
+                }
+
+                function hasUnsavedScortaNote() {
+                    return Boolean(document.querySelector(".js-acq-scorta-note[data-dirty='1']"));
                 }
 
                 async function refreshAcquistiTables(options = {}) {
                     const force = Boolean(options.force);
+                    const allowScortaNoteRefresh = Boolean(options.allowScortaNoteRefresh);
 
                     if (isRefreshing) {
                         if (force) {
-                            setTimeout(() => refreshAcquistiTables({force: true}), 250);
+                            setTimeout(
+                                () => refreshAcquistiTables({force: true, allowScortaNoteRefresh}),
+                                250
+                            );
                         }
                         return;
                     }
+                    if (!allowScortaNoteRefresh && hasUnsavedScortaNote()) {
+                        return;
+                    }
 
+                    if (!force && userIsInteracting()) {
+                        return;
+                    }
                     if (!force && document.querySelector("#modalAcqMateriale.show")) {
                         return;
                     }
@@ -403,6 +510,7 @@
                     isRefreshing = true;
                     const filterSnapshot = getAcquistiFilterSnapshot();
                     const sortSnapshot = getAcquistiSortSnapshot();
+                    const scrollSnapshot = getAcquistiScrollSnapshot();
 
                     try {
                         const response = await window.avpFetch(bridgeUrl, {
@@ -441,6 +549,8 @@
                         restoreAcquistiFilterSnapshot(filterSnapshot);
                         restoreAcquistiSortSnapshot(sortSnapshot);
                         reapplyAllAcquistiFilters();
+                        window.restoreSelectedRows?.();
+                        restoreAcquistiScrollSnapshot(scrollSnapshot);
 
                     } catch (err) {
                         console.error("Errore refresh acquisti:", err);
@@ -697,11 +807,6 @@
                     return;
                 }
 
-                const scorteBtn = event.target.closest("#btn-export-acq-scorte");
-                if (scorteBtn) {
-                    startScorteExcelExport();
-                    return;
-                }
             });
         })();
     </script>
@@ -713,13 +818,66 @@
 
             function startScorteExcelExport() {
                 const params = new URLSearchParams();
+                const stato = getInputValue("filter-acq-scorte-stato");
+
                 params.set("codart", getInputValue("filter-acq-scorte-codart"));
                 params.set("variante", getInputValue("filter-acq-scorte-variante"));
                 params.set("desart", getInputValue("filter-acq-scorte-desart"));
-                params.set("stato", getInputValue("filter-acq-scorte-stato"));
+                params.set("stato", stato);
                 params.set("segnalato_da", getInputValue("filter-acq-scorte-segnalato-da"));
+                params.set("include_annullate", stato === "" ? "true" : "false");
 
                 window.location.href = `/api/acquisti/export/scorte?${params.toString()}`;
+            }
+
+            function playScortaOrdinataAnimation(row, button) {
+                if (!row || !button || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+                    row?.classList.remove("table-danger");
+                    row?.classList.add("table-success");
+                    return Promise.resolve();
+                }
+
+                const cell = button.closest("td");
+                if (!cell) return Promise.resolve();
+
+                const scene = document.createElement("span");
+                scene.className = "acq-scorta-worker-scene";
+                scene.setAttribute("aria-hidden", "true");
+                scene.innerHTML = [
+                    '<span class="acq-scorta-red-button"></span>',
+                    '<span class="acq-scorta-stickman">',
+                    '<span class="acq-scorta-stickman-head"></span>',
+                    '<span class="acq-scorta-stickman-body"></span>',
+                    '<span class="acq-scorta-stickman-arm acq-scorta-stickman-arm-left"></span>',
+                    '<span class="acq-scorta-stickman-arm acq-scorta-stickman-arm-right"></span>',
+                    '<span class="acq-scorta-stickman-leg acq-scorta-stickman-leg-left"></span>',
+                    '<span class="acq-scorta-stickman-leg acq-scorta-stickman-leg-right"></span>',
+                    '</span>'
+                ].join("");
+
+                const cellRect = cell.getBoundingClientRect();
+                const buttonRect = button.getBoundingClientRect();
+                scene.style.left = `${Math.max(0, buttonRect.left - cellRect.left - 94)}px`;
+                scene.style.top = `${buttonRect.top - cellRect.top + buttonRect.height / 2}px`;
+
+                cell.classList.add("acq-scorta-action-anim-cell");
+                button.classList.add("acq-scorta-ordering-button");
+                cell.appendChild(scene);
+
+                window.setTimeout(() => {
+                    row.classList.remove("table-danger");
+                    row.classList.add("table-success", "acq-scorta-ordering-complete");
+                    row.dataset.scortaOverdue = "0";
+                }, 760);
+
+                return new Promise((resolve) => {
+                    window.setTimeout(() => {
+                        scene.remove();
+                        cell.classList.remove("acq-scorta-action-anim-cell");
+                        button.classList.remove("acq-scorta-ordering-button");
+                        resolve();
+                    }, 1550);
+                });
             }
 
             async function updateScorta(button) {
@@ -727,6 +885,7 @@
                 const action = button.dataset.action;
                 const row = button.closest("tr");
                 const note = row?.querySelector(".js-acq-scorta-note")?.value || "";
+                const animateOrdinata = action === "ordinata" && row?.dataset.scortaOverdue === "1";
 
                 if (!id || !action) return;
 
@@ -753,9 +912,17 @@
                         alert(data.error || "Errore durante l'aggiornamento della scorta.");
                         return;
                     }
+                    row?.querySelector(".js-acq-scorta-note")?.removeAttribute("data-dirty");
+
+                    if (animateOrdinata) {
+                        await playScortaOrdinataAnimation(row, button);
+                    }
 
                     if (window.refreshAcquistiTables) {
-                        await window.refreshAcquistiTables({force: true});
+                        await window.refreshAcquistiTables({
+                            force: true,
+                            allowScortaNoteRefresh: true
+                        });
                     } else {
                         window.location.reload();
                     }
@@ -768,6 +935,13 @@
                     button.disabled = false;
                 }
             }
+
+            document.addEventListener("input", (event) => {
+                const noteEl = event.target.closest(".js-acq-scorta-note");
+                if (noteEl) {
+                    noteEl.dataset.dirty = "1";
+                }
+            });
 
             document.addEventListener("click", (event) => {
                 const exportBtn = event.target.closest("#btn-export-acq-scorte");

@@ -2,7 +2,7 @@ from flask import Flask, request, g, url_for
 from flask_login import LoginManager
 from .filters import register_filters
 from app_odp.operator_session import active_user, active_policy, active_token
-from app_odp.models import db, User
+from app_odp.models import db, Permissions, User
 from app_odp.auth import auth_bp
 from app_odp.routes import main_bp
 import tomllib
@@ -65,6 +65,21 @@ def setup_request_logging(app):
     def _log_response(resp):
         app.logger.info("[%s] -> %s %s", g.rid, resp.status_code, resp.mimetype)
         return resp
+
+
+def _ensure_builtin_permissions() -> None:
+    builtins = {
+        "storico_ordini": "Storico ordini",
+        "scorte_segnalazione_libera": "Segnalazione scorte con testo libero",
+    }
+    existing = {
+        row.Codice
+        for row in Permissions.query.filter(Permissions.Codice.in_(builtins.keys()))
+    }
+    for code, description in builtins.items():
+        if code not in existing:
+            db.session.add(Permissions(Codice=code, Descrizione=description))
+    db.session.commit()
 
 
 def create_app():
@@ -187,6 +202,7 @@ def create_app():
         db.create_all()
         db.create_all(bind_key="log")
         db.create_all(bind_key="acq")
+        _ensure_builtin_permissions()
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(main_bp)

@@ -1,5 +1,12 @@
+from decimal import Decimal
 from app_odp.models import GiacenzaLotti
-from app_odp.services.order_helpers import _norm_text, _parse_distinta_materiale
+from app_odp.services.order_helpers import (
+    _component_udm,
+    _decimal_to_text_for_udm,
+    _norm_text,
+    _parse_distinta_materiale,
+    _parse_qty_decimal,
+)
 
 
 def _fase_attiva_int(ordine) -> int | None:
@@ -51,13 +58,14 @@ def _componenti_lotto_per_ordine(
 
         codici_visti.add(chiave_componente)
 
+        udm = _component_udm(comp)
         lotti_db = GiacenzaLotti.query.filter_by(CodArt=cod_art).all()
         lotti_list = []
         for lotto in lotti_db:
             try:
-                giacenza_val = int(float(_norm_text(lotto.Giacenza)))
-            except (ValueError, TypeError):
-                giacenza_val = 0
+                giacenza_val = _parse_qty_decimal(lotto.Giacenza)
+            except ValueError:
+                giacenza_val = Decimal("0")
 
             if giacenza_val <= 0:
                 continue
@@ -65,7 +73,7 @@ def _componenti_lotto_per_ordine(
             lotti_list.append(
                 {
                     "RifLottoAlfa": lotto.RifLottoAlfa,
-                    "Giacenza": giacenza_val,
+                    "Giacenza": _decimal_to_text_for_udm(giacenza_val, udm),
                     "CodMag": lotto.CodMag,
                 }
             )
@@ -78,6 +86,8 @@ def _componenti_lotto_per_ordine(
                     "Quantita": comp.get("Quantita", 0),
                     "NumFase": comp.get("NumFase", ""),
                     "GestioneLotto": "si",
+                    "TecniciUm": udm,
+                    "UdM": udm,
                     "VarianteArt": _norm_text(comp.get("VarianteArt", "")),
                     "lotti": lotti_list,
                 }

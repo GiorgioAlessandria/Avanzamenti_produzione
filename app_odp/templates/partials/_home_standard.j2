@@ -345,7 +345,7 @@
 
             <div class="table-responsive"
                  style="max-height: 350px; overflow-y: auto;">
-                <table class="table table-sm table-striped table-bordered align-middle mb-1"
+                <table class="table table-sm table-bordered align-middle mb-1"
                        id="tbl-lotti-sl">
                     <thead class="table-light"
                            style="position: sticky; top: 0; z-index: 1;">
@@ -535,7 +535,7 @@
                 </div>
                 <div class="home-table-scroll table-responsive text-capitalize fw-semibold text-center w-100 justify-content-start align-items-start mb-0 pb-0"
                      style="color: rgb(0,0,0); border-color: rgb(0,0,0); border-top-color: #000000;">
-                    <table class="table table-striped table-sortable table-hover table-selectable table-responsive table-sticky-wrap text-capitalize fw-semibold text-center justify-content-start align-items-start"
+                    <table class="table table-sortable table-hover table-selectable table-responsive table-sticky-wrap text-capitalize fw-semibold text-center justify-content-start align-items-start"
                            id="ordini_da_eseguire">
                         <thead>
                         <tr>
@@ -558,25 +558,40 @@
                         </tbody>
                     </table>
                 </div>
-                <button class="btn btn-primary m-2"
-                        type="button"
-                        data-bs-target="#toast-1"
-                        data-use-selected="#ordini_da_eseguire"
-                        data-fill-target="#toast-1"
-                        data-bs-toggle="toast">Attiva ordine
-                </button>
-{% if policy and policy.can('ordini_multipli') %}
-    <button class="btn btn-outline-primary m-2 js-open-gruppo-multiplo"
-            type="button">
-        Ordini multipli
-    </button>
-{% endif %}
-{% if policy and policy.can('ordini_mascherati') %}
-    <button class="btn btn-outline-secondary m-2 js-open-gruppo-mascherato"
-            type="button">
-        Ordine mascherato
-    </button>
-{% endif %}
+                <div class="d-flex flex-nowrap align-items-center gap-2 mb-2 overflow-x-auto">
+                    <button class="btn btn-primary flex-shrink-0 text-nowrap"
+                            type="button"
+
+                            data-bs-target="#toast-1"
+                            data-use-selected="#ordini_da_eseguire"
+                            data-fill-target="#toast-1"
+                            data-bs-toggle="toast">Attiva ordine
+                    </button>
+
+                    {% if policy and policy.can('ordini_multipli') %}
+                        <button class="btn btn-outline-primary flex-shrink-0 text-nowrap js-open-gruppo-multiplo"
+                                data-workgroup-table="#ordini_da_eseguire"
+                                type="button">
+                            Ordini multipli
+                        </button>
+                    {% endif %}
+
+                    {% if policy and policy.can('ordini_mascherati') %}
+                        <button class="btn btn-outline-secondary flex-shrink-0 text-nowrap js-open-gruppo-mascherato"
+                                data-workgroup-table="#ordini_da_eseguire"
+                                type="button">
+                            Ordine mascherato
+                        </button>
+                    {% endif %}
+
+                    {% if policy and policy.can('ordini_multipli') and policy.can('ordini_mascherati') %}
+                        <button class="btn btn-outline-info flex-shrink-0 text-nowrap js-open-gruppo-misto"
+                                data-workgroup-table="#ordini_da_eseguire"
+                                type="button">
+                            Multiplo + mascherato
+                        </button>
+                    {% endif %}
+                </div>
             </div>
             <div class="col home-fill-col ms-0">
                 <h2 class="w-100 mb-2">Ordini attivi</h2>
@@ -607,7 +622,7 @@
                 </div>
                 <div class="home-table-scroll table-responsive text-capitalize fw-semibold text-center w-100 justify-content-start align-items-start"
                      style="color: rgb(0,0,0); border-color: rgb(0,0,0); border-top-color: #000000;">
-                    <table class="table table-striped table-state-rowcolor table-sortable table-hover table-responsive
+                    <table class="table table-state-rowcolor table-sortable table-hover table-responsive
                     table-selectable table-sticky-wrap text-capitalize fw-semibold text-center w-100 h-100
                     justify-content-start align-items-start"
                            id="ordini_in_corso">
@@ -1498,7 +1513,52 @@
             const n = Number(s);
             return Number.isFinite(n) ? n : NaN;
         }
+        function getCompUdm(comp) {
+            return String(comp?.TecniciUm ?? comp?.UdM ?? comp?.Udm ?? comp?.UM ?? comp?.MagUM ?? comp?.UnitaMisura ?? "").trim();
+        }
 
+        function isIntegerQtyComp(comp) {
+            const udm = getCompUdm(comp).toUpperCase().replace(/\s+/g, "").replace(/\.+$/g, "");
+            return udm === "N" || udm === "PZ";
+        }
+
+        function formatQtyForComp(qty, comp) {
+            if (!Number.isFinite(qty)) return 0;
+            return isIntegerQtyComp(comp) ? Math.round(qty) : Number(qty.toFixed(4));
+        }
+
+        function parseQtyForComp(v, comp) {
+            return isIntegerQtyComp(comp) ? parseIntQty(v) : parseSystemQty(v);
+        }
+
+        function parseQtyForCompOrZero(v, comp) {
+            const n = parseQtyForComp(v, comp);
+            return Number.isFinite(n) ? n : 0;
+        }
+
+        function componentByCod(cod) {
+            return _lottiData.find(c => String(c.CodArt || "") === String(cod || "")) || {};
+        }
+
+        function applyQtyInputRules(input, comp) {
+            if (!input) return;
+            input.setAttribute("min", "0");
+            if (isIntegerQtyComp(comp)) {
+                input.setAttribute("inputmode", "numeric");
+                input.setAttribute("step", "1");
+                input.setAttribute("pattern", "\\d*");
+            } else {
+                input.setAttribute("inputmode", "decimal");
+                input.setAttribute("step", "0.0001");
+                input.removeAttribute("pattern");
+            }
+        }
+
+        function sanitizeQtyInputForComp(input, comp) {
+            if (!input || !isIntegerQtyComp(comp)) return;
+            const cleaned = String(input.value ?? "").replace(/[^\d]/g, "");
+            if (input.value !== cleaned) input.value = cleaned;
+        }
         function sanitizeIntegerInput(el) {
             if (!el) return;
 
@@ -1554,14 +1614,14 @@
             if (!Number.isFinite(qLavorata) || qLavorata <= 0) return 0;
 
             if (!Number.isFinite(qOrdTotale) || qOrdTotale <= 0) {
-                return Math.round(baseQty);
+                return formatQtyForComp(baseQty, comp);
             }
 
             const richiesto = (baseQty * qLavorata) / qOrdTotale;
 
             if (!Number.isFinite(richiesto)) return 0;
 
-            return Math.round(richiesto);
+            return formatQtyForComp(richiesto, comp);
         }
 
         function resetQuantitaInputs() {
@@ -1633,7 +1693,7 @@
             </td>
         `;
             tbody.appendChild(tr);
-            sanitizeIntegerInput(tr.querySelector(".lotto-qty-sl"));
+            applyQtyInputRules(tr.querySelector(".lotto-qty-sl"), componentByCod(codArt));
             return tr;
         }
 
@@ -1667,10 +1727,12 @@
                 const row = sel.closest("tr");
                 const giacCell = row.querySelector(".giacenza-cell-sl");
                 const qtyInput = row.querySelector(".lotto-qty-sl");
+                const comp = componentByCod(row.dataset.codart || "");
                 const opt = sel.options[sel.selectedIndex];
+                applyQtyInputRules(qtyInput, comp);
 
                 if (opt && opt.value) {
-                    const g = parseSystemQty(opt.dataset.giacenza);
+                    const g = formatQtyForComp(parseSystemQty(opt.dataset.giacenza), comp);
                     giacCell.textContent = Number.isFinite(g) ? g : 0;
                     qtyInput.max = Number.isFinite(g) ? String(g) : "";
                 } else {
@@ -1690,6 +1752,9 @@
 
         tbody.addEventListener("input", function (e) {
             if (e.target.classList.contains("lotto-qty-sl")) {
+                const row = e.target.closest("tr");
+                const comp = componentByCod(row?.dataset?.codart || "");
+                sanitizeQtyInputForComp(e.target, comp);
                 updateRiepilogo();
                 validateLotti();
             }
@@ -1724,7 +1789,8 @@
             const totals = {};
             tbody.querySelectorAll("tr").forEach(row => {
                 const cod = row.dataset.codart || "";
-                const qty = parseQtyOrZero(row.querySelector(".lotto-qty-sl")?.value);
+                const comp = _lottiData.find(c => String(c.CodArt || "") === cod) || {};
+                const qty = parseQtyForCompOrZero(row.querySelector(".lotto-qty-sl")?.value, comp);
                 const esito = row.querySelector(".lotto-esito-sl")?.value || "ok";
 
                 if (!totals[cod]) totals[cod] = {ok: 0, ko: 0, totale: 0};
@@ -1850,10 +1916,12 @@
                 const giacenza = parseQtyOrZero(row.querySelector(".giacenza-cell-sl")?.textContent);
                 const esito = row.querySelector(".lotto-esito-sl")?.value || "ok";
                 const qtyRaw = row.querySelector(".lotto-qty-sl")?.value;
-                const qty = parseIntQty(qtyRaw);
+                const comp = _lottiData.find(c => String(c.CodArt || "") === cod) || {};
+                const qty = parseQtyForComp(qtyRaw, comp);
 
-                if (!Number.isInteger(qty) || qty <= 0) {
-                    errors.push(`${cod} lotto ${lottoVal}: inserire una quantità intera > 0.`);
+                if (!Number.isFinite(qty) || qty <= 0) {
+                    const tipoQty = isIntegerQtyComp(comp) ? "intera " : "";
+                    errors.push(`${cod} lotto ${lottoVal}: inserire una quantità ${tipoQty}> 0.`);
                     return;
                 }
 
@@ -1864,9 +1932,6 @@
 
                 if (!lottoVal) return;
 
-                if (qty <= 0) {
-                    errors.push(`${cod} lotto ${lottoVal}: inserire qtà > 0.`);
-                }
 
                 if (qty > giacenza) {
                     errors.push(`${cod} lotto ${lottoVal}: qtà ${qty} > giacenza ${giacenza}.`);
@@ -1905,7 +1970,7 @@
                     CodArt: cod,
                     RifLottoAlfa: lottoVal,
                     CodMag: codMag,
-                    Quantita: qty,
+                    Quantita: String(formatQtyForComp(qty, comp)),
                     Esito: esito
                 });
             });
@@ -2138,6 +2203,806 @@
                 btn.disabled = false;
             }
         });
+    })();
+</script>
+<script>
+    (() => {
+        if (window.__avpWorkgroupCloseInit) return;
+        window.__avpWorkgroupCloseInit = true;
+
+        function parseGroupDetail(raw) {
+            try {
+                const parsed = JSON.parse(raw || "[]");
+                return Array.isArray(parsed) ? parsed : [];
+            } catch (_) {
+                return [];
+            }
+        }
+
+        document.addEventListener("click", function (event) {
+            const trigger = event.target.closest(
+                '[data-use-selected][data-fill-target][data-bs-target][data-bs-toggle="toast"]'
+            );
+            if (!trigger) return;
+
+            const targetSelector = trigger.getAttribute("data-fill-target") || "";
+            const isClosureToast = targetSelector === "#toast-4" || targetSelector === "#toast-7";
+
+            if (!isClosureToast) return;
+
+            const tableSelector = trigger.getAttribute("data-use-selected");
+            const table = document.querySelector(tableSelector);
+            const selectedRow = table?.querySelector("tbody tr.row-selected");
+
+            if (!selectedRow || selectedRow.dataset.isWorkGroup !== "1") return;
+
+            event.preventDefault();
+            event.stopPropagation();
+            event.stopImmediatePropagation();
+
+            openWorkgroupCloseModal({
+                groupUid: selectedRow.dataset.groupUid || "",
+                groupType: selectedRow.dataset.groupType || "",
+                groupLabel: selectedRow.dataset.groupLabel || selectedRow.dataset.ordine || "",
+                detail: parseGroupDetail(selectedRow.dataset.groupDetail),
+                sourceTarget: targetSelector
+            });
+        }, true);
+
+        let workgroupCloseState = {
+            groupUid: "",
+            sourceTarget: "",
+            detail: [],
+            lottiByOrder: {},
+            lottoUiByOrder: {},
+            rowCounter: 0
+        };
+
+        function orderKey(row) {
+            return `${row.id_documento || ""}|${row.id_riga || ""}`;
+        }
+
+        function openWorkgroupCloseModal({groupUid, groupType, groupLabel, detail, sourceTarget}) {
+            workgroupCloseState = {
+                groupUid,
+                sourceTarget: sourceTarget || "",
+                detail: detail || [],
+                lottiByOrder: {},
+                lottoUiByOrder: {},
+                rowCounter: 0
+            };
+
+            const modal = ensureWorkgroupCloseModal();
+
+            document.getElementById("modal-workgroup-close-title").textContent =
+                `Chiusura gruppo ${groupType || ""}`;
+
+            document.getElementById("modal-workgroup-close-subtitle").textContent =
+                [groupLabel, groupUid].filter(Boolean).join(" - ");
+
+            renderWorkgroupCloseRows();
+
+            bootstrap.Modal.getOrCreateInstance(modal).show();
+        }
+
+        function ensureWorkgroupCloseModal() {
+            let modal = document.getElementById("modalWorkgroupClose");
+            if (modal) return modal;
+
+            document.body.insertAdjacentHTML("beforeend", `
+            <div class="modal fade" id="modalWorkgroupClose" tabindex="-1" aria-hidden="true">
+              <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+                <div class="modal-content">
+                  <div class="modal-header">
+                    <div>
+                      <h5 class="modal-title" id="modal-workgroup-close-title">Chiusura gruppo</h5>
+                      <div class="small text-muted" id="modal-workgroup-close-subtitle"></div>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Chiudi"></button>
+                  </div>
+                  <div class="modal-body">
+                    <div id="modal-workgroup-close-feedback" class="alert alert-danger d-none"></div>
+                    <div id="modal-workgroup-close-body"></div>
+                  </div>
+                  <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annulla</button>
+                    <button type="button" class="btn btn-danger" id="btn-workgroup-close-confirm">
+                      Conferma chiusura gruppo
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>`);
+            document.getElementById("btn-workgroup-close-confirm")
+                .addEventListener("click", submitWorkgroupClose);
+
+            document.getElementById("modal-workgroup-close-body")
+                .addEventListener("click", event => {
+                    const btn = event.target.closest(".js-workgroup-close-single");
+                    if (!btn) return;
+                    submitWorkgroupSingleClose(btn.dataset.orderKey || "", btn);
+                });
+
+            return document.getElementById("modalWorkgroupClose");
+        }
+
+        async function loadLottiForGroupRow(row) {
+            const resp = await window.avpFetch("/api/ordini/lotti-componenti", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-Requested-With": "XMLHttpRequest"
+                },
+                credentials: "same-origin",
+                body: JSON.stringify({
+                    id_documento: row.id_documento,
+                    id_riga: row.id_riga,
+                    modalita: row.modalita_lotti || "sl",
+                    num_progr_riga: row.num_progr_riga || ""
+                })
+            });
+
+            const data = await resp.json();
+
+            if (!resp.ok || data.ok === false) {
+                throw new Error(data.error || "Errore caricamento lotti.");
+            }
+
+            return Array.isArray(data.componenti) ? data.componenti : [];
+        }
+
+        function escHtml(value) {
+            return String(value ?? "")
+                .replaceAll("&", "&amp;")
+                .replaceAll("<", "&lt;")
+                .replaceAll(">", "&gt;")
+                .replaceAll('"', "&quot;")
+                .replaceAll("'", "&#039;");
+        }
+
+        function parseIntQty(v) {
+            const s = String(v ?? "").trim().replace(/\s+/g, "");
+            if (!s || s.includes(",") || s.includes(".") || !/^\d+$/.test(s)) return NaN;
+            const n = Number(s);
+            return Number.isSafeInteger(n) ? n : NaN;
+        }
+
+        function parseQtyOrZero(v) {
+            const n = parseIntQty(v);
+            return Number.isFinite(n) ? n : 0;
+        }
+
+        function parseSystemQty(v) {
+            let s = String(v ?? "").trim().replace(/\s+/g, "");
+            if (!s) return NaN;
+            if (s.includes(",") && s.includes(".")) s = s.replace(/\./g, "");
+            s = s.replace(",", ".");
+            const n = Number(s);
+            return Number.isFinite(n) ? n : NaN;
+        }
+        function getCompUdm(comp) {
+            return String(comp?.TecniciUm ?? comp?.UdM ?? comp?.Udm ?? comp?.UM ?? comp?.MagUM ?? comp?.UnitaMisura ?? "").trim();
+        }
+
+        function isIntegerQtyComp(comp) {
+            const udm = getCompUdm(comp).toUpperCase().replace(/\s+/g, "").replace(/\.+$/g, "");
+            return udm === "N" || udm === "PZ";
+        }
+
+        function formatQtyForComp(qty, comp) {
+            if (!Number.isFinite(qty)) return 0;
+            return isIntegerQtyComp(comp) ? Math.round(qty) : Number(qty.toFixed(4));
+        }
+
+        function parseQtyForComp(v, comp) {
+            return isIntegerQtyComp(comp) ? parseIntQty(v) : parseSystemQty(v);
+        }
+
+        function parseQtyForCompOrZero(v, comp) {
+            const n = parseQtyForComp(v, comp);
+            return Number.isFinite(n) ? n : 0;
+        }
+
+        function sameQty(a, b) {
+            return Math.abs(Number(a || 0) - Number(b || 0)) < 0.000001;
+        }
+
+        function isGestioneLottoSi(comp) {
+            const flag = String(comp?.GestioneLotto ?? comp?.gestione_lotto ?? comp?.gestioneLotto ?? "")
+                .trim()
+                .toLowerCase();
+
+            return flag ? flag === "si" : Array.isArray(comp?.lotti) && comp.lotti.length > 0;
+        }
+
+        function getGroupLottiState(row) {
+            const key = orderKey(row);
+            if (!workgroupCloseState.lottoUiByOrder[key]) {
+                workgroupCloseState.lottoUiByOrder[key] = {
+                    data: [],
+                    hasLotti: false,
+                    hasSelectableLotti: false,
+                    loaded: false,
+                    loadError: ""
+                };
+            }
+            return workgroupCloseState.lottoUiByOrder[key];
+        }
+
+        function getGroupQuantitaLavorata(row) {
+            const key = orderKey(row);
+            return parseQtyOrZero(getGroupRowValue(key, "quantita_conforme"))
+                + parseQtyOrZero(getGroupRowValue(key, "quantita_non_conforme"));
+        }
+
+        function getGroupQuantitaRichiestaComponente(row, comp) {
+            const baseQty = parseSystemQty(comp?.Quantita);
+            const qOrdTotale = parseSystemQty(row.quantita);
+            const qLavorata = getGroupQuantitaLavorata(row);
+
+            if (!Number.isFinite(baseQty) || baseQty <= 0) return 0;
+            if (!Number.isFinite(qLavorata) || qLavorata <= 0) return 0;
+            if (!Number.isFinite(qOrdTotale) || qOrdTotale <= 0) return formatQtyForComp(baseQty, comp);
+
+            return formatQtyForComp((baseQty * qLavorata) / qOrdTotale, comp);
+        }
+
+        function setGroupLottiAlert(root, message) {
+            const alertEl = root?.querySelector("[data-lotti-alert]");
+            if (!alertEl) return;
+            alertEl.textContent = message || "";
+            alertEl.style.display = message ? "" : "none";
+        }
+
+        function groupOrderEl(key) {
+            return Array.from(
+                document.querySelectorAll("#modal-workgroup-close-body [data-order-key]")
+            ).find(el => el.dataset.orderKey === key) || null;
+        }
+
+        function getGroupRowValue(key, field) {
+            return groupOrderEl(key)?.querySelector(`[data-field="${field}"]`)?.value?.trim() || "";
+        }
+
+        function getGroupRowChecked(key, field) {
+            return groupOrderEl(key)?.querySelector(`[data-field="${field}"]`)?.checked === true;
+        }
+
+        function getGroupRowCheckedDefault(key, field, defaultValue) {
+            const el = groupOrderEl(key)?.querySelector(`[data-field="${field}"]`);
+            return el ? el.checked === true : defaultValue;
+        }
+
+        function showGroupCloseFeedback(message) {
+            const el = document.getElementById("modal-workgroup-close-feedback");
+            if (!el) return;
+            el.textContent = message || "";
+            el.classList.toggle("d-none", !message);
+        }
+
+        function sanitizeGroupIntegerInput(el) {
+            if (!el) return;
+
+            el.addEventListener("beforeinput", event => {
+                if (event.data && /\D/.test(event.data)) {
+                    event.preventDefault();
+                }
+            });
+
+            el.addEventListener("input", () => {
+                const raw = String(el.value ?? "");
+                if (/^\d*$/.test(raw)) return;
+                el.value = raw.split(/[,.]/, 1)[0].replace(/\D+/g, "");
+            });
+
+            el.addEventListener("blur", () => {
+                const n = parseIntQty(el.value);
+                el.value = Number.isFinite(n) ? String(n) : "0";
+            });
+        }
+
+        function isGroupRowMachine(row) {
+            return row.is_macchina === true
+                || row.gestione_matricola === true
+                || row.modalita_lotti === "m";
+        }
+
+        function validateGroupSingleTotalQuantity(row) {
+            if (isGroupRowMachine(row)) {
+                return true;
+            }
+
+            const key = orderKey(row);
+            const label = row.ordine || row.cod_art || key;
+            const qOk = parseIntQty(getGroupRowValue(key, "quantita_conforme"));
+            const qKo = parseIntQty(getGroupRowValue(key, "quantita_non_conforme"));
+            if (!Number.isFinite(qOk) || qOk < 0) {
+                showGroupCloseFeedback(`La quantita OK dell'ordine ${label} deve essere un numero intero positivo.`);
+                return false;
+            }
+            if (!Number.isFinite(qKo) || qKo < 0) {
+                showGroupCloseFeedback(`La quantita KO dell'ordine ${label} deve essere un numero intero positivo.`);
+                return false;
+            }
+
+            const qTot = parseSystemQty(row.quantita);
+            if ((qOk + qKo) <= 0) {
+                showGroupCloseFeedback(`Inserire almeno una quantita OK o KO per l'ordine ${label}.`);
+                return false;
+            }
+            if (Number.isFinite(qTot) && !sameQty(qOk + qKo, qTot)) {
+                showGroupCloseFeedback(`Per chiudere solo l'ordine ${label}, la somma OK + KO deve essere uguale alla quantita dell'ordine.`);
+                return false;
+            }
+
+            const okInput = groupOrderEl(key)?.querySelector("[data-field='quantita_conforme']");
+            const koInput = groupOrderEl(key)?.querySelector("[data-field='quantita_non_conforme']");
+            if (okInput) okInput.value = String(qOk);
+            if (koInput) koInput.value = String(qKo);
+            return true;
+        }
+
+        function buildGroupClosePayloadForRow(row, {singleClose = false} = {}) {
+            const key = orderKey(row);
+            const isMacchina = isGroupRowMachine(row);
+            const qConf = isMacchina ? "" : String(parseIntQty(getGroupRowValue(key, "quantita_conforme")));
+            const qKo = isMacchina ? "" : String(parseIntQty(getGroupRowValue(key, "quantita_non_conforme")));
+            return {
+                id_documento: row.id_documento,
+                id_riga: row.id_riga,
+                num_progr_riga: row.num_progr_riga || "",
+                fase: row.fase || row.fase_attiva || "",
+                matricola: row.matricola || "",
+                modalita_lotti: row.modalita_lotti || (isMacchina ? "m" : "sl"),
+                quantita_conforme: qConf,
+                quantita_non_conforme: qKo,
+                chiusura_parziale: singleClose ? false : (!isMacchina && getGroupRowChecked(key, "chiusura_parziale")),
+                data_registrazione: getGroupRowValue(key, "data_registrazione"),
+                include_time_line: getGroupRowCheckedDefault(key, "include_time_line", true),
+                lotti: workgroupCloseState.lottiByOrder[key] || []
+            };
+        }
+
+        function validateGroupQuantities() {
+            for (const row of workgroupCloseState.detail) {
+                const key = orderKey(row);
+                const isMacchina = row.is_macchina === true
+                    || row.gestione_matricola === true
+                    || row.modalita_lotti === "m";
+                if (isMacchina) continue;
+
+                const label = row.ordine || row.cod_art || key;
+                const qOk = parseIntQty(getGroupRowValue(key, "quantita_conforme"));
+                const qKo = parseIntQty(getGroupRowValue(key, "quantita_non_conforme"));
+
+                if (!Number.isInteger(qOk) || qOk < 0) {
+                    showGroupCloseFeedback(`${label}: quantità conforme deve essere un intero positivo o zero.`);
+                    return false;
+                }
+                if (!Number.isInteger(qKo) || qKo < 0) {
+                    showGroupCloseFeedback(`${label}: quantità KO deve essere un intero positivo o zero.`);
+                    return false;
+                }
+                if (qOk + qKo <= 0) {
+                    showGroupCloseFeedback(`${label}: indicare una quantità lavorata > 0.`);
+                    return false;
+                }
+
+                groupOrderEl(key).querySelector('[data-field="quantita_conforme"]').value = String(qOk);
+                groupOrderEl(key).querySelector('[data-field="quantita_non_conforme"]').value = String(qKo);
+            }
+            return true;
+        }
+
+        function renderWorkgroupCloseRows() {
+            const body = document.getElementById("modal-workgroup-close-body");
+            if (!body) return;
+
+            const rowsHtml = workgroupCloseState.detail.map(row => {
+                const key = orderKey(row);
+                const qtaRaw = parseSystemQty(row.quantita);
+                const qta = Number.isInteger(qtaRaw) && qtaRaw >= 0 ? String(qtaRaw) : "";
+                const isMacchina = row.is_macchina === true
+                    || row.gestione_matricola === true
+                    || row.modalita_lotti === "m";
+                const timeZero = String(row.time_share_mode || row.TimeShareMode || "")
+                    .toUpperCase() === "ZERO";
+
+                const closeFields = isMacchina ? "" : `
+                <div class="row g-2 align-items-end">
+                    <div class="col">
+                        <label class="form-label mb-1">Quantità conforme</label>
+                        <input class="form-control form-control-sm"
+                               type="number"
+                               inputmode="numeric"
+                               min="0"
+                               step="1"
+                               pattern="[0-9]*"
+                               data-field="quantita_conforme"
+                               value="${escHtml(qta)}">
+                    </div>
+                    <div class="col">
+                        <label class="form-label mb-1">Quantità non conforme</label>
+                        <input class="form-control form-control-sm"
+                               type="number"
+                               inputmode="numeric"
+                               min="0"
+                               step="1"
+                               pattern="[0-9]*"
+                               data-field="quantita_non_conforme"
+                               value="0">
+                    <div class="col-auto">
+                        <div class="form-check">
+                            <input class="form-check-input"
+                                   type="checkbox"
+                                   data-field="chiusura_parziale">
+                            <label class="form-check-label">Parziale</label>
+                        </div>
+                    </div>
+                </div>`;
+
+                const registrationFields = `
+                <div class="row g-2 align-items-end mt-2">
+                    {% if has_modifica_data_chiusura_permission %}
+                    <div class="col">
+                        <label class="form-label mb-1">Data registrazione</label>
+                        <input type="date"
+                               class="form-control form-control-sm"
+                               data-field="data_registrazione">
+                    </div>
+                    {% endif %}
+                    {% if has_export_senza_tempo_permission %}
+                    <div class="col">
+                        <div class="form-check">
+                            <input class="form-check-input"
+                                   type="checkbox"
+                                   data-field="include_time_line"
+                                   ${timeZero ? "" : "checked"}
+                                   ${timeZero ? "disabled" : ""}>
+                            <label class="form-check-label">
+                                Inserisci tempo nel file ERP
+                            </label>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>`;
+
+                return `
+            <div class="border rounded p-2 mb-2" data-order-key="${escHtml(key)}">
+                <div class="fw-semibold">
+                    ${escHtml(row.ordine || "")} - ${escHtml(row.cod_art || "")}
+                </div>
+                <div class="small text-muted mb-2">
+                    ${escHtml(row.descrizione || "")} | Fase ${escHtml(row.fase || "")}
+                    ${row.matricola ? ` | Matricola ${escHtml(row.matricola)}` : ""}
+                </div>
+
+                ${closeFields}
+                ${registrationFields}
+                <div class="d-flex justify-content-end mt-2">
+                    <button type="button" class="btn btn-outline-danger btn-sm js-workgroup-close-single" data-order-key="${escHtml(key)}">Chiudi solo questo ordine</button>
+                </div>
+
+                <div class="mt-2" data-lotti-box></div>
+            </div>
+        `;
+            }).join("");
+
+            body.innerHTML = `
+                <div class="mb-3">
+                    <label class="form-label mb-1" for="modal-workgroup-close-note">
+                        Note chiusura gruppo
+                    </label>
+                    <textarea class="form-control"
+                              id="modal-workgroup-close-note"
+                              rows="2"></textarea>
+                </div>
+                ${rowsHtml}
+            `;
+
+            body.querySelectorAll('[data-field="quantita_conforme"], [data-field="quantita_non_conforme"]')
+                .forEach(sanitizeGroupIntegerInput);
+
+            workgroupCloseState.detail.forEach(row => {
+                if (row.richiede_lotti === true) {
+                    loadAndRenderGroupLotti(row);
+                }
+            });
+        }
+
+        async function loadAndRenderGroupLotti(row) {
+            const key = orderKey(row);
+            const box = groupOrderEl(key)?.querySelector("[data-lotti-box]");
+            if (!box) return;
+
+            box.innerHTML = `<div class="text-muted small">Caricamento lotti...</div>`;
+            const state = getGroupLottiState(row);
+            state.loaded = false;
+            state.loadError = "";
+
+            try {
+                const componenti = (await loadLottiForGroupRow(row)).filter(isGestioneLottoSi);
+                state.data = componenti;
+                state.hasLotti = componenti.length > 0;
+                state.hasSelectableLotti = componenti.some(comp => Array.isArray(comp.lotti) && comp.lotti.length > 0);
+                state.loaded = true;
+
+                if (!componenti.length) {
+                    workgroupCloseState.lottiByOrder[key] = [];
+                    box.innerHTML = "";
+                    return;
+                }
+
+                const isMacchinaLotti = isGroupRowMachine(row);
+
+                box.innerHTML = `
+                    <div class="fw-semibold mt-2 mb-1">Assegnazione lotti</div>
+                    <table class="table table-sm table-bordered align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Codice</th>
+                                <th>Lotto</th>
+                                <th>Giacenza</th>
+                                <th>Quantità</th>
+                                ${isMacchinaLotti ? "" : "<th>Esito</th>"}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${componenti.map(comp => `
+                                <tr data-lotto-codart="${escHtml(comp.CodArt || "")}">
+                                    <td>${escHtml(comp.CodArt || "")}</td>
+                                    <td>
+                                        <select class="form-select form-select-sm" data-field="lotto">
+                                            <option value="">-- Seleziona --</option>
+                                            ${(comp.lotti || []).map(lotto => `
+                                                <option value="${escHtml(lotto.RifLottoAlfa || "")}"
+                                                        data-giacenza="${escHtml(lotto.Giacenza || "0")}"
+                                                        data-codmag="${escHtml(lotto.CodMag || "")}">
+                                                    ${escHtml(lotto.CodMag ? `${lotto.RifLottoAlfa || ""} (${lotto.CodMag})` : (lotto.RifLottoAlfa || ""))}
+                                                </option>
+                                            `).join("")}
+                                        </select>
+                                    </td>
+                                    <td data-field="giacenza">-</td>
+                                    <td>
+                                        <input class="form-control form-control-sm"
+                                               data-field="lotto_quantita"
+                                               value="${escHtml(String(formatQtyForComp((row.modalita_lotti || "sl") === "m" ? parseSystemQty(comp.Quantita) : getGroupQuantitaRichiestaComponente(row, comp), comp) || ""))}">
+                                    </td>
+                                    ${isMacchinaLotti ? "" : `
+                                    <td>
+                                        <select class="form-select form-select-sm" data-field="esito">
+                                            <option value="ok">OK</option>
+                                            <option value="ko">KO</option>
+                                        </select>
+                                    </td>`}
+                                </tr>
+                            `).join("")}
+                        </tbody>
+                    </table>
+                `;
+
+                box.querySelectorAll('[data-field="lotto"]').forEach(select => {
+                    select.addEventListener("change", () => {
+                        const opt = select.options[select.selectedIndex];
+                        const tr = select.closest("tr");
+                        tr.querySelector('[data-field="giacenza"]').textContent =
+                            opt?.dataset?.giacenza || "-";
+                    });
+                });
+
+            } catch (err) {
+                state.loaded = false;
+                state.loadError = err?.message || "Errore caricamento lotti.";
+                box.innerHTML = `<div class="alert alert-danger mb-0">${escHtml(state.loadError)}</div>`;
+            }
+        }
+
+        function collectGroupLotti(row) {
+            const key = orderKey(row);
+            const root = groupOrderEl(key);
+            const rows = root ? root.querySelectorAll("[data-lotto-codart]") : [];
+            const payload = [];
+            const state = getGroupLottiState(row);
+            if (rows.length === 0) {
+                if (state.loaded && state.hasLotti === false) {
+                    workgroupCloseState.lottiByOrder[key] = [];
+                    return true;
+                }
+                showGroupCloseFeedback(state.loadError || `Lotti non caricati per ${row.ordine || row.cod_art || key}.`);
+                return false;
+            }
+
+            for (const tr of rows) {
+                const codArt = tr.dataset.lottoCodart || "";
+                const select = tr.querySelector('[data-field="lotto"]');
+                const lotto = select?.value || "";
+                const opt = select?.options?.[select.selectedIndex];
+                const qtyRaw = tr.querySelector('[data-field="lotto_quantita"]')?.value?.trim() || "";
+                const comp = state.data.find(c => String(c.CodArt || "") === codArt) || {};
+                const qty = parseQtyForComp(qtyRaw, comp);
+                const esito = tr.querySelector('[data-field="esito"]')?.value || "ok";
+
+                if (!lotto || !Number.isFinite(qty) || qty <= 0) {
+                    const tipoQty = isIntegerQtyComp(comp) ? " intera" : "";
+                    showGroupCloseFeedback(`Compilare lotto e quantità${tipoQty} > 0 per ${codArt}.`);
+                    return false;
+                }
+
+                payload.push({
+                    CodArt: codArt,
+                    RifLottoAlfa: lotto,
+                    CodMag: opt?.dataset?.codmag || "",
+                    Quantita: String(formatQtyForComp(qty, comp)),
+                    Esito: esito
+                });
+            }
+
+            workgroupCloseState.lottiByOrder[key] = payload;
+            return true;
+        }
+
+        async function submitWorkgroupSingleClose(rowKey, button) {
+            const row = workgroupCloseState.detail.find(item => orderKey(item) === rowKey);
+            if (!row) {
+                showGroupCloseFeedback("Ordine del gruppo non trovato.");
+                return;
+            }
+
+            showGroupCloseFeedback("");
+            if (!validateGroupSingleTotalQuantity(row)) return;
+            if (row.richiede_lotti === true && !collectGroupLotti(row)) return;
+            if (!confirm("Chiudere solo questo ordine del gruppo?")) return;
+
+            const oldText = button?.textContent || "";
+            if (button) {
+                button.disabled = true;
+                button.textContent = "Chiusura...";
+            }
+
+            try {
+                const groupNote = document.getElementById("modal-workgroup-close-note")?.value?.trim() || "";
+                const resp = await window.avpFetch("/api/ordini/gruppi/chiudi-membro", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-Requested-With": "XMLHttpRequest"
+                    },
+                    credentials: "same-origin",
+                    body: JSON.stringify({
+                        group_uid: workgroupCloseState.groupUid,
+                        note: groupNote,
+                        order: buildGroupClosePayloadForRow(row, {singleClose: true})
+                    })
+                });
+
+                let data = {};
+                try {
+                    data = await resp.json();
+                } catch (_) {
+                    data = {};
+                }
+
+                if (!resp.ok || data.ok === false) {
+                    showGroupCloseFeedback(data.error || data.message || "Errore durante la chiusura dell'ordine.");
+                    if (button) {
+                        button.disabled = false;
+                        button.textContent = oldText;
+                    }
+                    return;
+                }
+
+                const exportErrors = [];
+                for (const exportRow of (data.exports || [])) {
+                    const exportResult = await exportAvpTxt({
+                        suffix: exportRow.suffix || "officina",
+                        outboxId: exportRow.outbox_id
+                    });
+                    if (!exportResult.ok) {
+                        exportErrors.push(exportResult.error || `Export non generato per ${exportRow.outbox_id}.`);
+                    }
+                }
+
+                bootstrap.Modal.getOrCreateInstance(document.getElementById("modalWorkgroupClose")).hide();
+
+                if (data.fragments && window.applyHomeFragments) {
+                    window.applyHomeFragments(data.fragments);
+                }
+
+                if (exportErrors.length) {
+                    alert(exportErrors.join("\n"));
+                }
+            } catch (err) {
+                showGroupCloseFeedback(err?.message || "Errore di comunicazione con il server.");
+                if (button) {
+                    button.disabled = false;
+                    button.textContent = oldText;
+                }
+            }
+        }
+
+        async function submitWorkgroupClose() {
+            showGroupCloseFeedback("");
+
+            if (!validateGroupQuantities()) {
+                return;
+            }
+
+            for (const row of workgroupCloseState.detail) {
+                if (row.richiede_lotti === true && !collectGroupLotti(row)) {
+                    return;
+                }
+            }
+
+            const groupNote = document.getElementById("modal-workgroup-close-note")?.value?.trim() || "";
+            const orders = workgroupCloseState.detail.map(row => {
+                const key = orderKey(row);
+                const isMacchina = row.is_macchina === true
+                    || row.gestione_matricola === true
+                    || row.modalita_lotti === "m";
+                const qConf = isMacchina ? "" : String(parseIntQty(getGroupRowValue(key, "quantita_conforme")));
+                const qKo = isMacchina ? "" : String(parseIntQty(getGroupRowValue(key, "quantita_non_conforme")));
+
+                return {
+                    id_documento: row.id_documento,
+                    id_riga: row.id_riga,
+                    num_progr_riga: row.num_progr_riga || "",
+                    fase: row.fase || row.fase_attiva || "",
+                    matricola: row.matricola || "",
+                    modalita_lotti: row.modalita_lotti || (isMacchina ? "m" : "sl"),
+                    quantita_conforme: qConf,
+                    quantita_non_conforme: qKo,
+                    chiusura_parziale: !isMacchina && getGroupRowChecked(key, "chiusura_parziale"),
+                    data_registrazione: getGroupRowValue(key, "data_registrazione"),
+                    include_time_line: getGroupRowCheckedDefault(key, "include_time_line", true),
+                    lotti: workgroupCloseState.lottiByOrder[key] || []
+                };
+            });
+
+            const partialFlags = orders.map(row => row.chiusura_parziale === true);
+            if (partialFlags.some(Boolean) && !partialFlags.every(Boolean)) {
+                showGroupCloseFeedback("La chiusura parziale del gruppo deve riguardare tutti gli ordini.");
+                return;
+            }
+
+            const resp = await window.avpFetch("/api/ordini/gruppi/chiudi", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-Requested-With": "XMLHttpRequest"
+                },
+                credentials: "same-origin",
+                body: JSON.stringify({group_uid: workgroupCloseState.groupUid, note: groupNote, orders})
+            });
+
+            const data = await resp.json();
+
+            if (!resp.ok || data.ok === false) {
+                showGroupCloseFeedback(data.error || "Errore durante la chiusura gruppo.");
+                return;
+            }
+
+            const exportErrors = [];
+            for (const row of (data.exports || [])) {
+                const exportResult = await exportAvpTxt({
+                    suffix: row.suffix || "officina",
+                    outboxId: row.outbox_id
+                });
+                if (!exportResult.ok) {
+                    exportErrors.push(exportResult.error || `Export non generato per ${row.outbox_id}.`);
+                }
+            }
+
+            bootstrap.Modal.getOrCreateInstance(document.getElementById("modalWorkgroupClose")).hide();
+
+            if (data.fragments && window.applyHomeFragments) {
+                window.applyHomeFragments(data.fragments);
+            }
+
+            if (exportErrors.length) {
+                alert(exportErrors.join("\n"));
+            }
+        }
     })();
 </script>
 <script>

@@ -14,7 +14,8 @@ from app_odp.services.order_helpers import (
     _parse_distinta_materiale,
     _fase_to_int,
     _scaled_component_qty,
-    _decimal_to_text,
+    _component_udm,
+    _decimal_to_text_for_udm,
 )
 
 
@@ -220,9 +221,9 @@ def _phase_export_flags(
     Determina se questa fase deve generare product_line nel TXT ERP.
 
     Regola:
-    - chiusura parziale: mai product_line
     - monofase: product_line
     - multifase: product_line solo sull'ultima fase
+    - chiusura parziale: product_line con salda_riga=0 e quantità effettive
     """
     is_last_phase, next_phase = _get_phase_transition(ordine, fase_corrente)
     phase_sequence = _phase_sequence_for_ordine(ordine)
@@ -231,7 +232,7 @@ def _phase_export_flags(
         "is_last_phase": bool(is_last_phase),
         "fase_successiva": next_phase or "",
         "phase_sequence": phase_sequence,
-        "emit_product_line": bool(is_last_phase and not chiusura_parziale),
+        "emit_product_line": bool(is_last_phase),
     }
 
 
@@ -275,7 +276,7 @@ def _build_phase_payload(
         phase_sequence = _phase_sequence_for_ordine(ordine)
 
     if emit_product_line is None:
-        emit_product_line = bool(is_last_phase and not chiusura_parziale)
+        emit_product_line = bool(is_last_phase)
     return {
         "kind": "consuntivo_fase",
         "id_documento": ordine.IdDocumento,
@@ -336,7 +337,7 @@ def _build_export_distinta_base(
 
     out = []
 
-    for comp in distinta:
+    for progressivo_riga, comp in enumerate(distinta, start=1):
         if not isinstance(comp, dict):
             continue
 
@@ -353,7 +354,12 @@ def _build_export_distinta_base(
         out.append(
             {
                 **comp,
-                "Quantita": _decimal_to_text(qty_scalata),
+                "ProgressivoRiga": _norm_text(
+                    comp.get("IdRigacomponente")
+                    or comp.get("ProgressivoRiga")
+                    or progressivo_riga
+                ),
+                "Quantita": _decimal_to_text_for_udm(qty_scalata, _component_udm(comp)),
                 "VarianteArt": _norm_text(comp.get("VarianteArt", "")),
             }
         )

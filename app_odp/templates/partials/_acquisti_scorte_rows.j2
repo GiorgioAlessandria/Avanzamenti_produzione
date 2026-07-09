@@ -1,6 +1,7 @@
 {% if scorte_rows %}
     {% for row in scorte_rows %}
-        <tr data-id="{{ row.Id }}"
+        <tr data-row-key="{{ row.Id }}"
+            data-id="{{ row.Id }}"
             data-codart="{{ row.CodArt or '' }}"
             data-variante="{{ row.VarianteArt or '' }}"
             data-revisione="{{ row.IndiceModifica or '' }}"
@@ -8,6 +9,7 @@
             data-stato="{% if row.Annullata %}Annullata{% else %}{{ row.Stato or '' }}{% endif %}"
             data-annullata="{{ '1' if row.Annullata else '0' }}"
             data-segnalatoda="{{ row.SegnalatoDa or '' }}"
+            data-scorta-overdue="{{ '1' if row.ScortaApertaOltre3Giorni else '0' }}"
             class="
                 {% if row.Annullata %}
                     table-secondary text-muted
@@ -15,19 +17,14 @@
                     table-success
                 {% elif row.ScortaApertaOltre3Giorni %}
                     table-danger
-                {% elif not row.LookupTrovato %}
+                {% elif row.Stato == 'Aperta' %}
                     table-warning
                 {% endif %}">
             <td>{{ row.DataLetturaText }}</td>
             <td>{{ row.CodArt }}</td>
             <td>{{ row.VarianteArt }}</td>
             <td>{{ row.IndiceModifica }}</td>
-            <td>
-                {{ row.DesArt or '' }}
-                {% if not row.LookupTrovato %}
-                    <div class="small text-danger">Non trovato nel lookup</div>
-                {% endif %}
-            </td>
+            <td>{{ row.DesArt or '' }}</td>
             <td>{{ row.PuntoRiordinoText }}</td>
             <td>{{ row.PianTempoApprovFisso or '' }}</td>
             <td>{{ row.LottoRiordinoText }}</td>
