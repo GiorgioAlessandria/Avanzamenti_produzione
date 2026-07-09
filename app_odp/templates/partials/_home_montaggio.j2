@@ -1861,13 +1861,74 @@
             alertEl.style.display = msg ? "" : "none";
         }
 
-        function parseQty(v) {
+        function parseIntQty(v) {
             let s = String(v ?? "").trim().replace(/\s+/g, "");
-            if (!s) return 0;
+            if (!s) return NaN;
+            if (s.includes(",") || s.includes(".")) return NaN;
+            if (!/^\d+$/.test(s)) return NaN;
+            const n = Number(s);
+            return Number.isSafeInteger(n) ? n : NaN;
+        }
+
+        function parseSystemQty(v) {
+            let s = String(v ?? "").trim().replace(/\s+/g, "");
+            if (!s) return NaN;
             if (s.includes(",") && s.includes(".")) s = s.replace(/\./g, "");
             s = s.replace(",", ".");
             const n = Number(s);
+            return Number.isFinite(n) ? n : NaN;
+        }
+
+        function parseQty(v) {
+            const n = parseSystemQty(v);
             return Number.isFinite(n) ? n : 0;
+        }
+
+        function getCompUdm(comp) {
+            return String(comp?.TecniciUm ?? comp?.UdM ?? comp?.Udm ?? comp?.UM ?? comp?.MagUM ?? comp?.UnitaMisura ?? "").trim();
+        }
+
+        function isIntegerQtyComp(comp) {
+            const udm = getCompUdm(comp).toUpperCase().replace(/\s+/g, "").replace(/\.+$/g, "");
+            return udm === "N" || udm === "PZ";
+        }
+
+        function formatQtyForComp(qty, comp) {
+            if (!Number.isFinite(qty)) return 0;
+            return isIntegerQtyComp(comp) ? Math.round(qty) : Number(qty.toFixed(4));
+        }
+
+        function parseQtyForComp(v, comp) {
+            return isIntegerQtyComp(comp) ? parseIntQty(v) : parseSystemQty(v);
+        }
+
+        function parseQtyForCompOrZero(v, comp) {
+            const n = parseQtyForComp(v, comp);
+            return Number.isFinite(n) ? n : 0;
+        }
+
+        function componentByCod(cod) {
+            return _lottiData.find(c => String(c.CodArt || "") === String(cod || "")) || {};
+        }
+
+        function applyQtyInputRules(input, comp) {
+            if (!input) return;
+            input.setAttribute("min", "0");
+            if (isIntegerQtyComp(comp)) {
+                input.setAttribute("inputmode", "numeric");
+                input.setAttribute("step", "1");
+                input.setAttribute("pattern", "\\d*");
+            } else {
+                input.setAttribute("inputmode", "decimal");
+                input.setAttribute("step", "0.0001");
+                input.removeAttribute("pattern");
+            }
+        }
+
+        function sanitizeQtyInputForComp(input, comp) {
+            if (!input || !isIntegerQtyComp(comp)) return;
+            const cleaned = String(input.value ?? "").replace(/[^\d]/g, "");
+            if (input.value !== cleaned) input.value = cleaned;
         }
 
         function sameQty(a, b) {
@@ -1921,7 +1982,7 @@
                     <input type="number"
                            class="form-control form-control-sm lotto-qty-m text-end"
                            min="0"
-                           step="0.0001"
+                           step="1"
                            value=""
                            placeholder="0"
                            style="width:90px;">
@@ -1937,6 +1998,7 @@
                     ${isInitial ? "" : '<button type="button" class="btn btn-sm btn-outline-danger btn-rem-lotto-m" title="Rimuovi">−</button>'}
                 </td>`;
             tbody.appendChild(tr);
+            applyQtyInputRules(tr.querySelector(".lotto-qty-m"), componentByCod(codArt));
             return tr;
         }
 
@@ -1946,7 +2008,7 @@
             const totals = {};
             tbody.querySelectorAll("tr").forEach(row => {
                 const cod = row.dataset.codart || "";
-                const comp = _lottiData.find(c => String(c.CodArt || "") === cod) || {};
+                const comp = componentByCod(cod);
                 const qty = parseQtyForCompOrZero(row.querySelector(".lotto-qty-m")?.value, comp);
 
                 if (!totals[cod]) totals[cod] = 0;
@@ -2061,17 +2123,20 @@
                 const cod = row.dataset.codart || "";
                 const lottoVal = row.querySelector(".lotto-select-m")?.value || "";
                 const giacenza = parseQty(row.querySelector(".giacenza-cell-m")?.textContent);
-                const comp = _lottiData.find(c => String(c.CodArt || "") === cod) || {};
+                const comp = componentByCod(cod);
                 const qty = parseQtyForComp(row.querySelector(".lotto-qty-m")?.value, comp);
 
-                if (qty > 0 && !lottoVal) {
-                    errors.push(`${cod}: selezionare un lotto.`);
+                if (!lottoVal && (!Number.isFinite(qty) || qty <= 0)) return;
+
+                if (!Number.isFinite(qty) || qty <= 0) {
+                    errors.push(`${cod}: inserire una quantita${isIntegerQtyComp(comp) ? " intera" : ""} > 0.`);
                     return;
                 }
 
-                if (!lottoVal) return;
-
-
+                if (!lottoVal) {
+                    errors.push(`${cod}: selezionare un lotto.`);
+                    return;
+                }
                 if (qty > giacenza) {
                     errors.push(`${cod} lotto ${lottoVal}: qtà ${qty} > giacenza ${giacenza}.`);
                 }
@@ -2121,10 +2186,12 @@
                 const row = sel.closest("tr");
                 const giacCell = row.querySelector(".giacenza-cell-m");
                 const qtyInput = row.querySelector(".lotto-qty-m");
+                const comp = componentByCod(row.dataset.codart || "");
                 const opt = sel.options[sel.selectedIndex];
+                applyQtyInputRules(qtyInput, comp);
 
                 if (opt && opt.value) {
-                    const g = parseQty(opt.dataset.giacenza);
+                    const g = formatQtyForComp(parseQty(opt.dataset.giacenza), comp);
                     giacCell.textContent = g;
                     qtyInput.max = String(g);
                 } else {
@@ -2141,6 +2208,9 @@
 
         tbody.addEventListener("input", function (e) {
             if (e.target.classList.contains("lotto-qty-m")) {
+                const row = e.target.closest("tr");
+                const comp = componentByCod(row?.dataset?.codart || "");
+                sanitizeQtyInputForComp(e.target, comp);
                 updateRiepilogo();
                 validateLotti();
             }
@@ -2463,6 +2533,29 @@
             return Number.isFinite(n) ? n : 0;
         }
 
+        function componentByCod(cod) {
+            return _lottiData.find(c => String(c.CodArt || "") === String(cod || "")) || {};
+        }
+
+        function applyQtyInputRules(input, comp) {
+            if (!input) return;
+            input.setAttribute("min", "0");
+            if (isIntegerQtyComp(comp)) {
+                input.setAttribute("inputmode", "numeric");
+                input.setAttribute("step", "1");
+                input.setAttribute("pattern", "\\d*");
+            } else {
+                input.setAttribute("inputmode", "decimal");
+                input.setAttribute("step", "0.0001");
+                input.removeAttribute("pattern");
+            }
+        }
+
+        function sanitizeQtyInputForComp(input, comp) {
+            if (!input || !isIntegerQtyComp(comp)) return;
+            const cleaned = String(input.value ?? "").replace(/[^\d]/g, "");
+            if (input.value !== cleaned) input.value = cleaned;
+        }
         function getQuantitaResiduaCorrente() {
             const n = parseSystemQty(hidQtyResidua?.value);
             return Number.isFinite(n) ? n : 0;
@@ -2495,12 +2588,12 @@
             html += '<option value="">-- Seleziona lotto --</option>';
             for (const l of (lotti || [])) {
                 const value = String(l.RifLottoAlfa || "");
-                const giacenza = parseQtyOrZero(l.Giacenza);
+                const giacenza = parseSystemQty(l.Giacenza);
                 const codMag = String(l.CodMag || "");
                 const sel = value === selectedLotto ? " selected" : "";
                 html += `
                     <option value="${escHtml(value)}"
-                            data-giacenza="${giacenza}"
+                            data-giacenza="${Number.isFinite(giacenza) ? giacenza : 0}"
                             data-codmag="${escHtml(codMag)}"${sel}>
                         ${escHtml(value)} (mag: ${escHtml(codMag || "-")})
                     </option>`;
@@ -2523,7 +2616,7 @@
                     <input type="number"
                            class="form-control form-control-sm lotto-qty-sl text-end"
                            min="0"
-                           step="0.0001"
+                           step="1"
                            value=""
                            placeholder="0"
                            style="width:90px;">
@@ -2545,6 +2638,7 @@
                     ${isInitial ? "" : '<button type="button" class="btn btn-sm btn-outline-danger btn-rem-lotto-sl" title="Rimuovi">−</button>'}
                 </td>`;
             tbody.appendChild(tr);
+            applyQtyInputRules(tr.querySelector(".lotto-qty-sl"), componentByCod(codArt));
             return tr;
         }
 
@@ -2789,10 +2883,12 @@
                 const row = sel.closest("tr");
                 const giacCell = row.querySelector(".giacenza-cell-sl");
                 const qtyInput = row.querySelector(".lotto-qty-sl");
+                const comp = componentByCod(row.dataset.codart || "");
                 const opt = sel.options[sel.selectedIndex];
+                applyQtyInputRules(qtyInput, comp);
 
                 if (opt && opt.value) {
-                    const g = parseSystemQty(opt.dataset.giacenza);
+                    const g = formatQtyForComp(parseSystemQty(opt.dataset.giacenza), comp);
                     giacCell.textContent = Number.isFinite(g) ? g : 0;
                     qtyInput.max = Number.isFinite(g) ? String(g) : "";
                 } else {
@@ -2812,6 +2908,9 @@
 
         tbody.addEventListener("input", function (e) {
             if (e.target.classList.contains("lotto-qty-sl")) {
+                const row = e.target.closest("tr");
+                const comp = componentByCod(row?.dataset?.codart || "");
+                sanitizeQtyInputForComp(e.target, comp);
                 updateRiepilogo();
                 validateLotti();
             }

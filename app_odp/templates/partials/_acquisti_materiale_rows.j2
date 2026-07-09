@@ -3,6 +3,7 @@
         <tr class="
         {% if row.Mag0Missing %}row-acq-material-missing{% endif %}
         {% if row.RimanenzaMaterialeCritica %} row-acq-material-critical{% elif row.RimanenzaMaterialeSottoScorta %} row-acq-material-understock{% endif %}"
+            data-row-key="{{ [row.CodArt or '', row.VarianteArt or '', row.IndiceModifica or '']|join('|')|e }}"
             data-codart="{{ row.CodArt or '' }}"
             data-revisione="{{ row.IndiceModifica or '' }}"
             data-variante="{{ row.VarianteArt or '' }}"

@@ -680,25 +680,78 @@ def test_build_runtime_seed_and_helpers(mod):
 def test_filtri_giacenza_lotti_keeps_positive_valid_rows(mod):
     df = pd.DataFrame(
         {
-            "Giacenza": [5, 0, "abc", 2],
-            "RifLottoAlfa": ["12345678", "12345678", "87654321", "ABCDE"],
+            "Giacenza": [5, 0, "abc", 2, "2,5", "3.5", "4.0", "6,25"],
+            "RifLottoAlfa": [
+                "12345678",
+                "12345678",
+                "87654321",
+                "ABCDE",
+                "22222222",
+                "33333333",
+                "44444444",
+                "55555555",
+            ],
             "CodArt": [
                 "BE00-037-0000",
                 "BE00-037-0000",
                 "BE00-037-0000",
                 "BE00-037-0000",
+                "BE00-037-0000",
+                "BE00-037-0000",
+                "BE00-037-0000",
+                "BE00-037-0000",
             ],
+            "TecniciUm": ["PZ", "PZ", "KG", "KG", "KG", "PZ", "N.", "M"],
         }
     )
 
     result = mod.filtri_giacenza_lotti(df)
 
-    assert result.to_dict("records") == [
+    assert result[["Giacenza", "RifLottoAlfa", "CodArt"]].to_dict("records") == [
         {
-            "Giacenza": 5,
+            "Giacenza": "5",
             "RifLottoAlfa": "12345678",
             "CodArt": "BE00-037-0000",
+        },
+        {
+            "Giacenza": "2.5",
+            "RifLottoAlfa": "22222222",
+            "CodArt": "BE00-037-0000",
+        },
+        {
+            "Giacenza": "4",
+            "RifLottoAlfa": "44444444",
+            "CodArt": "BE00-037-0000",
+        },
+        {
+            "Giacenza": "6.25",
+            "RifLottoAlfa": "55555555",
+            "CodArt": "BE00-037-0000",
+        },
+    ]
+
+
+def test_aggiungi_udm_giacenza_lotti_uses_articoli_for_filter(mod):
+    lotti = pd.DataFrame(
+        {
+            "CodArt": ["BE00-037-0000", "BE00-038-0000"],
+            "RifLottoAlfa": ["12345678", "87654321"],
+            "CodMag": ["0", "0"],
+            "Giacenza": ["1.5", "1.5"],
         }
+    )
+    articoli = pd.DataFrame(
+        {
+            "CodArt": ["BE00-037-0000", "BE00-038-0000"],
+            "TecniciUm": ["PZ", "KG"],
+        }
+    )
+
+    enriched = mod.aggiungi_udm_giacenza_lotti(lotti, articoli)
+    result = mod.filtri_giacenza_lotti(enriched)
+
+    assert result[["CodArt", "Giacenza"]].to_dict("records") == [
+        {"CodArt": "BE00-038-0000", "Giacenza": "1.5"}
     ]
 
 

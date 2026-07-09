@@ -1,6 +1,7 @@
 {% if scorte_rows %}
     {% for row in scorte_rows %}
-        <tr data-id="{{ row.Id }}"
+        <tr data-row-key="{{ row.Id }}"
+            data-id="{{ row.Id }}"
             data-codart="{{ row.CodArt or '' }}"
             data-variante="{{ row.VarianteArt or '' }}"
             data-revisione="{{ row.IndiceModifica or '' }}"

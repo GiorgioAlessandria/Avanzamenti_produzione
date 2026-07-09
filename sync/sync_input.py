@@ -12,6 +12,7 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 import sqlite3 as sq
 import tomllib
 from pathlib import Path
+from decimal import Decimal, InvalidOperation
 import pandas as pd
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
@@ -1832,18 +1833,102 @@ def int_format(x):
         return 0
 
 
+LOTTI_UDM_COLS = ("TecniciUm", "UdM", "Udm", "UM", "MagUM", "UnitaMisura")
+
+
+def _lotto_udm_column(df: pd.DataFrame) -> str | None:
+    for col in LOTTI_UDM_COLS:
+        if col in df.columns:
+            return col
+    return None
+
+
+def _normalize_lotto_udm(value) -> str:
+    return _norm_text(value).upper().replace(" ", "").rstrip(".")
+
+
+def _lotto_requires_integer_udm(value) -> bool:
+    return _normalize_lotto_udm(value) in {"N", "PZ"}
+
+
+def _parse_lotto_giacenza(value) -> Decimal | None:
+    raw = _norm_text(value).replace(" ", "")
+    if not raw:
+        return None
+    if "," in raw and "." in raw:
+        if raw.rfind(",") > raw.rfind("."):
+            raw = raw.replace(".", "").replace(",", ".")
+        else:
+            raw = raw.replace(",", "")
+    else:
+        raw = raw.replace(",", ".")
+    try:
+        qty = Decimal(raw)
+    except InvalidOperation:
+        return None
+    return qty if qty.is_finite() else None
+
+
+def _decimal_lotto_text(value: Decimal) -> str:
+    text = format(value.normalize(), "f") if value != 0 else "0"
+    return text.rstrip("0").rstrip(".") if "." in text else text
+
+
+def _normalizza_giacenza_lotto(value, udm="") -> str | None:
+    qty = _parse_lotto_giacenza(value)
+    if qty is None or qty <= 0:
+        return None
+    if _lotto_requires_integer_udm(udm):
+        if qty != qty.to_integral_value():
+            return None
+        qty = qty.to_integral_value()
+    return _decimal_lotto_text(qty)
+
+
+def aggiungi_udm_giacenza_lotti(
+    df_giacenza_lotti: pd.DataFrame, df_articoli: pd.DataFrame
+) -> pd.DataFrame:
+    if (
+        _lotto_udm_column(df_giacenza_lotti)
+        or "CodArt" not in df_giacenza_lotti.columns
+    ):
+        return df_giacenza_lotti
+
+    udm_col = _lotto_udm_column(df_articoli)
+    if not udm_col or "CodArt" not in df_articoli.columns:
+        return df_giacenza_lotti
+
+    df_udm = (
+        df_articoli[["CodArt", udm_col]]
+        .dropna(subset=["CodArt"])
+        .drop_duplicates(subset=["CodArt"], keep="last")
+        .rename(columns={udm_col: "TecniciUm"})
+    )
+    return df_giacenza_lotti.merge(df_udm, on="CodArt", how="left")
+
+
 def filtri_giacenza_lotti(df_giacenza_lotti: pd.DataFrame) -> pd.DataFrame:
     """
-    Filtra il dataframe della giacenza lotti per mantenere solo le righe con giacenza maggiore di 0
-
-    :param df_giacenza_lotti: Dataframe con la giacenza dei lotti
-    :type df_giacenza_lotti: pd.DataFrame
-    :return: Dataframe filtrato con solo i lotti con giacenza maggiore di 0
-    :rtype: pd.DataFrame
+    Filtra il dataframe della giacenza lotti per mantenere solo le righe con giacenza maggiore di 0.
+    Per UdM N/PZ scarta giacenze decimali, per le altre UdM mantiene il valore decimale.
     """
-    df_giacenza_lotti["Giacenza"] = df_giacenza_lotti["Giacenza"].apply(int_format)
+    df_giacenza_lotti = df_giacenza_lotti.copy()
+    udm_col = _lotto_udm_column(df_giacenza_lotti)
+
+    if udm_col:
+        df_giacenza_lotti["Giacenza"] = df_giacenza_lotti.apply(
+            lambda row: _normalizza_giacenza_lotto(
+                row.get("Giacenza"), row.get(udm_col)
+            ),
+            axis=1,
+        )
+    else:
+        df_giacenza_lotti["Giacenza"] = df_giacenza_lotti["Giacenza"].apply(
+            _normalizza_giacenza_lotto
+        )
+
     df_giacenza_lotti_filtered = df_giacenza_lotti.loc[
-        df_giacenza_lotti["Giacenza"] > 0
+        df_giacenza_lotti["Giacenza"].notna()
     ]
     df_giacenza_lotti_filtered_regexLotto = df_giacenza_lotti_filtered[
         df_giacenza_lotti_filtered["RifLottoAlfa"]
@@ -2454,7 +2539,9 @@ def elaborazione_dati(session: Session) -> None:
     df_new_runtime = df_runtime_seed.loc[mask_new_runtime].copy()
 
     df_giacenza_lotti = (
-        leggi_view(table="vwESGiacenzaLotti")
+        aggiungi_udm_giacenza_lotti(
+            leggi_view(table="vwESGiacenzaLotti"), df_articoli
+        )
         .pipe(filtri_giacenza_lotti)[["CodArt", "RifLottoAlfa", "CodMag", "Giacenza"]]
         .copy()
     )

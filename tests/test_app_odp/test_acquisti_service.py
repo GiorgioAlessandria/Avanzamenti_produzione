@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 from app_odp.services import acquisti_service as service
 
 
@@ -71,3 +73,20 @@ def test_acquisti_giacenza_excel_omits_control_column_without_warnings():
     headers = [cell.value for cell in ws[1]]
 
     assert "Controllo" not in headers
+
+
+class _FakeQuery:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def all(self):
+        return list(self._rows)
+
+
+def test_build_acquisti_materiale_rows_returns_empty_list_without_orders(monkeypatch):
+    monkeypatch.setattr(service, "_base_odp_query", lambda: _FakeQuery([]))
+    monkeypatch.setattr(service, "AcqArticoli", SimpleNamespace(query=_FakeQuery([])))
+    monkeypatch.setattr(service, "AcqArticoliLookup", SimpleNamespace(query=_FakeQuery([])))
+    monkeypatch.setattr(service, "AcqGiacenze", SimpleNamespace(query=_FakeQuery([])))
+
+    assert service._build_acquisti_materiale_rows() == []

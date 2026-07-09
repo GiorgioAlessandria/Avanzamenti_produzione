@@ -491,6 +491,14 @@ def _build_acquisti_materiale_rows() -> list[dict]:
         }
 
         rows_out.append(row)
+    return sorted(
+        rows_out,
+        key=lambda r: (
+            _norm_text(r.get("CodArt")).lower(),
+            _norm_text(r.get("VarianteArt")).lower(),
+            _norm_text(r.get("IndiceModifica")).lower(),
+        ),
+    )
 
 
 def _build_acquisti_giacenze_rows() -> list[dict]:

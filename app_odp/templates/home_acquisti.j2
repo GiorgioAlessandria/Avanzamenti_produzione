@@ -252,6 +252,22 @@
 
                 const POLL_MS = 5000;
                 let isRefreshing = false;
+                const REFRESH_IDLE_MS = 12000;
+                let lastUserActivityAt = 0;
+
+                function markUserActivity() {
+                    lastUserActivityAt = Date.now();
+                }
+
+                function userIsInteracting() {
+                    return Date.now() - lastUserActivityAt < REFRESH_IDLE_MS;
+                }
+
+                root.addEventListener("scroll", markUserActivity, true);
+                root.addEventListener("input", markUserActivity, true);
+                root.addEventListener("change", markUserActivity, true);
+                root.addEventListener("pointerdown", markUserActivity, true);
+                root.addEventListener("wheel", markUserActivity, {capture: true, passive: true});
 
                 function getAcquistiFilterSnapshot() {
                     const snapshot = {};
@@ -421,6 +437,35 @@
                     });
                 }
 
+                function getAcquistiScrollSnapshot() {
+                    const snapshot = {};
+                    document.querySelectorAll("#acquisti-content-container table[id]").forEach((table) => {
+                        const scroller = table.closest(".table-responsive");
+                        if (!scroller) return;
+                        snapshot[table.id] = {
+                            top: scroller.scrollTop,
+                            left: scroller.scrollLeft,
+                        };
+                    });
+                    return snapshot;
+                }
+
+                function restoreAcquistiScrollSnapshot(snapshot) {
+                    const apply = () => {
+                        Object.entries(snapshot || {}).forEach(([tableId, pos]) => {
+                            const table = document.getElementById(tableId);
+                            const scroller = table?.closest(".table-responsive");
+                            if (!scroller) return;
+                            scroller.scrollTop = Number(pos.top) || 0;
+                            scroller.scrollLeft = Number(pos.left) || 0;
+                        });
+                    };
+                    window.requestAnimationFrame(() => {
+                        apply();
+                        window.setTimeout(apply, 50);
+                    });
+                }
+
                 function reapplyAllAcquistiFilters() {
                     const tableIds = getAllAcquistiTargetTableIds();
 
@@ -455,6 +500,9 @@
                         return;
                     }
 
+                    if (!force && userIsInteracting()) {
+                        return;
+                    }
                     if (!force && document.querySelector("#modalAcqMateriale.show")) {
                         return;
                     }
@@ -462,6 +510,7 @@
                     isRefreshing = true;
                     const filterSnapshot = getAcquistiFilterSnapshot();
                     const sortSnapshot = getAcquistiSortSnapshot();
+                    const scrollSnapshot = getAcquistiScrollSnapshot();
 
                     try {
                         const response = await window.avpFetch(bridgeUrl, {
@@ -500,6 +549,8 @@
                         restoreAcquistiFilterSnapshot(filterSnapshot);
                         restoreAcquistiSortSnapshot(sortSnapshot);
                         reapplyAllAcquistiFilters();
+                        window.restoreSelectedRows?.();
+                        restoreAcquistiScrollSnapshot(scrollSnapshot);
 
                     } catch (err) {
                         console.error("Errore refresh acquisti:", err);

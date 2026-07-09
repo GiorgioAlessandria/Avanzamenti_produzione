@@ -1536,6 +1536,29 @@
             return Number.isFinite(n) ? n : 0;
         }
 
+        function componentByCod(cod) {
+            return _lottiData.find(c => String(c.CodArt || "") === String(cod || "")) || {};
+        }
+
+        function applyQtyInputRules(input, comp) {
+            if (!input) return;
+            input.setAttribute("min", "0");
+            if (isIntegerQtyComp(comp)) {
+                input.setAttribute("inputmode", "numeric");
+                input.setAttribute("step", "1");
+                input.setAttribute("pattern", "\\d*");
+            } else {
+                input.setAttribute("inputmode", "decimal");
+                input.setAttribute("step", "0.0001");
+                input.removeAttribute("pattern");
+            }
+        }
+
+        function sanitizeQtyInputForComp(input, comp) {
+            if (!input || !isIntegerQtyComp(comp)) return;
+            const cleaned = String(input.value ?? "").replace(/[^\d]/g, "");
+            if (input.value !== cleaned) input.value = cleaned;
+        }
         function sanitizeIntegerInput(el) {
             if (!el) return;
 
@@ -1654,7 +1677,7 @@
             <td class="text-end giacenza-cell-sl" style="font-size: 20px;">-</td>
             <td>
                 <input type="number" class="form-control form-control-sm lotto-qty-sl text-end"
-                       min="0" step="0.0001" value="" placeholder="0" style="width: 90px;">
+                       min="0" step="1" value="" placeholder="0" style="width: 90px;">
             </td>
             <td>
                 <select class="form-select form-select-sm lotto-esito-sl" style="width: 70px;">
@@ -1670,6 +1693,7 @@
             </td>
         `;
             tbody.appendChild(tr);
+            applyQtyInputRules(tr.querySelector(".lotto-qty-sl"), componentByCod(codArt));
             return tr;
         }
 
@@ -1703,10 +1727,12 @@
                 const row = sel.closest("tr");
                 const giacCell = row.querySelector(".giacenza-cell-sl");
                 const qtyInput = row.querySelector(".lotto-qty-sl");
+                const comp = componentByCod(row.dataset.codart || "");
                 const opt = sel.options[sel.selectedIndex];
+                applyQtyInputRules(qtyInput, comp);
 
                 if (opt && opt.value) {
-                    const g = parseSystemQty(opt.dataset.giacenza);
+                    const g = formatQtyForComp(parseSystemQty(opt.dataset.giacenza), comp);
                     giacCell.textContent = Number.isFinite(g) ? g : 0;
                     qtyInput.max = Number.isFinite(g) ? String(g) : "";
                 } else {
@@ -1726,6 +1752,9 @@
 
         tbody.addEventListener("input", function (e) {
             if (e.target.classList.contains("lotto-qty-sl")) {
+                const row = e.target.closest("tr");
+                const comp = componentByCod(row?.dataset?.codart || "");
+                sanitizeQtyInputForComp(e.target, comp);
                 updateRiepilogo();
                 validateLotti();
             }

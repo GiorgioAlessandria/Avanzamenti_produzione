@@ -23,6 +23,48 @@ def app_ctx(tmp_path):
         yield app
 
 
+def test_montaggio_macchina_lotti_template_has_integer_udm_guards():
+    from jinja2 import Environment
+
+    template_path = (
+        Path(__file__).resolve().parents[2]
+        / "app_odp"
+        / "templates"
+        / "partials"
+        / "_home_montaggio.j2"
+    )
+    template = template_path.read_text(encoding="utf-8")
+    Environment().parse(template)
+
+    start = template.index('const toastEl = document.getElementById("toast-7");')
+    end = template.index('document.addEventListener("click", function (e) {', start)
+    macchina_block = template[start:end]
+
+    assert "function parseIntQty" in macchina_block
+    assert "function parseQtyForComp" in macchina_block
+    assert "function sanitizeQtyInputForComp" in macchina_block
+    assert 'class="form-control form-control-sm lotto-qty-m text-end"' in macchina_block
+    assert 'step="1"' in macchina_block
+    assert "sanitizeQtyInputForComp(e.target, comp);" in macchina_block
+
+
+def test_acquisti_template_refresh_preserves_scroll_and_skips_user_activity():
+    from jinja2 import Environment
+
+    template_path = (
+        Path(__file__).resolve().parents[2]
+        / "app_odp"
+        / "templates"
+        / "home_acquisti.j2"
+    )
+    template = template_path.read_text(encoding="utf-8")
+    Environment().parse(template)
+
+    assert "function userIsInteracting()" in template
+    assert "root.addEventListener(\"scroll\", markUserActivity, true);" in template
+    assert "const scrollSnapshot = getAcquistiScrollSnapshot();" in template
+    assert "restoreAcquistiScrollSnapshot(scrollSnapshot);" in template
+    assert "window.restoreSelectedRows?.();" in template
 def test_parse_qty_decimal_accepts_blank_comma_and_invalid():
     from app_odp.services import order_helpers as helpers
 
