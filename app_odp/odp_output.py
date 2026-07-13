@@ -228,18 +228,8 @@ def _phase_ref_for_export(base_ref: str, payload: dict) -> str:
     return _ref_with_suffix(base_ref, payload.get("fase"))
 
 
-def _component_row_index(component: dict, fallback: int) -> int:
-    for key in ("IdRigacomponente", "ProgressivoRiga", "IdRigaComponente"):
-        value_int = _to_int(component.get(key))
-        if value_int is not None and value_int > 0:
-            return value_int
-
-    return fallback
-
-
 def _component_ref_for_export(base_ref: str, component: dict, fallback: int) -> str:
-    return _ref_with_suffix(base_ref, _component_row_index(component, fallback))
-
+    return _ref_with_suffix(base_ref, fallback)
 
 def txt_generator(
     export_rows: list[dict],

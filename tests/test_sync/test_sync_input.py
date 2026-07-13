@@ -3,6 +3,7 @@ import json
 import sqlite3 as sq
 import sys
 from datetime import datetime, time
+from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -30,8 +31,8 @@ def mod_reset(mod):
     mod.END_H = None
     mod.TIMEZONE = None
     mod.POLL_SECONDS_DEFAULT = None
-    mod.ELEMENTI_ESCLUSI = None
-    mod.ELEMENTI_SELEZIONATI = None
+    mod.ELEMENTI_ESCLUSI = {}
+    mod.ELEMENTI_SELEZIONATI = {}
     mod._INITIALIZED = False
     mod.nuovo_ciclo = 0
     return mod
@@ -309,6 +310,7 @@ def test_unione_fasi_componenti_adds_component_description(mod):
             "DesArt": ["Componente"],
             "TecniciUm": ["PZ"],
             "GestioneLotto": ["S"],
+            "IndiceModifica": [""],
         }
     )
 
@@ -779,6 +781,7 @@ def test_elaborazione_dati_inserts_new_erp_runtime_lots_and_writes_logs(
         ].copy(),
     )
     monkeypatch.setattr(mod_reset, "_fetch_blocked_outbox_pks", lambda engine: set())
+    monkeypatch.setattr(mod_reset, "_repair_runtime_risorsa_attiva", lambda session: 0)
     monkeypatch.setattr(
         mod_reset,
         "_write_sync_logs",
@@ -870,6 +873,7 @@ def test_elaborazione_dati_updates_existing_erp_inserts_missing_runtime_without_
         ].copy(),
     )
     monkeypatch.setattr(mod_reset, "_fetch_blocked_outbox_pks", lambda engine: set())
+    monkeypatch.setattr(mod_reset, "_repair_runtime_risorsa_attiva", lambda session: 0)
     monkeypatch.setattr(
         mod_reset, "_write_sync_logs", lambda **kwargs: log_calls.append(kwargs)
     )
@@ -937,6 +941,7 @@ def test_elaborazione_dati_skips_blocked_outbox_pks_but_still_syncs_lots(
         "_fetch_blocked_outbox_pks",
         lambda engine: {("1", "10")},
     )
+    monkeypatch.setattr(mod_reset, "_repair_runtime_risorsa_attiva", lambda session: 0)
     monkeypatch.setattr(
         mod_reset, "_write_sync_logs", lambda **kwargs: log_calls.append(kwargs)
     )
@@ -1490,6 +1495,7 @@ def test_elaborazione_dati_with_empty_lots_inserts_erp_runtime_but_not_giacenza(
         ].copy(),
     )
     monkeypatch.setattr(mod_reset, "_fetch_blocked_outbox_pks", lambda engine: set())
+    monkeypatch.setattr(mod_reset, "_repair_runtime_risorsa_attiva", lambda session: 0)
     monkeypatch.setattr(
         mod_reset,
         "_write_sync_logs",

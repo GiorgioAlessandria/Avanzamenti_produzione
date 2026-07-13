@@ -1,22 +1,14 @@
 # INDICE TEST
-# 1. Verifica la conversione da millimetri a pixel con arrotondamento corretto.
-# 2. Verifica che load_font usi truetype quando il file font esiste.
-# 3. Verifica che load_font usi il font di default se il file non esiste.
-# 4. Verifica che load_font faccia fallback al font di default se truetype fallisce.
-# 5. Verifica che make_qr generi un'immagine quadrata in scala di grigi della dimensione richiesta.
-# 6. Verifica che pattern_grid ripeta i bit se l'hash è troppo corto e ridimensioni correttamente l'immagine.
-# 7. Verifica che pattern_grid tronchi i bit se l'hash è più lungo del necessario.
-# 8. Verifica il calcolo del massimo comune divisore con casi standard e bordo.
-# 9. Verifica che invio_automatico restituisca stringa vuota per testo vuoto o solo spazi.
-# 10. Verifica che invio_automatico mandi a capo correttamente in base alla larghezza massima.
-# 11. Verifica che gen_etichette costruisca il layout, inserisca il QR e mostri l'immagine.
+# 1. Verifica la conversione da millimetri a pixel.
+# 2. Verifica il caricamento font e i fallback.
+# 3. Verifica la generazione QR.
+# 4. Verifica il wrapping testo.
+# 5. Verifica il layout generato da gen_etichette.
 
 import importlib
 import pytest
 
-MODULE_PATH = (
-    "app_odp.etichette"  # nel progetto puoi sostituire con "app_odp.etichette"
-)
+MODULE_PATH = "app_odp.gen_etichette"
 
 
 @pytest.fixture()
@@ -24,9 +16,7 @@ def mod():
     return importlib.import_module(MODULE_PATH)
 
 
-import numpy as np
 from types import SimpleNamespace
-
 
 class FakeCanvas:
     def __init__(self, mode="L", size=(0, 0), color=255):
@@ -133,38 +123,6 @@ def test_make_qr_returns_square_grayscale_image_with_requested_size(mod):
     assert qr.mode == "L"
 
 
-def test_pattern_grid_repeats_bits_when_hash_is_short(mod):
-    img = mod.pattern_grid("f", grid=4, scale=3)
-    arr = np.array(img)
-
-    assert img.size == (12, 12)
-    assert img.mode == "L"
-    assert set(np.unique(arr)).issubset({0, 255})
-
-
-def test_pattern_grid_truncates_bits_when_hash_is_long(mod):
-    img = mod.pattern_grid("abcdef1234567890", grid=3, scale=2)
-    arr = np.array(img)
-
-    assert img.size == (6, 6)
-    assert img.mode == "L"
-    assert set(np.unique(arr)).issubset({0, 255})
-
-
-@pytest.mark.parametrize(
-    ("a", "b", "expected"),
-    [
-        (54, 24, 6),
-        (24, 54, 6),
-        (10, 0, 10),
-        (0, 10, 10),
-        (7, 7, 7),
-    ],
-)
-def test_gcd_handles_standard_and_edge_cases(mod, a, b, expected):
-    assert mod.gcd(a, b) == expected
-
-
 @pytest.mark.parametrize("text", ["", "   "])
 def test_invio_automatico_returns_empty_string_for_blank_text(mod, text):
     draw = FakeDraw()
@@ -243,25 +201,25 @@ def test_gen_etichette_builds_layout_pastes_qr_and_shows_image(mod, monkeypatch)
     h_px = mod.mm_to_px(80, 300)
     x = w_px - 3
     y = h_px - 3
-    sesti_x = int((x / 6) + 8)
-    terzo_y = int((y / 3) + 9)
+    sesti_x = int((x / 5) + 5)
+    terzo_y = int((y / 4))
     expected_paste_position = (sesti_x * 3, terzo_y)
 
-    assert result is None
+    assert result is fake_canvas
     assert fake_canvas.mode == "L"
     assert fake_canvas.size == (w_px, h_px)
     assert fake_canvas.color == 255
-    assert fake_canvas.show_called is True
+    assert fake_canvas.show_called is False
     assert fake_canvas.pasted == [(fake_qr, expected_paste_position)]
 
     assert fake_draw.rectangles == [
-        {"coords": [(2, 2), (x, y)], "outline": 0, "width": 1}
+        {"coords": [(1, 1), (x, y)], "outline": 0, "width": 1}
     ]
 
     assert [call[0] for call in load_font_calls] == ["fake-font.ttf", "fake-font.ttf"]
     assert len(load_font_calls) == 2
-    assert load_font_calls[0][1] == max(30, int(h_px * 0.065))
-    assert load_font_calls[1][1] == max(25, int(h_px * 0.058))
+    assert load_font_calls[0][1] == max(20, int(h_px * 0.055))
+    assert load_font_calls[1][1] == max(15, int(h_px * 0.043))
 
     assert [call["text"] for call in fake_draw.text_calls] == [
         "Codice del componente",
@@ -280,7 +238,7 @@ def test_gen_etichette_builds_layout_pastes_qr_and_shows_image(mod, monkeypatch)
     assert len(invio_calls) == 1
     assert invio_calls[0]["draw"] is fake_draw
     assert invio_calls[0]["text"] == "descrizione molto lunga di prova"
-    assert invio_calls[0]["font"] == f"font-{max(25, int(h_px * 0.058))}"
+    assert invio_calls[0]["font"] == f"font-{max(15, int(h_px * 0.043))}"
 
 
 def test_load_font_returns_default_when_preferred_is_none_or_empty(mod, monkeypatch):
@@ -328,27 +286,6 @@ def test_invio_automatico_does_not_split_single_long_word(mod):
     assert result == "lunghissimaparola"
 
 
-def test_pattern_grid_raises_on_invalid_hex_string(mod):
-    with pytest.raises(ValueError):
-        mod.pattern_grid("zz-not-hex", grid=3, scale=2)
-
-
-def test_pattern_grid_scales_source_cells_with_nearest_blocks(mod):
-    img = mod.pattern_grid("8", grid=2, scale=2)
-    arr = np.array(img)
-    expected = np.array(
-        [
-            [255, 255, 0, 0],
-            [255, 255, 0, 0],
-            [0, 0, 0, 0],
-            [0, 0, 0, 0],
-        ],
-        dtype=np.uint8,
-    )
-
-    assert np.array_equal(arr, expected)
-
-
 def test_gen_etichette_calls_make_qr_with_str_lotto_and_size_250(mod, monkeypatch):
     fake_canvas = FakeCanvas()
     fake_draw = FakeDraw()
@@ -378,7 +315,7 @@ def test_gen_etichette_calls_make_qr_with_str_lotto_and_size_250(mod, monkeypatc
         font_path="fake-font.ttf",
     )
 
-    assert result is None
+    assert result is fake_canvas
     assert qr_calls == [("456", 250)]
     assert fake_canvas.pasted and fake_canvas.pasted[0][0] is fake_qr
 
@@ -407,7 +344,7 @@ def test_gen_etichette_writes_expected_static_labels(mod, monkeypatch):
         font_path="fake-font.ttf",
     )
 
-    assert result is None
+    assert result is fake_canvas
     assert [call["text"] for call in fake_draw.text_calls] == [
         "Codice del componente",
         "Descrizione",

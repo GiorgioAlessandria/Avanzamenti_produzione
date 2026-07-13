@@ -7,6 +7,12 @@ from flask import Flask
 
 MODULE_PATH = "app_odp.filters"
 
+
+@pytest.fixture()
+def mod():
+    return importlib.import_module(MODULE_PATH)
+
+
 # Indice test
 # 1. test_register_filters_registers_expected_filter_names:
 #    verifica che register_filters registri db_json, db_list_display e db_date nell'ambiente Jinja.
