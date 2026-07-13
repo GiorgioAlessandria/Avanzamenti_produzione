@@ -102,6 +102,9 @@ def create_app():
     app.config["SQLALCHEMY_BINDS"] = {
         "log": f"sqlite:///{configurazione['Percorsi']['percorso_db_log']}",
         "acq": f"sqlite:///{configurazione['Percorsi']['percorso_db_acq']}",
+        "manutenzioni": (
+            f"sqlite:///{configurazione['Percorsi']['percorso_db_manutenzioni']}"
+        ),
     }
     app.config["ERP_EXPORT_DIR"] = configurazione["Percorsi"]["percorso_file_output"]
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
@@ -202,6 +205,7 @@ def create_app():
         db.create_all()
         db.create_all(bind_key="log")
         db.create_all(bind_key="acq")
+        db.create_all(bind_key="manutenzioni")
         _ensure_builtin_permissions()
 
     app.register_blueprint(auth_bp)
