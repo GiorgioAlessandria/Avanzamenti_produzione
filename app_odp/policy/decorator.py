@@ -59,3 +59,40 @@ def require_active_perm(code: str):
         return wrapper
 
     return deco
+
+
+def require_active_any_perm(*codes: str):
+    """
+    Consente l'accesso quando l'utente possiede almeno uno
+    dei permessi indicati.
+    """
+
+    normalized_codes = tuple(
+        str(code or "").strip() for code in codes if str(code or "").strip()
+    )
+
+    if not normalized_codes:
+        raise ValueError("È necessario specificare almeno un permesso.")
+
+    def deco(fn):
+        @wraps(fn)
+        def wrapper(*args, **kwargs):
+            operator_session = resolve_operator_session()
+
+            if operator_session is None and not getattr(
+                current_user,
+                "is_authenticated",
+                False,
+            ):
+                return redirect(url_for("auth.login"))
+
+            policy = active_policy()
+
+            if not any(policy.can(code) for code in normalized_codes):
+                abort(403)
+
+            return fn(*args, **kwargs)
+
+        return wrapper
+
+    return deco

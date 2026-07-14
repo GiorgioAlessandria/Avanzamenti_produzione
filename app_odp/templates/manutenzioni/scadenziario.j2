@@ -1,0 +1,416 @@
+{% extends "base.j2" %}
+
+{% block title %}
+    Scadenziario manutenzioni
+{% endblock %}
+
+{% block content %}
+    <main class="container-fluid py-3"
+          id="manutenzioni-scadenziario-page">
+
+        <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+            <div>
+                <div class="d-flex align-items-center gap-2 mb-1">
+                    <a href="{{ operator_url_for(
+                        'main.manutenzioni_home'
+                    ) }}"
+                       class="btn btn-sm btn-outline-secondary">
+                        <i class="bi bi-arrow-left"></i>
+                    </a>
+
+                    <h1 class="h4 mb-0">
+                        Scadenziario manutenzioni
+                    </h1>
+                </div>
+
+                <div class="text-muted small">
+                    Eventi programmati e registro delle manutenzioni
+                </div>
+            </div>
+        </div>
+
+        <section class="row g-3 mb-3">
+            <div class="col-6 col-md-4 col-xl">
+                <div class="card shadow-sm h-100">
+                    <div class="card-body text-center">
+                        <div class="text-muted small">
+                            Eventi nel periodo
+                        </div>
+
+                        <div class="fs-4 fw-semibold">
+                            {{ summary.totale }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-6 col-md-4 col-xl">
+                <div class="card shadow-sm h-100 border-danger">
+                    <div class="card-body text-center">
+                        <div class="text-muted small">
+                            Scadute
+                        </div>
+
+                        <div class="fs-4 fw-semibold text-danger">
+                            {{ summary.scadute }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-6 col-md-4 col-xl">
+                <div class="card shadow-sm h-100 border-warning">
+                    <div class="card-body text-center">
+                        <div class="text-muted small">
+                            In scadenza
+                        </div>
+
+                        <div class="fs-4 fw-semibold">
+                            {{ summary.in_scadenza }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-6 col-md-4 col-xl">
+                <div class="card shadow-sm h-100">
+                    <div class="card-body text-center">
+                        <div class="text-muted small">
+                            Programmate
+                        </div>
+
+                        <div class="fs-4 fw-semibold">
+                            {{ summary.programmate }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-6 col-md-4 col-xl">
+                <div class="card shadow-sm h-100 border-success">
+                    <div class="card-body text-center">
+                        <div class="text-muted small">
+                            Completate
+                        </div>
+
+                        <div class="fs-4 fw-semibold text-success">
+                            {{ summary.completate }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <form method="get"
+              action="{{ operator_url_for(
+              'main.manutenzioni_scadenziario'
+          ) }}"
+              class="card shadow-sm mb-3">
+
+            <div class="card-body">
+                <div class="row g-2 align-items-end">
+
+                    <div class="col-12 col-md-4 col-xl-3">
+                        <label for="scadenziario-search"
+                               class="form-label">
+                            Ricerca
+                        </label>
+
+                        <input type="search"
+                               class="form-control"
+                               id="scadenziario-search"
+                               name="search"
+                               value="{{ search }}"
+                               placeholder="Macchinario, piano, manutenzione...">
+                    </div>
+
+                    <div class="col-12 col-md-4 col-xl-2">
+                        <label for="scadenziario-reparto"
+                               class="form-label">
+                            Reparto
+                        </label>
+
+                        <select class="form-select"
+                                id="scadenziario-reparto"
+                                name="reparto_codice">
+
+                            <option value="">
+                                Tutti i reparti visibili
+                            </option>
+
+                            {% for reparto in reparti %}
+                                <option value="{{ reparto.codice }}"
+                                        {% if selected_reparto == reparto.codice %}
+                                        selected
+                                        {% endif %}>
+                                    {{ reparto.codice }}
+
+                                    {% if reparto.descrizione %}
+                                        - {{ reparto.descrizione }}
+                                    {% endif %}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="col-12 col-md-4 col-xl-2">
+                        <label for="scadenziario-stato"
+                               class="form-label">
+                            Stato
+                        </label>
+
+                        <select class="form-select"
+                                id="scadenziario-stato"
+                                name="stato">
+
+                            <option value="">
+                                Tutti
+                            </option>
+
+                            <option value="APERTI"
+                                    {% if selected_stato == "APERTI" %}
+                                    selected
+                                    {% endif %}>
+                                Tutti gli aperti
+                            </option>
+
+                            <option value="SCADUTA"
+                                    {% if selected_stato == "SCADUTA" %}
+                                    selected
+                                    {% endif %}>
+                                Scadute
+                            </option>
+
+                            <option value="IN_SCADENZA"
+                                    {% if selected_stato == "IN_SCADENZA" %}
+                                    selected
+                                    {% endif %}>
+                                In scadenza
+                            </option>
+
+                            <option value="PROGRAMMATA"
+                                    {% if selected_stato == "PROGRAMMATA" %}
+                                    selected
+                                    {% endif %}>
+                                Programmate
+                            </option>
+
+                            <option value="COMPLETATA"
+                                    {% if selected_stato == "COMPLETATA" %}
+                                    selected
+                                    {% endif %}>
+                                Completate
+                            </option>
+
+                            <option value="SALTATA"
+                                    {% if selected_stato == "SALTATA" %}
+                                    selected
+                                    {% endif %}>
+                                Saltate
+                            </option>
+
+                            <option value="ANNULLATA"
+                                    {% if selected_stato == "ANNULLATA" %}
+                                    selected
+                                    {% endif %}>
+                                Annullate
+                            </option>
+                        </select>
+                    </div>
+
+                    <div class="col-6 col-md-3 col-xl-2">
+                        <label for="scadenziario-data-dal"
+                               class="form-label">
+                            Dal
+                        </label>
+
+                        <input type="date"
+                               class="form-control"
+                               id="scadenziario-data-dal"
+                               name="data_dal"
+                               value="{{ data_dal }}">
+                    </div>
+
+                    <div class="col-6 col-md-3 col-xl-2">
+                        <label for="scadenziario-data-fino"
+                               class="form-label">
+                            Al
+                        </label>
+
+                        <input type="date"
+                               class="form-control"
+                               id="scadenziario-data-fino"
+                               name="data_fino"
+                               value="{{ data_fino }}">
+                    </div>
+
+                    <div class="col-12 col-md-6 col-xl">
+                        <div class="d-flex gap-2">
+                            <button type="submit"
+                                    class="btn btn-primary flex-grow-1">
+                                Filtra
+                            </button>
+
+                            <a href="{{ operator_url_for(
+                                'main.manutenzioni_scadenziario'
+                            ) }}"
+                               class="btn btn-outline-secondary">
+                                Pulisci
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </form>
+
+        <div class="card shadow-sm">
+            <div class="card-header d-flex justify-content-between align-items-center">
+            <span class="fw-semibold">
+                Eventi
+            </span>
+
+                <span class="badge text-bg-secondary">
+                {{ rows|length }}
+            </span>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-striped table-hover align-middle mb-0">
+                    <thead>
+                    <tr>
+                        <th>Data</th>
+                        <th>Stato</th>
+                        <th>Macchinario</th>
+                        <th>Reparto</th>
+                        <th>Piano</th>
+                        <th>Manutenzione</th>
+                        <th>Operatore</th>
+                        <th>Esito</th>
+                        <th class="text-end">
+                            Azioni
+                        </th>
+                    </tr>
+                    </thead>
+
+                    <tbody>
+                    {% for row in rows %}
+                        <tr>
+                            <td class="fw-semibold">
+                                {{ row.data_programmata }}
+                            </td>
+
+                            <td>
+                                {% if row.stato_visuale == "SCADUTA" %}
+                                    <span class="badge text-bg-danger">
+                                        Scaduta
+                                    </span>
+
+                                {% elif row.stato_visuale == "IN_SCADENZA" %}
+                                    <span class="badge text-bg-warning">
+                                        In scadenza
+                                    </span>
+
+                                {% elif row.stato_visuale == "PROGRAMMATA" %}
+                                    <span class="badge text-bg-primary">
+                                        Programmata
+                                    </span>
+
+                                {% elif row.stato == "COMPLETATA" %}
+                                    <span class="badge text-bg-success">
+                                        Completata
+                                    </span>
+
+                                {% elif row.stato == "SALTATA" %}
+                                    <span class="badge text-bg-secondary">
+                                        Saltata
+                                    </span>
+
+                                {% elif row.stato == "ANNULLATA" %}
+                                    <span class="badge text-bg-dark">
+                                        Annullata
+                                    </span>
+
+                                {% else %}
+                                    <span class="badge text-bg-secondary">
+                                        {{ row.stato_visuale }}
+                                    </span>
+                                {% endif %}
+                            </td>
+
+                            <td>
+                                <div class="fw-semibold">
+                                    {{ row.macchinario_codice }}
+                                </div>
+
+                                <div class="small text-muted">
+                                    {{ row.macchinario_descrizione }}
+                                </div>
+
+                                {% if not row.macchinario_attivo %}
+                                    <span class="badge text-bg-secondary">
+                                        Macchinario inattivo
+                                    </span>
+                                {% endif %}
+                            </td>
+
+                            <td>
+                                {{ row.reparto_codice }}
+
+                                {% if row.reparto_descrizione %}
+                                    <div class="small text-muted">
+                                        {{ row.reparto_descrizione }}
+                                    </div>
+                                {% endif %}
+                            </td>
+
+                            <td>
+                                {{ row.piano_codice or "-" }}
+                            </td>
+
+                            <td>
+                                <div>
+                                    {{ row.titolo }}
+                                </div>
+
+                                {% if row.descrizione %}
+                                    <div class="small text-muted">
+                                        {{ row.descrizione }}
+                                    </div>
+                                {% endif %}
+                            </td>
+
+                            <td>
+                                {{ row.eseguito_da_username
+                                        or row.registrato_da_username
+                                        or "-" }}
+                            </td>
+
+                            <td>
+                                {{ row.esito or "-" }}
+                            </td>
+
+                            <td class="text-end">
+                                <a href="{{ operator_url_for(
+                                        'main.manutenzioni_macchinario_detail',
+                                        macchinario_id=row.macchinario_id
+                                    ) }}"
+                                   class="btn btn-sm btn-outline-primary">
+                                    Apri
+                                </a>
+                            </td>
+                        </tr>
+
+                    {% else %}
+                        <tr>
+                            <td colspan="9"
+                                class="text-center text-muted py-4">
+                                Nessun evento trovato nel periodo selezionato.
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+{% endblock %}

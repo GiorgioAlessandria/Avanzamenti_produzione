@@ -1,0 +1,3854 @@
+{% extends "base.j2" %}
+
+{% block title %}Manutenzioni macchinari{% endblock %}
+
+{% block content %}
+    <style>
+        .maintenance-calendar-shell {
+            overflow-x: auto;
+        }
+
+        .maintenance-calendar {
+            min-width: 980px;
+        }
+
+        .maintenance-calendar-weekdays,
+        .maintenance-calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, minmax(0, 1fr));
+        }
+
+        .maintenance-calendar-weekday {
+            padding: .55rem .65rem;
+            border: 1px solid var(--bs-border-color);
+            border-bottom: 0;
+            background: var(--bs-tertiary-bg);
+            font-size: .78rem;
+            font-weight: 600;
+            text-align: center;
+            text-transform: uppercase;
+        }
+
+        .maintenance-calendar-day {
+            min-height: 145px;
+            padding: .4rem;
+            border: 1px solid var(--bs-border-color);
+            background: var(--bs-body-bg);
+        }
+
+        .maintenance-calendar-day.is-outside {
+            background: var(--bs-secondary-bg);
+            color: var(--bs-secondary-color);
+        }
+
+        .maintenance-calendar-day.is-weekend {
+            background:
+                color-mix(
+                    in srgb,
+                    var(--bs-secondary-bg) 70%,
+                    var(--bs-body-bg)
+                );
+        }
+
+        .maintenance-calendar-day.is-holiday {
+            box-shadow:
+                inset 0 3px 0
+                var(--bs-danger-border-subtle);
+        }
+
+        .maintenance-calendar-day.is-today {
+            outline: 2px solid var(--bs-primary);
+            outline-offset: -2px;
+        }
+
+        .maintenance-calendar-day-header {
+            display: flex;
+            justify-content: space-between;
+            gap: .35rem;
+            margin-bottom: .35rem;
+        }
+
+        .maintenance-calendar-day-number {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 1.7rem;
+            height: 1.7rem;
+            border-radius: 50%;
+            font-size: .85rem;
+            font-weight: 600;
+        }
+
+        .maintenance-calendar-day.is-today
+        .maintenance-calendar-day-number {
+            background: var(--bs-primary);
+            color: var(--bs-white);
+        }
+
+        .maintenance-calendar-holiday {
+            margin-bottom: .3rem;
+            padding: .15rem .3rem;
+            border-radius: .25rem;
+            background: var(--bs-danger-bg-subtle);
+            color: var(--bs-danger-text-emphasis);
+            font-size: .68rem;
+            line-height: 1.2;
+        }
+
+        .maintenance-calendar-events {
+            display: flex;
+            flex-direction: column;
+            gap: .25rem;
+        }
+
+        .maintenance-calendar-event {
+            width: 100%;
+            padding: .28rem .38rem;
+            border: 0;
+            border-left: 4px solid currentColor;
+            border-radius: .25rem;
+            background: var(--bs-secondary-bg);
+            color: var(--bs-body-color);
+            font-size: .72rem;
+            line-height: 1.2;
+            text-align: left;
+        }
+
+        .maintenance-calendar-event:hover {
+            filter: brightness(.96);
+        }
+
+        .maintenance-calendar-event.status-SCADUTA {
+            background: var(--bs-danger-bg-subtle);
+            color: var(--bs-danger-text-emphasis);
+        }
+
+        .maintenance-calendar-event.status-IN_SCADENZA {
+            background: var(--bs-warning-bg-subtle);
+            color: var(--bs-warning-text-emphasis);
+        }
+
+        .maintenance-calendar-event.status-PROGRAMMATA {
+            background: var(--bs-primary-bg-subtle);
+            color: var(--bs-primary-text-emphasis);
+        }
+
+        .maintenance-calendar-event.status-COMPLETATA {
+            background: var(--bs-success-bg-subtle);
+            color: var(--bs-success-text-emphasis);
+        }
+
+        .maintenance-calendar-event.status-SALTATA,
+        .maintenance-calendar-event.status-ANNULLATA {
+            background: var(--bs-secondary-bg);
+            color: var(--bs-secondary-color);
+        }
+
+        .maintenance-calendar-event-title {
+            display: block;
+            overflow: hidden;
+            font-weight: 600;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .maintenance-calendar-event-meta {
+            display: block;
+            margin-top: .1rem;
+            overflow: hidden;
+            opacity: .8;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .maintenance-calendar-legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: .65rem;
+            font-size: .75rem;
+        }
+
+        .maintenance-calendar-legend-item::before {
+            display: inline-block;
+            width: .65rem;
+            height: .65rem;
+            margin-right: .25rem;
+            border-radius: 50%;
+            content: "";
+        }
+
+        .legend-overdue::before {
+            background: var(--bs-danger);
+        }
+
+        .legend-due::before {
+            background: var(--bs-warning);
+        }
+
+        .legend-planned::before {
+            background: var(--bs-primary);
+        }
+
+        .legend-completed::before {
+            background: var(--bs-success);
+        }
+    </style>
+
+    <main class="container-fluid py-3"
+          id="manutenzioni-page"
+          data-machines-url="{{ url_for('main.api_manutenzioni_macchinari_list') }}"
+          data-calendar-url="{{ url_for('main.api_manutenzioni_calendario') }}"
+          data-global-calendar-sync-url="{{ url_for('main.api_manutenzioni_calendario_aggiorna') }}"
+          data-non-working-days-url="{{ url_for('main.api_manutenzioni_giorni_non_lavorativi_list') }}"
+          data-event-base-url="/api/manutenzioni/eventi"
+          data-can-execute-events="{{ '1' if can_execute_events else '0' }}"
+          data-oggi="{{ oggi }}"
+          data-selected-view="{{ selected_view }}">
+
+        <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+            <div>
+                <h1 class="h4 mb-1">
+                    Manutenzioni macchinari
+                </h1>
+
+                <div class="text-muted small">
+                    Anagrafica dei macchinari e gestione delle manutenzioni
+                </div>
+            </div>
+
+            <div class="d-flex gap-2">
+                {% if can_view_register %}
+                    <a href="{{ operator_url_for(
+                'main.manutenzioni_scadenziario'
+            ) }}"
+                       class="btn btn-outline-primary">
+                        <i class="bi bi-calendar3"></i>
+                        Scadenziario
+                    </a>
+                {% endif %}
+
+                {% if can_manage_calendar %}
+                    <button type="button"
+                            class="btn btn-outline-primary"
+                            id="btn-aggiorna-calendario-globale">
+                        <i class="bi bi-arrow-repeat"></i>
+                        Aggiorna calendario
+                    </button>
+                {% endif %}
+
+                {% if can_manage %}
+                    <button type="button"
+                            class="btn btn-primary"
+                            id="btn-nuovo-macchinario">
+                        <i class="bi bi-plus-lg"></i>
+                        Nuovo macchinario
+                    </button>
+                {% endif %}
+            </div>
+        </div>
+
+        <div id="manutenzioni-global-feedback"
+             class="alert d-none mb-3"
+             role="alert">
+        </div>
+
+        <ul class="nav nav-tabs mb-3"
+            id="manutenzioni-view-tabs"
+            role="tablist">
+
+            <li class="nav-item"
+                role="presentation">
+                <button class="nav-link {% if selected_view == 'calendario' %}active{% endif %}"
+                        id="manutenzioni-calendario-tab"
+                        data-bs-toggle="tab"
+                        data-bs-target="#manutenzioni-calendario-pane"
+                        data-view-name="calendario"
+                        type="button"
+                        role="tab">
+                    <i class="bi bi-calendar3"></i>
+                    Calendario
+                </button>
+            </li>
+
+            <li class="nav-item"
+                role="presentation">
+                <button class="nav-link {% if selected_view == 'macchinari' %}active{% endif %}"
+                        id="manutenzioni-macchinari-tab"
+                        data-bs-toggle="tab"
+                        data-bs-target="#manutenzioni-macchinari-pane"
+                        data-view-name="macchinari"
+                        type="button"
+                        role="tab">
+                    <i class="bi bi-list-ul"></i>
+                    Elenco macchinari
+                </button>
+            </li>
+
+            {% if can_manage_calendar %}
+                <li class="nav-item"
+                    role="presentation">
+                    <button class="nav-link {% if selected_view == 'chiusure' %}active{% endif %}"
+                            id="manutenzioni-chiusure-tab"
+                            data-bs-toggle="tab"
+                            data-bs-target="#manutenzioni-chiusure-pane"
+                            data-view-name="chiusure"
+                            type="button"
+                            role="tab">
+                        <i class="bi bi-calendar-x"></i>
+                        Giorni non lavorativi
+                    </button>
+                </li>
+            {% endif %}
+        </ul>
+
+        <form method="get"
+              action="{{ operator_url_for('main.manutenzioni_home') }}"
+              class="card shadow-sm mb-3"
+              id="manutenzioni-filter-form">
+
+            <input type="hidden"
+                   id="manutenzioni-view-field"
+                   name="view"
+                   value="{{ selected_view }}">
+
+            <div class="card-body">
+                <div class="row g-2 align-items-end">
+
+                    <div class="col-12 col-xl-3">
+                        <label for="manutenzioni-search"
+                               class="form-label">
+                            Ricerca
+                        </label>
+
+                        <input type="search"
+                               class="form-control"
+                               id="manutenzioni-search"
+                               name="search"
+                               value="{{ search }}"
+                               placeholder="Macchinario, piano, manutenzione...">
+                    </div>
+
+                    <div class="col-12 col-md-4 col-xl-3">
+                        <label for="manutenzioni-reparto"
+                               class="form-label">
+                            Reparto
+                        </label>
+
+                        <select class="form-select"
+                                id="manutenzioni-reparto"
+                                name="reparto_codice">
+
+                            <option value="">
+                                Tutti i reparti visibili
+                            </option>
+
+                            {% for reparto in reparti %}
+                                <option value="{{ reparto.codice }}"
+                                        {% if selected_reparto == reparto.codice %}
+                                        selected
+                                        {% endif %}>
+                                    {{ reparto.codice }}
+                                    {% if reparto.descrizione %}
+                                        - {{ reparto.descrizione }}
+                                    {% endif %}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="col-12 col-md-4 col-xl-2">
+                        <label for="manutenzioni-stato"
+                               class="form-label">
+                            Stato evento
+                        </label>
+
+                        <select class="form-select"
+                                id="manutenzioni-stato"
+                                name="stato">
+                            <option value="">
+                                Tutti
+                            </option>
+                            <option value="SCADUTA"
+                                    {% if selected_stato == "SCADUTA" %}selected{% endif %}>
+                                Scadute
+                            </option>
+                            <option value="IN_SCADENZA"
+                                    {% if selected_stato == "IN_SCADENZA" %}selected{% endif %}>
+                                In scadenza
+                            </option>
+                            <option value="PROGRAMMATA"
+                                    {% if selected_stato == "PROGRAMMATA" %}selected{% endif %}>
+                                Programmate
+                            </option>
+                            <option value="COMPLETATA"
+                                    {% if selected_stato == "COMPLETATA" %}selected{% endif %}>
+                                Completate
+                            </option>
+                            <option value="SALTATA"
+                                    {% if selected_stato == "SALTATA" %}selected{% endif %}>
+                                Saltate
+                            </option>
+                            <option value="ANNULLATA"
+                                    {% if selected_stato == "ANNULLATA" %}selected{% endif %}>
+                                Annullate
+                            </option>
+                        </select>
+                    </div>
+
+                    <div class="col-12 col-md-4 col-xl-2">
+                        <div class="form-check mb-2">
+                            <input type="checkbox"
+                                   class="form-check-input"
+                                   id="manutenzioni-inattivi"
+                                   name="include_inactive"
+                                   value="1"
+                                    {% if include_inactive %}
+                                   checked
+                                    {% endif %}>
+
+                            <label class="form-check-label"
+                                   for="manutenzioni-inattivi">
+                                Inattivi nell'elenco
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="col-12 col-xl-2">
+                        <div class="d-flex gap-2">
+                            <button type="submit"
+                                    class="btn btn-primary flex-grow-1">
+                                Filtra
+                            </button>
+
+                            <a href="{{ operator_url_for('main.manutenzioni_home') }}"
+                               class="btn btn-outline-secondary">
+                                Pulisci
+                            </a>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </form>
+
+        <div class="tab-content"
+             id="manutenzioni-view-content">
+
+            <div class="tab-pane fade {% if selected_view == 'calendario' %}show active{% endif %}"
+                 id="manutenzioni-calendario-pane"
+                 role="tabpanel"
+                 aria-labelledby="manutenzioni-calendario-tab">
+
+                <div class="card shadow-sm mb-3">
+                    <div class="card-header">
+                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="btn-group btn-group-sm"
+                                     role="group"
+                                     aria-label="Navigazione calendario">
+                                    <button type="button"
+                                            class="btn btn-outline-secondary"
+                                            id="calendar-prev-month"
+                                            title="Mese precedente">
+                                        <i class="bi bi-chevron-left"></i>
+                                    </button>
+
+                                    <button type="button"
+                                            class="btn btn-outline-secondary"
+                                            id="calendar-today">
+                                        Oggi
+                                    </button>
+
+                                    <button type="button"
+                                            class="btn btn-outline-secondary"
+                                            id="calendar-next-month"
+                                            title="Mese successivo">
+                                        <i class="bi bi-chevron-right"></i>
+                                    </button>
+                                </div>
+
+                                <h2 class="h5 mb-0 text-capitalize"
+                                    id="maintenance-calendar-title">
+                                </h2>
+                            </div>
+
+                            <div class="maintenance-calendar-legend">
+                                <span class="maintenance-calendar-legend-item legend-overdue">
+                                    Scaduta
+                                </span>
+                                <span class="maintenance-calendar-legend-item legend-due">
+                                    In scadenza
+                                </span>
+                                <span class="maintenance-calendar-legend-item legend-planned">
+                                    Programmata
+                                </span>
+                                <span class="maintenance-calendar-legend-item legend-completed">
+                                    Completata
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card-body p-0">
+                        <div id="maintenance-calendar-feedback"
+                             class="alert alert-danger m-3 d-none"
+                             role="alert">
+                        </div>
+
+                        <div id="maintenance-calendar-loading"
+                             class="d-none p-4 text-center">
+                            <div class="spinner-border"
+                                 role="status">
+                                <span class="visually-hidden">
+                                    Caricamento...
+                                </span>
+                            </div>
+                        </div>
+
+                        <div class="maintenance-calendar-shell">
+                            <div class="maintenance-calendar">
+                                <div class="maintenance-calendar-weekdays">
+                                    {% for giorno in ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"] %}
+                                        <div class="maintenance-calendar-weekday">
+                                            {{ giorno }}
+                                        </div>
+                                    {% endfor %}
+                                </div>
+
+                                <div class="maintenance-calendar-grid"
+                                     id="maintenance-calendar-grid">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade {% if selected_view == 'macchinari' %}show active{% endif %}"
+                 id="manutenzioni-macchinari-pane"
+                 role="tabpanel"
+                 aria-labelledby="manutenzioni-macchinari-tab">
+        <div class="card shadow-sm">
+            <div class="card-header d-flex justify-content-between align-items-center">
+            <span class="fw-semibold">
+                Macchinari
+            </span>
+
+                <span class="badge text-bg-secondary">
+                {{ macchinari_rows|length }}
+            </span>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-striped table-hover align-middle mb-0">
+                    <thead>
+                    <tr>
+                        <th>Codice</th>
+                        <th>Descrizione</th>
+                        <th>Matricola</th>
+                        <th>Reparto</th>
+                        <th>Costruttore</th>
+                        <th>Modello</th>
+                        <th>Ubicazione</th>
+                        <th>Stato</th>
+                        <th class="text-end">
+                            Azioni
+                        </th>
+                    </tr>
+                    </thead>
+
+                    <tbody>
+                    {% for macchinario in macchinari_rows %}
+                        <tr>
+                            <td class="fw-semibold">
+                                {{ macchinario.codice }}
+                            </td>
+
+                            <td>
+                                {{ macchinario.descrizione }}
+                            </td>
+
+                            <td>
+                                {{ macchinario.matricola or "-" }}
+                            </td>
+
+                            <td>
+                                {{ macchinario.reparto_codice }}
+
+                                {% if macchinario.reparto_descrizione %}
+                                    <div class="small text-muted">
+                                        {{ macchinario.reparto_descrizione }}
+                                    </div>
+                                {% endif %}
+                            </td>
+
+                            <td>
+                                {{ macchinario.costruttore or "-" }}
+                            </td>
+
+                            <td>
+                                {{ macchinario.modello or "-" }}
+                            </td>
+
+                            <td>
+                                {{ macchinario.ubicazione or "-" }}
+                            </td>
+
+                            <td>
+                                {% if macchinario.attivo %}
+                                    <span class="badge text-bg-success">
+                                        Attivo
+                                    </span>
+                                {% else %}
+                                    <span class="badge text-bg-secondary">
+                                        Inattivo
+                                    </span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                <div class="d-inline-flex gap-1">
+                                    <a href="{{ operator_url_for(
+                                            'main.manutenzioni_macchinario_detail',
+                                            macchinario_id=macchinario.id
+                                            ) }}"
+                                       class="btn btn-sm btn-outline-secondary">
+                                        <i class="bi bi-calendar-check"></i>
+                                        Manutenzioni
+                                    </a>
+
+                                    {% if can_manage %}
+                                        <button type="button"
+                                                class="btn btn-sm btn-outline-primary btn-modifica-macchinario"
+                                                data-macchinario-id="{{ macchinario.id }}">
+                                            <i class="bi bi-pencil"></i>
+                                            Modifica
+                                        </button>
+
+                                        <button type="button"
+                                                class="btn btn-sm {% if macchinario.attivo %}btn-outline-danger{% else %}btn-outline-success{% endif %} btn-stato-macchinario"
+                                                data-macchinario-id="{{ macchinario.id }}"
+                                                data-macchinario-attivo="{{ '1' if macchinario.attivo else '0' }}"
+                                                data-macchinario-codice="{{ macchinario.codice }}">
+                                            {% if macchinario.attivo %}
+                                                <i class="bi bi-pause-circle"></i>
+                                                Disattiva
+                                            {% else %}
+                                                <i class="bi bi-play-circle"></i>
+                                                Attiva
+                                            {% endif %}
+                                        </button>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                    {% else %}
+                        <tr>
+                            <td colspan="9"
+                                class="text-center text-muted py-4">
+                                Nessun macchinario trovato.
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+            </div>
+
+            {% if can_manage_calendar %}
+                <div class="tab-pane fade {% if selected_view == 'chiusure' %}show active{% endif %}"
+                     id="manutenzioni-chiusure-pane"
+                     role="tabpanel"
+                     aria-labelledby="manutenzioni-chiusure-tab">
+
+                    <div class="alert alert-info">
+                        Le festività nazionali italiane e il
+                        Lunedì dell'Angelo sono calcolati
+                        automaticamente. Qui vanno inseriti
+                        soltanto patroni locali, ponti e chiusure
+                        aziendali.
+                    </div>
+
+                    <div class="card shadow-sm">
+                        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+                            <div>
+                                <div class="fw-semibold">
+                                    Chiusure personalizzate
+                                </div>
+                                <div class="small text-muted">
+                                    Ogni modifica riallinea le
+                                    scadenze future ancora programmate.
+                                </div>
+                            </div>
+
+                            <button type="button"
+                                    class="btn btn-primary"
+                                    id="btn-nuovo-giorno-non-lavorativo">
+                                <i class="bi bi-plus-lg"></i>
+                                Nuovo giorno non lavorativo
+                            </button>
+                        </div>
+
+                        <div id="giorni-non-lavorativi-feedback"
+                             class="alert alert-danger m-3 d-none"
+                             role="alert">
+                        </div>
+
+                        <div id="giorni-non-lavorativi-loading"
+                             class="d-none p-4 text-center">
+                            <div class="spinner-border"
+                                 role="status">
+                                <span class="visually-hidden">
+                                    Caricamento...
+                                </span>
+                            </div>
+                        </div>
+
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover align-middle mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Data</th>
+                                        <th>Descrizione</th>
+                                        <th>Tipo</th>
+                                        <th>Ricorrenza</th>
+                                        <th>Stato</th>
+                                        <th class="text-end">
+                                            Azioni
+                                        </th>
+                                    </tr>
+                                </thead>
+
+                                <tbody id="giorni-non-lavorativi-body">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+
+
+    </main>
+    {% if can_manage %}
+        <div class="modal fade"
+             id="modalMacchinario"
+             tabindex="-1"
+             aria-labelledby="modalMacchinarioLabel"
+             aria-hidden="true">
+
+            <div class="modal-dialog modal-lg modal-dialog-centered">
+                <div class="modal-content">
+
+                    <form id="form-macchinario"
+                          novalidate>
+
+                        <div class="modal-header">
+                            <h5 class="modal-title"
+                                id="modalMacchinarioLabel">
+                                Nuovo macchinario
+                            </h5>
+
+                            <button type="button"
+                                    class="btn-close"
+                                    data-bs-dismiss="modal"
+                                    aria-label="Chiudi">
+                            </button>
+                        </div>
+
+                        <div class="modal-body">
+                            <input type="hidden"
+                                   id="macchinario-id">
+
+                            <div id="macchinario-feedback"
+                                 class="alert d-none"
+                                 role="alert">
+                            </div>
+
+                            <div id="macchinario-loading"
+                                 class="d-none mb-3">
+                                <div class="d-flex align-items-center gap-2">
+                                    <div class="spinner-border spinner-border-sm"
+                                         role="status"
+                                         aria-hidden="true">
+                                    </div>
+
+                                    <span>Caricamento in corso...</span>
+                                </div>
+                            </div>
+
+                            <div class="row g-3"
+                                 id="macchinario-form-fields">
+
+                                <div class="col-12 col-md-4">
+                                    <label for="macchinario-codice"
+                                           class="form-label">
+                                        Codice
+                                    </label>
+
+                                    <input type="text"
+                                           class="form-control"
+                                           id="macchinario-codice"
+                                           maxlength="100"
+                                           autocomplete="off"
+                                           required>
+
+                                    <div class="invalid-feedback">
+                                        Inserire il codice del macchinario.
+                                    </div>
+                                </div>
+
+                                <div class="col-12 col-md-8">
+                                    <label for="macchinario-descrizione"
+                                           class="form-label">
+                                        Descrizione
+                                    </label>
+
+                                    <input type="text"
+                                           class="form-control"
+                                           id="macchinario-descrizione"
+                                           maxlength="255"
+                                           autocomplete="off"
+                                           required>
+
+                                    <div class="invalid-feedback">
+                                        Inserire la descrizione.
+                                    </div>
+                                </div>
+
+                                <div class="col-12 col-md-4">
+                                    <label for="macchinario-matricola"
+                                           class="form-label">
+                                        Matricola
+                                    </label>
+
+                                    <input type="text"
+                                           class="form-control"
+                                           id="macchinario-matricola"
+                                           maxlength="150"
+                                           autocomplete="off">
+                                </div>
+
+                                <div class="col-12 col-md-4">
+                                    <label for="macchinario-reparto"
+                                           class="form-label">
+                                        Reparto
+                                    </label>
+
+                                    <select class="form-select"
+                                            id="macchinario-reparto"
+                                            required>
+
+                                        <option value="">
+                                            Seleziona reparto
+                                        </option>
+
+                                        {% for reparto in reparti %}
+                                            <option value="{{ reparto.codice }}">
+                                                {{ reparto.codice }}
+                                                {% if reparto.descrizione %}
+                                                    - {{ reparto.descrizione }}
+                                                {% endif %}
+                                            </option>
+                                        {% endfor %}
+                                    </select>
+
+                                    <div class="invalid-feedback">
+                                        Selezionare il reparto.
+                                    </div>
+                                </div>
+
+                                <div class="col-12 col-md-4">
+                                    <label for="macchinario-ubicazione"
+                                           class="form-label">
+                                        Ubicazione
+                                    </label>
+
+                                    <input type="text"
+                                           class="form-control"
+                                           id="macchinario-ubicazione"
+                                           maxlength="255"
+                                           autocomplete="off">
+                                </div>
+
+                                <div class="col-12 col-md-6">
+                                    <label for="macchinario-costruttore"
+                                           class="form-label">
+                                        Costruttore
+                                    </label>
+
+                                    <input type="text"
+                                           class="form-control"
+                                           id="macchinario-costruttore"
+                                           maxlength="150"
+                                           autocomplete="off">
+                                </div>
+
+                                <div class="col-12 col-md-6">
+                                    <label for="macchinario-modello"
+                                           class="form-label">
+                                        Modello
+                                    </label>
+
+                                    <input type="text"
+                                           class="form-control"
+                                           id="macchinario-modello"
+                                           maxlength="150"
+                                           autocomplete="off">
+                                </div>
+
+                                <div class="col-12">
+                                    <label for="macchinario-note"
+                                           class="form-label">
+                                        Note
+                                    </label>
+
+                                    <textarea class="form-control"
+                                              id="macchinario-note"
+                                              rows="3"></textarea>
+                                </div>
+
+                                <div class="col-12">
+                                    <div class="form-check">
+                                        <input type="checkbox"
+                                               class="form-check-input"
+                                               id="macchinario-attivo"
+                                               checked>
+
+                                        <label class="form-check-label"
+                                               for="macchinario-attivo">
+                                            Macchinario attivo
+                                        </label>
+                                    </div>
+                                </div>
+
+                            </div>
+                        </div>
+
+                        <div class="modal-footer">
+                            <button type="button"
+                                    class="btn btn-outline-secondary"
+                                    data-bs-dismiss="modal">
+                                Annulla
+                            </button>
+
+                            <button type="submit"
+                                    class="btn btn-primary"
+                                    id="btn-salva-macchinario">
+                        <span class="spinner-border spinner-border-sm d-none"
+                              id="macchinario-save-spinner"
+                              aria-hidden="true">
+                        </span>
+
+                                <span id="macchinario-save-label">
+                            Salva macchinario
+                        </span>
+                            </button>
+                        </div>
+
+                    </form>
+                </div>
+            </div>
+        </div>
+    {% endif %}
+
+    {% if can_manage_calendar %}
+        <div class="modal fade"
+             id="modalGiornoNonLavorativo"
+             tabindex="-1"
+             aria-labelledby="modalGiornoNonLavorativoLabel"
+             aria-hidden="true">
+
+            <div class="modal-dialog modal-lg modal-dialog-centered">
+                <div class="modal-content">
+                    <form id="form-giorno-non-lavorativo"
+                          novalidate>
+
+                        <div class="modal-header">
+                            <h5 class="modal-title"
+                                id="modalGiornoNonLavorativoLabel">
+                                Nuovo giorno non lavorativo
+                            </h5>
+
+                            <button type="button"
+                                    class="btn-close"
+                                    data-bs-dismiss="modal"
+                                    aria-label="Chiudi">
+                            </button>
+                        </div>
+
+                        <div class="modal-body">
+                            <input type="hidden"
+                                   id="giorno-non-lavorativo-id">
+
+                            <div id="giorno-non-lavorativo-modal-feedback"
+                                 class="alert d-none"
+                                 role="alert">
+                            </div>
+
+                            <div id="giorno-non-lavorativo-modal-loading"
+                                 class="d-none mb-3">
+                                <span class="spinner-border spinner-border-sm"
+                                      aria-hidden="true"></span>
+                                Caricamento...
+                            </div>
+
+                            <div class="row g-3"
+                                 id="giorno-non-lavorativo-fields">
+
+                                <div class="col-md-3">
+                                    <label for="giorno-non-lavorativo-data"
+                                           class="form-label">
+                                        Data inizio
+                                    </label>
+
+                                    <input type="date"
+                                           class="form-control"
+                                           id="giorno-non-lavorativo-data"
+                                           required>
+                                </div>
+
+                                <div class="col-md-3">
+                                    <label for="giorno-non-lavorativo-data-fine"
+                                           class="form-label">
+                                        Data fine
+                                    </label>
+
+                                    <input type="date"
+                                           class="form-control"
+                                           id="giorno-non-lavorativo-data-fine"
+                                           required>
+                                    <div class="form-text">
+                                        Uguale all'inizio per un solo giorno.
+                                    </div>
+                                </div>
+
+                                <div class="col-md-6">
+                                    <label for="giorno-non-lavorativo-descrizione"
+                                           class="form-label">
+                                        Descrizione
+                                    </label>
+
+                                    <input type="text"
+                                           class="form-control"
+                                           id="giorno-non-lavorativo-descrizione"
+                                           maxlength="255"
+                                           placeholder="Es. Chiusura estiva"
+                                           required>
+                                </div>
+
+                                <div class="col-md-6">
+                                    <label for="giorno-non-lavorativo-tipo"
+                                           class="form-label">
+                                        Tipo
+                                    </label>
+
+                                    <select class="form-select"
+                                            id="giorno-non-lavorativo-tipo"
+                                            required>
+                                        <option value="CHIUSURA_AZIENDALE">
+                                            Chiusura aziendale
+                                        </option>
+                                        <option value="FESTIVITA_LOCALE">
+                                            Festività locale o patronale
+                                        </option>
+                                        <option value="PONTE">
+                                            Ponte aziendale
+                                        </option>
+                                        <option value="INVENTARIO">
+                                            Inventario o fermo programmato
+                                        </option>
+                                        <option value="ALTRO">
+                                            Altro
+                                        </option>
+                                    </select>
+                                </div>
+
+                                <div class="col-md-6 d-flex flex-column justify-content-center gap-2">
+                                    <div class="form-check">
+                                        <input type="checkbox"
+                                               class="form-check-input"
+                                               id="giorno-non-lavorativo-ricorrente">
+
+                                        <label class="form-check-label"
+                                               for="giorno-non-lavorativo-ricorrente">
+                                            Ripeti ogni anno
+                                        </label>
+                                    </div>
+
+                                    <div class="form-check">
+                                        <input type="checkbox"
+                                               class="form-check-input"
+                                               id="giorno-non-lavorativo-attivo"
+                                               checked>
+
+                                        <label class="form-check-label"
+                                               for="giorno-non-lavorativo-attivo">
+                                            Giorno attivo
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div class="col-12">
+                                    <div class="form-text">
+                                        Per un patrono o una chiusura
+                                        ricorrente selezionare “Ripeti ogni
+                                        anno”. La ricorrenza utilizza giorno
+                                        e mese della data inserita.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="modal-footer">
+                            <button type="button"
+                                    class="btn btn-outline-secondary"
+                                    data-bs-dismiss="modal">
+                                Annulla
+                            </button>
+
+                            <button type="submit"
+                                    class="btn btn-primary"
+                                    id="btn-salva-giorno-non-lavorativo">
+                                Salva
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    {% endif %}
+
+    {% if can_execute_events %}
+        <div class="modal fade"
+             id="modalDashboardEventoManutenzione"
+             tabindex="-1"
+             aria-labelledby="modalDashboardEventoManutenzioneLabel"
+             aria-hidden="true">
+
+            <div class="modal-dialog modal-lg modal-dialog-centered">
+                <div class="modal-content">
+                    <form id="form-dashboard-evento-manutenzione"
+                          novalidate>
+
+                        <div class="modal-header">
+                            <h5 class="modal-title"
+                                id="modalDashboardEventoManutenzioneLabel">
+                                Registra manutenzione
+                            </h5>
+
+                            <button type="button"
+                                    class="btn-close"
+                                    data-bs-dismiss="modal"
+                                    aria-label="Chiudi">
+                            </button>
+                        </div>
+
+                        <div class="modal-body">
+                            <input type="hidden"
+                                   id="dashboard-evento-id">
+
+                            <div id="dashboard-evento-feedback"
+                                 class="alert d-none"
+                                 role="alert">
+                            </div>
+
+                            <div id="dashboard-evento-loading"
+                                 class="d-none mb-3">
+                                <span class="spinner-border spinner-border-sm"
+                                      aria-hidden="true"></span>
+                                Caricamento...
+                            </div>
+
+                            <div id="dashboard-evento-fields">
+                                <div class="alert alert-light border">
+                                    <div class="fw-semibold"
+                                         id="dashboard-evento-titolo">
+                                    </div>
+
+                                    <div class="small text-muted"
+                                         id="dashboard-evento-data-programmata">
+                                    </div>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label for="dashboard-evento-action"
+                                           class="form-label">
+                                        Azione
+                                    </label>
+
+                                    <select class="form-select"
+                                            id="dashboard-evento-action"
+                                            required>
+                                        <option value="completa">
+                                            Completa manutenzione
+                                        </option>
+                                        <option value="salta">
+                                            Salta questa scadenza
+                                        </option>
+                                        <option value="annulla">
+                                            Annulla questa scadenza
+                                        </option>
+                                    </select>
+                                </div>
+
+                                <div id="dashboard-evento-completamento-fields">
+                                    <div class="row g-3 mb-3">
+                                        <div class="col-md-6">
+                                            <label for="dashboard-evento-data-esecuzione"
+                                                   class="form-label">
+                                                Data esecuzione
+                                            </label>
+
+                                            <input type="date"
+                                                   class="form-control"
+                                                   id="dashboard-evento-data-esecuzione">
+                                        </div>
+
+                                        <div class="col-md-6">
+                                            <label for="dashboard-evento-esito"
+                                                   class="form-label">
+                                                Esito
+                                            </label>
+
+                                            <select class="form-select"
+                                                    id="dashboard-evento-esito">
+                                                <option value="">
+                                                    Seleziona esito
+                                                </option>
+                                                <option value="POSITIVO">
+                                                    Positivo
+                                                </option>
+                                                <option value="ANOMALIA">
+                                                    Anomalia
+                                                </option>
+                                                <option value="INTERVENTO_RICHIESTO">
+                                                    Intervento richiesto
+                                                </option>
+                                                <option value="NON_APPLICABILE">
+                                                    Non applicabile
+                                                </option>
+                                            </select>
+                                        </div>
+
+                                        <div class="col-md-6">
+                                            <label for="dashboard-evento-durata"
+                                                   class="form-label">
+                                                Durata in minuti
+                                            </label>
+
+                                            <input type="number"
+                                                   class="form-control"
+                                                   id="dashboard-evento-durata"
+                                                   min="0"
+                                                   step="1">
+                                        </div>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label for="dashboard-evento-descrizione"
+                                               class="form-label">
+                                            Intervento eseguito
+                                        </label>
+
+                                        <textarea class="form-control"
+                                                  id="dashboard-evento-descrizione"
+                                                  rows="3"></textarea>
+                                    </div>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label for="dashboard-evento-note"
+                                           class="form-label"
+                                           id="dashboard-evento-note-label">
+                                        Note
+                                    </label>
+
+                                    <textarea class="form-control"
+                                              id="dashboard-evento-note"
+                                              rows="3"></textarea>
+
+                                    <div class="form-text"
+                                         id="dashboard-evento-note-help">
+                                        Campo facoltativo.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="modal-footer">
+                            <button type="button"
+                                    class="btn btn-outline-secondary"
+                                    data-bs-dismiss="modal">
+                                Annulla
+                            </button>
+
+                            <button type="submit"
+                                    class="btn btn-primary"
+                                    id="btn-dashboard-salva-evento">
+                                Registra
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    {% endif %}
+
+{% endblock %}
+{% block extra_js %}
+    {{ super() }}
+    <script>
+        window.manutenzioniReadJson = async function (response) {
+            try {
+                return await response.json();
+            } catch (_) {
+                return {
+                    ok: false,
+                    error: "Risposta non valida dal server."
+                };
+            }
+        };
+    </script>
+
+
+    {% if can_manage %}
+        <script>
+            "use strict";
+
+            document.addEventListener("DOMContentLoaded", () => {
+                const page = document.getElementById("manutenzioni-page");
+                const modalElement = document.getElementById("modalMacchinario");
+                const form = document.getElementById("form-macchinario");
+
+                if (!page || !modalElement || !form) {
+                    return;
+                }
+
+                const machinesUrl = String(
+                    page.dataset.machinesUrl || ""
+                ).trim();
+
+                if (!machinesUrl) {
+                    return;
+                }
+
+                const modal = bootstrap.Modal.getOrCreateInstance(
+                    modalElement
+                );
+
+                const title = document.getElementById(
+                    "modalMacchinarioLabel"
+                );
+
+                const feedback = document.getElementById(
+                    "macchinario-feedback"
+                );
+
+                const loading = document.getElementById(
+                    "macchinario-loading"
+                );
+
+                const fieldsContainer = document.getElementById(
+                    "macchinario-form-fields"
+                );
+
+                const saveButton = document.getElementById(
+                    "btn-salva-macchinario"
+                );
+
+                const saveSpinner = document.getElementById(
+                    "macchinario-save-spinner"
+                );
+
+                const saveLabel = document.getElementById(
+                    "macchinario-save-label"
+                );
+
+                const inputs = {
+                    id: document.getElementById("macchinario-id"),
+                    codice: document.getElementById(
+                        "macchinario-codice"
+                    ),
+                    descrizione: document.getElementById(
+                        "macchinario-descrizione"
+                    ),
+                    matricola: document.getElementById(
+                        "macchinario-matricola"
+                    ),
+                    repartoCodice: document.getElementById(
+                        "macchinario-reparto"
+                    ),
+                    costruttore: document.getElementById(
+                        "macchinario-costruttore"
+                    ),
+                    modello: document.getElementById(
+                        "macchinario-modello"
+                    ),
+                    ubicazione: document.getElementById(
+                        "macchinario-ubicazione"
+                    ),
+                    note: document.getElementById(
+                        "macchinario-note"
+                    ),
+                    attivo: document.getElementById(
+                        "macchinario-attivo"
+                    )
+                };
+
+                function machineUrl(machineId = null) {
+                    const base = machinesUrl.replace(/\/+$/, "");
+
+                    if (
+                        machineId === null
+                        || machineId === undefined
+                    ) {
+                        return base;
+                    }
+
+                    return `${base}/${encodeURIComponent(machineId)}`;
+                }
+
+                function machineStatusUrl(machineId) {
+                    return `${machineUrl(machineId)}/stato`;
+                }
+
+                function showFeedback(
+                    message,
+                    type = "danger"
+                ) {
+                    feedback.textContent = String(message || "");
+
+                    feedback.className = message
+                        ? `alert alert-${type}`
+                        : "alert d-none";
+                }
+
+                function setLoading(isLoading) {
+                    loading.classList.toggle(
+                        "d-none",
+                        !isLoading
+                    );
+
+                    fieldsContainer.classList.toggle(
+                        "d-none",
+                        isLoading
+                    );
+
+                    saveButton.disabled = isLoading;
+                }
+
+                function setSaving(isSaving) {
+                    saveButton.disabled = isSaving;
+
+                    saveSpinner.classList.toggle(
+                        "d-none",
+                        !isSaving
+                    );
+
+                    saveLabel.textContent = isSaving
+                        ? "Salvataggio..."
+                        : "Salva macchinario";
+                }
+
+                function resetForm() {
+                    form.reset();
+                    form.classList.remove("was-validated");
+
+                    inputs.id.value = "";
+                    inputs.attivo.checked = true;
+
+                    fieldsContainer.classList.remove("d-none");
+
+                    showFeedback("");
+                    setLoading(false);
+                    setSaving(false);
+                }
+
+                function populateForm(item) {
+                    inputs.id.value = item.id ?? "";
+                    inputs.codice.value = item.codice ?? "";
+                    inputs.descrizione.value = (
+                        item.descrizione ?? ""
+                    );
+                    inputs.matricola.value = (
+                        item.matricola ?? ""
+                    );
+                    inputs.repartoCodice.value = (
+                        item.reparto_codice ?? ""
+                    );
+                    inputs.costruttore.value = (
+                        item.costruttore ?? ""
+                    );
+                    inputs.modello.value = (
+                        item.modello ?? ""
+                    );
+                    inputs.ubicazione.value = (
+                        item.ubicazione ?? ""
+                    );
+                    inputs.note.value = item.note ?? "";
+                    inputs.attivo.checked = Boolean(item.attivo);
+                }
+
+                function buildPayload() {
+                    return {
+                        codice: inputs.codice.value.trim(),
+                        descrizione: (
+                            inputs.descrizione.value.trim()
+                        ),
+                        matricola: (
+                            inputs.matricola.value.trim()
+                        ),
+                        reparto_codice: (
+                            inputs.repartoCodice.value.trim()
+                        ),
+                        costruttore: (
+                            inputs.costruttore.value.trim()
+                        ),
+                        modello: (
+                            inputs.modello.value.trim()
+                        ),
+                        ubicazione: (
+                            inputs.ubicazione.value.trim()
+                        ),
+                        note: inputs.note.value.trim(),
+                        attivo: inputs.attivo.checked
+                    };
+                }
+
+                async function readJsonResponse(response) {
+                    return window.manutenzioniReadJson(response);
+                }
+
+                function openCreateModal() {
+                    resetForm();
+
+                    title.textContent = "Nuovo macchinario";
+                    saveLabel.textContent = "Salva macchinario";
+
+                    modal.show();
+
+                    modalElement.addEventListener(
+                        "shown.bs.modal",
+                        () => inputs.codice.focus(),
+                        {once: true}
+                    );
+                }
+
+                async function openEditModal(machineId) {
+                    resetForm();
+
+                    title.textContent = "Modifica macchinario";
+                    setLoading(true);
+                    modal.show();
+
+                    try {
+                        const response = await window.avpFetch(
+                            machineUrl(machineId),
+                            {
+                                method: "GET",
+                                headers: {
+                                    "Accept": "application/json",
+                                    "X-Requested-With": "XMLHttpRequest"
+                                },
+                                credentials: "same-origin"
+                            }
+                        );
+
+                        const data = await readJsonResponse(response);
+
+                        if (!response.ok || data.ok === false) {
+                            throw new Error(
+                                data.error
+                                || "Impossibile caricare il macchinario."
+                            );
+                        }
+
+                        populateForm(data.item || {});
+                        setLoading(false);
+
+                        inputs.codice.focus();
+
+                    } catch (error) {
+                        setLoading(false);
+                        fieldsContainer.classList.add("d-none");
+                        saveButton.disabled = true;
+
+                        showFeedback(
+                            error.message
+                            || "Errore durante il caricamento."
+                        );
+                    }
+                }
+
+                async function saveMachine(event) {
+                    event.preventDefault();
+                    event.stopPropagation();
+
+                    form.classList.add("was-validated");
+
+                    if (!form.checkValidity()) {
+                        return;
+                    }
+
+                    const machineId = inputs.id.value.trim();
+                    const isEditing = Boolean(machineId);
+
+                    showFeedback("");
+                    setSaving(true);
+
+                    try {
+                        const response = await window.avpFetch(
+                            isEditing
+                                ? machineUrl(machineId)
+                                : machineUrl(),
+                            {
+                                method: isEditing
+                                    ? "PATCH"
+                                    : "POST",
+                                headers: {
+                                    "Content-Type": "application/json",
+                                    "Accept": "application/json",
+                                    "X-Requested-With": "XMLHttpRequest"
+                                },
+                                credentials: "same-origin",
+                                body: JSON.stringify(
+                                    buildPayload()
+                                )
+                            }
+                        );
+
+                        const data = await readJsonResponse(response);
+
+                        if (!response.ok || data.ok === false) {
+                            throw new Error(
+                                data.error
+                                || "Errore durante il salvataggio."
+                            );
+                        }
+
+                        showFeedback(
+                            data.message
+                            || "Macchinario salvato correttamente.",
+                            "success"
+                        );
+
+                        saveButton.disabled = true;
+                        saveSpinner.classList.add("d-none");
+
+                        window.setTimeout(() => {
+                            window.location.reload();
+                        }, 500);
+
+                    } catch (error) {
+                        setSaving(false);
+
+                        showFeedback(
+                            error.message
+                            || "Errore durante il salvataggio."
+                        );
+                    }
+                }
+
+                async function changeMachineStatus(button) {
+                    const machineId = String(
+                        button.dataset.macchinarioId || ""
+                    ).trim();
+
+                    const machineCode = String(
+                        button.dataset.macchinarioCodice || ""
+                    ).trim();
+
+                    const currentlyActive = (
+                        button.dataset.macchinarioAttivo === "1"
+                    );
+
+                    if (!machineId) {
+                        return;
+                    }
+
+                    const newActive = !currentlyActive;
+
+                    const actionLabel = newActive
+                        ? "attivare"
+                        : "disattivare";
+
+                    const confirmed = window.confirm(
+                        `Confermi di voler ${actionLabel} `
+                        + `il macchinario ${machineCode}?`
+                    );
+
+                    if (!confirmed) {
+                        return;
+                    }
+
+                    const originalHtml = button.innerHTML;
+
+                    button.disabled = true;
+                    button.innerHTML = `
+                        <span class="spinner-border spinner-border-sm"
+                              aria-hidden="true"></span>
+                        Aggiornamento...
+                    `;
+
+                    try {
+                        const response = await window.avpFetch(
+                            machineStatusUrl(machineId),
+                            {
+                                method: "PATCH",
+                                headers: {
+                                    "Content-Type": "application/json",
+                                    "Accept": "application/json",
+                                    "X-Requested-With": "XMLHttpRequest"
+                                },
+                                credentials: "same-origin",
+                                body: JSON.stringify({
+                                    attivo: newActive
+                                })
+                            }
+                        );
+
+                        const data = await readJsonResponse(response);
+
+                        if (!response.ok || data.ok === false) {
+                            throw new Error(
+                                data.error
+                                || "Errore durante la modifica dello stato."
+                            );
+                        }
+
+                        window.location.reload();
+
+                    } catch (error) {
+                        button.disabled = false;
+                        button.innerHTML = originalHtml;
+
+                        window.alert(
+                            error.message
+                            || "Errore durante la modifica dello stato."
+                        );
+                    }
+                }
+
+                document
+                    .getElementById("btn-nuovo-macchinario")
+                    ?.addEventListener(
+                        "click",
+                        openCreateModal
+                    );
+
+                document.addEventListener(
+                    "click",
+                    event => {
+                        const editButton = event.target.closest(
+                            ".btn-modifica-macchinario"
+                        );
+
+                        if (editButton) {
+                            openEditModal(
+                                editButton.dataset.macchinarioId
+                            );
+                            return;
+                        }
+
+                        const statusButton = event.target.closest(
+                            ".btn-stato-macchinario"
+                        );
+
+                        if (statusButton) {
+                            changeMachineStatus(statusButton);
+                        }
+                    }
+                );
+
+                form.addEventListener(
+                    "submit",
+                    saveMachine
+                );
+
+                modalElement.addEventListener(
+                    "hidden.bs.modal",
+                    resetForm
+                );
+            });
+        </script>
+    {% endif %}
+
+    <script>
+        "use strict";
+
+        document.addEventListener("DOMContentLoaded", () => {
+            const page = document.getElementById(
+                "manutenzioni-page"
+            );
+
+            const calendarGrid = document.getElementById(
+                "maintenance-calendar-grid"
+            );
+
+            const calendarTitle = document.getElementById(
+                "maintenance-calendar-title"
+            );
+
+            if (!page || !calendarGrid || !calendarTitle) {
+                return;
+            }
+
+            const calendarUrl = String(
+                page.dataset.calendarUrl || ""
+            ).trim();
+
+            const globalCalendarSyncUrl = String(
+                page.dataset.globalCalendarSyncUrl || ""
+            ).trim();
+
+            const globalCalendarSyncButton = (
+                document.getElementById(
+                    "btn-aggiorna-calendario-globale"
+                )
+            );
+
+            const globalFeedback = document.getElementById(
+                "manutenzioni-global-feedback"
+            );
+
+            const eventBaseUrl = String(
+                page.dataset.eventBaseUrl || ""
+            ).replace(/\/+$/, "");
+
+            const canExecuteEvents = (
+                page.dataset.canExecuteEvents === "1"
+            );
+
+            const todayIso = String(
+                page.dataset.oggi || ""
+            );
+
+            const searchInput = document.getElementById(
+                "manutenzioni-search"
+            );
+
+            const repartoInput = document.getElementById(
+                "manutenzioni-reparto"
+            );
+
+            const statoInput = document.getElementById(
+                "manutenzioni-stato"
+            );
+
+            const viewField = document.getElementById(
+                "manutenzioni-view-field"
+            );
+
+            const feedback = document.getElementById(
+                "maintenance-calendar-feedback"
+            );
+
+            const loading = document.getElementById(
+                "maintenance-calendar-loading"
+            );
+
+            const calendarPane = document.getElementById(
+                "manutenzioni-calendario-pane"
+            );
+
+            const monthFormatter = new Intl.DateTimeFormat(
+                "it-IT",
+                {
+                    month: "long",
+                    year: "numeric"
+                }
+            );
+
+            function parseIsoDate(value) {
+                const parts = String(value || "")
+                    .split("-")
+                    .map(Number);
+
+                if (
+                    parts.length !== 3
+                    || parts.some(Number.isNaN)
+                ) {
+                    return null;
+                }
+
+                return new Date(
+                    parts[0],
+                    parts[1] - 1,
+                    parts[2]
+                );
+            }
+
+            function toIsoDate(value) {
+                const year = value.getFullYear();
+                const month = String(
+                    value.getMonth() + 1
+                ).padStart(2, "0");
+                const day = String(
+                    value.getDate()
+                ).padStart(2, "0");
+
+                return `${year}-${month}-${day}`;
+            }
+
+            function addDays(value, days) {
+                const result = new Date(value);
+                result.setDate(result.getDate() + days);
+                return result;
+            }
+
+            function startOfCalendarGrid(monthDate) {
+                const first = new Date(
+                    monthDate.getFullYear(),
+                    monthDate.getMonth(),
+                    1
+                );
+
+                const mondayBasedIndex = (
+                    first.getDay() + 6
+                ) % 7;
+
+                return addDays(
+                    first,
+                    -mondayBasedIndex
+                );
+            }
+
+            function appendTabSession(rawUrl) {
+                if (!rawUrl) {
+                    return rawUrl;
+                }
+
+                const tabSession = new URLSearchParams(
+                    window.location.search
+                ).get("tab_session");
+
+                if (!tabSession) {
+                    return rawUrl;
+                }
+
+                const url = new URL(
+                    rawUrl,
+                    window.location.origin
+                );
+
+                if (!url.searchParams.has("tab_session")) {
+                    url.searchParams.set(
+                        "tab_session",
+                        tabSession
+                    );
+                }
+
+                return (
+                    url.pathname
+                    + url.search
+                    + url.hash
+                );
+            }
+
+            function setGlobalFeedback(
+                message,
+                type = "danger"
+            ) {
+                if (!globalFeedback) {
+                    return;
+                }
+
+                globalFeedback.textContent = String(
+                    message || ""
+                );
+
+                globalFeedback.className = message
+                    ? `alert alert-${type} mb-3`
+                    : "alert d-none mb-3";
+            }
+
+            function setFeedback(
+                message,
+                type = "danger"
+            ) {
+                feedback.textContent = String(
+                    message || ""
+                );
+
+                feedback.className = message
+                    ? `alert alert-${type} m-3`
+                    : "alert alert-danger m-3 d-none";
+            }
+
+            function setLoading(value) {
+                loading.classList.toggle(
+                    "d-none",
+                    !value
+                );
+            }
+
+            async function parseResponse(response) {
+                return window.manutenzioniReadJson(response);
+            }
+
+            const parsedToday = (
+                parseIsoDate(todayIso)
+                || new Date()
+            );
+
+            let currentMonth = new Date(
+                parsedToday.getFullYear(),
+                parsedToday.getMonth(),
+                1
+            );
+
+            function buildCalendarUrl(
+                start,
+                end
+            ) {
+                const url = new URL(
+                    calendarUrl,
+                    window.location.origin
+                );
+
+                url.searchParams.set(
+                    "start",
+                    toIsoDate(start)
+                );
+
+                url.searchParams.set(
+                    "end",
+                    toIsoDate(end)
+                );
+
+                const reparto = String(
+                    repartoInput?.value || ""
+                ).trim();
+
+                const search = String(
+                    searchInput?.value || ""
+                ).trim();
+
+                const stato = String(
+                    statoInput?.value || ""
+                ).trim();
+
+                if (reparto) {
+                    url.searchParams.set(
+                        "reparto_codice",
+                        reparto
+                    );
+                }
+
+                if (search) {
+                    url.searchParams.set(
+                        "search",
+                        search
+                    );
+                }
+
+                if (stato) {
+                    url.searchParams.set(
+                        "stato",
+                        stato
+                    );
+                }
+
+                return url.pathname + url.search;
+            }
+
+            function createEventButton(item) {
+                const button = document.createElement(
+                    "button"
+                );
+
+                button.type = "button";
+
+                const visualStatus = String(
+                    item.stato_visuale
+                    || item.stato
+                    || "PROGRAMMATA"
+                ).toUpperCase();
+
+                button.className = (
+                    "maintenance-calendar-event "
+                    + `status-${visualStatus}`
+                );
+
+                const title = document.createElement(
+                    "span"
+                );
+
+                title.className = (
+                    "maintenance-calendar-event-title"
+                );
+
+                title.textContent = (
+                    item.title || "Manutenzione"
+                );
+
+                const meta = document.createElement(
+                    "span"
+                );
+
+                meta.className = (
+                    "maintenance-calendar-event-meta"
+                );
+
+                const metaParts = [];
+
+                if (item.piano_codice) {
+                    metaParts.push(item.piano_codice);
+                }
+
+                if (item.data_spostata) {
+                    metaParts.push(
+                        "data anticipata"
+                    );
+                }
+
+                meta.textContent = metaParts.join(" · ");
+
+                const tooltipParts = [
+                    item.title,
+                    item.descrizione,
+                    item.ubicazione,
+                    item.data_spostata
+                        ? (
+                            "Data teorica: "
+                            + (
+                                item.data_teorica
+                                || "-"
+                            )
+                            + (
+                                item.motivo_spostamento
+                                    ? (
+                                        " — "
+                                        + item.motivo_spostamento
+                                    )
+                                    : ""
+                            )
+                        )
+                        : null
+                ].filter(Boolean);
+
+                button.title = tooltipParts.join("\n");
+
+                button.appendChild(title);
+
+                if (meta.textContent) {
+                    button.appendChild(meta);
+                }
+
+                button.addEventListener(
+                    "click",
+                    () => {
+                        if (
+                            canExecuteEvents
+                            && item.stato === "PROGRAMMATA"
+                        ) {
+                            openEventModal(item.id);
+                            return;
+                        }
+
+                        if (item.macchinario_url) {
+                            window.location.href = (
+                                appendTabSession(
+                                    item.macchinario_url
+                                )
+                            );
+                        }
+                    }
+                );
+
+                return button;
+            }
+
+            function renderCalendar(
+                items,
+                holidays,
+                gridStart
+            ) {
+                calendarGrid.replaceChildren();
+
+                const eventsByDate = new Map();
+                const holidaysByDate = new Map();
+
+                for (const item of items || []) {
+                    const key = String(
+                        item.start || ""
+                    );
+
+                    if (!eventsByDate.has(key)) {
+                        eventsByDate.set(key, []);
+                    }
+
+                    eventsByDate.get(key).push(item);
+                }
+
+                for (const holiday of holidays || []) {
+                    const key = String(
+                        holiday.data || ""
+                    );
+
+                    if (!holidaysByDate.has(key)) {
+                        holidaysByDate.set(key, []);
+                    }
+
+                    holidaysByDate.get(key).push(
+                        holiday
+                    );
+                }
+
+                for (let index = 0; index < 42; index += 1) {
+                    const day = addDays(
+                        gridStart,
+                        index
+                    );
+
+                    const isoDate = toIsoDate(day);
+                    const dayEvents = (
+                        eventsByDate.get(isoDate)
+                        || []
+                    );
+
+                    const dayHolidays = (
+                        holidaysByDate.get(isoDate)
+                        || []
+                    );
+
+                    const cell = document.createElement(
+                        "div"
+                    );
+
+                    cell.className = (
+                        "maintenance-calendar-day"
+                    );
+
+                    if (
+                        day.getMonth()
+                        !== currentMonth.getMonth()
+                    ) {
+                        cell.classList.add(
+                            "is-outside"
+                        );
+                    }
+
+                    if (
+                        day.getDay() === 0
+                        || day.getDay() === 6
+                    ) {
+                        cell.classList.add(
+                            "is-weekend"
+                        );
+                    }
+
+                    if (dayHolidays.length > 0) {
+                        cell.classList.add(
+                            "is-holiday"
+                        );
+                    }
+
+                    if (isoDate === todayIso) {
+                        cell.classList.add(
+                            "is-today"
+                        );
+                    }
+
+                    const header = document.createElement(
+                        "div"
+                    );
+
+                    header.className = (
+                        "maintenance-calendar-day-header"
+                    );
+
+                    const number = document.createElement(
+                        "span"
+                    );
+
+                    number.className = (
+                        "maintenance-calendar-day-number"
+                    );
+
+                    number.textContent = String(
+                        day.getDate()
+                    );
+
+                    header.appendChild(number);
+                    cell.appendChild(header);
+
+                    for (const holiday of dayHolidays) {
+                        const holidayElement = (
+                            document.createElement("div")
+                        );
+
+                        holidayElement.className = (
+                            "maintenance-calendar-holiday"
+                        );
+
+                        holidayElement.textContent = (
+                            holiday.descrizione
+                            || "Giorno non lavorativo"
+                        );
+
+                        cell.appendChild(
+                            holidayElement
+                        );
+                    }
+
+                    const eventsContainer = (
+                        document.createElement("div")
+                    );
+
+                    eventsContainer.className = (
+                        "maintenance-calendar-events"
+                    );
+
+                    dayEvents.sort(
+                        (left, right) => String(
+                            left.title || ""
+                        ).localeCompare(
+                            String(right.title || ""),
+                            "it"
+                        )
+                    );
+
+                    for (const item of dayEvents) {
+                        eventsContainer.appendChild(
+                            createEventButton(item)
+                        );
+                    }
+
+                    cell.appendChild(eventsContainer);
+                    calendarGrid.appendChild(cell);
+                }
+            }
+
+            async function loadCalendar() {
+                if (!calendarUrl) {
+                    return;
+                }
+
+                const gridStart = startOfCalendarGrid(
+                    currentMonth
+                );
+
+                const gridEnd = addDays(
+                    gridStart,
+                    41
+                );
+
+                calendarTitle.textContent = (
+                    monthFormatter.format(
+                        currentMonth
+                    )
+                );
+
+                setFeedback("");
+                setLoading(true);
+
+                try {
+                    const response = await window.avpFetch(
+                        buildCalendarUrl(
+                            gridStart,
+                            gridEnd
+                        ),
+                        {
+                            method: "GET",
+                            headers: {
+                                "Accept": "application/json",
+                                "X-Requested-With": "XMLHttpRequest"
+                            },
+                            credentials: "same-origin"
+                        }
+                    );
+
+                    const data = await parseResponse(
+                        response
+                    );
+
+                    if (
+                        !response.ok
+                        || data.ok === false
+                    ) {
+                        throw new Error(
+                            data.error
+                            || "Errore durante il caricamento del calendario."
+                        );
+                    }
+
+                    renderCalendar(
+                        data.items || [],
+                        data.holidays || [],
+                        gridStart
+                    );
+
+                } catch (error) {
+                    calendarGrid.replaceChildren();
+
+                    setFeedback(
+                        error.message
+                        || "Errore durante il caricamento del calendario."
+                    );
+
+                } finally {
+                    setLoading(false);
+                }
+            }
+
+            async function syncGlobalCalendar() {
+                if (
+                    !globalCalendarSyncButton
+                    || !globalCalendarSyncUrl
+                ) {
+                    return;
+                }
+
+                const originalHtml = (
+                    globalCalendarSyncButton.innerHTML
+                );
+
+                globalCalendarSyncButton.disabled = true;
+                globalCalendarSyncButton.innerHTML = `
+                    <span class="spinner-border spinner-border-sm"
+                          aria-hidden="true"></span>
+                    Aggiornamento...
+                `;
+
+                setGlobalFeedback("");
+
+                try {
+                    const response = await window.avpFetch(
+                        globalCalendarSyncUrl,
+                        {
+                            method: "POST",
+                            headers: {
+                                "Accept": "application/json",
+                                "X-Requested-With": "XMLHttpRequest"
+                            },
+                            credentials: "same-origin"
+                        }
+                    );
+
+                    const data = await parseResponse(
+                        response
+                    );
+
+                    if (
+                        !response.ok
+                        || data.ok === false
+                    ) {
+                        throw new Error(
+                            data.error
+                            || (
+                                "Errore durante "
+                                + "l'aggiornamento del calendario."
+                            )
+                        );
+                    }
+
+                    setGlobalFeedback(
+                        data.message
+                        || "Calendario aggiornato.",
+                        "success"
+                    );
+
+                    await loadCalendar();
+
+                } catch (error) {
+                    setGlobalFeedback(
+                        error.message
+                        || (
+                            "Errore durante "
+                            + "l'aggiornamento del calendario."
+                        )
+                    );
+
+                } finally {
+                    globalCalendarSyncButton.disabled = false;
+                    globalCalendarSyncButton.innerHTML = (
+                        originalHtml
+                    );
+                }
+            }
+
+            globalCalendarSyncButton?.addEventListener(
+                "click",
+                syncGlobalCalendar
+            );
+
+            document
+                .getElementById("calendar-prev-month")
+                ?.addEventListener(
+                    "click",
+                    () => {
+                        currentMonth = new Date(
+                            currentMonth.getFullYear(),
+                            currentMonth.getMonth() - 1,
+                            1
+                        );
+
+                        loadCalendar();
+                    }
+                );
+
+            document
+                .getElementById("calendar-next-month")
+                ?.addEventListener(
+                    "click",
+                    () => {
+                        currentMonth = new Date(
+                            currentMonth.getFullYear(),
+                            currentMonth.getMonth() + 1,
+                            1
+                        );
+
+                        loadCalendar();
+                    }
+                );
+
+            document
+                .getElementById("calendar-today")
+                ?.addEventListener(
+                    "click",
+                    () => {
+                        currentMonth = new Date(
+                            parsedToday.getFullYear(),
+                            parsedToday.getMonth(),
+                            1
+                        );
+
+                        loadCalendar();
+                    }
+                );
+
+            document
+                .querySelectorAll(
+                    "#manutenzioni-view-tabs "
+                    + "[data-view-name]"
+                )
+                .forEach(tab => {
+                    tab.addEventListener(
+                        "shown.bs.tab",
+                        () => {
+                            const viewName = String(
+                                tab.dataset.viewName || ""
+                            );
+
+                            if (viewField) {
+                                viewField.value = viewName;
+                            }
+
+                            const url = new URL(
+                                window.location.href
+                            );
+
+                            url.searchParams.set(
+                                "view",
+                                viewName
+                            );
+
+                            window.history.replaceState(
+                                {},
+                                "",
+                                url
+                            );
+
+                            if (
+                                viewName === "calendario"
+                            ) {
+                                loadCalendar();
+                            }
+                        }
+                    );
+                });
+
+            const eventModalElement = (
+                document.getElementById(
+                    "modalDashboardEventoManutenzione"
+                )
+            );
+
+            const eventForm = document.getElementById(
+                "form-dashboard-evento-manutenzione"
+            );
+
+            let eventModal = null;
+            let eventFields = null;
+            let eventFeedback = null;
+            let eventLoading = null;
+            let eventFieldsContainer = null;
+            let eventCompletionFields = null;
+            let eventNoteLabel = null;
+            let eventNoteHelp = null;
+            let eventSaveButton = null;
+
+            function eventUrl(eventId) {
+                return (
+                    `${eventBaseUrl}/`
+                    + encodeURIComponent(eventId)
+                );
+            }
+
+            function eventActionUrl(eventId) {
+                return `${eventUrl(eventId)}/azione`;
+            }
+
+            function showEventFeedback(
+                message,
+                type = "danger"
+            ) {
+                if (!eventFeedback) {
+                    return;
+                }
+
+                eventFeedback.textContent = String(
+                    message || ""
+                );
+
+                eventFeedback.className = message
+                    ? `alert alert-${type}`
+                    : "alert d-none";
+            }
+
+            function setEventLoading(value) {
+                if (
+                    !eventLoading
+                    || !eventFieldsContainer
+                    || !eventSaveButton
+                ) {
+                    return;
+                }
+
+                eventLoading.classList.toggle(
+                    "d-none",
+                    !value
+                );
+
+                eventFieldsContainer.classList.toggle(
+                    "d-none",
+                    value
+                );
+
+                eventSaveButton.disabled = value;
+            }
+
+            function updateEventActionFields() {
+                if (!eventFields) {
+                    return;
+                }
+
+                const isComplete = (
+                    eventFields.action.value
+                    === "completa"
+                );
+
+                eventCompletionFields.classList.toggle(
+                    "d-none",
+                    !isComplete
+                );
+
+                eventFields.dataEsecuzione.required = (
+                    isComplete
+                );
+
+                eventFields.esito.required = isComplete;
+                eventFields.note.required = !isComplete;
+
+                if (isComplete) {
+                    eventNoteLabel.textContent = "Note";
+                    eventNoteHelp.textContent = (
+                        "Campo facoltativo."
+                    );
+                    eventSaveButton.textContent = (
+                        "Completa manutenzione"
+                    );
+                    return;
+                }
+
+                eventNoteLabel.textContent = (
+                    eventFields.action.value === "salta"
+                        ? "Motivo del salto"
+                        : "Motivo dell'annullamento"
+                );
+
+                eventNoteHelp.textContent = (
+                    "Campo obbligatorio."
+                );
+
+                eventSaveButton.textContent = (
+                    eventFields.action.value === "salta"
+                        ? "Salta scadenza"
+                        : "Annulla scadenza"
+                );
+            }
+
+            function resetEventForm() {
+                if (!eventForm || !eventFields) {
+                    return;
+                }
+
+                eventForm.reset();
+                eventForm.classList.remove(
+                    "was-validated"
+                );
+
+                eventFields.id.value = "";
+                eventFields.action.value = "completa";
+                eventFields.dataEsecuzione.value = (
+                    todayIso
+                );
+
+                eventFieldsContainer.classList.remove(
+                    "d-none"
+                );
+
+                showEventFeedback("");
+                setEventLoading(false);
+                updateEventActionFields();
+            }
+
+            function buildEventPayload() {
+                return {
+                    action: eventFields.action.value,
+                    data_esecuzione: (
+                        eventFields.dataEsecuzione.value
+                        || null
+                    ),
+                    esito: eventFields.esito.value,
+                    durata_minuti: (
+                        eventFields.durata.value
+                            ? Number(
+                                eventFields.durata.value
+                            )
+                            : null
+                    ),
+                    descrizione_intervento: (
+                        eventFields.descrizione.value.trim()
+                    ),
+                    note: (
+                        eventFields.note.value.trim()
+                    )
+                };
+            }
+
+            async function openEventModal(eventId) {
+                if (
+                    !canExecuteEvents
+                    || !eventModal
+                    || !eventFields
+                ) {
+                    return;
+                }
+
+                resetEventForm();
+                setEventLoading(true);
+                eventModal.show();
+
+                try {
+                    const response = await window.avpFetch(
+                        appendTabSession(
+                            eventUrl(eventId)
+                        ),
+                        {
+                            method: "GET",
+                            headers: {
+                                "Accept": "application/json",
+                                "X-Requested-With": "XMLHttpRequest"
+                            },
+                            credentials: "same-origin"
+                        }
+                    );
+
+                    const data = await parseResponse(
+                        response
+                    );
+
+                    if (
+                        !response.ok
+                        || data.ok === false
+                    ) {
+                        throw new Error(
+                            data.error
+                            || "Errore durante il caricamento."
+                        );
+                    }
+
+                    const item = data.item || {};
+
+                    eventFields.id.value = (
+                        item.id || ""
+                    );
+
+                    eventFields.titolo.textContent = (
+                        item.titolo
+                        || "Manutenzione"
+                    );
+
+                    let dateText = (
+                        `Data programmata: ${
+                            item.data_programmata || "-"
+                        }`
+                    );
+
+                    if (item.data_spostata) {
+                        dateText += (
+                            ` · Data teorica: ${
+                                item.data_teorica || "-"
+                            }`
+                        );
+
+                        if (item.motivo_spostamento) {
+                            dateText += (
+                                ` · ${
+                                    item.motivo_spostamento
+                                }`
+                            );
+                        }
+                    }
+
+                    eventFields.dataProgrammata.textContent = (
+                        dateText
+                    );
+
+                    setEventLoading(false);
+
+                } catch (error) {
+                    setEventLoading(false);
+                    eventFieldsContainer.classList.add(
+                        "d-none"
+                    );
+                    eventSaveButton.disabled = true;
+
+                    showEventFeedback(
+                        error.message
+                        || "Errore durante il caricamento."
+                    );
+                }
+            }
+
+            async function saveEvent(event) {
+                event.preventDefault();
+
+                if (!eventFields) {
+                    return;
+                }
+
+                eventForm.classList.add(
+                    "was-validated"
+                );
+
+                if (!eventForm.checkValidity()) {
+                    return;
+                }
+
+                if (
+                    eventFields.action.value
+                    === "completa"
+                    && [
+                        "ANOMALIA",
+                        "INTERVENTO_RICHIESTO"
+                    ].includes(
+                        eventFields.esito.value
+                    )
+                    && !eventFields.descrizione.value.trim()
+                ) {
+                    showEventFeedback(
+                        "Descrivere l'anomalia o "
+                        + "l'intervento richiesto."
+                    );
+
+                    eventFields.descrizione.focus();
+                    return;
+                }
+
+                const eventId = eventFields.id.value;
+
+                eventSaveButton.disabled = true;
+                showEventFeedback("");
+
+                try {
+                    const response = await window.avpFetch(
+                        appendTabSession(
+                            eventActionUrl(eventId)
+                        ),
+                        {
+                            method: "PATCH",
+                            headers: {
+                                "Content-Type": "application/json",
+                                "Accept": "application/json",
+                                "X-Requested-With": "XMLHttpRequest"
+                            },
+                            credentials: "same-origin",
+                            body: JSON.stringify(
+                                buildEventPayload()
+                            )
+                        }
+                    );
+
+                    const data = await parseResponse(
+                        response
+                    );
+
+                    if (
+                        !response.ok
+                        || data.ok === false
+                    ) {
+                        throw new Error(
+                            data.error
+                            || "Errore durante il salvataggio."
+                        );
+                    }
+
+                    showEventFeedback(
+                        data.message
+                        || "Evento aggiornato.",
+                        "success"
+                    );
+
+                    window.setTimeout(
+                        async () => {
+                            eventModal.hide();
+                            await loadCalendar();
+                        },
+                        350
+                    );
+
+                } catch (error) {
+                    eventSaveButton.disabled = false;
+
+                    showEventFeedback(
+                        error.message
+                        || "Errore durante il salvataggio."
+                    );
+                }
+            }
+
+            if (
+                canExecuteEvents
+                && eventModalElement
+                && eventForm
+            ) {
+                eventModal = (
+                    bootstrap.Modal.getOrCreateInstance(
+                        eventModalElement
+                    )
+                );
+
+                eventFields = {
+                    id: document.getElementById(
+                        "dashboard-evento-id"
+                    ),
+                    titolo: document.getElementById(
+                        "dashboard-evento-titolo"
+                    ),
+                    dataProgrammata: document.getElementById(
+                        "dashboard-evento-data-programmata"
+                    ),
+                    action: document.getElementById(
+                        "dashboard-evento-action"
+                    ),
+                    dataEsecuzione: document.getElementById(
+                        "dashboard-evento-data-esecuzione"
+                    ),
+                    esito: document.getElementById(
+                        "dashboard-evento-esito"
+                    ),
+                    durata: document.getElementById(
+                        "dashboard-evento-durata"
+                    ),
+                    descrizione: document.getElementById(
+                        "dashboard-evento-descrizione"
+                    ),
+                    note: document.getElementById(
+                        "dashboard-evento-note"
+                    )
+                };
+
+                eventFeedback = document.getElementById(
+                    "dashboard-evento-feedback"
+                );
+
+                eventLoading = document.getElementById(
+                    "dashboard-evento-loading"
+                );
+
+                eventFieldsContainer = document.getElementById(
+                    "dashboard-evento-fields"
+                );
+
+                eventCompletionFields = document.getElementById(
+                    "dashboard-evento-completamento-fields"
+                );
+
+                eventNoteLabel = document.getElementById(
+                    "dashboard-evento-note-label"
+                );
+
+                eventNoteHelp = document.getElementById(
+                    "dashboard-evento-note-help"
+                );
+
+                eventSaveButton = document.getElementById(
+                    "btn-dashboard-salva-evento"
+                );
+
+                eventFields.action.addEventListener(
+                    "change",
+                    updateEventActionFields
+                );
+
+                eventForm.addEventListener(
+                    "submit",
+                    saveEvent
+                );
+
+                eventModalElement.addEventListener(
+                    "hidden.bs.modal",
+                    resetEventForm
+                );
+
+                updateEventActionFields();
+            }
+
+            if (
+                calendarPane
+                && calendarPane.classList.contains("active")
+            ) {
+                loadCalendar();
+            }
+        });
+    </script>
+
+
+    {% if can_manage_calendar %}
+        <script>
+            "use strict";
+
+            document.addEventListener(
+                "DOMContentLoaded",
+                () => {
+                    const page = document.getElementById(
+                        "manutenzioni-page"
+                    );
+
+                    const pane = document.getElementById(
+                        "manutenzioni-chiusure-pane"
+                    );
+
+                    const tableBody = document.getElementById(
+                        "giorni-non-lavorativi-body"
+                    );
+
+                    const modalElement = document.getElementById(
+                        "modalGiornoNonLavorativo"
+                    );
+
+                    const form = document.getElementById(
+                        "form-giorno-non-lavorativo"
+                    );
+
+                    if (
+                        !page
+                        || !pane
+                        || !tableBody
+                        || !modalElement
+                        || !form
+                    ) {
+                        return;
+                    }
+
+                    const baseUrl = String(
+                        page.dataset.nonWorkingDaysUrl
+                        || ""
+                    ).replace(/\/+$/, "");
+
+                    if (!baseUrl) {
+                        return;
+                    }
+
+                    const modal = (
+                        bootstrap.Modal.getOrCreateInstance(
+                            modalElement
+                        )
+                    );
+
+                    const pageFeedback = document.getElementById(
+                        "giorni-non-lavorativi-feedback"
+                    );
+
+                    const pageLoading = document.getElementById(
+                        "giorni-non-lavorativi-loading"
+                    );
+
+                    const modalFeedback = document.getElementById(
+                        "giorno-non-lavorativo-modal-feedback"
+                    );
+
+                    const modalLoading = document.getElementById(
+                        "giorno-non-lavorativo-modal-loading"
+                    );
+
+                    const fieldsContainer = document.getElementById(
+                        "giorno-non-lavorativo-fields"
+                    );
+
+                    const modalTitle = document.getElementById(
+                        "modalGiornoNonLavorativoLabel"
+                    );
+
+                    const saveButton = document.getElementById(
+                        "btn-salva-giorno-non-lavorativo"
+                    );
+
+                    const fields = {
+                        id: document.getElementById(
+                            "giorno-non-lavorativo-id"
+                        ),
+                        data: document.getElementById(
+                            "giorno-non-lavorativo-data"
+                        ),
+                        dataFine: document.getElementById(
+                            "giorno-non-lavorativo-data-fine"
+                        ),
+                        descrizione: document.getElementById(
+                            "giorno-non-lavorativo-descrizione"
+                        ),
+                        tipo: document.getElementById(
+                            "giorno-non-lavorativo-tipo"
+                        ),
+                        ricorrente: document.getElementById(
+                            "giorno-non-lavorativo-ricorrente"
+                        ),
+                        attivo: document.getElementById(
+                            "giorno-non-lavorativo-attivo"
+                        )
+                    };
+
+                    function itemUrl(itemId) {
+                        return (
+                            `${baseUrl}/`
+                            + encodeURIComponent(itemId)
+                        );
+                    }
+
+                    function itemStatusUrl(itemId) {
+                        return `${itemUrl(itemId)}/stato`;
+                    }
+
+                    async function parseResponse(response) {
+                        return window.manutenzioniReadJson(response);
+                    }
+
+                    function setPageFeedback(
+                        message,
+                        type = "danger"
+                    ) {
+                        pageFeedback.textContent = String(
+                            message || ""
+                        );
+
+                        pageFeedback.className = message
+                            ? `alert alert-${type} m-3`
+                            : (
+                                "alert alert-danger "
+                                + "m-3 d-none"
+                            );
+                    }
+
+                    function setModalFeedback(
+                        message,
+                        type = "danger"
+                    ) {
+                        modalFeedback.textContent = String(
+                            message || ""
+                        );
+
+                        modalFeedback.className = message
+                            ? `alert alert-${type}`
+                            : "alert d-none";
+                    }
+
+                    function setPageLoading(value) {
+                        pageLoading.classList.toggle(
+                            "d-none",
+                            !value
+                        );
+                    }
+
+                    function setModalLoading(value) {
+                        modalLoading.classList.toggle(
+                            "d-none",
+                            !value
+                        );
+
+                        fieldsContainer.classList.toggle(
+                            "d-none",
+                            value
+                        );
+
+                        saveButton.disabled = value;
+                    }
+
+                    function formatDate(value) {
+                        const parts = String(
+                            value || ""
+                        ).split("-");
+
+                        if (parts.length !== 3) {
+                            return value || "-";
+                        }
+
+                        return (
+                            `${parts[2]}/`
+                            + `${parts[1]}/`
+                            + parts[0]
+                        );
+                    }
+
+                    function resetForm() {
+                        form.reset();
+                        form.classList.remove(
+                            "was-validated"
+                        );
+
+                        fields.id.value = "";
+                        fields.dataFine.disabled = false;
+                        fields.tipo.value = (
+                            "CHIUSURA_AZIENDALE"
+                        );
+                        fields.ricorrente.checked = false;
+                        fields.attivo.checked = true;
+
+                        fieldsContainer.classList.remove(
+                            "d-none"
+                        );
+
+                        setModalFeedback("");
+                        setModalLoading(false);
+                    }
+
+                    function populateForm(item) {
+                        fields.id.value = item.id || "";
+                        fields.data.value = item.data || "";
+                        fields.dataFine.value = item.data || "";
+                        fields.dataFine.disabled = true;
+                        fields.descrizione.value = (
+                            item.descrizione || ""
+                        );
+                        fields.tipo.value = (
+                            item.tipo
+                            || "CHIUSURA_AZIENDALE"
+                        );
+                        fields.ricorrente.checked = Boolean(
+                            item.ricorrente_annuale
+                        );
+                        fields.attivo.checked = Boolean(
+                            item.attivo
+                        );
+                    }
+
+                    function buildPayload() {
+                        return {
+                            data: fields.data.value,
+                            data_fine: fields.dataFine.value,
+                            descrizione: (
+                                fields.descrizione.value.trim()
+                            ),
+                            tipo: fields.tipo.value,
+                            ricorrente_annuale: (
+                                fields.ricorrente.checked
+                            ),
+                            attivo: fields.attivo.checked
+                        };
+                    }
+
+                    function createEmptyRow() {
+                        const row = document.createElement(
+                            "tr"
+                        );
+
+                        const cell = document.createElement(
+                            "td"
+                        );
+
+                        cell.colSpan = 6;
+                        cell.className = (
+                            "text-center text-muted py-4"
+                        );
+                        cell.textContent = (
+                            "Nessuna chiusura "
+                            + "personalizzata configurata."
+                        );
+
+                        row.appendChild(cell);
+                        return row;
+                    }
+
+                    function renderRows(items) {
+                        tableBody.replaceChildren();
+
+                        if (!items.length) {
+                            tableBody.appendChild(
+                                createEmptyRow()
+                            );
+                            return;
+                        }
+
+                        for (const item of items) {
+                            const row = document.createElement(
+                                "tr"
+                            );
+
+                            const dateCell = document.createElement(
+                                "td"
+                            );
+
+                            dateCell.className = "fw-semibold";
+                            dateCell.textContent = formatDate(
+                                item.data
+                            );
+
+                            const descriptionCell = (
+                                document.createElement("td")
+                            );
+
+                            descriptionCell.textContent = (
+                                item.descrizione || "-"
+                            );
+
+                            const typeCell = document.createElement(
+                                "td"
+                            );
+
+                            typeCell.textContent = (
+                                item.tipo_descrizione
+                                || item.tipo
+                                || "-"
+                            );
+
+                            const recurrenceCell = (
+                                document.createElement("td")
+                            );
+
+                            recurrenceCell.textContent = (
+                                item.ricorrente_annuale
+                                    ? "Annuale"
+                                    : "Solo questa data"
+                            );
+
+                            const statusCell = document.createElement(
+                                "td"
+                            );
+
+                            const statusBadge = document.createElement(
+                                "span"
+                            );
+
+                            statusBadge.className = item.attivo
+                                ? "badge text-bg-success"
+                                : "badge text-bg-secondary";
+
+                            statusBadge.textContent = item.attivo
+                                ? "Attivo"
+                                : "Inattivo";
+
+                            statusCell.appendChild(statusBadge);
+
+                            const actionsCell = document.createElement(
+                                "td"
+                            );
+
+                            actionsCell.className = "text-end";
+
+                            const actions = document.createElement(
+                                "div"
+                            );
+
+                            actions.className = (
+                                "d-inline-flex gap-1"
+                            );
+
+                            const editButton = document.createElement(
+                                "button"
+                            );
+
+                            editButton.type = "button";
+                            editButton.className = (
+                                "btn btn-sm "
+                                + "btn-outline-primary"
+                            );
+                            editButton.dataset.itemId = item.id;
+                            editButton.innerHTML = (
+                                '<i class="bi bi-pencil"></i> '
+                                + "Modifica"
+                            );
+
+                            editButton.addEventListener(
+                                "click",
+                                () => openEditModal(item.id)
+                            );
+
+                            const statusButton = (
+                                document.createElement("button")
+                            );
+
+                            statusButton.type = "button";
+                            statusButton.className = (
+                                "btn btn-sm "
+                                + (
+                                    item.attivo
+                                        ? "btn-outline-danger"
+                                        : "btn-outline-success"
+                                )
+                            );
+
+                            statusButton.textContent = item.attivo
+                                ? "Disattiva"
+                                : "Attiva";
+
+                            statusButton.addEventListener(
+                                "click",
+                                () => changeStatus(item)
+                            );
+
+                            const deleteButton = document.createElement(
+                                "button"
+                            );
+
+                            deleteButton.type = "button";
+                            deleteButton.className = (
+                                "btn btn-sm btn-danger"
+                            );
+                            deleteButton.innerHTML = (
+                                '<i class="bi bi-trash"></i> '
+                                + "Cancella"
+                            );
+                            deleteButton.setAttribute(
+                                "aria-label",
+                                `Cancella ${item.descrizione}`
+                            );
+                            deleteButton.addEventListener(
+                                "click",
+                                () => deleteItem(item)
+                            );
+
+                            actions.appendChild(editButton);
+                            actions.appendChild(statusButton);
+                            actions.appendChild(deleteButton);
+                            actionsCell.appendChild(actions);
+
+                            row.appendChild(dateCell);
+                            row.appendChild(descriptionCell);
+                            row.appendChild(typeCell);
+                            row.appendChild(recurrenceCell);
+                            row.appendChild(statusCell);
+                            row.appendChild(actionsCell);
+
+                            tableBody.appendChild(row);
+                        }
+                    }
+
+                    async function loadItems() {
+                        setPageFeedback("");
+                        setPageLoading(true);
+
+                        try {
+                            const response = await window.avpFetch(
+                                `${baseUrl}?include_inactive=1`,
+                                {
+                                    method: "GET",
+                                    headers: {
+                                        "Accept": "application/json",
+                                        "X-Requested-With": (
+                                            "XMLHttpRequest"
+                                        )
+                                    },
+                                    credentials: "same-origin"
+                                }
+                            );
+
+                            const data = await parseResponse(
+                                response
+                            );
+
+                            if (
+                                !response.ok
+                                || data.ok === false
+                            ) {
+                                throw new Error(
+                                    data.error
+                                    || (
+                                        "Errore durante "
+                                        + "il caricamento."
+                                    )
+                                );
+                            }
+
+                            renderRows(data.items || []);
+
+                        } catch (error) {
+                            tableBody.replaceChildren();
+
+                            setPageFeedback(
+                                error.message
+                                || (
+                                    "Errore durante "
+                                    + "il caricamento."
+                                )
+                            );
+
+                        } finally {
+                            setPageLoading(false);
+                        }
+                    }
+
+                    function openCreateModal() {
+                        resetForm();
+                        modalTitle.textContent = (
+                            "Nuovo giorno non lavorativo"
+                        );
+                        modal.show();
+
+                        modalElement.addEventListener(
+                            "shown.bs.modal",
+                            () => fields.data.focus(),
+                            {once: true}
+                        );
+                    }
+
+                    async function openEditModal(itemId) {
+                        resetForm();
+                        modalTitle.textContent = (
+                            "Modifica giorno non lavorativo"
+                        );
+                        setModalLoading(true);
+                        modal.show();
+
+                        try {
+                            const response = await window.avpFetch(
+                                itemUrl(itemId),
+                                {
+                                    method: "GET",
+                                    headers: {
+                                        "Accept": "application/json",
+                                        "X-Requested-With": (
+                                            "XMLHttpRequest"
+                                        )
+                                    },
+                                    credentials: "same-origin"
+                                }
+                            );
+
+                            const data = await parseResponse(
+                                response
+                            );
+
+                            if (
+                                !response.ok
+                                || data.ok === false
+                            ) {
+                                throw new Error(
+                                    data.error
+                                    || (
+                                        "Errore durante "
+                                        + "il caricamento."
+                                    )
+                                );
+                            }
+
+                            populateForm(data.item || {});
+                            setModalLoading(false);
+
+                        } catch (error) {
+                            setModalLoading(false);
+                            fieldsContainer.classList.add(
+                                "d-none"
+                            );
+                            saveButton.disabled = true;
+
+                            setModalFeedback(
+                                error.message
+                                || (
+                                    "Errore durante "
+                                    + "il caricamento."
+                                )
+                            );
+                        }
+                    }
+
+                    async function saveItem(event) {
+                        event.preventDefault();
+
+                        form.classList.add(
+                            "was-validated"
+                        );
+
+                        if (!form.checkValidity()) {
+                            return;
+                        }
+
+                        const itemId = String(
+                            fields.id.value || ""
+                        ).trim();
+
+                        const editing = Boolean(itemId);
+
+                        saveButton.disabled = true;
+                        setModalFeedback("");
+
+                        try {
+                            const response = await window.avpFetch(
+                                editing
+                                    ? itemUrl(itemId)
+                                    : baseUrl,
+                                {
+                                    method: editing
+                                        ? "PATCH"
+                                        : "POST",
+                                    headers: {
+                                        "Content-Type": (
+                                            "application/json"
+                                        ),
+                                        "Accept": "application/json",
+                                        "X-Requested-With": (
+                                            "XMLHttpRequest"
+                                        )
+                                    },
+                                    credentials: "same-origin",
+                                    body: JSON.stringify(
+                                        buildPayload()
+                                    )
+                                }
+                            );
+
+                            const data = await parseResponse(
+                                response
+                            );
+
+                            if (
+                                !response.ok
+                                || data.ok === false
+                            ) {
+                                throw new Error(
+                                    data.error
+                                    || (
+                                        "Errore durante "
+                                        + "il salvataggio."
+                                    )
+                                );
+                            }
+
+                            setModalFeedback(
+                                data.message
+                                || "Salvataggio completato.",
+                                "success"
+                            );
+
+                            window.setTimeout(
+                                () => window.location.reload(),
+                                350
+                            );
+
+                        } catch (error) {
+                            saveButton.disabled = false;
+
+                            setModalFeedback(
+                                error.message
+                                || (
+                                    "Errore durante "
+                                    + "il salvataggio."
+                                )
+                            );
+                        }
+                    }
+
+                    async function deleteItem(item) {
+                        const confirmed = window.confirm(
+                            "Cancellare definitivamente la chiusura "
+                            + `del ${formatDate(item.data)} `
+                            + `\"${item.descrizione}\"?`
+                        );
+
+                        if (!confirmed) {
+                            return;
+                        }
+
+                        setPageFeedback("");
+                        setPageLoading(true);
+
+                        try {
+                            const response = await window.avpFetch(
+                                itemUrl(item.id),
+                                {
+                                    method: "DELETE",
+                                    headers: {
+                                        "Accept": "application/json",
+                                        "X-Requested-With": (
+                                            "XMLHttpRequest"
+                                        )
+                                    },
+                                    credentials: "same-origin"
+                                }
+                            );
+
+                            const data = await parseResponse(
+                                response
+                            );
+
+                            if (
+                                !response.ok
+                                || data.ok === false
+                            ) {
+                                throw new Error(
+                                    data.error
+                                    || (
+                                        "Errore durante "
+                                        + "la cancellazione."
+                                    )
+                                );
+                            }
+
+                            setPageFeedback(
+                                data.message,
+                                "success"
+                            );
+
+                            window.setTimeout(
+                                () => window.location.reload(),
+                                350
+                            );
+
+                        } catch (error) {
+                            setPageLoading(false);
+                            setPageFeedback(
+                                error.message
+                                || "Errore durante la cancellazione."
+                            );
+                        }
+                    }
+
+                    async function changeStatus(item) {
+                        const newActive = !item.attivo;
+
+                        const confirmed = window.confirm(
+                            `Confermi di voler ${
+                                newActive
+                                    ? "attivare"
+                                    : "disattivare"
+                            } "${item.descrizione}"?`
+                        );
+
+                        if (!confirmed) {
+                            return;
+                        }
+
+                        setPageFeedback("");
+                        setPageLoading(true);
+
+                        try {
+                            const response = await window.avpFetch(
+                                itemStatusUrl(item.id),
+                                {
+                                    method: "PATCH",
+                                    headers: {
+                                        "Content-Type": (
+                                            "application/json"
+                                        ),
+                                        "Accept": "application/json",
+                                        "X-Requested-With": (
+                                            "XMLHttpRequest"
+                                        )
+                                    },
+                                    credentials: "same-origin",
+                                    body: JSON.stringify({
+                                        attivo: newActive
+                                    })
+                                }
+                            );
+
+                            const data = await parseResponse(
+                                response
+                            );
+
+                            if (
+                                !response.ok
+                                || data.ok === false
+                            ) {
+                                throw new Error(
+                                    data.error
+                                    || (
+                                        "Errore durante "
+                                        + "l'aggiornamento."
+                                    )
+                                );
+                            }
+
+                            setPageFeedback(
+                                data.message,
+                                "success"
+                            );
+
+                            await loadItems();
+
+                        } catch (error) {
+                            setPageLoading(false);
+
+                            setPageFeedback(
+                                error.message
+                                || (
+                                    "Errore durante "
+                                    + "l'aggiornamento."
+                                )
+                            );
+                        }
+                    }
+
+                    document
+                        .getElementById(
+                            "btn-nuovo-giorno-non-lavorativo"
+                        )
+                        ?.addEventListener(
+                            "click",
+                            openCreateModal
+                        );
+
+                    document
+                        .getElementById(
+                            "manutenzioni-chiusure-tab"
+                        )
+                        ?.addEventListener(
+                            "shown.bs.tab",
+                            loadItems
+                        );
+
+                    fields.data.addEventListener(
+                        "change",
+                        () => {
+                            fields.dataFine.min = fields.data.value;
+
+                            if (
+                                !fields.dataFine.value
+                                || fields.dataFine.value < fields.data.value
+                            ) {
+                                fields.dataFine.value = fields.data.value;
+                            }
+                        }
+                    );
+
+                    form.addEventListener(
+                        "submit",
+                        saveItem
+                    );
+
+                    modalElement.addEventListener(
+                        "hidden.bs.modal",
+                        resetForm
+                    );
+
+                    if (pane.classList.contains("active")) {
+                        loadItems();
+                    }
+                }
+            );
+        </script>
+    {% endif %}
+
+{% endblock %}

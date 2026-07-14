@@ -3,6 +3,7 @@ from flask_login import LoginManager
 from .filters import register_filters
 from app_odp.operator_session import active_user, active_policy, active_token
 from app_odp.models import db, Permissions, User
+from app_odp import manutenzioni_models
 from app_odp.auth import auth_bp
 from app_odp.routes import main_bp
 import tomllib
@@ -24,6 +25,7 @@ def _apply_sqlite_pragmas(engine: Engine) -> None:
         try:
             cursor.execute("PRAGMA busy_timeout=5000;")
             cursor.execute("PRAGMA journal_mode=WAL;")
+            cursor.execute("PRAGMA foreign_keys=ON;")
         finally:
             cursor.close()
 
@@ -70,7 +72,23 @@ def setup_request_logging(app):
 def _ensure_builtin_permissions() -> None:
     builtins = {
         "storico_ordini": "Storico ordini",
-        "scorte_segnalazione_libera": "Segnalazione scorte con testo libero",
+        "scorte_segnalazione_libera": ("Segnalazione scorte con testo libero"),
+        # Manutenzioni
+        "manutenzioni_visualizza": ("Accesso alla gestione delle manutenzioni"),
+        "manutenzioni_gestisci_macchinari": (
+            "Creazione e modifica dell'anagrafica macchinari"
+        ),
+        "manutenzioni_visualizza_tutti_reparti": (
+            "Visualizzazione dei macchinari di tutti i reparti"
+        ),
+        "manutenzioni_gestisci_piani": (
+            "Creazione e modifica dei piani di manutenzione"
+        ),
+        "manutenzioni_esegui": ("Registrazione delle manutenzioni eseguite"),
+        "manutenzioni_visualizza_registro": (
+            "Visualizzazione del registro delle manutenzioni"
+        ),
+        "manutenzioni_amministrazione": ("Amministrazione completa delle manutenzioni"),
     }
     existing = {
         row.Codice
