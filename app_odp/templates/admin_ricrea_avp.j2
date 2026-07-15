@@ -1,0 +1,191 @@
+{% extends "base.j2" %}
+
+{% block title %}Utility admin - Ricrea AVP{% endblock %}
+
+{% block content %}
+<main class="container py-3"
+      id="admin-ricrea-avp"
+      data-list-url="{{ operator_url_for('main.api_admin_avanzamenti') }}"
+      data-reprint-url="{{ operator_url_for('main.api_admin_ricrea_avp') }}">
+    <div class="mb-3">
+        <h1 class="h4 mb-1">Ricrea file di avanzamento</h1>
+        <p class="text-muted mb-0">
+            Utility amministrativa: rigenera un file AVP con la logica attuale,
+            senza modificare ordine e outbox originali.
+        </p>
+    </div>
+
+    <div class="card shadow-sm mb-3">
+        <div class="card-body">
+            <form id="avp-search-form" class="row g-2">
+                <div class="col-12 col-md-9">
+                    <label class="form-label" for="avp-search">Ordine o articolo</label>
+                    <input class="form-control"
+                           id="avp-search"
+                           placeholder="Riferimento ordine, documento, riga o codice articolo">
+                </div>
+                <div class="col-12 col-md-3 d-flex align-items-end">
+                    <button class="btn btn-primary w-100" type="submit">Cerca</button>
+                </div>
+                <div class="col-12">
+                    <label class="form-label" for="avp-output-dir">Percorso di output</label>
+                    <input class="form-control"
+                           id="avp-output-dir"
+                           value="{{ default_output_dir }}"
+                           placeholder="C:\\Export oppure \\\\server\\condivisione\\cartella">
+                    <div class="form-text">
+                        La cartella deve già esistere ed essere scrivibile dal server Flask.
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="avp-message"></div>
+
+    <div class="card shadow-sm">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span class="fw-semibold">Avanzamenti disponibili</span>
+            <span class="small text-muted" id="avp-count"></span>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle mb-0">
+                <thead class="table-light">
+                <tr>
+                    <th>Data</th>
+                    <th>Ordine</th>
+                    <th>Documento / riga</th>
+                    <th>Articolo</th>
+                    <th>Fase</th>
+                    <th>Stato</th>
+                    <th>Esportato il</th>
+                    <th></th>
+                </tr>
+                </thead>
+                <tbody id="avp-results">
+                <tr><td colspan="8" class="text-center text-muted py-3">Caricamento...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</main>
+{% endblock %}
+
+{% block extra_js %}
+{{ super() }}
+<script>
+(() => {
+    const page = document.getElementById("admin-ricrea-avp");
+    if (!page) return;
+
+    const form = document.getElementById("avp-search-form");
+    const search = document.getElementById("avp-search");
+    const outputDir = document.getElementById("avp-output-dir");
+    const results = document.getElementById("avp-results");
+    const count = document.getElementById("avp-count");
+    const message = document.getElementById("avp-message");
+
+    const esc = value => String(value ?? "").replace(/[&<>"']/g, ch => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+    }[ch]));
+
+    function showMessage(text, type) {
+        message.innerHTML = text
+            ? `<div class="alert alert-${type}" role="alert">${esc(text)}</div>`
+            : "";
+    }
+
+    async function loadRows() {
+        results.innerHTML = `<tr><td colspan="8" class="text-center text-muted py-3">Caricamento...</td></tr>`;
+        showMessage("", "info");
+        const separator = page.dataset.listUrl.includes("?") ? "&" : "?";
+        const url = `${page.dataset.listUrl}${separator}q=${encodeURIComponent(search.value.trim())}`;
+
+        try {
+            const response = await window.avpFetch(url);
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || !data.ok) {
+                throw new Error(data.error || "Ricerca non riuscita.");
+            }
+
+            const rows = data.rows || [];
+            count.textContent = `${rows.length} risultati (massimo 100)`;
+            if (!rows.length) {
+                results.innerHTML = `<tr><td colspan="8" class="text-center text-muted py-3">Nessun avanzamento trovato.</td></tr>`;
+                return;
+            }
+
+            results.innerHTML = rows.map(row => `
+                <tr>
+                    <td>${esc(row.created_at)}</td>
+                    <td class="fw-semibold">${esc(row.ordine)}</td>
+                    <td>${esc(row.id_documento)} / ${esc(row.id_riga)}</td>
+                    <td>${esc(row.articolo)}</td>
+                    <td>${esc(row.fase)}</td>
+                    <td>${esc(row.status)}</td>
+                    <td>${esc(row.exported_at || "-")}</td>
+                    <td class="text-end">
+                        <button type="button"
+                                class="btn btn-sm btn-outline-danger js-ricrea-avp"
+                                data-outbox-id="${esc(row.outbox_id)}"
+                                data-ordine="${esc(row.ordine)}"
+                                data-fase="${esc(row.fase)}">
+                            Ricrea AVP
+                        </button>
+                    </td>
+                </tr>
+            `).join("");
+        } catch (error) {
+            results.innerHTML = `<tr><td colspan="8" class="text-center text-danger py-3">Errore di caricamento.</td></tr>`;
+            showMessage(error.message, "danger");
+        }
+    }
+
+    async function reprint(button) {
+        const label = `${button.dataset.ordine}, fase ${button.dataset.fase || "-"}`;
+        if (!confirm(`Ricreare il file AVP per ${label}?`)) return;
+
+        button.disabled = true;
+        const oldText = button.textContent;
+        button.textContent = "Creazione...";
+        showMessage("", "info");
+
+        try {
+            const response = await window.avpFetch(page.dataset.reprintUrl, {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({
+                    outbox_id: button.dataset.outboxId,
+                    output_dir: outputDir.value.trim(),
+                }),
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || !data.ok) {
+                throw new Error(data.error || "Ricreazione non riuscita.");
+            }
+            showMessage(`${data.message} Percorso: ${data.file_path}`, "success");
+        } catch (error) {
+            showMessage(error.message, "danger");
+        } finally {
+            button.disabled = false;
+            button.textContent = oldText;
+        }
+    }
+
+    form.addEventListener("submit", event => {
+        event.preventDefault();
+        loadRows();
+    });
+    results.addEventListener("click", event => {
+        const button = event.target.closest(".js-ricrea-avp");
+        if (button) reprint(button);
+    });
+
+    loadRows();
+})();
+</script>
+{% endblock %}

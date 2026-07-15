@@ -66,13 +66,24 @@ def _get_erp_export_dir() -> Path:
     return export_dir
 
 
-def _build_export_txt_path(prefix: str = "AVPB", suffix: str = "") -> Path:
+def _build_export_txt_path(
+    prefix: str = "AVPB",
+    suffix: str = "",
+    output_dir: str | Path | None = None,
+) -> Path:
     now_txt = _now_rome_dt().strftime("%Y%m%d_%H%M%S")
     safe_prefix = _safe_txt_prefix(prefix, "AVPB")
     safe_suffix = _safe_txt_suffix(suffix, "export")
     file_name = f"{safe_prefix}_{safe_suffix}_{now_txt}.txt"
 
-    export_dir = _get_erp_export_dir().resolve()
+    export_dir = (
+        Path(output_dir).expanduser().resolve()
+        if output_dir
+        else _get_erp_export_dir().resolve()
+    )
+    if not export_dir.exists() or not export_dir.is_dir():
+        raise ValueError("La cartella di output non esiste o non è valida.")
+
     candidate_path = (export_dir / file_name).resolve()
     try:
         candidate_path.relative_to(export_dir)
@@ -88,8 +99,13 @@ def _write_txt_content(
     prefix: str = "AVPB",
     suffix: str = "",
     encoding: str = "utf-8",
+    output_dir: str | Path | None = None,
 ) -> Path:
-    path_txt = _build_export_txt_path(prefix=prefix, suffix=suffix)
+    path_txt = _build_export_txt_path(
+        prefix=prefix,
+        suffix=suffix,
+        output_dir=output_dir,
+    )
     content = "\n".join(lines) + "\n"
     path_txt.write_text(content, encoding=encoding, newline="\r\n")
     return path_txt
