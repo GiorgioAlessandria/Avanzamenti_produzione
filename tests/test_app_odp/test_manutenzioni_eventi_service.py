@@ -1,0 +1,143 @@
+from datetime import date, datetime
+
+from flask import Flask
+
+from app_odp.manutenzioni_models import (
+    EventoManutenzione,
+    Macchinario,
+    ManutenzioneRicorrente,
+    ManutenzioneStraordinaria,
+)
+from app_odp.models import db
+from app_odp.services import manutenzioni_eventi_service as service
+
+
+def test_ricorrenza_giornaliera_mantiene_le_date_teoriche():
+    assert service._calculate_daily_dates(
+        date(2026, 8, 14),
+        1,
+        date(2026, 8, 14),
+        date(2026, 8, 17),
+    ) == [
+        date(2026, 8, 14),
+        date(2026, 8, 15),
+        date(2026, 8, 16),
+        date(2026, 8, 17),
+    ]
+
+
+def test_sync_rigenera_solo_eventi_futuri_programmati(monkeypatch):
+    app = Flask(__name__)
+    app.config.update(
+        TESTING=True,
+        SQLALCHEMY_DATABASE_URI="sqlite://",
+        SQLALCHEMY_BINDS={"manutenzioni": "sqlite://"},
+    )
+    db.init_app(app)
+
+    oggi = date(2026, 7, 13)
+    data_desiderata = date(2026, 7, 20)
+    data_passata_teorica = date(2026, 7, 14)
+
+    with app.app_context():
+        db.create_all(bind_key="manutenzioni")
+
+        macchinario = Macchinario(
+            codice="M1",
+            descrizione="Macchina 1",
+            reparto_codice="R1",
+        )
+        piano = ManutenzioneRicorrente(
+            macchinario=macchinario,
+            titolo="Controllo",
+            frequenza_unita="giorni",
+            frequenza_intervallo=1,
+            data_inizio=oggi,
+        )
+        db.session.add_all([macchinario, piano])
+        db.session.flush()
+
+        def evento(data_teorica, data_programmata, stato="PROGRAMMATA"):
+            row = EventoManutenzione(
+                manutenzione_ricorrente=piano,
+                data_teorica=data_teorica,
+                data_programmata=data_programmata,
+                stato=stato,
+                titolo_snapshot="Controllo",
+                data_esecuzione=(
+                    datetime(2026, 7, 10, 8, 0)
+                    if stato == "COMPLETATA"
+                    else None
+                ),
+            )
+            db.session.add(row)
+            return row
+
+        desiderato = evento(data_desiderata, data_desiderata)
+        obsoleto = evento(date(2026, 7, 21), date(2026, 7, 21))
+        passato = evento(data_passata_teorica, date(2026, 7, 12))
+        chiuso = evento(
+            date(2026, 7, 22),
+            date(2026, 7, 22),
+            "COMPLETATA",
+        )
+        db.session.commit()
+
+        ids_da_conservare = {desiderato.id, passato.id, chiuso.id}
+        ids_storico = {passato.id, chiuso.id}
+        id_desiderato = desiderato.id
+        id_obsoleto = obsoleto.id
+
+        monkeypatch.setattr(
+            service,
+            "calculate_piano_dates",
+            lambda *args, **kwargs: [data_passata_teorica, data_desiderata],
+        )
+        monkeypatch.setattr(
+            service,
+            "normalizza_data_manutenzione",
+            lambda giorno, **kwargs: (giorno, None),
+        )
+
+        result = service.sync_eventi_piano(
+            piano,
+            data_dal=oggi,
+            data_fino=date(2026, 8, 1),
+        )
+
+        ids_rimasti = {row.id for row in EventoManutenzione.query.all()}
+        assert result["deleted"] == 1
+        assert id_obsoleto not in ids_rimasti
+        assert ids_da_conservare <= ids_rimasti
+        assert passato.data_programmata == date(2026, 7, 12)
+
+        piano.attiva = False
+        result = service.sync_eventi_piano(piano, data_dal=oggi)
+        ids_rimasti = {row.id for row in EventoManutenzione.query.all()}
+        assert result["deleted"] == 1
+        assert id_desiderato not in ids_rimasti
+        assert ids_storico <= ids_rimasti
+
+
+def test_intervento_richiesto_diventa_completato_dopo_lo_straordinario():
+    evento = EventoManutenzione(
+        data_teorica=date(2026, 7, 14),
+        data_programmata=date(2026, 7, 14),
+        stato="COMPLETATA",
+        esito="INTERVENTO_RICHIESTO",
+        titolo_snapshot="Controllo",
+    )
+    straordinaria = ManutenzioneStraordinaria(
+        evento_manutenzione=evento,
+        data_intervento=datetime(2026, 7, 14, 10, 0),
+        titolo="Intervento richiesto - Controllo",
+        descrizione_problema="Guasto",
+        intervento_eseguito="DA COMPLETARE",
+        esito="DA_VERIFICARE",
+    )
+
+    assert service.get_stato_visuale_evento(evento) == "INTERVENTO_RICHIESTO"
+
+    straordinaria.intervento_eseguito = "Sostituito il componente"
+
+    assert service.get_stato_visuale_evento(evento) == "COMPLETATA"
