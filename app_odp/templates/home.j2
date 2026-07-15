@@ -2,6 +2,84 @@
 
 {% block content %}
     {% include active_partial %}
+
+    {% if manutenzioni_da_eseguire %}
+        <div class="modal fade"
+             id="modalManutenzioniDaEseguire"
+             tabindex="-1"
+             aria-labelledby="modalManutenzioniDaEseguireLabel"
+             aria-hidden="true">
+            <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+                <div class="modal-content border-danger">
+                    <div class="modal-header bg-danger text-white">
+                        <h2 class="modal-title fs-5"
+                            id="modalManutenzioniDaEseguireLabel">
+                            <i class="bi bi-exclamation-triangle me-1"></i>
+                            Manutenzioni da eseguire
+                        </h2>
+
+                        <button type="button"
+                                class="btn-close btn-close-white"
+                                data-bs-dismiss="modal"
+                                aria-label="Chiudi">
+                        </button>
+                    </div>
+
+                    <div class="modal-body">
+                        <p>
+                            Sono presenti manutenzioni programmate per oggi
+                            o non ancora eseguite.
+                        </p>
+
+                        <div class="list-group">
+                            {% for evento in manutenzioni_da_eseguire %}
+                                <a href="{{ operator_url_for(
+                                        'main.manutenzioni_macchinario_detail',
+                                        macchinario_id=evento.macchinario_id,
+                                        view='programmate'
+                                    ) }}"
+                                   class="list-group-item list-group-item-action d-flex justify-content-between align-items-start gap-3">
+                                    <div>
+                                        <div class="fw-semibold">
+                                            {{ evento.macchinario_codice }}
+                                            - {{ evento.macchinario_descrizione }}
+                                        </div>
+
+                                        <div>
+                                            {{ evento.titolo }}
+                                        </div>
+
+                                        <div class="small text-muted">
+                                            Reparto {{ evento.reparto_codice }}
+                                            · Data {{ evento.data_programmata }}
+                                        </div>
+                                    </div>
+
+                                    {% if evento.data_programmata < oggi_manutenzioni %}
+                                        <span class="badge text-bg-danger">
+                                            Scaduta
+                                        </span>
+                                    {% else %}
+                                        <span class="badge text-bg-warning">
+                                            Oggi
+                                        </span>
+                                    {% endif %}
+                                </a>
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    <div class="modal-footer">
+                        <button type="button"
+                                class="btn btn-secondary"
+                                data-bs-dismiss="modal">
+                            Chiudi
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    {% endif %}
 {% endblock %}
 
 {% block extra_js %}
@@ -182,4 +260,20 @@
             setInterval(fetchUpdates, intervalMs);
         })();
     </script>
+
+    {% if manutenzioni_da_eseguire %}
+        <script>
+            document.addEventListener("DOMContentLoaded", () => {
+                const modalElement = document.getElementById(
+                    "modalManutenzioniDaEseguire"
+                );
+
+                if (modalElement) {
+                    bootstrap.Modal.getOrCreateInstance(
+                        modalElement
+                    ).show();
+                }
+            });
+        </script>
+    {% endif %}
 {% endblock %}

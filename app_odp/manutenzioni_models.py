@@ -38,9 +38,7 @@ STATI_EVENTO_MANUTENZIONE = {
 
 ESITI_EVENTO_MANUTENZIONE = {
     "POSITIVO",
-    "ANOMALIA",
     "INTERVENTO_RICHIESTO",
-    "NON_APPLICABILE",
 }
 
 ESITI_MANUTENZIONE_STRAORDINARIA = {
@@ -163,6 +161,14 @@ class Macchinario(db.Model):
         passive_deletes=True,
     )
 
+    operatori_assegnati = db.relationship(
+        "MacchinarioOperatore",
+        back_populates="macchinario",
+        lazy="selectin",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
     __table_args__ = (
         db.UniqueConstraint(
             "codice",
@@ -219,6 +225,51 @@ class Macchinario(db.Model):
             f"codice={self.codice!r} "
             f"reparto={self.reparto_codice!r}>"
         )
+
+
+class MacchinarioOperatore(db.Model):
+    """Associazione logica tra un macchinario e un utente di RBAC.db."""
+
+    __bind_key__ = MANUTENZIONI_BIND_KEY
+    __tablename__ = "macchinari_operatori"
+
+    macchinario_id = db.Column(
+        db.Integer,
+        db.ForeignKey(
+            "macchinari.id",
+            onupdate="CASCADE",
+            ondelete="CASCADE",
+        ),
+        primary_key=True,
+    )
+
+    operatore_public_id = db.Column(
+        db.Text,
+        primary_key=True,
+    )
+
+    operatore_username = db.Column(
+        db.Text,
+        nullable=False,
+    )
+
+    created_at = db.Column(
+        db.DateTime,
+        nullable=False,
+        default=_now_rome_dt,
+    )
+
+    macchinario = db.relationship(
+        "Macchinario",
+        back_populates="operatori_assegnati",
+    )
+
+    __table_args__ = (
+        db.Index(
+            "ix_macchinari_operatori_public_id",
+            "operatore_public_id",
+        ),
+    )
 
 
 class ManutenzioneRicorrente(db.Model):
@@ -294,6 +345,13 @@ class ManutenzioneRicorrente(db.Model):
         nullable=False,
         default=True,
         server_default=db.text("1"),
+    )
+
+    archiviata = db.Column(
+        db.Boolean,
+        nullable=False,
+        default=False,
+        server_default=db.text("0"),
     )
 
     created_by_public_id = db.Column(
@@ -653,6 +711,14 @@ class EventoManutenzione(db.Model):
         back_populates="eventi",
         lazy="joined",
     )
+
+    manutenzione_straordinaria = db.relationship(
+        "ManutenzioneStraordinaria",
+        back_populates="evento_manutenzione",
+        uselist=False,
+        lazy="selectin",
+    )
+
     __table_args__ = (
         db.UniqueConstraint(
             "manutenzione_ricorrente_id",
@@ -676,14 +742,12 @@ class EventoManutenzione(db.Model):
         ),
         db.CheckConstraint(
             """
-                esito IS NULL
-                OR esito IN (
-                    'POSITIVO',
-                    'ANOMALIA',
-                    'INTERVENTO_RICHIESTO',
-                    'NON_APPLICABILE'
-                )
-                """,
+                    esito IS NULL
+                    OR esito IN (
+                        'POSITIVO',
+                        'INTERVENTO_RICHIESTO'
+                    )
+                    """,
             name="ck_eventi_manutenzione_esito",
         ),
         db.CheckConstraint(
@@ -816,6 +880,15 @@ class ManutenzioneStraordinaria(db.Model):
         nullable=False,
     )
 
+    evento_manutenzione_id = db.Column(
+        db.Integer,
+        db.ForeignKey(
+            "eventi_manutenzione.id",
+            onupdate="CASCADE",
+            ondelete="SET NULL",
+        ),
+    )
+
     data_intervento = db.Column(
         db.DateTime,
         nullable=False,
@@ -896,6 +969,12 @@ class ManutenzioneStraordinaria(db.Model):
         lazy="joined",
     )
 
+    evento_manutenzione = db.relationship(
+        "EventoManutenzione",
+        back_populates="manutenzione_straordinaria",
+        lazy="joined",
+    )
+
     __table_args__ = (
         db.CheckConstraint(
             """
@@ -933,6 +1012,11 @@ class ManutenzioneStraordinaria(db.Model):
         db.Index(
             "ix_manutenzioni_straordinarie_esito",
             "esito",
+        ),
+        db.Index(
+            "uq_manutenzioni_straordinarie_evento",
+            "evento_manutenzione_id",
+            unique=True,
         ),
     )
 

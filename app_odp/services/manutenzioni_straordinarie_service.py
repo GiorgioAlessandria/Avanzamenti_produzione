@@ -466,6 +466,17 @@ def update_manutenzione_straordinaria(
         creating=False,
     )
 
+    if (
+        intervento.evento_manutenzione is not None
+        and intervento.intervento_eseguito.strip().upper() == "DA COMPLETARE"
+    ):
+        raise ManutenzioniServiceError(
+            "Descrivere l'intervento straordinario eseguito."
+        )
+
+    if intervento.evento_manutenzione is not None:
+        intervento.evento_manutenzione.stato = "COMPLETATA"
+
     db.session.commit()
 
     return intervento
@@ -485,6 +496,7 @@ def serialize_manutenzione_straordinaria(
     return {
         "id": intervento.id,
         "macchinario_id": intervento.macchinario_id,
+        "evento_manutenzione_id": intervento.evento_manutenzione_id,
         "macchinario_codice": (
             macchinario.codice
             if macchinario is not None
@@ -526,6 +538,10 @@ def serialize_manutenzione_straordinaria(
         "causa": intervento.causa,
         "intervento_eseguito": (
             intervento.intervento_eseguito
+        ),
+        "da_completare": (
+            intervento.intervento_eseguito.strip().upper()
+            == "DA COMPLETARE"
         ),
         "esito": intervento.esito,
         "fermo_macchina_minuti": (

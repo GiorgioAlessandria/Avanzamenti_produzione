@@ -7,6 +7,7 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 
 from app_odp.manutenzioni_models import (
+    EventoManutenzione,
     ManutenzioneRicorrente,
 )
 from app_odp.models import db
@@ -280,7 +281,8 @@ def list_piani_macchinario(
     )
 
     query = ManutenzioneRicorrente.query.filter(
-        ManutenzioneRicorrente.macchinario_id == macchinario.id
+        ManutenzioneRicorrente.macchinario_id == macchinario.id,
+        ManutenzioneRicorrente.archiviata.is_(False),
     )
 
     if not include_inactive:
@@ -311,7 +313,7 @@ def get_piano_manutenzione(
         normalized_id,
     )
 
-    if piano is None:
+    if piano is None or piano.archiviata:
         raise PianoManutenzioneNonTrovatoError("Piano di manutenzione non trovato.")
 
     if require_management:
@@ -552,6 +554,42 @@ def set_piano_attivo(
     db.session.commit()
 
     return piano
+
+
+def delete_piano_manutenzione(
+    piano_id: int | str,
+    policy: RbacPolicy,
+) -> dict[str, int | bool]:
+    piano = get_piano_manutenzione(
+        piano_id,
+        policy,
+        require_management=True,
+    )
+
+    eventi_programmati = EventoManutenzione.query.filter(
+        EventoManutenzione.manutenzione_ricorrente_id == piano.id,
+        EventoManutenzione.stato == "PROGRAMMATA",
+    ).all()
+    storico_presente = EventoManutenzione.query.filter(
+        EventoManutenzione.manutenzione_ricorrente_id == piano.id,
+        EventoManutenzione.stato != "PROGRAMMATA",
+    ).first() is not None
+
+    for evento in eventi_programmati:
+        db.session.delete(evento)
+
+    if storico_presente:
+        piano.attiva = False
+        piano.archiviata = True
+    else:
+        db.session.delete(piano)
+
+    db.session.commit()
+
+    return {
+        "eventi_eliminati": len(eventi_programmati),
+        "serie_archiviata": storico_presente,
+    }
 
 
 def serialize_piano_manutenzione(

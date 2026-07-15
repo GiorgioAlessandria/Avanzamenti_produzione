@@ -24,6 +24,7 @@ from app_odp.manutenzioni_models import (
     ESITI_EVENTO_MANUTENZIONE,
     EventoManutenzione,
     ManutenzioneRicorrente,
+    ManutenzioneStraordinaria,
 )
 
 ROME_TIMEZONE = ZoneInfo("Europe/Rome")
@@ -137,7 +138,6 @@ def _calculate_daily_dates(
     """
     results: list[date] = []
 
-
     elapsed_days = max(0, (start - anchor).days)
     steps = (elapsed_days + interval - 1) // interval
     candidate = anchor + timedelta(days=steps * interval)
@@ -167,29 +167,17 @@ def _calculate_weekly_dates(
 
     if not selected_codes:
         raise GenerazioneEventiError(
-            "Il piano settimanale non contiene "
-            "giorni lavorativi configurati."
+            "Il piano settimanale non contiene giorni lavorativi configurati."
         )
 
-    invalid_codes = [
-        code
-        for code in selected_codes
-        if code not in WEEKDAY_INDEX
-    ]
+    invalid_codes = [code for code in selected_codes if code not in WEEKDAY_INDEX]
 
     if invalid_codes:
         raise GenerazioneEventiError(
-            "Il piano contiene giorni non lavorativi: "
-            + ", ".join(invalid_codes)
-            + "."
+            "Il piano contiene giorni non lavorativi: " + ", ".join(invalid_codes) + "."
         )
 
-    weekday_indexes = sorted(
-        {
-            WEEKDAY_INDEX[code]
-            for code in selected_codes
-        }
-    )
+    weekday_indexes = sorted({WEEKDAY_INDEX[code] for code in selected_codes})
 
     anchor_week_start = anchor - timedelta(days=anchor.weekday())
 
@@ -679,11 +667,49 @@ def list_eventi_macchinario(
     ).all()
 
 
+def _get_straordinaria_collegata(
+    evento: EventoManutenzione,
+) -> ManutenzioneStraordinaria | None:
+    if evento.manutenzione_straordinaria is not None:
+        return evento.manutenzione_straordinaria
+
+    piano = evento.manutenzione_ricorrente
+
+    if evento.esito != "INTERVENTO_RICHIESTO" or piano is None:
+        return None
+
+    return (
+        ManutenzioneStraordinaria.query.filter(
+            ManutenzioneStraordinaria.macchinario_id == piano.macchinario_id,
+            ManutenzioneStraordinaria.titolo
+            == f"Intervento richiesto - {evento.titolo_snapshot}",
+            ManutenzioneStraordinaria.descrizione_problema
+            == evento.descrizione_intervento,
+        )
+        .order_by(ManutenzioneStraordinaria.id.desc())
+        .first()
+    )
+
+
 def get_stato_visuale_evento(
     evento: EventoManutenzione,
     *,
     reference_date: date | None = None,
+    straordinaria: ManutenzioneStraordinaria | None = None,
 ) -> str:
+    if evento.esito == "INTERVENTO_RICHIESTO" and straordinaria is None:
+        straordinaria = _get_straordinaria_collegata(evento)
+
+    if (
+        evento.esito == "INTERVENTO_RICHIESTO"
+        and (
+            straordinaria is None
+            or straordinaria.intervento_eseguito.strip().upper()
+            == "DA COMPLETARE"
+        )
+    ):
+        return "INTERVENTO_RICHIESTO"
+
     if evento.stato != "PROGRAMMATA":
         return evento.stato
 
@@ -706,6 +732,7 @@ def serialize_evento_manutenzione(
     evento: EventoManutenzione,
 ) -> dict[str, Any]:
     piano = evento.manutenzione_ricorrente
+    straordinaria = _get_straordinaria_collegata(evento)
 
     return {
         "id": evento.id,
@@ -715,7 +742,10 @@ def serialize_evento_manutenzione(
         "piano_attivo": (bool(piano.attiva) if piano is not None else False),
         "data_programmata": (evento.data_programmata.isoformat()),
         "stato": evento.stato,
-        "stato_visuale": (get_stato_visuale_evento(evento)),
+        "stato_visuale": get_stato_visuale_evento(
+            evento,
+            straordinaria=straordinaria,
+        ),
         "titolo": evento.titolo_snapshot,
         "descrizione": (evento.descrizione_snapshot),
         "data_esecuzione": (
@@ -724,6 +754,9 @@ def serialize_evento_manutenzione(
         "eseguito_da_username": (evento.eseguito_da_username),
         "esito": evento.esito,
         "descrizione_intervento": (evento.descrizione_intervento),
+        "straordinaria_id": (
+            straordinaria.id if straordinaria is not None else None
+        ),
         "note": evento.note,
         "durata_minuti": evento.durata_minuti,
         "registrato_da_public_id": (evento.registrato_da_public_id),
@@ -905,17 +938,9 @@ def completa_evento_manutenzione(
 
     descrizione_intervento = _norm_optional_text(data.get("descrizione_intervento"))
 
-    if (
-        esito
-        in {
-            "ANOMALIA",
-            "INTERVENTO_RICHIESTO",
-        }
-        and not descrizione_intervento
-    ):
+    if esito == "INTERVENTO_RICHIESTO" and not descrizione_intervento:
         raise ManutenzioniServiceError(
-            "La descrizione dell'intervento è obbligatoria "
-            "in caso di anomalia o intervento richiesto."
+            "La descrizione dell'intervento richiesto è obbligatoria."
         )
 
     execution_date = _parse_execution_date(data.get("data_esecuzione"))
@@ -940,6 +965,23 @@ def completa_evento_manutenzione(
     # Impostato dopo gli altri campi per rispettare il vincolo:
     # COMPLETATA richiede data_esecuzione.
     evento.stato = "COMPLETATA"
+    if esito == "INTERVENTO_RICHIESTO":
+        piano = evento.manutenzione_ricorrente
+
+        straordinaria = ManutenzioneStraordinaria(
+            macchinario_id=piano.macchinario_id,
+            evento_manutenzione=evento,
+            data_intervento=datetime.now(ROME_TIMEZONE).replace(tzinfo=None),
+            titolo=f"Intervento richiesto - {evento.titolo_snapshot}",
+            descrizione_problema=descrizione_intervento,
+            intervento_eseguito="DA COMPLETARE",
+            esito="DA_VERIFICARE",
+            registrato_da_public_id=public_id,
+            registrato_da_username=username,
+        )
+
+        db.session.add(straordinaria)
+        db.session.flush()
 
     db.session.commit()
 

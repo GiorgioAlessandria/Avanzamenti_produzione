@@ -7,6 +7,7 @@ from typing import Any
 from flask import (
     current_app,
     jsonify,
+    redirect,
     render_template,
     request,
     url_for,
@@ -14,7 +15,7 @@ from flask import (
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 from app_odp.models import db
-from app_odp.operator_session import active_policy, active_user
+from app_odp.operator_session import active_policy, active_token, active_user
 from app_odp.policy.decorator import (
     require_active_any_perm,
 )
@@ -29,10 +30,12 @@ from app_odp.services.manutenzioni_service import (
     create_macchinario,
     get_macchinario,
     list_macchinari,
+    list_operatori_reparto,
     list_reparti_manutenzioni,
     serialize_macchinari,
     serialize_macchinario,
     set_macchinario_attivo,
+    set_operatori_macchinario,
     update_macchinario,
 )
 from app_odp.services.manutenzioni_piani_service import (
@@ -40,6 +43,7 @@ from app_odp.services.manutenzioni_piani_service import (
     GIORNI_SETTIMANA_LABELS,
     PianoManutenzioneNonTrovatoError,
     create_piano_manutenzione,
+    delete_piano_manutenzione,
     get_piano_manutenzione,
     list_piani_macchinario,
     serialize_piani_manutenzione,
@@ -241,7 +245,7 @@ def manutenzioni_home():
 
     include_inactive = _parse_query_bool(
         request.args.get("include_inactive"),
-        default=False,
+        default=True,
     )
 
     macchinari = list_macchinari(
@@ -269,7 +273,6 @@ def manutenzioni_home():
     ) or policy.can(
         "manutenzioni_amministrazione"
     )
-
     can_manage_calendar = policy.can(
         "manutenzioni_gestisci_piani"
     ) or policy.can(
@@ -635,6 +638,16 @@ def manutenzioni_macchinario_detail(
     ) or policy.can(
         "manutenzioni_amministrazione"
     )
+    can_manage_machine = policy.can(
+        "manutenzioni_gestisci_macchinari"
+    ) or policy.can(
+        "manutenzioni_amministrazione"
+    )
+    operatori_disponibili = (
+        list_operatori_reparto(macchinario.reparto_codice)
+        if can_manage_machine
+        else []
+    )
 
     selected_view = str(
         request.args.get("view") or "programmate"
@@ -658,6 +671,8 @@ def manutenzioni_macchinario_detail(
         can_manage_plans=can_manage_plans,
         eventi=serialize_eventi_manutenzione(eventi),
         can_execute_events=can_execute_events,
+        can_manage_machine=can_manage_machine,
+        operatori_disponibili=operatori_disponibili,
         can_manage_straordinarie=can_execute_events,
         straordinarie=(
             serialize_manutenzioni_straordinarie(
@@ -667,6 +682,44 @@ def manutenzioni_macchinario_detail(
         selected_view=selected_view,
         oggi=today_rome().isoformat(),
         adesso=adesso_rome,
+    )
+
+
+@main_bp.post(
+    "/manutenzioni/macchinari/<int:macchinario_id>/operatori"
+)
+@require_active_any_perm(
+    "manutenzioni_gestisci_macchinari",
+    "manutenzioni_amministrazione",
+)
+def manutenzioni_macchinario_operatori_update(
+    macchinario_id: int,
+):
+    selected_view = str(
+        request.form.get("view") or "programmate"
+    ).strip().lower()
+    redirect_values = {
+        "macchinario_id": macchinario_id,
+        "view": selected_view,
+        "tab_session": active_token(),
+    }
+
+    try:
+        set_operatori_macchinario(
+            macchinario_id,
+            request.form.getlist("operator_public_ids"),
+            active_policy(),
+        )
+        redirect_values["operatori_salvati"] = "1"
+    except (ManutenzioniServiceError, PermissionError) as exc:
+        db.session.rollback()
+        redirect_values["operatori_errore"] = str(exc)
+
+    return redirect(
+        url_for(
+            "main.manutenzioni_macchinario_detail",
+            **redirect_values,
+        )
     )
 
 
@@ -788,6 +841,38 @@ def api_manutenzioni_piano_update(
                 "message": ("Piano di manutenzione aggiornato correttamente."),
                 "item": serialize_piano_manutenzione(piano),
                 "eventi": sync_result,
+            }
+        )
+
+    except Exception as exc:
+        db.session.rollback()
+        return _service_error_response(exc)
+
+
+@main_bp.delete("/api/manutenzioni/piani/<int:piano_id>")
+@require_active_any_perm(
+    "manutenzioni_gestisci_piani",
+    "manutenzioni_amministrazione",
+)
+def api_manutenzioni_piano_delete(
+    piano_id: int,
+):
+    policy = active_policy()
+
+    try:
+        result = delete_piano_manutenzione(
+            piano_id,
+            policy,
+        )
+
+        return jsonify(
+            {
+                "ok": True,
+                "message": (
+                    "Serie eliminata. "
+                    f"{result['eventi_eliminati']} eventi programmati eliminati."
+                ),
+                "result": result,
             }
         )
 
@@ -956,12 +1041,21 @@ def api_manutenzioni_evento_action(
             policy,
             user=active_user(),
         )
+        item = serialize_evento_manutenzione(evento)
+
+        if item.get("straordinaria_id"):
+            item["straordinaria_url"] = url_for(
+                "main.manutenzioni_macchinario_detail",
+                macchinario_id=item["macchinario_id"],
+                view="straordinarie",
+                intervento_id=item["straordinaria_id"],
+            )
 
         return jsonify(
             {
                 "ok": True,
                 "message": ("Evento di manutenzione aggiornato correttamente."),
-                "item": serialize_evento_manutenzione(evento),
+                "item": item,
             }
         )
 

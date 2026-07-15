@@ -42,18 +42,15 @@
         }
 
         .maintenance-calendar-day.is-weekend {
-            background:
-                color-mix(
+            background: color-mix(
                     in srgb,
                     var(--bs-secondary-bg) 70%,
                     var(--bs-body-bg)
-                );
+            );
         }
 
         .maintenance-calendar-day.is-holiday {
-            box-shadow:
-                inset 0 3px 0
-                var(--bs-danger-border-subtle);
+            box-shadow: inset 0 3px 0 var(--bs-danger-border-subtle);
         }
 
         .maintenance-calendar-day.is-today {
@@ -121,6 +118,12 @@
         .maintenance-calendar-event.status-SCADUTA {
             background: var(--bs-danger-bg-subtle);
             color: var(--bs-danger-text-emphasis);
+        }
+
+        .maintenance-calendar-event.status-INTERVENTO_RICHIESTO {
+            background: #7f1d1d;
+            color: #ffffff;
+            border-left-color: #450a0a;
         }
 
         .maintenance-calendar-event.status-IN_SCADENZA {
@@ -410,6 +413,10 @@
                                    for="manutenzioni-inattivi">
                                 Inattivi nell'elenco
                             </label>
+
+                            <input type="hidden"
+                                   name="include_inactive"
+                                   value="0">
                         </div>
                     </div>
 
@@ -528,131 +535,131 @@
                  id="manutenzioni-macchinari-pane"
                  role="tabpanel"
                  aria-labelledby="manutenzioni-macchinari-tab">
-        <div class="card shadow-sm">
-            <div class="card-header d-flex justify-content-between align-items-center">
+                <div class="card shadow-sm">
+                    <div class="card-header d-flex justify-content-between align-items-center">
             <span class="fw-semibold">
                 Macchinari
             </span>
 
-                <span class="badge text-bg-secondary">
+                        <span class="badge text-bg-secondary">
                 {{ macchinari_rows|length }}
             </span>
-            </div>
+                    </div>
 
-            <div class="table-responsive">
-                <table class="table table-striped table-hover align-middle mb-0">
-                    <thead>
-                    <tr>
-                        <th>Codice</th>
-                        <th>Descrizione</th>
-                        <th>Matricola</th>
-                        <th>Reparto</th>
-                        <th>Costruttore</th>
-                        <th>Modello</th>
-                        <th>Ubicazione</th>
-                        <th>Stato</th>
-                        <th class="text-end">
-                            Azioni
-                        </th>
-                    </tr>
-                    </thead>
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover table-sortable align-middle mb-0">
+                            <thead>
+                            <tr>
+                                <th data-sort="text">Codice</th>
+                                <th data-sort="text">Descrizione</th>
+                                <th data-sort="text">Matricola</th>
+                                <th data-sort="text">Reparto</th>
+                                <th data-sort="text">Costruttore</th>
+                                <th data-sort="text">Modello</th>
+                                <th data-sort="text">Ubicazione</th>
+                                <th data-sort="text">Stato</th>
+                                <th class="text-end">
+                                    Azioni
+                                </th>
+                            </tr>
+                            </thead>
 
-                    <tbody>
-                    {% for macchinario in macchinari_rows %}
-                        <tr>
-                            <td class="fw-semibold">
-                                {{ macchinario.codice }}
-                            </td>
+                            <tbody>
+                            {% for macchinario in macchinari_rows %}
+                                <tr>
+                                    <td class="fw-semibold">
+                                        {{ macchinario.codice }}
+                                    </td>
 
-                            <td>
-                                {{ macchinario.descrizione }}
-                            </td>
+                                    <td>
+                                        {{ macchinario.descrizione }}
+                                    </td>
 
-                            <td>
-                                {{ macchinario.matricola or "-" }}
-                            </td>
+                                    <td>
+                                        {{ macchinario.matricola or "-" }}
+                                    </td>
 
-                            <td>
-                                {{ macchinario.reparto_codice }}
+                                    <td>
+                                        {{ macchinario.reparto_codice }}
 
-                                {% if macchinario.reparto_descrizione %}
-                                    <div class="small text-muted">
-                                        {{ macchinario.reparto_descrizione }}
-                                    </div>
-                                {% endif %}
-                            </td>
+                                        {% if macchinario.reparto_descrizione %}
+                                            <div class="small text-muted">
+                                                {{ macchinario.reparto_descrizione }}
+                                            </div>
+                                        {% endif %}
+                                    </td>
 
-                            <td>
-                                {{ macchinario.costruttore or "-" }}
-                            </td>
+                                    <td>
+                                        {{ macchinario.costruttore or "-" }}
+                                    </td>
 
-                            <td>
-                                {{ macchinario.modello or "-" }}
-                            </td>
+                                    <td>
+                                        {{ macchinario.modello or "-" }}
+                                    </td>
 
-                            <td>
-                                {{ macchinario.ubicazione or "-" }}
-                            </td>
+                                    <td>
+                                        {{ macchinario.ubicazione or "-" }}
+                                    </td>
 
-                            <td>
-                                {% if macchinario.attivo %}
-                                    <span class="badge text-bg-success">
+                                    <td>
+                                        {% if macchinario.attivo %}
+                                            <span class="badge text-bg-success">
                                         Attivo
                                     </span>
-                                {% else %}
-                                    <span class="badge text-bg-secondary">
+                                        {% else %}
+                                            <span class="badge text-bg-secondary">
                                         Inattivo
                                     </span>
-                                {% endif %}
-                            </td>
-                            <td class="text-end">
-                                <div class="d-inline-flex gap-1">
-                                    <a href="{{ operator_url_for(
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-end">
+                                        <div class="d-inline-flex gap-1">
+                                            <a href="{{ operator_url_for(
                                             'main.manutenzioni_macchinario_detail',
                                             macchinario_id=macchinario.id
                                             ) }}"
-                                       class="btn btn-sm btn-outline-secondary">
-                                        <i class="bi bi-calendar-check"></i>
-                                        Manutenzioni
-                                    </a>
+                                               class="btn btn-sm btn-outline-secondary">
+                                                <i class="bi bi-calendar-check"></i>
+                                                Manutenzioni
+                                            </a>
 
-                                    {% if can_manage %}
-                                        <button type="button"
-                                                class="btn btn-sm btn-outline-primary btn-modifica-macchinario"
-                                                data-macchinario-id="{{ macchinario.id }}">
-                                            <i class="bi bi-pencil"></i>
-                                            Modifica
-                                        </button>
+                                            {% if can_manage %}
+                                                <button type="button"
+                                                        class="btn btn-sm btn-outline-primary btn-modifica-macchinario"
+                                                        data-macchinario-id="{{ macchinario.id }}">
+                                                    <i class="bi bi-pencil"></i>
+                                                    Modifica
+                                                </button>
 
-                                        <button type="button"
-                                                class="btn btn-sm {% if macchinario.attivo %}btn-outline-danger{% else %}btn-outline-success{% endif %} btn-stato-macchinario"
-                                                data-macchinario-id="{{ macchinario.id }}"
-                                                data-macchinario-attivo="{{ '1' if macchinario.attivo else '0' }}"
-                                                data-macchinario-codice="{{ macchinario.codice }}">
-                                            {% if macchinario.attivo %}
-                                                <i class="bi bi-pause-circle"></i>
-                                                Disattiva
-                                            {% else %}
-                                                <i class="bi bi-play-circle"></i>
-                                                Attiva
+                                                <button type="button"
+                                                        class="btn btn-sm {% if macchinario.attivo %}btn-outline-danger{% else %}btn-outline-success{% endif %} btn-stato-macchinario"
+                                                        data-macchinario-id="{{ macchinario.id }}"
+                                                        data-macchinario-attivo="{{ '1' if macchinario.attivo else '0' }}"
+                                                        data-macchinario-codice="{{ macchinario.codice }}">
+                                                    {% if macchinario.attivo %}
+                                                        <i class="bi bi-pause-circle"></i>
+                                                        Disattiva
+                                                    {% else %}
+                                                        <i class="bi bi-play-circle"></i>
+                                                        Attiva
+                                                    {% endif %}
+                                                </button>
                                             {% endif %}
-                                        </button>
-                                    {% endif %}
-                                </div>
-                            </td>
-                        </tr>
-                    {% else %}
-                        <tr>
-                            <td colspan="9"
-                                class="text-center text-muted py-4">
-                                Nessun macchinario trovato.
-                            </td>
-                        </tr>
-                    {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
+                                        </div>
+                                    </td>
+                                </tr>
+                            {% else %}
+                                <tr>
+                                    <td colspan="9"
+                                        class="text-center text-muted py-4">
+                                        Nessun macchinario trovato.
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
 
             {% if can_manage_calendar %}
@@ -707,16 +714,16 @@
                         <div class="table-responsive">
                             <table class="table table-striped table-hover align-middle mb-0">
                                 <thead>
-                                    <tr>
-                                        <th>Data</th>
-                                        <th>Descrizione</th>
-                                        <th>Tipo</th>
-                                        <th>Ricorrenza</th>
-                                        <th>Stato</th>
-                                        <th class="text-end">
-                                            Azioni
-                                        </th>
-                                    </tr>
+                                <tr>
+                                    <th>Data</th>
+                                    <th>Descrizione</th>
+                                    <th>Tipo</th>
+                                    <th>Ricorrenza</th>
+                                    <th>Stato</th>
+                                    <th class="text-end">
+                                        Azioni
+                                    </th>
+                                </tr>
                                 </thead>
 
                                 <tbody id="giorni-non-lavorativi-body">
@@ -1219,14 +1226,8 @@
                                                 <option value="POSITIVO">
                                                     Positivo
                                                 </option>
-                                                <option value="ANOMALIA">
-                                                    Anomalia
-                                                </option>
                                                 <option value="INTERVENTO_RICHIESTO">
                                                     Intervento richiesto
-                                                </option>
-                                                <option value="NON_APPLICABILE">
-                                                    Non applicabile
                                                 </option>
                                             </select>
                                         </div>
@@ -2840,19 +2841,12 @@
                 }
 
                 if (
-                    eventFields.action.value
-                    === "completa"
-                    && [
-                        "ANOMALIA",
-                        "INTERVENTO_RICHIESTO"
-                    ].includes(
-                        eventFields.esito.value
-                    )
+                    eventFields.action.value === "completa"
+                    && eventFields.esito.value === "INTERVENTO_RICHIESTO"
                     && !eventFields.descrizione.value.trim()
                 ) {
                     showEventFeedback(
-                        "Descrivere l'anomalia o "
-                        + "l'intervento richiesto."
+                        "Descrivere l'intervento richiesto."
                     );
 
                     eventFields.descrizione.focus();
@@ -2903,10 +2897,21 @@
                         "success"
                     );
 
+                    const straordinariaUrl = (
+                        data.item?.straordinaria_url
+                    );
+
                     window.setTimeout(
-                        async () => {
+                        () => {
+                            if (straordinariaUrl) {
+                                window.location.href = appendTabSession(
+                                    straordinariaUrl
+                                );
+                                return;
+                            }
+
                             eventModal.hide();
-                            await loadCalendar();
+                            loadCalendar();
                         },
                         350
                     );

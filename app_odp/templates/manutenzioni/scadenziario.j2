@@ -1,5 +1,20 @@
 {% extends "base.j2" %}
 
+{% block styles %}
+    {{ super() }}
+
+    <style>
+        .evento-intervento-richiesto > * {
+            background-color: #7f1d1d !important;
+            color: #ffffff !important;
+        }
+
+        .evento-intervento-richiesto .text-muted {
+            color: #fecaca !important;
+        }
+    </style>
+{% endblock %}
+
 {% block title %}
     Scadenziario manutenzioni
 {% endblock %}
@@ -294,7 +309,7 @@
 
                     <tbody>
                     {% for row in rows %}
-                        <tr>
+                        <tr class="{% if row.esito == 'INTERVENTO_RICHIESTO' %}evento-intervento-richiesto{% endif %}">
                             <td class="fw-semibold">
                                 {{ row.data_programmata }}
                             </td>

@@ -12,7 +12,7 @@ from app_odp.policy.policy import RbacPolicy
 from pathlib import Path
 import logging
 from uuid import uuid4
-from sqlalchemy import event
+from sqlalchemy import event, inspect
 from sqlalchemy.engine import Engine
 
 CONFIG_PATH = Path("app_odp/static/config.toml")
@@ -28,6 +28,45 @@ def _apply_sqlite_pragmas(engine: Engine) -> None:
             cursor.execute("PRAGMA foreign_keys=ON;")
         finally:
             cursor.close()
+
+
+def _ensure_manutenzioni_schema() -> None:
+    engine = db.engines["manutenzioni"]
+    columns = {
+        column["name"]
+        for column in inspect(engine).get_columns(
+            "manutenzioni_ricorrenti"
+        )
+    }
+
+    if "archiviata" not in columns:
+        with engine.begin() as connection:
+            connection.exec_driver_sql(
+                "ALTER TABLE manutenzioni_ricorrenti "
+                "ADD COLUMN archiviata BOOLEAN NOT NULL DEFAULT 0"
+            )
+
+    straordinarie_columns = {
+        column["name"]
+        for column in inspect(engine).get_columns(
+            "manutenzioni_straordinarie"
+        )
+    }
+
+    with engine.begin() as connection:
+        if "evento_manutenzione_id" not in straordinarie_columns:
+            connection.exec_driver_sql(
+                "ALTER TABLE manutenzioni_straordinarie "
+                "ADD COLUMN evento_manutenzione_id INTEGER "
+                "REFERENCES eventi_manutenzione(id) ON DELETE SET NULL"
+            )
+
+        connection.exec_driver_sql(
+            "CREATE UNIQUE INDEX IF NOT EXISTS "
+            "uq_manutenzioni_straordinarie_evento "
+            "ON manutenzioni_straordinarie (evento_manutenzione_id) "
+            "WHERE evento_manutenzione_id IS NOT NULL"
+        )
 
 
 def load_config(config: Path) -> dict:
@@ -224,6 +263,7 @@ def create_app():
         db.create_all(bind_key="log")
         db.create_all(bind_key="acq")
         db.create_all(bind_key="manutenzioni")
+        _ensure_manutenzioni_schema()
         _ensure_builtin_permissions()
 
     app.register_blueprint(auth_bp)

@@ -7,8 +7,11 @@ from typing import Any
 from sqlalchemy import func, or_, false
 from sqlalchemy.exc import IntegrityError
 
-from app_odp.manutenzioni_models import Macchinario
-from app_odp.models import Reparti, db
+from app_odp.manutenzioni_models import (
+    Macchinario,
+    MacchinarioOperatore,
+)
+from app_odp.models import Reparti, User, db
 from app_odp.policy.policy import RbacPolicy
 
 
@@ -286,6 +289,123 @@ def list_reparti_manutenzioni(
     ]
 
 
+def list_operatori_reparto(
+    reparto_codice: str,
+) -> list[dict[str, Any]]:
+    """Restituisce gli utenti attivi con il reparto principale indicato."""
+    normalized = _norm_code(
+        reparto_codice,
+        "reparto_codice",
+    )
+
+    utenti = (
+        User.query.filter(
+            User.active.is_(True),
+            func.upper(func.trim(User.RepartoPrinc)) == normalized,
+        )
+        .order_by(func.lower(User.username))
+        .all()
+    )
+
+    return [
+        {
+            "public_id": utente.public_id,
+            "username": utente.username,
+        }
+        for utente in utenti
+    ]
+
+
+def _operatori_validi(
+    reparto_codice: str,
+    public_ids: Any,
+) -> list[dict[str, Any]]:
+    if not isinstance(public_ids, (list, tuple, set)):
+        raise ManutenzioniServiceError(
+            "L'elenco degli operatori non è valido."
+        )
+
+    normalized_ids = list(
+        dict.fromkeys(
+            _norm_text(value)
+            for value in public_ids
+            if _norm_text(value)
+        )
+    )
+
+    disponibili = {
+        row["public_id"]: row
+        for row in list_operatori_reparto(reparto_codice)
+    }
+
+    if any(public_id not in disponibili for public_id in normalized_ids):
+        raise ManutenzioniServiceError(
+            "Uno o più operatori non appartengono al reparto del macchinario."
+        )
+
+    return [disponibili[public_id] for public_id in normalized_ids]
+
+
+def set_operatori_macchinario(
+    macchinario_id: int | str,
+    public_ids: Any,
+    policy: RbacPolicy,
+) -> Macchinario:
+    macchinario = get_macchinario(
+        macchinario_id,
+        policy,
+        require_management=True,
+    )
+    operatori = _operatori_validi(
+        macchinario.reparto_codice,
+        public_ids,
+    )
+
+    macchinario.operatori_assegnati = [
+        MacchinarioOperatore(
+            operatore_public_id=row["public_id"],
+            operatore_username=row["username"],
+        )
+        for row in operatori
+    ]
+    db.session.commit()
+    return macchinario
+
+
+def filter_eventi_per_operatore(
+    rows: list[dict[str, Any]],
+    user: User,
+) -> list[dict[str, Any]]:
+    """Filtra gli avvisi; i macchinari non assegnati restano visibili a tutti."""
+    public_id = _norm_text(getattr(user, "public_id", None))
+    macchinario_ids = {
+        row.get("macchinario_id")
+        for row in rows
+        if row.get("macchinario_id") is not None
+    }
+
+    if not public_id or not macchinario_ids:
+        return []
+
+    assegnazioni = MacchinarioOperatore.query.filter(
+        MacchinarioOperatore.macchinario_id.in_(macchinario_ids)
+    ).all()
+    operatori_per_macchinario: dict[int, set[str]] = {}
+
+    for assegnazione in assegnazioni:
+        operatori_per_macchinario.setdefault(
+            assegnazione.macchinario_id,
+            set(),
+        ).add(assegnazione.operatore_public_id)
+
+    return [
+        row
+        for row in rows
+        if not operatori_per_macchinario.get(row.get("macchinario_id"))
+        or public_id in operatori_per_macchinario[row["macchinario_id"]]
+    ]
+
+
 def _apply_machine_scope(
     query,
     policy: RbacPolicy,
@@ -558,6 +678,20 @@ def update_macchinario(
         )
 
         macchinario.reparto_codice = new_reparto_codice
+        disponibili = {
+            row["public_id"]: row["username"]
+            for row in list_operatori_reparto(new_reparto_codice)
+        }
+        macchinario.operatori_assegnati = [
+            assegnazione
+            for assegnazione in macchinario.operatori_assegnati
+            if assegnazione.operatore_public_id in disponibili
+        ]
+
+        for assegnazione in macchinario.operatori_assegnati:
+            assegnazione.operatore_username = disponibili[
+                assegnazione.operatore_public_id
+            ]
 
     optional_fields = {
         "matricola",
@@ -636,6 +770,16 @@ def serialize_macchinario(
         "ubicazione": macchinario.ubicazione,
         "attivo": bool(macchinario.attivo),
         "note": macchinario.note,
+        "operatori_assegnati": [
+            {
+                "public_id": assegnazione.operatore_public_id,
+                "username": assegnazione.operatore_username,
+            }
+            for assegnazione in sorted(
+                macchinario.operatori_assegnati,
+                key=lambda row: row.operatore_username.lower(),
+            )
+        ],
         "created_at": (
             macchinario.created_at.isoformat() if macchinario.created_at else None
         ),
