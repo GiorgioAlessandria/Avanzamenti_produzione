@@ -1,0 +1,2638 @@
+{% extends "base.j2" %}
+
+{% block styles %}
+    {{ super() }}
+
+    <style>
+        .evento-intervento-richiesto > * {
+            background-color: #7f1d1d !important;
+            color: #ffffff !important;
+        }
+
+        .evento-intervento-richiesto .text-muted {
+            color: #fecaca !important;
+        }
+    </style>
+{% endblock %}
+
+{% block title %}
+    Manutenzioni - {{ macchinario.codice }}
+{% endblock %}
+
+{% block content %}
+    <main class="container-fluid py-3"
+          id="manutenzioni-macchinario-page"
+          data-macchinario-id="{{ macchinario.id }}"
+          data-piani-url="{{ url_for(
+          'main.api_manutenzioni_piani_list',
+          macchinario_id=macchinario.id
+      ) }}"
+          data-piano-base-url="/api/manutenzioni/piani"
+          data-eventi-url="{{ url_for(
+          'main.api_manutenzioni_eventi_list',
+          macchinario_id=macchinario.id
+      ) }}"
+          data-genera-eventi-url="{{ url_for(
+          'main.api_manutenzioni_eventi_generate',
+          macchinario_id=macchinario.id
+      ) }}"
+          data-evento-base-url="/api/manutenzioni/eventi"
+          data-straordinarie-url="{{ url_for(
+              'main.api_manutenzioni_straordinarie_list',
+              macchinario_id=macchinario.id
+          ) }}"
+          data-straordinaria-base-url="/api/manutenzioni/straordinarie"
+          data-selected-view="{{ selected_view }}"
+          data-oggi="{{ oggi }}"
+          data-adesso="{{ adesso }}">
+
+        <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+            <div>
+                <div class="d-flex align-items-center gap-2 mb-1">
+                    <a href="{{ operator_url_for(
+                        'main.manutenzioni_home',
+                        view='macchinari'
+                    ) }}"
+                       class="btn btn-sm btn-outline-secondary">
+                        <i class="bi bi-arrow-left"></i>
+                    </a>
+
+                    <h1 class="h4 mb-0">
+                        {{ macchinario.codice }}
+                        - {{ macchinario.descrizione }}
+                    </h1>
+                </div>
+
+                <div class="text-muted small">
+                    Reparto {{ macchinario.reparto_codice }}
+                    {% if macchinario.reparto_descrizione %}
+                    - {{ macchinario.reparto_descrizione }}
+                    {% endif %}
+                </div>
+            </div>
+
+            {% if can_manage_plans and selected_view == "programmate" %}
+                <div class="d-flex flex-wrap gap-2">
+                    <button type="button"
+                            class="btn btn-outline-primary"
+                            id="btn-genera-eventi">
+                        <i class="bi bi-arrow-repeat"></i>
+                        Aggiorna calendario
+                    </button>
+
+                    <button type="button"
+                            class="btn btn-primary"
+                            id="btn-nuovo-piano">
+                        <i class="bi bi-plus-lg"></i>
+                        Nuova serie ricorrente
+                    </button>
+                </div>
+            {% endif %}
+        </div>
+        <div class="card shadow-sm mb-3">
+            <div class="card-header fw-semibold">
+                Dati macchinario
+            </div>
+
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-6 col-md-3">
+                        <div class="text-muted small">
+                            Matricola
+                        </div>
+                        <div>
+                            {{ macchinario.matricola or "-" }}
+                        </div>
+                    </div>
+
+                    <div class="col-6 col-md-3">
+                        <div class="text-muted small">
+                            Costruttore
+                        </div>
+                        <div>
+                            {{ macchinario.costruttore or "-" }}
+                        </div>
+                    </div>
+
+                    <div class="col-6 col-md-3">
+                        <div class="text-muted small">
+                            Modello
+                        </div>
+                        <div>
+                            {{ macchinario.modello or "-" }}
+                        </div>
+                    </div>
+
+                    <div class="col-6 col-md-3">
+                        <div class="text-muted small">
+                            Ubicazione
+                        </div>
+                        <div>
+                            {{ macchinario.ubicazione or "-" }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {% if request.args.get("operatori_salvati") == "1" %}
+            <div class="alert alert-success" role="alert">
+                Operatori assegnati correttamente.
+            </div>
+        {% elif request.args.get("operatori_errore") %}
+            <div class="alert alert-danger" role="alert">
+                {{ request.args.get("operatori_errore") }}
+            </div>
+        {% endif %}
+
+        <div class="card shadow-sm mb-3">
+            <div class="card-header fw-semibold">
+                Operatori assegnati
+            </div>
+            <div class="card-body">
+                {% set assegnati_ids = macchinario.operatori_assegnati
+                    | map(attribute="public_id") | list %}
+
+                {% if can_manage_machine %}
+                    <form method="post"
+                          action="{{ operator_url_for(
+                              'main.manutenzioni_macchinario_operatori_update',
+                              macchinario_id=macchinario.id
+                          ) }}">
+                        <input type="hidden"
+                               name="view"
+                               value="{{ selected_view }}">
+
+                        {% if operatori_disponibili %}
+                            <div class="row g-2 mb-3">
+                                {% for operatore in operatori_disponibili %}
+                                    <div class="col-12 col-md-6 col-xl-4">
+                                        <div class="form-check border rounded p-2 ps-5 h-100">
+                                            <input class="form-check-input"
+                                                   type="checkbox"
+                                                   name="operator_public_ids"
+                                                   value="{{ operatore.public_id }}"
+                                                   id="operatore-{{ loop.index }}"
+                                                   {% if operatore.public_id in assegnati_ids %}checked{% endif %}>
+                                            <label class="form-check-label w-100"
+                                                   for="operatore-{{ loop.index }}">
+                                                {{ operatore.username }}
+                                            </label>
+                                        </div>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        {% else %}
+                            <p class="text-muted mb-3">
+                                Nessun operatore attivo disponibile per il reparto
+                                {{ macchinario.reparto_codice }}.
+                            </p>
+                        {% endif %}
+
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-save"></i>
+                            Salva assegnazioni
+                        </button>
+                    </form>
+                {% elif macchinario.operatori_assegnati %}
+                    <div class="d-flex flex-wrap gap-2">
+                        {% for operatore in macchinario.operatori_assegnati %}
+                            <span class="badge text-bg-secondary">
+                                {{ operatore.username }}
+                            </span>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <span class="text-muted">Nessun operatore assegnato.</span>
+                {% endif %}
+            </div>
+        </div>
+
+        <ul class="nav nav-tabs mb-3"
+            id="macchinario-manutenzioni-tabs"
+            role="tablist">
+
+            <li class="nav-item"
+                role="presentation">
+                <a class="nav-link {% if selected_view == 'programmate' %}active{% endif %}"
+                   id="programmate-tab"
+                   role="tab"
+                   aria-controls="programmate-pane"
+                   aria-selected="{{ 'true' if selected_view == 'programmate' else 'false' }}"
+                   href="{{ operator_url_for(
+                       'main.manutenzioni_macchinario_detail',
+                       macchinario_id=macchinario.id,
+                       view='programmate'
+                   ) }}">
+                    <i class="bi bi-calendar-check"></i>
+                    Manutenzioni programmate
+                </a>
+            </li>
+
+            <li class="nav-item"
+                role="presentation">
+                <a class="nav-link {% if selected_view == 'straordinarie' %}active{% endif %}"
+                   id="straordinarie-tab"
+                   role="tab"
+                   aria-controls="straordinarie-pane"
+                   aria-selected="{{ 'true' if selected_view == 'straordinarie' else 'false' }}"
+                   href="{{ operator_url_for(
+                       'main.manutenzioni_macchinario_detail',
+                       macchinario_id=macchinario.id,
+                       view='straordinarie'
+                   ) }}">
+                    <i class="bi bi-tools"></i>
+                    Interventi straordinari
+                    <span class="badge text-bg-secondary ms-1">
+                        {{ straordinarie|length }}
+                    </span>
+                </a>
+            </li>
+        </ul>
+
+        <div class="tab-content"
+             id="macchinario-manutenzioni-content">
+
+            {% if selected_view == "programmate" %}
+                <div class="tab-pane fade {% if selected_view == 'programmate' %}show active{% endif %}"
+                     id="programmate-pane"
+                     role="tabpanel"
+                     aria-labelledby="programmate-tab">
+                <div class="card shadow-sm mb-3">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+        <span class="fw-semibold">
+            Eventi di manutenzione
+        </span>
+
+                        <span class="badge text-bg-secondary">
+            {{ eventi|length }}
+        </span>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover align-middle mb-0">
+                            <thead>
+                            <tr>
+                                <th>Data programmata</th>
+                                <th>Codice piano</th>
+                                <th>Manutenzione</th>
+                                <th>Stato</th>
+                                <th>Data esecuzione</th>
+                                <th>Operatore</th>
+                                <th>Esito</th>
+                                {% if can_execute_events %}
+                                    <th class="text-end">
+                                        Azioni
+                                    </th>
+                                {% endif %}
+                            </tr>
+                            </thead>
+
+                            <tbody>
+                            {% for evento in eventi %}
+                                <tr class="{% if evento.esito == 'INTERVENTO_RICHIESTO' %}evento-intervento-richiesto{% endif %}">
+                                    <td class="fw-semibold">
+                                        {{ evento.data_programmata }}
+
+                                        {% if evento.data_spostata %}
+                                            <div class="small text-muted fw-normal">
+                                                Prevista originariamente:
+                                                {{ evento.data_teorica }}
+
+                                                {% if evento.motivo_spostamento %}
+                                                — {{ evento.motivo_spostamento }}
+                                                {% endif %}
+                                            </div>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {{ evento.piano_codice or "-" }}
+                                    </td>
+                                    <td>
+                                        <div>{{ evento.titolo }}</div>
+
+                                        {% if evento.descrizione %}
+                                            <div class="small text-muted">
+                                                {{ evento.descrizione }}
+                                            </div>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if evento.stato_visuale == "SCADUTA" %}
+                                            <span class="badge text-bg-danger">
+                                    Scaduta
+                                </span>
+                                        {% elif evento.stato_visuale == "IN_SCADENZA" %}
+                                            <span class="badge text-bg-warning">
+                                    In scadenza
+                                </span>
+                                        {% elif evento.stato_visuale == "PROGRAMMATA" %}
+                                            <span class="badge text-bg-primary">
+                                    Programmata
+                                </span>
+                                        {% elif evento.stato_visuale == "COMPLETATA" %}
+                                            <span class="badge text-bg-success">
+                                    Completata
+                                </span>
+                                        {% elif evento.stato_visuale == "SALTATA" %}
+                                            <span class="badge text-bg-secondary">
+                                    Saltata
+                                </span>
+                                        {% elif evento.stato_visuale == "ANNULLATA" %}
+                                            <span class="badge text-bg-dark">
+                                    Annullata
+                                </span>
+                                        {% else %}
+                                            <span class="badge text-bg-secondary">
+                                    {{ evento.stato_visuale }}
+                                </span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {{ evento.data_esecuzione or "-" }}
+                                    </td>
+                                    <td>
+                                        {{ evento.eseguito_da_username
+                                        or evento.registrato_da_username
+                                        or "-" }}
+                                    </td>
+                                    <td>
+                                        {{ evento.esito or "-" }}
+                                    </td>
+                                    {% if can_execute_events %}
+                                <td class="text-end">
+                                    {% if evento.straordinaria_id %}
+                                        <a href="{{ operator_url_for(
+                                                'main.manutenzioni_macchinario_detail',
+                                                macchinario_id=macchinario.id,
+                                                view='straordinarie',
+                                                intervento_id=evento.straordinaria_id
+                                            ) }}"
+                                           class="btn btn-sm btn-warning">
+                                            <i class="bi bi-tools"></i>
+                                            Apri intervento
+                                        </a>
+                                    {% elif evento.stato == "PROGRAMMATA" %}
+                                        <button type="button"
+                                                        class="btn btn-sm btn-primary btn-gestisci-evento"
+                                                        data-evento-id="{{ evento.id }}">
+                                                    <i class="bi bi-check2-square"></i>
+                                                    Registra
+                                                </button>
+                                            {% else %}
+                                                <span class="text-muted">
+                                        -
+                                        </span>
+                                            {% endif %}
+                                        </td>
+                                    {% endif %}
+                                </tr>
+                            {% else %}
+                                <tr>
+                                    <td colspan="{{ 8 if can_execute_events else 7 }}"
+                                        class="text-center text-muted py-4">
+                                        Nessun evento generato.
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="card shadow-sm">
+                <div class="card-header d-flex justify-content-between align-items-center">
+            <span class="fw-semibold">
+                Serie ricorrenti
+            </span>
+
+                    <span class="badge text-bg-secondary">
+                {{ piani|length }}
+            </span>
+                </div>
+
+                <div class="table-responsive">
+                <table class="table table-striped table-hover align-middle mb-0">
+                <thead>
+                <tr>
+                <th>Codice</th>
+                <th>Manutenzione</th>
+                <th>Frequenza</th>
+                <th>Data iniziale</th>
+                <th>Preavviso</th>
+                <th>Stato</th>
+
+            {% endif %}
+
+            {% if selected_view == "straordinarie" %}
+                <div class="tab-pane fade {% if selected_view == 'straordinarie' %}show active{% endif %}"
+                     id="straordinarie-pane"
+                     role="tabpanel"
+                     aria-labelledby="straordinarie-tab">
+
+                    <div class="card shadow-sm">
+                        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+                            <div>
+                                <div class="fw-semibold">
+                                    Interventi straordinari
+                                </div>
+                                <div class="small text-muted">
+                                    Guasti, anomalie e interventi non generati
+                                    da una manutenzione ricorrente.
+                                </div>
+                            </div>
+
+                            {% if can_manage_straordinarie %}
+                                <button type="button"
+                                        class="btn btn-sm btn-warning"
+                                        id="btn-nuova-straordinaria-tab">
+                                    <i class="bi bi-plus-lg"></i>
+                                    Registra intervento
+                                </button>
+                            {% endif %}
+                        </div>
+
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover align-middle mb-0">
+                                <thead>
+                                <tr>
+                                    <th>Data e ora</th>
+                                    <th>Intervento</th>
+                                    <th>Problema</th>
+                                    <th>Esito</th>
+                                    <th>Esecutore</th>
+                                    <th>Fermo macchina</th>
+                                    <th>Durata</th>
+                                    {% if can_manage_straordinarie %}
+                                        <th class="text-end">
+                                            Azioni
+                                        </th>
+                                    {% endif %}
+                                </tr>
+                                </thead>
+
+                                <tbody>
+                                {% for intervento in straordinarie %}
+                                    <tr>
+                                        <td class="fw-semibold">
+                                            {{ intervento.data_intervento_visuale }}
+                                        </td>
+
+                                        <td>
+                                            <div class="fw-semibold">
+                                                {{ intervento.titolo }}
+                                            </div>
+
+                                            <div class="small text-muted">
+                                                {{ intervento.intervento_eseguito }}
+                                            </div>
+                                        </td>
+
+                                        <td>
+                                            <div>
+                                                {{ intervento.descrizione_problema }}
+                                            </div>
+
+                                            {% if intervento.causa %}
+                                                <div class="small text-muted">
+                                                    Causa: {{ intervento.causa }}
+                                                </div>
+                                            {% endif %}
+                                        </td>
+
+                                        <td>
+                                            {% if intervento.esito == "RISOLTO" %}
+                                                <span class="badge text-bg-success">
+                                                    Risolto
+                                                </span>
+                                            {% elif intervento.esito == "PARZIALMENTE_RISOLTO" %}
+                                                <span class="badge text-bg-warning">
+                                                    Parzialmente risolto
+                                                </span>
+                                            {% elif intervento.esito == "DA_VERIFICARE" %}
+                                                <span class="badge text-bg-info">
+                                                    Da verificare
+                                                </span>
+                                            {% else %}
+                                                <span class="badge text-bg-danger">
+                                                    Non risolto
+                                                </span>
+                                            {% endif %}
+                                        </td>
+
+                                        <td>
+                                            {{ intervento.esecutore }}
+                                        </td>
+
+                                        <td>
+                                            {% if intervento.fermo_macchina_minuti is not none %}
+                                                {{ intervento.fermo_macchina_minuti }} min
+                                            {% else %}
+                                                                                       -
+                                            {% endif %}
+                                        </td>
+
+                                        <td>
+                                            {% if intervento.durata_intervento_minuti is not none %}
+                                                {{ intervento.durata_intervento_minuti }} min
+                                            {% else %}
+                                                                                          -
+                                            {% endif %}
+                                        </td>
+
+                                        {% if can_manage_straordinarie %}
+                                            <td class="text-end">
+                                                <button type="button"
+                                                        class="btn btn-sm btn-outline-primary btn-modifica-straordinaria"
+                                                        data-intervento-id="{{ intervento.id }}">
+                                                    <i class="bi bi-pencil"></i>
+                                                    Modifica
+                                                </button>
+                                            </td>
+                                        {% endif %}
+                                    </tr>
+                                {% else %}
+                                    <tr>
+                                        <td colspan="{{ 8 if can_manage_straordinarie else 7 }}"
+                                            class="text-center text-muted py-4">
+                                            Nessun intervento straordinario registrato.
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            {% endif %}
+
+            {% if selected_view == "programmate" %}
+                {% if can_manage_plans %}
+                    <th class="text-end">
+                        Azioni
+                    </th>
+                {% endif %}
+                </tr>
+                </thead>
+
+                <tbody>
+                {% for piano in piani %}
+                    <tr>
+                        <td>
+                            {{ piano.codice or "-" }}
+                        </td>
+
+                        <td>
+                            <div class="fw-semibold">
+                                {{ piano.titolo }}
+                            </div>
+
+                            {% if piano.descrizione %}
+                                <div class="small text-muted">
+                                    {{ piano.descrizione }}
+                                </div>
+                            {% endif %}
+                        </td>
+
+                        <td>
+                            {{ piano.descrizione_frequenza }}
+                        </td>
+
+                        <td>
+                            {{ piano.data_inizio }}
+                        </td>
+
+                        <td>
+                            {{ piano.preavviso_giorni }}
+                            giorni
+                        </td>
+
+                        <td>
+                            {% if piano.attiva %}
+                                <span class="badge text-bg-success">
+                                        Attiva
+                                    </span>
+                            {% else %}
+                                <span class="badge text-bg-secondary">
+                                        Inattiva
+                                    </span>
+                            {% endif %}
+                        </td>
+
+                        {% if can_manage_plans %}
+                            <td class="text-end">
+                                <div class="d-inline-flex gap-1">
+                                    <button type="button"
+                                            class="btn btn-sm btn-outline-primary btn-modifica-piano"
+                                            data-piano-id="{{ piano.id }}">
+                                        <i class="bi bi-pencil"></i>
+                                        Modifica
+                                    </button>
+
+                                    <button type="button"
+                                            class="btn btn-sm {% if piano.attiva %}btn-outline-danger{% else %}btn-outline-success{% endif %} btn-stato-piano"
+                                            data-piano-id="{{ piano.id }}"
+                                            data-piano-attiva="{{ '1' if piano.attiva else '0' }}"
+                                            data-piano-titolo="{{ piano.titolo }}">
+                                        {% if piano.attiva %}
+                                            Disattiva
+                                        {% else %}
+                                            Attiva
+                                        {% endif %}
+                                    </button>
+
+                                    <button type="button"
+                                            class="btn btn-sm btn-danger btn-elimina-piano"
+                                            data-piano-id="{{ piano.id }}"
+                                            data-piano-titolo="{{ piano.titolo }}">
+                                        <i class="bi bi-trash"></i>
+                                        Elimina
+                                    </button>
+                                </div>
+                            </td>
+                        {% endif %}
+                    </tr>
+                {% else %}
+                    <tr>
+                        <td colspan="{{ 7 if can_manage_plans else 6 }}"
+                            class="text-center text-muted py-4">
+                            Nessuna manutenzione ricorrente configurata.
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+                </table>
+                </div>
+                </div>
+                </div>
+            {% endif %}
+        </div>
+
+        {% if can_manage_plans %}
+            <div class="modal fade"
+                 id="modalPianoManutenzione"
+                 tabindex="-1"
+                 aria-hidden="true">
+
+                <div class="modal-dialog modal-lg modal-dialog-centered">
+                    <div class="modal-content">
+
+                        <form id="form-piano-manutenzione"
+                              novalidate>
+
+                            <div class="modal-header">
+                                <h5 class="modal-title"
+                                    id="modalPianoManutenzioneLabel">
+                                    Nuova manutenzione ricorrente
+                                </h5>
+
+                                <button type="button"
+                                        class="btn-close"
+                                        data-bs-dismiss="modal"
+                                        aria-label="Chiudi">
+                                </button>
+                            </div>
+
+                            <div class="modal-body">
+                                <input type="hidden"
+                                       id="piano-id">
+
+                                <div id="piano-feedback"
+                                     class="alert d-none">
+                                </div>
+
+                                <div id="piano-loading"
+                                     class="d-none mb-3">
+                                    <div class="spinner-border spinner-border-sm">
+                                    </div>
+                                    Caricamento...
+                                </div>
+
+                                <div class="row g-3"
+                                     id="piano-fields">
+
+                                    <div class="col-md-4">
+                                        <label class="form-label"
+                                               for="piano-codice">
+                                            Codice
+                                        </label>
+
+                                        <input type="text"
+                                               class="form-control"
+                                               id="piano-codice">
+                                    </div>
+
+                                    <div class="col-md-8">
+                                        <label class="form-label"
+                                               for="piano-titolo">
+                                            Titolo
+                                        </label>
+
+                                        <input type="text"
+                                               class="form-control"
+                                               id="piano-titolo"
+                                               required>
+                                    </div>
+
+                                    <div class="col-12">
+                                        <label class="form-label"
+                                               for="piano-descrizione">
+                                            Descrizione e istruzioni
+                                        </label>
+
+                                        <textarea class="form-control"
+                                                  id="piano-descrizione"
+                                                  rows="3"></textarea>
+                                    </div>
+
+                                    <div class="col-md-4">
+                                        <label class="form-label"
+                                               for="piano-frequenza-unita">
+                                            Unità
+                                        </label>
+
+                                        <select class="form-select"
+                                                id="piano-frequenza-unita"
+                                                required>
+                                            <option value="giorni">
+                                                Giorni
+                                            </option>
+                                            <option value="settimane">
+                                                Settimane
+                                            </option>
+                                            <option value="mesi">
+                                                Mesi
+                                            </option>
+                                            <option value="anni">
+                                                Anni
+                                            </option>
+                                        </select>
+                                    </div>
+
+                                    <div class="col-md-4">
+                                        <label class="form-label"
+                                               for="piano-frequenza-intervallo">
+                                            Ogni
+                                        </label>
+
+                                        <input type="number"
+                                               class="form-control"
+                                               id="piano-frequenza-intervallo"
+                                               min="1"
+                                               value="1"
+                                               required>
+                                    </div>
+
+                                    <div class="col-md-4">
+                                        <label class="form-label"
+                                               for="piano-preavviso">
+                                            Preavviso giorni
+                                        </label>
+
+                                        <input type="number"
+                                               class="form-control"
+                                               id="piano-preavviso"
+                                               min="0"
+                                               value="7"
+                                               required>
+                                    </div>
+
+                                    <div class="col-12 d-none"
+                                         id="piano-giorni-wrapper">
+
+                                        <label class="form-label">
+                                            Giorni della settimana
+                                        </label>
+
+                                        <div class="d-flex flex-wrap gap-3">
+                                            {% for codice in ["MO", "TU", "WE", "TH", "FR"] %}
+                                                {% set label = giorni_settimana_labels[codice] %}
+
+                                                <div class="form-check">
+                                                    <input class="form-check-input piano-giorno"
+                                                           type="checkbox"
+                                                           value="{{ codice }}"
+                                                           id="piano-giorno-{{ codice }}">
+
+                                                    <label class="form-check-label"
+                                                           for="piano-giorno-{{ codice }}">
+                                                        {{ label }}
+                                                    </label>
+                                                </div>
+                                            {% endfor %}
+                                        </div>
+                                    </div>
+
+                                    <div class="col-md-6">
+                                        <label class="form-label"
+                                               for="piano-data-inizio">
+                                            Data iniziale
+                                        </label>
+
+                                        <input type="date"
+                                               class="form-control"
+                                               id="piano-data-inizio"
+                                               required>
+                                    </div>
+
+                                    <div class="col-12">
+                                        <div class="form-check">
+                                            <input type="checkbox"
+                                                   class="form-check-input"
+                                                   id="piano-attiva"
+                                                   checked>
+
+                                            <label class="form-check-label"
+                                                   for="piano-attiva">
+                                                Piano attivo
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="modal-footer">
+                                <button type="button"
+                                        class="btn btn-outline-secondary"
+                                        data-bs-dismiss="modal">
+                                    Annulla
+                                </button>
+
+                                <button type="submit"
+                                        class="btn btn-primary"
+                                        id="btn-salva-piano">
+                                    Salva piano
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        {% endif %}
+        {% if can_execute_events %}
+            <div class="modal fade"
+                 id="modalEventoManutenzione"
+                 tabindex="-1"
+                 aria-labelledby="modalEventoManutenzioneLabel"
+                 aria-hidden="true">
+
+                <div class="modal-dialog modal-lg modal-dialog-centered">
+                    <div class="modal-content">
+
+                        <form id="form-evento-manutenzione"
+                              novalidate>
+
+                            <div class="modal-header">
+                                <h5 class="modal-title"
+                                    id="modalEventoManutenzioneLabel">
+                                    Registra manutenzione
+                                </h5>
+
+                                <button type="button"
+                                        class="btn-close"
+                                        data-bs-dismiss="modal"
+                                        aria-label="Chiudi">
+                                </button>
+                            </div>
+
+                            <div class="modal-body">
+                                <input type="hidden"
+                                       id="evento-id">
+
+                                <div id="evento-feedback"
+                                     class="alert d-none"
+                                     role="alert">
+                                </div>
+
+                                <div id="evento-loading"
+                                     class="d-none mb-3">
+                            <span class="spinner-border spinner-border-sm"
+                                  aria-hidden="true"></span>
+                                    Caricamento...
+                                </div>
+
+                                <div id="evento-fields">
+                                    <div class="alert alert-light border">
+                                        <div class="fw-semibold"
+                                             id="evento-titolo">
+                                        </div>
+
+                                        <div class="small text-muted"
+                                             id="evento-data-programmata">
+                                        </div>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label for="evento-action"
+                                               class="form-label">
+                                            Azione
+                                        </label>
+
+                                        <select class="form-select"
+                                                id="evento-action"
+                                                required>
+                                            <option value="completa">
+                                                Completa manutenzione
+                                            </option>
+                                            <option value="salta">
+                                                Salta questa scadenza
+                                            </option>
+                                            <option value="annulla">
+                                                Annulla questa scadenza
+                                            </option>
+                                        </select>
+                                    </div>
+
+                                    <div id="evento-completamento-fields">
+                                        <div class="row g-3 mb-3">
+                                            <div class="col-md-6">
+                                                <label for="evento-data-esecuzione"
+                                                       class="form-label">
+                                                    Data esecuzione
+                                                </label>
+
+                                                <input type="date"
+                                                       class="form-control"
+                                                       id="evento-data-esecuzione">
+                                            </div>
+
+                                            <div class="col-md-6">
+                                                <label for="evento-esito"
+                                                       class="form-label">
+                                                    Esito
+                                                </label>
+
+                                                <select class="form-select"
+                                                        id="evento-esito">
+                                                    <option value="">
+                                                        Seleziona esito
+                                                    </option>
+                                                    <option value="POSITIVO">
+                                                        Positivo
+                                                    </option>
+                                                    <option value="INTERVENTO_RICHIESTO">
+                                                        Intervento richiesto
+                                                    </option>
+                                                </select>
+                                            </div>
+
+                                            <div class="col-md-6">
+                                                <label for="evento-durata"
+                                                       class="form-label">
+                                                    Durata in minuti
+                                                </label>
+
+                                                <input type="number"
+                                                       class="form-control"
+                                                       id="evento-durata"
+                                                       min="0"
+                                                       step="1">
+                                            </div>
+                                        </div>
+
+                                        <div class="mb-3">
+                                            <label for="evento-descrizione-intervento"
+                                                   class="form-label">
+                                                Intervento eseguito
+                                            </label>
+
+                                            <textarea class="form-control"
+                                                      id="evento-descrizione-intervento"
+                                                      rows="3"></textarea>
+                                        </div>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label for="evento-note"
+                                               class="form-label"
+                                               id="evento-note-label">
+                                            Note
+                                        </label>
+
+                                        <textarea class="form-control"
+                                                  id="evento-note"
+                                                  rows="3"></textarea>
+
+                                        <div class="form-text"
+                                             id="evento-note-help">
+                                            Campo facoltativo.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="modal-footer">
+                                <button type="button"
+                                        class="btn btn-outline-secondary"
+                                        data-bs-dismiss="modal">
+                                    Annulla
+                                </button>
+
+                                <button type="submit"
+                                        class="btn btn-primary"
+                                        id="btn-salva-evento">
+                                    Registra
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        {% endif %}
+
+        {% if can_manage_straordinarie %}
+            <div class="modal fade"
+                 id="modalManutenzioneStraordinaria"
+                 tabindex="-1"
+                 aria-labelledby="modalManutenzioneStraordinariaLabel"
+                 aria-hidden="true">
+
+                <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+                    <div class="modal-content">
+                        <form id="form-manutenzione-straordinaria"
+                              novalidate>
+
+                            <div class="modal-header">
+                                <h5 class="modal-title"
+                                    id="modalManutenzioneStraordinariaLabel">
+                                    Nuovo intervento straordinario
+                                </h5>
+
+                                <button type="button"
+                                        class="btn-close"
+                                        data-bs-dismiss="modal"
+                                        aria-label="Chiudi">
+                                </button>
+                            </div>
+
+                            <div class="modal-body">
+                                <input type="hidden"
+                                       id="straordinaria-id">
+
+                                <div id="straordinaria-feedback"
+                                     class="alert d-none"
+                                     role="alert">
+                                </div>
+
+                                <div id="straordinaria-loading"
+                                     class="d-none mb-3">
+                                    <span class="spinner-border spinner-border-sm"
+                                          aria-hidden="true"></span>
+                                    Caricamento...
+                                </div>
+
+                                <div class="row g-3"
+                                     id="straordinaria-fields">
+
+                                    <div class="col-md-4">
+                                        <label for="straordinaria-data"
+                                               class="form-label">
+                                            Data e ora intervento
+                                        </label>
+
+                                        <input type="datetime-local"
+                                               class="form-control"
+                                               id="straordinaria-data"
+                                               required>
+                                    </div>
+
+                                    <div class="col-md-8">
+                                        <label for="straordinaria-titolo"
+                                               class="form-label">
+                                            Titolo
+                                        </label>
+
+                                        <input type="text"
+                                               class="form-control"
+                                               id="straordinaria-titolo"
+                                               maxlength="255"
+                                               placeholder="Es. Blocco asse mandrino"
+                                               required>
+                                    </div>
+
+                                    <div class="col-md-6">
+                                        <label for="straordinaria-problema"
+                                               class="form-label">
+                                            Problema riscontrato
+                                        </label>
+
+                                        <textarea class="form-control"
+                                                  id="straordinaria-problema"
+                                                  rows="4"
+                                                  required></textarea>
+                                    </div>
+
+                                    <div class="col-md-6">
+                                        <label for="straordinaria-causa"
+                                               class="form-label">
+                                            Causa individuata
+                                        </label>
+
+                                        <textarea class="form-control"
+                                                  id="straordinaria-causa"
+                                                  rows="4"></textarea>
+                                    </div>
+
+                                    <div class="col-12">
+                                        <label for="straordinaria-intervento"
+                                               class="form-label">
+                                            Intervento eseguito
+                                        </label>
+
+                                        <textarea class="form-control"
+                                                  id="straordinaria-intervento"
+                                                  rows="4"
+                                                  required></textarea>
+                                    </div>
+
+                                    <div class="col-md-4">
+                                        <label for="straordinaria-esito"
+                                               class="form-label">
+                                            Esito
+                                        </label>
+
+                                        <select class="form-select"
+                                                id="straordinaria-esito"
+                                                required>
+                                            <option value="RISOLTO">
+                                                Risolto
+                                            </option>
+                                            <option value="PARZIALMENTE_RISOLTO">
+                                                Parzialmente risolto
+                                            </option>
+                                            <option value="DA_VERIFICARE">
+                                                Da verificare
+                                            </option>
+                                            <option value="NON_RISOLTO">
+                                                Non risolto
+                                            </option>
+                                        </select>
+                                    </div>
+
+                                    <div class="col-md-4">
+                                        <label for="straordinaria-fermo"
+                                               class="form-label">
+                                            Fermo macchina in minuti
+                                        </label>
+
+                                        <input type="number"
+                                               class="form-control"
+                                               id="straordinaria-fermo"
+                                               min="0"
+                                               step="1">
+                                    </div>
+
+                                    <div class="col-md-4">
+                                        <label for="straordinaria-durata"
+                                               class="form-label">
+                                            Durata intervento in minuti
+                                        </label>
+
+                                        <input type="number"
+                                               class="form-control"
+                                               id="straordinaria-durata"
+                                               min="0"
+                                               step="1">
+                                    </div>
+
+                                    <div class="col-md-6">
+                                        <label for="straordinaria-esterno"
+                                               class="form-label">
+                                            Tecnico o azienda esterna
+                                        </label>
+
+                                        <input type="text"
+                                               class="form-control"
+                                               id="straordinaria-esterno"
+                                               maxlength="255"
+                                               placeholder="Lasciare vuoto per intervento interno">
+
+                                        <div class="form-text">
+                                            Se lasciato vuoto, l’esecutore interno
+                                            viene associato all’utente che registra
+                                            l’intervento.
+                                        </div>
+                                    </div>
+
+                                    <div class="col-md-6">
+                                        <label for="straordinaria-note"
+                                               class="form-label">
+                                            Note
+                                        </label>
+
+                                        <textarea class="form-control"
+                                                  id="straordinaria-note"
+                                                  rows="3"></textarea>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="modal-footer">
+                                <button type="button"
+                                        class="btn btn-outline-secondary"
+                                        data-bs-dismiss="modal">
+                                    Annulla
+                                </button>
+
+                                <button type="submit"
+                                        class="btn btn-warning"
+                                        id="btn-salva-straordinaria">
+                                    Salva intervento
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        {% endif %}
+
+    </main>
+{% endblock %}
+{% block extra_js %}
+    {{ super() }}
+    <script>
+        window.manutenzioniReadJson = async function (response) {
+            try {
+                return await response.json();
+            } catch (_) {
+                return {
+                    ok: false,
+                    error: "Risposta non valida dal server."
+                };
+            }
+        };
+    </script>
+
+
+    {% if can_manage_plans %}
+        <script>
+            "use strict";
+
+            document.addEventListener(
+                "DOMContentLoaded",
+                () => {
+                    const page = document.getElementById(
+                        "manutenzioni-macchinario-page"
+                    );
+
+                    const modalElement = document.getElementById(
+                        "modalPianoManutenzione"
+                    );
+
+                    const form = document.getElementById(
+                        "form-piano-manutenzione"
+                    );
+
+                    if (!page || !modalElement || !form) {
+                        return;
+                    }
+
+                    const pianiUrl = page.dataset.pianiUrl;
+                    const pianoBaseUrl = (
+                        page.dataset.pianoBaseUrl
+                    ).replace(/\/+$/, "");
+                    const generateEventsButton = document.getElementById(
+                        "btn-genera-eventi"
+                    );
+
+                    const generateEventsUrl = String(
+                        page.dataset.generaEventiUrl || ""
+                    ).trim();
+
+                    const modal = (
+                        bootstrap.Modal.getOrCreateInstance(
+                            modalElement
+                        )
+                    );
+
+                    const fields = {
+                        id: document.getElementById("piano-id"),
+                        codice: document.getElementById("piano-codice"),
+                        titolo: document.getElementById("piano-titolo"),
+                        descrizione: document.getElementById("piano-descrizione"),
+                        unita: document.getElementById("piano-frequenza-unita"),
+                        intervallo: document.getElementById(
+                            "piano-frequenza-intervallo"
+                        ),
+                        preavviso: document.getElementById("piano-preavviso"),
+                        dataInizio: document.getElementById("piano-data-inizio"),
+                        attiva: document.getElementById("piano-attiva")
+                    };
+
+                    const titoloModal = document.getElementById(
+                        "modalPianoManutenzioneLabel"
+                    );
+
+                    const feedback = document.getElementById(
+                        "piano-feedback"
+                    );
+
+                    const loading = document.getElementById(
+                        "piano-loading"
+                    );
+
+                    const fieldsContainer = document.getElementById(
+                        "piano-fields"
+                    );
+
+                    const giorniWrapper = document.getElementById(
+                        "piano-giorni-wrapper"
+                    );
+
+                    const saveButton = document.getElementById(
+                        "btn-salva-piano"
+                    );
+
+                    function pianoUrl(id) {
+                        return `${pianoBaseUrl}/${encodeURIComponent(id)}`;
+                    }
+
+                    function showFeedback(message, type = "danger") {
+                        feedback.textContent = message || "";
+                        feedback.className = message
+                            ? `alert alert-${type}`
+                            : "alert d-none";
+                    }
+
+                    function setLoading(value) {
+                        loading.classList.toggle("d-none", !value);
+                        fieldsContainer.classList.toggle("d-none", value);
+                        saveButton.disabled = value;
+                    }
+
+                    function updateWeekdaysVisibility() {
+                        const visible = fields.unita.value === "settimane";
+
+                        giorniWrapper.classList.toggle(
+                            "d-none",
+                            !visible
+                        );
+
+                        if (!visible) {
+                            document
+                                .querySelectorAll(".piano-giorno")
+                                .forEach(input => {
+                                    input.checked = false;
+                                });
+                        }
+                    }
+
+                    function resetForm() {
+                        form.reset();
+                        form.classList.remove("was-validated");
+
+                        fields.id.value = "";
+                        fields.intervallo.value = "1";
+                        fields.preavviso.value = "7";
+                        fields.attiva.checked = true;
+
+                        document
+                            .querySelectorAll(".piano-giorno")
+                            .forEach(input => {
+                                input.checked = false;
+                            });
+
+                        fieldsContainer.classList.remove("d-none");
+                        showFeedback("");
+                        setLoading(false);
+                        updateWeekdaysVisibility();
+                    }
+
+                    function selectedWeekdays() {
+                        return Array.from(
+                            document.querySelectorAll(
+                                ".piano-giorno:checked"
+                            )
+                        ).map(input => input.value);
+                    }
+
+                    function buildPayload() {
+                        return {
+                            codice: fields.codice.value.trim(),
+                            titolo: fields.titolo.value.trim(),
+                            descrizione: (
+                                fields.descrizione.value.trim()
+                            ),
+                            frequenza_unita: fields.unita.value,
+                            frequenza_intervallo: Number(
+                                fields.intervallo.value
+                            ),
+                            giorni_settimana: selectedWeekdays(),
+                            data_inizio: fields.dataInizio.value,
+                            preavviso_giorni: Number(
+                                fields.preavviso.value
+                            ),
+                            attiva: fields.attiva.checked
+                        };
+                    }
+
+                    function populateForm(item) {
+                        fields.id.value = item.id || "";
+                        fields.codice.value = item.codice || "";
+                        fields.titolo.value = item.titolo || "";
+                        fields.descrizione.value = (
+                            item.descrizione || ""
+                        );
+                        fields.unita.value = (
+                            item.frequenza_unita || "giorni"
+                        );
+                        fields.intervallo.value = (
+                            item.frequenza_intervallo || 1
+                        );
+                        fields.preavviso.value = (
+                            item.preavviso_giorni ?? 7
+                        );
+                        fields.dataInizio.value = (
+                            item.data_inizio || ""
+                        );
+                        fields.attiva.checked = Boolean(item.attiva);
+
+                        const selected = new Set(
+                            item.giorni_settimana || []
+                        );
+
+                        document
+                            .querySelectorAll(".piano-giorno")
+                            .forEach(input => {
+                                input.checked = selected.has(
+                                    input.value
+                                );
+                            });
+
+                        updateWeekdaysVisibility();
+                    }
+
+                    async function parseResponse(response) {
+                        return window.manutenzioniReadJson(response);
+                    }
+
+                    async function generateEvents() {
+                        if (!generateEventsButton || !generateEventsUrl) {
+                            return;
+                        }
+
+                        const originalHtml = generateEventsButton.innerHTML;
+
+                        generateEventsButton.disabled = true;
+
+                        generateEventsButton.innerHTML = `
+                                <span class="spinner-border spinner-border-sm"
+                                      aria-hidden="true"></span>
+                                Aggiornamento...
+                            `;
+
+                        try {
+                            const response = await window.avpFetch(
+                                generateEventsUrl,
+                                {
+                                    method: "POST",
+                                    headers: {
+                                        "Accept": "application/json",
+                                        "X-Requested-With": "XMLHttpRequest"
+                                    },
+                                    credentials: "same-origin"
+                                }
+                            );
+
+                            const data = await parseResponse(response);
+
+                            if (!response.ok || data.ok === false) {
+                                throw new Error(
+                                    data.error
+                                    || "Errore durante la generazione."
+                                );
+                            }
+
+                            window.location.reload();
+
+                        } catch (error) {
+                            generateEventsButton.disabled = false;
+                            generateEventsButton.innerHTML = originalHtml;
+
+                            window.alert(
+                                error.message
+                                || "Errore durante la generazione."
+                            );
+                        }
+                    }
+
+                    function openCreateModal() {
+                        resetForm();
+
+                        titoloModal.textContent = (
+                            "Nuova manutenzione ricorrente"
+                        );
+
+                        modal.show();
+
+                        modalElement.addEventListener(
+                            "shown.bs.modal",
+                            () => fields.titolo.focus(),
+                            {once: true}
+                        );
+                    }
+
+                    async function openEditModal(pianoId) {
+                        resetForm();
+                        setLoading(true);
+
+                        titoloModal.textContent = (
+                            "Modifica manutenzione ricorrente"
+                        );
+
+                        modal.show();
+
+                        try {
+                            const response = await window.avpFetch(
+                                pianoUrl(pianoId),
+                                {
+                                    method: "GET",
+                                    headers: {
+                                        "Accept": "application/json",
+                                        "X-Requested-With": "XMLHttpRequest"
+                                    },
+                                    credentials: "same-origin"
+                                }
+                            );
+
+                            const data = await parseResponse(response);
+
+                            if (!response.ok || data.ok === false) {
+                                throw new Error(
+                                    data.error
+                                    || "Errore durante il caricamento."
+                                );
+                            }
+
+                            populateForm(data.item || {});
+                            setLoading(false);
+
+                        } catch (error) {
+                            setLoading(false);
+                            fieldsContainer.classList.add("d-none");
+                            saveButton.disabled = true;
+
+                            showFeedback(
+                                error.message
+                                || "Errore durante il caricamento."
+                            );
+                        }
+                    }
+
+                    async function savePiano(event) {
+                        event.preventDefault();
+
+                        form.classList.add("was-validated");
+
+                        if (!form.checkValidity()) {
+                            return;
+                        }
+                        if (
+                            fields.unita.value === "settimane"
+                            && selectedWeekdays().length === 0
+                        ) {
+                            showFeedback(
+                                "Selezionare almeno un giorno lavorativo "
+                                + "per la frequenza settimanale."
+                            );
+
+                            giorniWrapper.scrollIntoView({
+                                behavior: "smooth",
+                                block: "center"
+                            });
+
+                            return;
+                        }
+
+                        const pianoId = fields.id.value.trim();
+                        const editing = Boolean(pianoId);
+
+                        saveButton.disabled = true;
+                        showFeedback("");
+
+                        try {
+                            const response = await window.avpFetch(
+                                editing
+                                    ? pianoUrl(pianoId)
+                                    : pianiUrl,
+                                {
+                                    method: editing
+                                        ? "PATCH"
+                                        : "POST",
+                                    headers: {
+                                        "Content-Type": "application/json",
+                                        "Accept": "application/json",
+                                        "X-Requested-With": "XMLHttpRequest"
+                                    },
+                                    credentials: "same-origin",
+                                    body: JSON.stringify(
+                                        buildPayload()
+                                    )
+                                }
+                            );
+
+                            const data = await parseResponse(response);
+
+                            if (!response.ok || data.ok === false) {
+                                throw new Error(
+                                    data.error
+                                    || "Errore durante il salvataggio."
+                                );
+                            }
+
+                            showFeedback(
+                                data.message,
+                                "success"
+                            );
+
+                            window.setTimeout(
+                                () => window.location.reload(),
+                                400
+                            );
+
+                        } catch (error) {
+                            saveButton.disabled = false;
+
+                            showFeedback(
+                                error.message
+                                || "Errore durante il salvataggio."
+                            );
+                        }
+                    }
+
+                    async function changeStatus(button) {
+                        const pianoId = button.dataset.pianoId;
+                        const active = (
+                            button.dataset.pianoAttiva === "1"
+                        );
+                        const newActive = !active;
+
+                        const confirmed = window.confirm(
+                            `Confermi di voler ${
+                                newActive
+                                    ? "attivare"
+                                    : "disattivare"
+                            } il piano "${button.dataset.pianoTitolo}"?`
+                        );
+
+                        if (!confirmed) {
+                            return;
+                        }
+
+                        button.disabled = true;
+
+                        try {
+                            const response = await window.avpFetch(
+                                `${pianoUrl(pianoId)}/stato`,
+                                {
+                                    method: "PATCH",
+                                    headers: {
+                                        "Content-Type": "application/json",
+                                        "Accept": "application/json",
+                                        "X-Requested-With": "XMLHttpRequest"
+                                    },
+                                    credentials: "same-origin",
+                                    body: JSON.stringify({
+                                        attiva: newActive
+                                    })
+                                }
+                            );
+
+                            const data = await parseResponse(response);
+
+                            if (!response.ok || data.ok === false) {
+                                throw new Error(
+                                    data.error
+                                    || "Errore durante l'aggiornamento."
+                                );
+                            }
+
+                            window.location.reload();
+
+                        } catch (error) {
+                            button.disabled = false;
+                            window.alert(error.message);
+                        }
+                    }
+
+                    async function deletePiano(button) {
+                        const confirmed = window.confirm(
+                            `Eliminare la serie "${
+                                button.dataset.pianoTitolo
+                            }" e tutti i suoi eventi programmati? `
+                            + "Gli eventi già chiusi resteranno nello storico."
+                        );
+
+                        if (!confirmed) {
+                            return;
+                        }
+
+                        button.disabled = true;
+
+                        try {
+                            const response = await window.avpFetch(
+                                pianoUrl(button.dataset.pianoId),
+                                {
+                                    method: "DELETE",
+                                    headers: {
+                                        "Accept": "application/json",
+                                        "X-Requested-With": "XMLHttpRequest"
+                                    },
+                                    credentials: "same-origin"
+                                }
+                            );
+                            const data = await parseResponse(response);
+
+                            if (!response.ok || data.ok === false) {
+                                throw new Error(
+                                    data.error
+                                    || "Errore durante l'eliminazione."
+                                );
+                            }
+
+                            window.location.reload();
+
+                        } catch (error) {
+                            button.disabled = false;
+                            window.alert(error.message);
+                        }
+                    }
+
+                    fields.unita.addEventListener(
+                        "change",
+                        updateWeekdaysVisibility
+                    );
+
+                    document
+                        .getElementById("btn-nuovo-piano")
+                        ?.addEventListener(
+                            "click",
+                            openCreateModal
+                        );
+                    generateEventsButton?.addEventListener(
+                        "click",
+                        generateEvents
+                    );
+
+                    document.addEventListener(
+                        "click",
+                        event => {
+                            const editButton = event.target.closest(
+                                ".btn-modifica-piano"
+                            );
+
+                            if (editButton) {
+                                openEditModal(
+                                    editButton.dataset.pianoId
+                                );
+                                return;
+                            }
+
+                            const stateButton = event.target.closest(
+                                ".btn-stato-piano"
+                            );
+
+                            if (stateButton) {
+                                changeStatus(stateButton);
+                                return;
+                            }
+
+                            const deleteButton = event.target.closest(
+                                ".btn-elimina-piano"
+                            );
+
+                            if (deleteButton) {
+                                deletePiano(deleteButton);
+                            }
+                        }
+                    );
+
+                    form.addEventListener(
+                        "submit",
+                        savePiano
+                    );
+
+                    modalElement.addEventListener(
+                        "hidden.bs.modal",
+                        resetForm
+                    );
+
+                    updateWeekdaysVisibility();
+                }
+            );
+        </script>
+    {% endif %}
+    {% if can_execute_events %}
+        <script>
+            "use strict";
+
+            document.addEventListener("DOMContentLoaded", () => {
+                const page = document.getElementById(
+                    "manutenzioni-macchinario-page"
+                );
+
+                const modalElement = document.getElementById(
+                    "modalEventoManutenzione"
+                );
+
+                const form = document.getElementById(
+                    "form-evento-manutenzione"
+                );
+
+                if (!page || !modalElement || !form) {
+                    return;
+                }
+
+                const eventoBaseUrl = String(
+                    page.dataset.eventoBaseUrl || ""
+                ).replace(/\/+$/, "");
+
+                const today = String(
+                    page.dataset.oggi || ""
+                );
+
+                const modal = bootstrap.Modal.getOrCreateInstance(
+                    modalElement
+                );
+
+                const fields = {
+                    id: document.getElementById("evento-id"),
+                    titolo: document.getElementById("evento-titolo"),
+                    dataProgrammata: document.getElementById(
+                        "evento-data-programmata"
+                    ),
+                    action: document.getElementById("evento-action"),
+                    dataEsecuzione: document.getElementById(
+                        "evento-data-esecuzione"
+                    ),
+                    esito: document.getElementById("evento-esito"),
+                    durata: document.getElementById("evento-durata"),
+                    descrizione: document.getElementById(
+                        "evento-descrizione-intervento"
+                    ),
+                    note: document.getElementById("evento-note")
+                };
+
+                const feedback = document.getElementById(
+                    "evento-feedback"
+                );
+
+                const loading = document.getElementById(
+                    "evento-loading"
+                );
+
+                const fieldsContainer = document.getElementById(
+                    "evento-fields"
+                );
+
+                const completionFields = document.getElementById(
+                    "evento-completamento-fields"
+                );
+
+                const noteLabel = document.getElementById(
+                    "evento-note-label"
+                );
+
+                const noteHelp = document.getElementById(
+                    "evento-note-help"
+                );
+
+                const saveButton = document.getElementById(
+                    "btn-salva-evento"
+                );
+
+                function eventoUrl(eventoId) {
+                    return (
+                        `${eventoBaseUrl}/`
+                        + encodeURIComponent(eventoId)
+                    );
+                }
+
+                function eventoActionUrl(eventoId) {
+                    return `${eventoUrl(eventoId)}/azione`;
+                }
+
+                async function parseResponse(response) {
+                    return window.manutenzioniReadJson(response);
+                }
+
+                function showFeedback(
+                    message,
+                    type = "danger"
+                ) {
+                    feedback.textContent = message || "";
+
+                    feedback.className = message
+                        ? `alert alert-${type}`
+                        : "alert d-none";
+                }
+
+                function setLoading(value) {
+                    loading.classList.toggle("d-none", !value);
+                    fieldsContainer.classList.toggle("d-none", value);
+                    saveButton.disabled = value;
+                }
+
+                function updateActionFields() {
+                    const isComplete = (
+                        fields.action.value === "completa"
+                    );
+
+                    completionFields.classList.toggle(
+                        "d-none",
+                        !isComplete
+                    );
+
+                    fields.dataEsecuzione.required = isComplete;
+                    fields.esito.required = isComplete;
+                    fields.note.required = !isComplete;
+
+                    if (isComplete) {
+                        noteLabel.textContent = "Note";
+                        noteHelp.textContent = "Campo facoltativo.";
+                        saveButton.textContent = "Completa manutenzione";
+                    } else {
+                        noteLabel.textContent = (
+                            fields.action.value === "salta"
+                                ? "Motivo del salto"
+                                : "Motivo dell'annullamento"
+                        );
+
+                        noteHelp.textContent = "Campo obbligatorio.";
+                        saveButton.textContent = (
+                            fields.action.value === "salta"
+                                ? "Salta scadenza"
+                                : "Annulla scadenza"
+                        );
+                    }
+                }
+
+                function resetForm() {
+                    form.reset();
+                    form.classList.remove("was-validated");
+
+                    fields.id.value = "";
+                    fields.action.value = "completa";
+                    fields.dataEsecuzione.value = today;
+
+                    fieldsContainer.classList.remove("d-none");
+
+                    showFeedback("");
+                    setLoading(false);
+                    updateActionFields();
+                }
+
+                function buildPayload() {
+                    return {
+                        action: fields.action.value,
+                        data_esecuzione: (
+                            fields.dataEsecuzione.value || null
+                        ),
+                        esito: fields.esito.value,
+                        durata_minuti: fields.durata.value
+                            ? Number(fields.durata.value)
+                            : null,
+                        descrizione_intervento: (
+                            fields.descrizione.value.trim()
+                        ),
+                        note: fields.note.value.trim()
+                    };
+                }
+
+                async function openEventModal(eventoId) {
+                    resetForm();
+                    setLoading(true);
+                    modal.show();
+
+                    try {
+                        const response = await window.avpFetch(
+                            eventoUrl(eventoId),
+                            {
+                                method: "GET",
+                                headers: {
+                                    "Accept": "application/json",
+                                    "X-Requested-With": "XMLHttpRequest"
+                                },
+                                credentials: "same-origin"
+                            }
+                        );
+
+                        const data = await parseResponse(response);
+
+                        if (!response.ok || data.ok === false) {
+                            throw new Error(
+                                data.error
+                                || "Errore durante il caricamento."
+                            );
+                        }
+
+                        const item = data.item || {};
+
+                        fields.id.value = item.id || "";
+                        fields.titolo.textContent = (
+                            item.titolo || "Manutenzione"
+                        );
+                        fields.dataProgrammata.textContent = (
+                            `Data programmata: ${
+                                item.data_programmata || "-"
+                            }`
+                        );
+
+                        setLoading(false);
+
+                    } catch (error) {
+                        setLoading(false);
+                        fieldsContainer.classList.add("d-none");
+                        saveButton.disabled = true;
+
+                        showFeedback(
+                            error.message
+                            || "Errore durante il caricamento."
+                        );
+                    }
+                }
+
+                async function saveEvent(event) {
+                    event.preventDefault();
+
+                    form.classList.add("was-validated");
+
+                    if (!form.checkValidity()) {
+                        return;
+                    }
+
+                    if (
+                        fields.action.value === "completa"
+                        && fields.esito.value === "INTERVENTO_RICHIESTO"
+                        && !fields.descrizione.value.trim()
+                    ) {
+                        showFeedback(
+                            "Descrivere l'intervento richiesto "
+                        );
+
+                        fields.descrizione.focus();
+                        return;
+                    }
+
+                    const eventoId = fields.id.value;
+
+                    saveButton.disabled = true;
+                    showFeedback("");
+
+                    try {
+                        const response = await window.avpFetch(
+                            eventoActionUrl(eventoId),
+                            {
+                                method: "PATCH",
+                                headers: {
+                                    "Content-Type": "application/json",
+                                    "Accept": "application/json",
+                                    "X-Requested-With": "XMLHttpRequest"
+                                },
+                                credentials: "same-origin",
+                                body: JSON.stringify(
+                                    buildPayload()
+                                )
+                            }
+                        );
+
+                        const data = await parseResponse(response);
+
+                        if (!response.ok || data.ok === false) {
+                            throw new Error(
+                                data.error
+                                || "Errore durante il salvataggio."
+                            );
+                        }
+
+                        showFeedback(
+                            data.message,
+                            "success"
+                        );
+
+                        const straordinariaId = (
+                            data.item?.straordinaria_id
+                        );
+
+                        window.setTimeout(
+                            () => {
+                                if (straordinariaId) {
+                                    const url = new URL(window.location.href);
+                                    url.searchParams.set("view", "straordinarie");
+                                    url.searchParams.set(
+                                        "intervento_id",
+                                        straordinariaId
+                                    );
+                                    window.location.href = url;
+                                    return;
+                                }
+
+                                window.location.reload();
+                            },
+                            400
+                        );
+
+                    } catch (error) {
+                        saveButton.disabled = false;
+
+                        showFeedback(
+                            error.message
+                            || "Errore durante il salvataggio."
+                        );
+                    }
+                }
+
+                fields.action.addEventListener(
+                    "change",
+                    updateActionFields
+                );
+
+                document.addEventListener(
+                    "click",
+                    event => {
+                        const button = event.target.closest(
+                            ".btn-gestisci-evento"
+                        );
+
+                        if (!button) {
+                            return;
+                        }
+
+                        openEventModal(
+                            button.dataset.eventoId
+                        );
+                    }
+                );
+
+                form.addEventListener(
+                    "submit",
+                    saveEvent
+                );
+
+                modalElement.addEventListener(
+                    "hidden.bs.modal",
+                    resetForm
+                );
+
+                updateActionFields();
+            });
+        </script>
+    {% endif %}
+
+    {% if can_manage_straordinarie %}
+        <script>
+            "use strict";
+
+            document.addEventListener(
+                "DOMContentLoaded",
+                () => {
+                    const page = document.getElementById(
+                        "manutenzioni-macchinario-page"
+                    );
+
+                    const modalElement = document.getElementById(
+                        "modalManutenzioneStraordinaria"
+                    );
+
+                    const form = document.getElementById(
+                        "form-manutenzione-straordinaria"
+                    );
+
+                    if (!page || !modalElement || !form) {
+                        return;
+                    }
+
+                    const listUrl = String(
+                        page.dataset.straordinarieUrl || ""
+                    ).replace(/\/+$/, "");
+
+                    const baseUrl = String(
+                        page.dataset.straordinariaBaseUrl || ""
+                    ).replace(/\/+$/, "");
+
+                    const nowValue = String(
+                        page.dataset.adesso || ""
+                    );
+
+                    const modal = (
+                        bootstrap.Modal.getOrCreateInstance(
+                            modalElement
+                        )
+                    );
+
+                    const modalTitle = document.getElementById(
+                        "modalManutenzioneStraordinariaLabel"
+                    );
+
+                    const feedback = document.getElementById(
+                        "straordinaria-feedback"
+                    );
+
+                    const loading = document.getElementById(
+                        "straordinaria-loading"
+                    );
+
+                    const fieldsContainer = document.getElementById(
+                        "straordinaria-fields"
+                    );
+
+                    const saveButton = document.getElementById(
+                        "btn-salva-straordinaria"
+                    );
+
+                    const fields = {
+                        id: document.getElementById(
+                            "straordinaria-id"
+                        ),
+                        data: document.getElementById(
+                            "straordinaria-data"
+                        ),
+                        titolo: document.getElementById(
+                            "straordinaria-titolo"
+                        ),
+                        problema: document.getElementById(
+                            "straordinaria-problema"
+                        ),
+                        causa: document.getElementById(
+                            "straordinaria-causa"
+                        ),
+                        intervento: document.getElementById(
+                            "straordinaria-intervento"
+                        ),
+                        esito: document.getElementById(
+                            "straordinaria-esito"
+                        ),
+                        fermo: document.getElementById(
+                            "straordinaria-fermo"
+                        ),
+                        durata: document.getElementById(
+                            "straordinaria-durata"
+                        ),
+                        esterno: document.getElementById(
+                            "straordinaria-esterno"
+                        ),
+                        note: document.getElementById(
+                            "straordinaria-note"
+                        )
+                    };
+
+                    function itemUrl(interventoId) {
+                        return (
+                            `${baseUrl}/`
+                            + encodeURIComponent(interventoId)
+                        );
+                    }
+
+                    async function parseResponse(response) {
+                        return window.manutenzioniReadJson(response);
+                    }
+
+                    function showFeedback(
+                        message,
+                        type = "danger"
+                    ) {
+                        feedback.textContent = String(
+                            message || ""
+                        );
+
+                        feedback.className = message
+                            ? `alert alert-${type}`
+                            : "alert d-none";
+                    }
+
+                    function setLoading(value) {
+                        loading.classList.toggle(
+                            "d-none",
+                            !value
+                        );
+
+                        fieldsContainer.classList.toggle(
+                            "d-none",
+                            value
+                        );
+
+                        saveButton.disabled = value;
+                    }
+
+                    function resetForm() {
+                        form.reset();
+                        form.classList.remove(
+                            "was-validated"
+                        );
+
+                        fields.id.value = "";
+                        fields.data.value = nowValue;
+                        fields.esito.value = "RISOLTO";
+
+                        fieldsContainer.classList.remove(
+                            "d-none"
+                        );
+
+                        showFeedback("");
+                        setLoading(false);
+                    }
+
+                    function populateForm(item) {
+                        fields.id.value = item.id || "";
+                        fields.data.value = (
+                            item.data_intervento || ""
+                        );
+                        fields.titolo.value = (
+                            item.titolo || ""
+                        );
+                        fields.problema.value = (
+                            item.descrizione_problema || ""
+                        );
+                        fields.causa.value = (
+                            item.causa || ""
+                        );
+                        fields.intervento.value = (
+                            item.intervento_eseguito || ""
+                        );
+                        fields.esito.value = (
+                            item.esito || "DA_VERIFICARE"
+                        );
+                        fields.fermo.value = (
+                            item.fermo_macchina_minuti
+                            ?? ""
+                        );
+                        fields.durata.value = (
+                            item.durata_intervento_minuti
+                            ?? ""
+                        );
+                        fields.esterno.value = (
+                            item.eseguito_da_esterno || ""
+                        );
+                        fields.note.value = (
+                            item.note || ""
+                        );
+                    }
+
+                    function buildPayload() {
+                        return {
+                            data_intervento: fields.data.value,
+                            titolo: fields.titolo.value.trim(),
+                            descrizione_problema: (
+                                fields.problema.value.trim()
+                            ),
+                            causa: fields.causa.value.trim(),
+                            intervento_eseguito: (
+                                fields.intervento.value.trim()
+                            ),
+                            esito: fields.esito.value,
+                            fermo_macchina_minuti: (
+                                fields.fermo.value === ""
+                                    ? null
+                                    : Number(fields.fermo.value)
+                            ),
+                            durata_intervento_minuti: (
+                                fields.durata.value === ""
+                                    ? null
+                                    : Number(fields.durata.value)
+                            ),
+                            eseguito_da_esterno: (
+                                fields.esterno.value.trim()
+                            ),
+                            note: fields.note.value.trim()
+                        };
+                    }
+
+                    function openCreateModal() {
+                        resetForm();
+
+                        modalTitle.textContent = (
+                            "Nuovo intervento straordinario"
+                        );
+
+                        modal.show();
+
+                        modalElement.addEventListener(
+                            "shown.bs.modal",
+                            () => fields.titolo.focus(),
+                            {once: true}
+                        );
+                    }
+
+                    async function openEditModal(
+                        interventoId
+                    ) {
+                        resetForm();
+                        setLoading(true);
+
+                        modalTitle.textContent = (
+                            "Modifica intervento straordinario"
+                        );
+
+                        modal.show();
+
+                        try {
+                            const response = await window.avpFetch(
+                                itemUrl(interventoId),
+                                {
+                                    method: "GET",
+                                    headers: {
+                                        "Accept": "application/json",
+                                        "X-Requested-With": (
+                                            "XMLHttpRequest"
+                                        )
+                                    },
+                                    credentials: "same-origin"
+                                }
+                            );
+
+                            const data = await parseResponse(
+                                response
+                            );
+
+                            if (
+                                !response.ok
+                                || data.ok === false
+                            ) {
+                                throw new Error(
+                                    data.error
+                                    || (
+                                        "Errore durante "
+                                        + "il caricamento."
+                                    )
+                                );
+                            }
+
+                            const item = data.item || {};
+
+                            modalTitle.textContent = item.da_completare
+                                ? "Completa intervento straordinario"
+                                : "Modifica intervento straordinario";
+
+                            if (item.da_completare) {
+                                item.intervento_eseguito = "";
+                            }
+
+                            populateForm(item);
+                            setLoading(false);
+
+                        } catch (error) {
+                            setLoading(false);
+                            fieldsContainer.classList.add(
+                                "d-none"
+                            );
+                            saveButton.disabled = true;
+
+                            showFeedback(
+                                error.message
+                                || (
+                                    "Errore durante "
+                                    + "il caricamento."
+                                )
+                            );
+                        }
+                    }
+
+                    async function saveItem(event) {
+                        event.preventDefault();
+
+                        form.classList.add(
+                            "was-validated"
+                        );
+
+                        if (!form.checkValidity()) {
+                            return;
+                        }
+
+                        const interventoId = String(
+                            fields.id.value || ""
+                        ).trim();
+
+                        const editing = Boolean(
+                            interventoId
+                        );
+
+                        saveButton.disabled = true;
+                        showFeedback("");
+
+                        try {
+                            const response = await window.avpFetch(
+                                editing
+                                    ? itemUrl(interventoId)
+                                    : listUrl,
+                                {
+                                    method: editing
+                                        ? "PATCH"
+                                        : "POST",
+                                    headers: {
+                                        "Content-Type": (
+                                            "application/json"
+                                        ),
+                                        "Accept": "application/json",
+                                        "X-Requested-With": (
+                                            "XMLHttpRequest"
+                                        )
+                                    },
+                                    credentials: "same-origin",
+                                    body: JSON.stringify(
+                                        buildPayload()
+                                    )
+                                }
+                            );
+
+                            const data = await parseResponse(
+                                response
+                            );
+
+                            if (
+                                !response.ok
+                                || data.ok === false
+                            ) {
+                                throw new Error(
+                                    data.error
+                                    || (
+                                        "Errore durante "
+                                        + "il salvataggio."
+                                    )
+                                );
+                            }
+
+                            showFeedback(
+                                data.message
+                                || "Intervento salvato.",
+                                "success"
+                            );
+
+                            window.setTimeout(
+                                () => {
+                                    const url = new URL(
+                                        window.location.href
+                                    );
+
+                                    url.searchParams.set(
+                                        "view",
+                                        "straordinarie"
+                                    );
+
+                                    window.location.href = url;
+                                },
+                                400
+                            );
+
+                        } catch (error) {
+                            saveButton.disabled = false;
+
+                            showFeedback(
+                                error.message
+                                || (
+                                    "Errore durante "
+                                    + "il salvataggio."
+                                )
+                            );
+                        }
+                    }
+
+                    document
+                        .getElementById(
+                            "btn-nuova-straordinaria-tab"
+                        )
+                        ?.addEventListener(
+                            "click",
+                            openCreateModal
+                        );
+
+                    document.addEventListener(
+                        "click",
+                        event => {
+                            const button = event.target.closest(
+                                ".btn-modifica-straordinaria"
+                            );
+
+                            if (!button) {
+                                return;
+                            }
+
+                            openEditModal(
+                                button.dataset.interventoId
+                            );
+                        }
+                    );
+
+                    const requestedInterventoId = (
+                        new URL(window.location.href)
+                        .searchParams.get("intervento_id")
+                    );
+
+                    if (requestedInterventoId) {
+                        openEditModal(requestedInterventoId);
+                    }
+
+                    form.addEventListener(
+                        "submit",
+                        saveItem
+                    );
+
+                    modalElement.addEventListener(
+                        "hidden.bs.modal",
+                        resetForm
+                    );
+                }
+            );
+        </script>
+    {% endif %}
+
+{% endblock %}

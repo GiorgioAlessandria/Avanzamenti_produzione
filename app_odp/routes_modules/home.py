@@ -1,6 +1,6 @@
 # app_odp/routes_modules/home.py
 
-from flask import abort, jsonify, render_template, request, url_for
+from flask import abort, current_app, jsonify, render_template, request, url_for
 from sqlalchemy import select
 
 from app_odp.models import db, Causaliattivita
@@ -21,6 +21,14 @@ from app_odp.services.home_service import (
     _policy_can_access_home_config,
     _render_fragments_for_home_config,
     _home_rows_for_config,
+)
+from app_odp.services.manutenzioni_eventi_service import (
+    build_scadenziario_manutenzioni,
+    sync_all_active_plans,
+    today_rome,
+)
+from app_odp.services.manutenzioni_service import (
+    filter_eventi_per_operatore,
 )
 from app_odp.routes_blueprint import main_bp
 
@@ -51,6 +59,7 @@ def api_home_bridge(tab):
         )
 
     odp = _home_rows_for_config(policy, config, apply_priorita=True, sort_priorita=True)
+
     fragments = _render_fragments_for_home_config(config, odp)
 
     return jsonify(
@@ -87,6 +96,34 @@ def home():
     template = config.template
 
     odp = _home_rows_for_config(policy, config, apply_priorita=True, sort_priorita=True)
+
+    oggi_manutenzioni = today_rome()
+    manutenzioni_da_eseguire = []
+
+    if policy.can("manutenzioni_visualizza") or policy.can(
+        "manutenzioni_amministrazione"
+    ):
+        try:
+            sync_all_active_plans(data_dal=oggi_manutenzioni)
+            scadenziario = build_scadenziario_manutenzioni(
+                policy,
+                data_fino=oggi_manutenzioni,
+                stato="APERTI",
+            )
+            manutenzioni_da_eseguire = [
+                row
+                for row in scadenziario["rows"]
+                if row["macchinario_attivo"]
+            ]
+            manutenzioni_da_eseguire = filter_eventi_per_operatore(
+                manutenzioni_da_eseguire,
+                user,
+            )
+        except Exception:
+            db.session.rollback()
+            current_app.logger.exception(
+                "Errore durante il caricamento delle manutenzioni in scadenza."
+            )
 
     causali = (
         db.session.execute(
@@ -126,4 +163,6 @@ def home():
         operator_user=user,
         operator_policy=policy,
         tab_session=active_token(),
+        manutenzioni_da_eseguire=manutenzioni_da_eseguire,
+        oggi_manutenzioni=oggi_manutenzioni.isoformat(),
     )

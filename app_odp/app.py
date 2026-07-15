@@ -3,6 +3,7 @@ from flask_login import LoginManager
 from .filters import register_filters
 from app_odp.operator_session import active_user, active_policy, active_token
 from app_odp.models import db, Permissions, User
+from app_odp import manutenzioni_models
 from app_odp.auth import auth_bp
 from app_odp.routes import main_bp
 import tomllib
@@ -11,7 +12,7 @@ from app_odp.policy.policy import RbacPolicy
 from pathlib import Path
 import logging
 from uuid import uuid4
-from sqlalchemy import event
+from sqlalchemy import event, inspect
 from sqlalchemy.engine import Engine
 
 CONFIG_PATH = Path("app_odp/static/config.toml")
@@ -24,8 +25,48 @@ def _apply_sqlite_pragmas(engine: Engine) -> None:
         try:
             cursor.execute("PRAGMA busy_timeout=5000;")
             cursor.execute("PRAGMA journal_mode=WAL;")
+            cursor.execute("PRAGMA foreign_keys=ON;")
         finally:
             cursor.close()
+
+
+def _ensure_manutenzioni_schema() -> None:
+    engine = db.engines["manutenzioni"]
+    columns = {
+        column["name"]
+        for column in inspect(engine).get_columns(
+            "manutenzioni_ricorrenti"
+        )
+    }
+
+    if "archiviata" not in columns:
+        with engine.begin() as connection:
+            connection.exec_driver_sql(
+                "ALTER TABLE manutenzioni_ricorrenti "
+                "ADD COLUMN archiviata BOOLEAN NOT NULL DEFAULT 0"
+            )
+
+    straordinarie_columns = {
+        column["name"]
+        for column in inspect(engine).get_columns(
+            "manutenzioni_straordinarie"
+        )
+    }
+
+    with engine.begin() as connection:
+        if "evento_manutenzione_id" not in straordinarie_columns:
+            connection.exec_driver_sql(
+                "ALTER TABLE manutenzioni_straordinarie "
+                "ADD COLUMN evento_manutenzione_id INTEGER "
+                "REFERENCES eventi_manutenzione(id) ON DELETE SET NULL"
+            )
+
+        connection.exec_driver_sql(
+            "CREATE UNIQUE INDEX IF NOT EXISTS "
+            "uq_manutenzioni_straordinarie_evento "
+            "ON manutenzioni_straordinarie (evento_manutenzione_id) "
+            "WHERE evento_manutenzione_id IS NOT NULL"
+        )
 
 
 def load_config(config: Path) -> dict:
@@ -70,7 +111,23 @@ def setup_request_logging(app):
 def _ensure_builtin_permissions() -> None:
     builtins = {
         "storico_ordini": "Storico ordini",
-        "scorte_segnalazione_libera": "Segnalazione scorte con testo libero",
+        "scorte_segnalazione_libera": ("Segnalazione scorte con testo libero"),
+        # Manutenzioni
+        "manutenzioni_visualizza": ("Accesso alla gestione delle manutenzioni"),
+        "manutenzioni_gestisci_macchinari": (
+            "Creazione e modifica dell'anagrafica macchinari"
+        ),
+        "manutenzioni_visualizza_tutti_reparti": (
+            "Visualizzazione dei macchinari di tutti i reparti"
+        ),
+        "manutenzioni_gestisci_piani": (
+            "Creazione e modifica dei piani di manutenzione"
+        ),
+        "manutenzioni_esegui": ("Registrazione delle manutenzioni eseguite"),
+        "manutenzioni_visualizza_registro": (
+            "Visualizzazione del registro delle manutenzioni"
+        ),
+        "manutenzioni_amministrazione": ("Amministrazione completa delle manutenzioni"),
     }
     existing = {
         row.Codice
@@ -102,6 +159,9 @@ def create_app():
     app.config["SQLALCHEMY_BINDS"] = {
         "log": f"sqlite:///{configurazione['Percorsi']['percorso_db_log']}",
         "acq": f"sqlite:///{configurazione['Percorsi']['percorso_db_acq']}",
+        "manutenzioni": (
+            f"sqlite:///{configurazione['Percorsi']['percorso_db_manutenzioni']}"
+        ),
     }
     app.config["ERP_EXPORT_DIR"] = configurazione["Percorsi"]["percorso_file_output"]
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
@@ -202,6 +262,8 @@ def create_app():
         db.create_all()
         db.create_all(bind_key="log")
         db.create_all(bind_key="acq")
+        db.create_all(bind_key="manutenzioni")
+        _ensure_manutenzioni_schema()
         _ensure_builtin_permissions()
 
     app.register_blueprint(auth_bp)

@@ -20,6 +20,14 @@
             {% set is_dash_reparto = request.endpoint == 'main.dash_reparto' %}
             {% set is_home_acquisti = request.endpoint == 'main.home_acquisti' %}
             {% set is_priorita_view = request.endpoint == 'main.priorita_view' %}
+            {% set is_manutenzioni = (
+                request.endpoint
+                and (
+                    request.endpoint == 'main.manutenzioni_home'
+                    or request.endpoint == 'main.manutenzioni_macchinario_detail'
+                    or request.endpoint == 'main.manutenzioni_scadenziario'
+                )
+            ) %}
             {% set is_priorita_edit = request.endpoint == 'main.priorita_edit' %}
             {% set is_priorita = is_priorita_view or is_priorita_edit %}
             {% set is_storico_ordini = request.endpoint == 'main.storico_ordini_page' %}
@@ -107,6 +115,42 @@
                             <a href="{{ operator_url_for('main.home_acquisti') }}"
                                style="color: rgb(0,0,0);font-size: 25px;">
                                 <span style="color: rgb(33, 37, 41);">Acquisti</span>
+                            </a>
+                        </div>
+                    </div>
+                {% endif %}
+            {% endif %}
+            {% if nav_policy and (
+                nav_policy.can('manutenzioni_visualizza')
+                or nav_policy.can('manutenzioni_amministrazione')
+            ) %}
+                {% if not is_manutenzioni %}
+                    <div class="row d-flex w-100 h-100 justify-content-start align-items-center ms-0 me-0 mb-0"
+                         style="width: auto;height: auto;font-size: 25px;">
+
+                        <div class="col-md-12 text-start d-flex justify-content-start align-items-center ps-0 pe-0"
+                             style="width: auto;height: auto;font-size: 25px;">
+
+                            <svg xmlns="http://www.w3.org/2000/svg"
+                                 width="1em"
+                                 height="1em"
+                                 fill="currentColor"
+                                 viewBox="0 0 16 16"
+                                 class="bi bi-tools"
+                                 style="font-size: 25px;">
+
+                                <path d="M1 0 0 1l2.2 3.081a1 1 0 0 0 .815.419h.07a1 1 0 0 1 .708.293l2.675 2.675-2.617 2.617a3 3 0 0 0-1.64 5.19l.177.177a3 3 0 0 0 5.19-1.64l2.617-2.617 2.675 2.675a1 1 0 0 1 .293.708v.07a1 1 0 0 0 .419.815L15 16l1-1-2.2-3.081a1 1 0 0 0-.815-.419h-.07a1 1 0 0 1-.708-.293L9.532 8.532l.733-.733a3.5 3.5 0 0 0 4.89-4.89l-2.148 2.148-1.414-1.414 2.148-2.148a3.5 3.5 0 0 0-4.89 4.89l-.733.733L5.443 4.443a1 1 0 0 1-.293-.708v-.07a1 1 0 0 0-.419-.815L1 0zM5.057 11.057a2 2 0 1 1 2.828 2.828 2 2 0 0 1-2.828-2.828z">
+                                </path>
+                            </svg>
+
+                            <a href="{{ operator_url_for(
+                        'main.manutenzioni_home'
+                    ) }}"
+                               style="color: rgb(0,0,0);font-size: 25px;">
+
+                    <span style="color: rgb(33, 37, 41);">
+                        Manutenzioni
+                    </span>
                             </a>
                         </div>
                     </div>
@@ -336,6 +380,32 @@
                         <a href="{{ operator_url_for('main.storico_ordini_page') }}"
                            style="color: rgb(0,0,0);font-size: 25px;">
                             <span style="color: rgb(33, 37, 41);">Storico ordini</span>
+                        </a>
+                    </div>
+                </div>
+            {% endif %}
+
+            {% if current_user.is_authenticated
+                  and current_user.has_permission('utility_ricrea_avp')
+                  and request.endpoint != 'main.admin_ricrea_avp_page' %}
+                <div class="row d-flex w-100 h-100 justify-content-start align-items-center ms-0 me-0 mb-0"
+                     style="width: auto;height: auto;font-size: 25px;">
+                    <div class="col-md-12 text-start d-flex justify-content-start align-items-center ps-0 pe-0"
+                         style="width: auto;height: auto;font-size: 25px;">
+                        <svg xmlns="http://www.w3.org/2000/svg"
+                             width="1em"
+                             height="1em"
+                             viewBox="0 0 24 24"
+                             fill="none"
+                             stroke="currentColor"
+                             stroke-width="2"
+                             stroke-linecap="round"
+                             stroke-linejoin="round">
+                            <path d="M14.7 6.3a4 4 0 0 0-5 5L3 18v3h3l6.7-6.7a4 4 0 0 0 5-5l-2.3 2.3-3-3z"></path>
+                        </svg>
+                        <a href="{{ url_for('main.admin_ricrea_avp_page') }}"
+                           style="color: rgb(0,0,0);font-size: 25px;">
+                            <span style="color: rgb(33, 37, 41);">Utility AVP</span>
                         </a>
                     </div>
                 </div>
