@@ -1,0 +1,130 @@
+{% extends "base.j2" %}
+
+{% block title %}Gestione codici CER{% endblock %}
+
+{% block content %}
+    <main class="container-fluid py-3">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+            <div>
+                <h1 class="h4 mb-1">Gestione codici CER</h1>
+                <div class="text-muted small">
+                    Aggiunta, modifica e rimozione dei codici disponibili
+                </div>
+            </div>
+            <a class="btn btn-outline-secondary"
+               href="{{ operator_url_for('main.rifiuti_page') }}">
+                Torna allo smaltimento rifiuti
+            </a>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }} alert-dismissible fade show"
+                     role="alert">
+                    {{ message }}
+                    <button type="button"
+                            class="btn-close"
+                            data-bs-dismiss="alert"
+                            aria-label="Chiudi"></button>
+                </div>
+            {% endfor %}
+        {% endwith %}
+
+        <form method="post"
+              action="{{ operator_url_for('main.rifiuti_codici_cer_save') }}"
+              class="card shadow-sm mb-3">
+            <input type="hidden" name="action" value="create">
+            <div class="card-header">Nuovo codice CER</div>
+            <div class="card-body">
+                <div class="row g-3 align-items-end">
+                    <div class="col-12 col-md-3">
+                        <label for="nuovo-codice-cer" class="form-label">Codice CER</label>
+                        <input id="nuovo-codice-cer"
+                               class="form-control"
+                               name="codice"
+                               autocomplete="off"
+                               required>
+                    </div>
+                    <div class="col-12 col-md-7">
+                        <label for="nuova-descrizione-cer" class="form-label">Descrizione</label>
+                        <input id="nuova-descrizione-cer"
+                               class="form-control"
+                               name="descrizione"
+                               autocomplete="off"
+                               required>
+                    </div>
+                    <div class="col-12 col-md-2 d-grid">
+                        <button class="btn btn-primary" type="submit">Aggiungi</button>
+                    </div>
+                </div>
+            </div>
+        </form>
+
+        <section class="card shadow-sm">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>Codici CER attivi</span>
+                <span class="badge text-bg-secondary">{{ codici_cer|length }}</span>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-striped align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th style="width: 22%">Codice CER</th>
+                            <th>Descrizione</th>
+                            <th class="text-end" style="width: 220px">Azioni</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for cer in codici_cer %}
+                            {% set update_form_id = 'cer-update-' ~ cer.id %}
+                            <tr>
+                                <td>
+                                    <input class="form-control"
+                                           name="codice"
+                                           value="{{ cer.codice }}"
+                                           form="{{ update_form_id }}"
+                                           required>
+                                </td>
+                                <td>
+                                    <input class="form-control"
+                                           name="descrizione"
+                                           value="{{ cer.descrizione }}"
+                                           form="{{ update_form_id }}"
+                                           required>
+                                </td>
+                                <td class="text-end text-nowrap">
+                                    <form id="{{ update_form_id }}"
+                                          method="post"
+                                          action="{{ operator_url_for('main.rifiuti_codici_cer_save') }}"
+                                          class="d-inline">
+                                        <input type="hidden" name="action" value="update">
+                                        <input type="hidden" name="codice_cer_id" value="{{ cer.id }}">
+                                        <button class="btn btn-sm btn-primary" type="submit">
+                                            Salva
+                                        </button>
+                                    </form>
+                                    <form method="post"
+                                          action="{{ operator_url_for('main.rifiuti_codici_cer_save') }}"
+                                          class="d-inline"
+                                          onsubmit="return confirm('Rimuovere questo codice CER?');">
+                                        <input type="hidden" name="action" value="delete">
+                                        <input type="hidden" name="codice_cer_id" value="{{ cer.id }}">
+                                        <button class="btn btn-sm btn-outline-danger" type="submit">
+                                            Rimuovi
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                        {% else %}
+                            <tr>
+                                <td colspan="3" class="text-center text-muted py-4">
+                                    Nessun codice CER attivo.
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+{% endblock %}
