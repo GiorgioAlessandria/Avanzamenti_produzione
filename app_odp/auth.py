@@ -20,6 +20,10 @@ def _get_post_login_redirect(user):
 
     has_acquisti = policy.can("home_acquisti")
     has_produzione = policy.can("home")
+    has_rifiuti = (
+        policy.can("rifiuti_carica")
+        or policy.can("rifiuti_elimina")
+    )
 
     if has_acquisti and has_produzione:
         token = create_operator_session(user)
@@ -31,6 +35,9 @@ def _get_post_login_redirect(user):
     if has_produzione:
         token = create_operator_session(user)
         return url_for("main.home", tab_session=token)
+
+    if has_rifiuti:
+        return url_for("main.rifiuti_page")
 
     return None
 
@@ -68,6 +75,10 @@ def login():
         # Login normale: acquisti / amministrazione
         has_acquisti = policy.can("home_acquisti")
         has_produzione = policy.can("home")
+        has_rifiuti = (
+            policy.can("rifiuti_carica")
+            or policy.can("rifiuti_elimina")
+        )
 
         if has_acquisti and has_produzione:
             login_user(user)
@@ -81,6 +92,10 @@ def login():
         if has_produzione:
             token = create_operator_session(user)
             return redirect(url_for("main.home", tab_session=token))
+
+        if has_rifiuti:
+            login_user(user)
+            return redirect(url_for("main.rifiuti_page"))
 
         return render_template(
             "login.j2",

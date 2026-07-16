@@ -104,6 +104,10 @@ def _register_main_routes(app):
     def home_acquisti():
         return "home_acquisti"
 
+    @main_bp.route("/rifiuti", endpoint="rifiuti_page")
+    def rifiuti_page():
+        return "rifiuti"
+
     app.register_blueprint(main_bp)
 
 
@@ -300,6 +304,34 @@ def test_login_post_produzione_only_redirects_to_home_with_session(
     assert response.headers["Location"].endswith("/?tab_session=tok-3")
     assert login_calls == []
     assert session_calls == [user]
+
+
+def test_login_post_rifiuti_only_redirects_to_rifiuti(
+    client, install_fake_user_model, mod, monkeypatch
+):
+    user = FakeUserRow(5, permissions={"rifiuti_elimina"})
+    install_fake_user_model([user])
+    login_calls = []
+    monkeypatch.setattr(mod, "login_user", lambda current_user: login_calls.append(current_user))
+
+    response = client.post("/login", data={"login_code": "ABC123"})
+
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/rifiuti")
+    assert login_calls == [user]
+
+
+def test_login_post_produzione_and_rifiuti_keeps_production_home(
+    client, install_fake_user_model, mod, monkeypatch
+):
+    user = FakeUserRow(6, permissions={"home", "rifiuti_carica"})
+    install_fake_user_model([user])
+    monkeypatch.setattr(mod, "create_operator_session", lambda current_user: "tok-6")
+
+    response = client.post("/login", data={"login_code": "ABC123"})
+
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/?tab_session=tok-6")
 
 
 def test_login_post_user_without_permissions_returns_403(

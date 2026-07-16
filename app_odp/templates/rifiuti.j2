@@ -1,0 +1,397 @@
+{% extends "base.j2" %}
+
+{% block title %}
+    Smaltimento rifiuti
+{% endblock %}
+
+{% block styles %}
+    {{ super() }}
+
+    <style>
+        .rifiuti-table-container {
+            max-height: calc(100vh - 440px);
+            overflow: auto;
+        }
+
+        .rifiuti-table-container thead th {
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            background: var(--bs-tertiary-bg);
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+    <main class="container-fluid py-3"
+          id="rifiuti-page">
+
+        <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+            <div>
+                <h1 class="h4 mb-1">
+                    Smaltimento rifiuti
+                </h1>
+
+                <div class="text-muted small">
+                    Stock virtuale del materiale in attesa di smaltimento
+                </div>
+            </div>
+
+            <div class="d-flex flex-wrap gap-2 ms-auto">
+                {% if can_elimina %}
+                    <a class="btn btn-outline-primary"
+                       href="{{ operator_url_for('main.rifiuti_codici_cer') }}">
+                        Gestisci codici CER
+                    </a>
+                {% endif %}
+
+                <a class="btn btn-outline-success"
+                   href="{{ operator_url_for('main.rifiuti_export') }}">
+                    Esporta stock corrente
+                </a>
+
+                <a class="btn btn-outline-secondary"
+                   href="{{ operator_url_for('main.rifiuti_export_storico') }}">
+                    Esporta storico completo
+                </a>
+            </div>
+
+            <div class="card shadow-sm">
+                <div class="card-body py-2 px-3">
+                    <div class="text-muted small">
+                        Peso totale presente
+                    </div>
+
+                    <div class="fs-4 fw-semibold text-end">
+                        {{ totale_peso_kg }} kg
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }} alert-dismissible fade show"
+                     role="alert">
+
+                    {{ message }}
+
+                    <button type="button"
+                            class="btn-close"
+                            data-bs-dismiss="alert"
+                            aria-label="Chiudi">
+                    </button>
+                </div>
+            {% endfor %}
+        {% endwith %}
+
+        {% if can_carica %}
+            <form method="post"
+                  action="{{ operator_url_for('main.rifiuti_carica') }}"
+                  class="card shadow-sm mb-3">
+
+                <div class="card-header">
+                    Inserimento materiale
+                </div>
+
+                <div class="card-body">
+                    <div class="row g-3 align-items-end">
+
+                        <div class="col-12 col-lg-5">
+                            <label for="rifiuti-codice-cer"
+                                   class="form-label">
+                                Codice CER
+                            </label>
+
+                            <select class="form-select"
+                                    id="rifiuti-codice-cer"
+                                    name="codice_cer_id"
+                                    required>
+
+                                <option value="">
+                                    Seleziona un codice CER
+                                </option>
+
+                                {% for cer in codici_cer %}
+                                    <option value="{{ cer.id }}">
+                                        {{ cer.codice }} - {{ cer.descrizione }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+
+                            {% if not codici_cer %}
+                                <div class="form-text text-danger">
+                                    Nessun codice CER attivo configurato.
+                                </div>
+                            {% endif %}
+                        </div>
+
+                        <div class="col-12 col-sm-6 col-lg-2">
+                            <label for="rifiuti-peso-kg"
+                                   class="form-label">
+                                Peso in kg
+                            </label>
+
+                            <input type="text"
+                                   class="form-control"
+                                   id="rifiuti-peso-kg"
+                                   name="peso_kg"
+                                   inputmode="decimal"
+                                   maxlength="20"
+                                   placeholder="Es. 12,500"
+                                   autocomplete="off"
+                                   required>
+                        </div>
+
+                        <div class="col-12 col-lg-3">
+                            <label for="rifiuti-note"
+                                   class="form-label">
+                                Note
+                                <span class="text-muted">
+                                    (facoltative)
+                                </span>
+                            </label>
+
+                            <input type="text"
+                                   class="form-control"
+                                   id="rifiuti-note"
+                                   name="note"
+                                   maxlength="500"
+                                   autocomplete="off">
+                        </div>
+
+                        <div class="col-12 col-sm-6 col-lg-2">
+                            <button type="submit"
+                                    class="btn btn-primary w-100"
+                                    {% if not codici_cer %}
+                                    disabled
+                                    {% endif %}>
+
+                                <i class="bi bi-plus-lg"></i>
+                                Registra
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        {% endif %}
+
+        {% if can_elimina %}
+            <form id="rifiuti-smaltisci-multipli"
+                  method="post"
+                  action="{{ operator_url_for('main.rifiuti_smaltisci') }}"
+                  onsubmit="return confirm('Confermi lo smaltimento dei carichi selezionati?');">
+            </form>
+        {% endif %}
+
+        <section class="card shadow-sm mb-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>
+                    Materiale presente
+                </span>
+
+                <div class="d-flex align-items-center gap-2">
+                    <span class="badge text-bg-secondary">
+                        {{ carichi|length }} carichi
+                    </span>
+
+                    {% if can_elimina %}
+                        <button type="submit"
+                                class="btn btn-sm btn-danger"
+                                id="rifiuti-smaltisci-selezionati"
+                                form="rifiuti-smaltisci-multipli"
+                                disabled>
+                            Smaltisci selezionati
+                        </button>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="rifiuti-table-container">
+                <table class="table table-striped table-hover align-middle mb-0">
+                    <thead>
+                        <tr>
+                            {% if can_elimina %}
+                                <th class="text-center">
+                                    <input type="checkbox"
+                                           class="form-check-input"
+                                           id="rifiuti-seleziona-tutti"
+                                           aria-label="Seleziona tutti i carichi">
+                                </th>
+                            {% endif %}
+
+                            <th>
+                                Data e ora
+                            </th>
+
+                            <th>
+                                Codice CER
+                            </th>
+
+                            <th>
+                                Descrizione
+                            </th>
+
+                            <th class="text-end">
+                                Peso
+                            </th>
+
+                            <th>
+                                Caricato da
+                            </th>
+
+                            <th>
+                                Note
+                            </th>
+
+                            {% if can_elimina %}
+                                <th class="text-end">
+                                    Azioni
+                                </th>
+                            {% endif %}
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        {% for carico in carichi %}
+                            <tr>
+                                {% if can_elimina %}
+                                    <td class="text-center">
+                                        <input type="checkbox"
+                                               class="form-check-input rifiuti-carico-checkbox"
+                                               name="carico_id"
+                                               value="{{ carico.id }}"
+                                               form="rifiuti-smaltisci-multipli"
+                                               aria-label="Seleziona il carico {{ carico.id }}">
+                                    </td>
+                                {% endif %}
+
+                                <td class="text-nowrap">
+                                    {{ carico.caricato_il }}
+                                </td>
+
+                                <td class="text-nowrap fw-semibold">
+                                    {{ carico.codice_cer }}
+                                </td>
+
+                                <td>
+                                    {{ carico.descrizione_cer }}
+                                </td>
+
+                                <td class="text-end text-nowrap fw-semibold">
+                                    {{ carico.peso_kg }} kg
+                                </td>
+
+                                <td>
+                                    {{ carico.caricato_da }}
+                                </td>
+
+                                <td>
+                                    {{ carico.note or "-" }}
+                                </td>
+
+                                {% if can_elimina %}
+                                    <td class="text-end text-nowrap">
+                                        <form method="post"
+                                              action="{{ operator_url_for('main.rifiuti_smaltisci') }}"
+                                              onsubmit="return confirm('Confermi lo smaltimento di questo carico?');">
+                                            <input type="hidden"
+                                                   name="carico_id"
+                                                   value="{{ carico.id }}">
+                                            <button type="submit"
+                                                    class="btn btn-sm btn-outline-danger">
+                                                Segna come smaltito
+                                            </button>
+                                        </form>
+                                    </td>
+                                {% endif %}
+                            </tr>
+                        {% else %}
+                            <tr>
+                                <td colspan="{{ 8 if can_elimina else 6 }}"
+                                    class="text-center text-muted py-4">
+
+                                    Nessun materiale presente nello stock.
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="card shadow-sm">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>Ultimi smaltimenti</span>
+                <span class="badge text-bg-secondary">
+                    {{ smaltimenti|length }} record
+                </span>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-striped table-hover align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Data smaltimento</th>
+                            <th>Codice CER</th>
+                            <th>Descrizione</th>
+                            <th class="text-end">Peso</th>
+                            <th>Caricato da</th>
+                            <th>Smaltito da</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for carico in smaltimenti %}
+                            <tr>
+                                <td class="text-nowrap">{{ carico.smaltito_il }}</td>
+                                <td class="text-nowrap fw-semibold">{{ carico.codice_cer }}</td>
+                                <td>{{ carico.descrizione_cer }}</td>
+                                <td class="text-end text-nowrap fw-semibold">
+                                    {{ carico.peso_kg }} kg
+                                </td>
+                                <td>{{ carico.caricato_da }}</td>
+                                <td>{{ carico.smaltito_da }}</td>
+                            </tr>
+                        {% else %}
+                            <tr>
+                                <td colspan="6" class="text-center text-muted py-4">
+                                    Nessuno smaltimento registrato.
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+{% endblock %}
+
+{% block extra_js %}
+    {{ super() }}
+
+    {% if can_elimina %}
+        <script>
+            (() => {
+                const selectAll = document.getElementById("rifiuti-seleziona-tutti");
+                const checkboxes = [...document.querySelectorAll(".rifiuti-carico-checkbox")];
+                const submit = document.getElementById("rifiuti-smaltisci-selezionati");
+
+                const update = () => {
+                    const selected = checkboxes.filter((checkbox) => checkbox.checked).length;
+                    submit.disabled = selected === 0;
+                    selectAll.checked = checkboxes.length > 0 && selected === checkboxes.length;
+                    selectAll.indeterminate = selected > 0 && selected < checkboxes.length;
+                };
+
+                selectAll.addEventListener("change", () => {
+                    checkboxes.forEach((checkbox) => {
+                        checkbox.checked = selectAll.checked;
+                    });
+                    update();
+                });
+
+                checkboxes.forEach((checkbox) => checkbox.addEventListener("change", update));
+            })();
+        </script>
+    {% endif %}
+{% endblock %}

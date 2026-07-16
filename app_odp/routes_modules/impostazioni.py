@@ -1530,6 +1530,10 @@ def api_save_user_abac():
     if ruolo is None:
         return jsonify({"ok": False, "error": "Ruolo non trovato."}), 404
 
+    manageable_role_ids = {int(role.id) for role in policy.abac_manageable_roles()}
+    if int(ruolo.id) not in manageable_role_ids:
+        return jsonify({"ok": False, "error": "Ruolo non gestibile."}), 403
+
     utente = User.query.get(user_id)
     if utente is None:
         return jsonify({"ok": False, "error": "Utente non trovato."}), 404
@@ -1716,8 +1720,12 @@ def api_save_role_links():
     assoc_table = cfg["assoc_table"]
     model = cfg["model"]
 
-    if cfg["model"] is Roles:
-        allowed_role_ids = {int(r.id) for r in policy.role_link_manageable_roles()}
+    manageable_role_ids = {int(r.id) for r in policy.role_link_manageable_roles()}
+    if role_id not in manageable_role_ids:
+        return jsonify({"ok": False, "error": "Ruolo non gestibile."}), 403
+
+    if model is Roles:
+        allowed_role_ids = set(manageable_role_ids)
 
         allowed_role_ids.discard(int(ruolo.id))
 
@@ -1731,12 +1739,7 @@ def api_save_role_links():
                 }
             ), 400
 
-    if not policy.can_manage_target_role(ruolo):
-        return jsonify({"ok": False, "error": "Ruolo non gestibile."}), 403
-
     if table_key in {"ruoli_ereditati", "ruoli_gestibili"}:
-        manageable_role_ids = {r.id for r in policy.role_link_manageable_roles()}
-
         if role_id in selected_ids:
             return jsonify(
                 {"ok": False, "error": "Un ruolo non può essere collegato a sé stesso."}

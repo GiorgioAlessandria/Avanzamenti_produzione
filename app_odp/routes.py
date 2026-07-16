@@ -108,4 +108,5 @@ from app_odp.routes_modules import (
     report_settimanale,
     storico_ordini,
     manutenzioni,
+    rifiuti,
 )

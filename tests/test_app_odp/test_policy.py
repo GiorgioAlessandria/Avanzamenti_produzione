@@ -752,3 +752,46 @@ def test_require_perm_passes_args_kwargs_return_value_and_current_user(monkeypat
 
     assert endpoint(2, 3, c=4) == 9
     assert observed == {"user": fake_user, "code": "odp.extra"}
+
+
+def test_only_admin_can_manage_user_and_role_permissions_for_its_direct_role(
+    mod,
+    monkeypatch,
+):
+    def role(role_id, name):
+        return SimpleNamespace(
+            id=role_id,
+            name=name,
+            description=name,
+            iter_manageable_roles=lambda: iter(()),
+        )
+
+    monkeypatch.setattr(
+        mod.RbacPolicy,
+        "can",
+        lambda self, permission: permission
+        in {"impostazioni_utente", "modifica_permessi_ruolo"},
+    )
+
+    admin_role = role(1, "admin")
+    admin = mod.RbacPolicy(
+        SimpleNamespace(
+            id=1,
+            roles=[admin_role],
+            has_management_scope=lambda: False,
+        )
+    )
+    ordinary = mod.RbacPolicy(
+        SimpleNamespace(
+            id=2,
+            roles=[role(2, "operatore")],
+            has_management_scope=lambda: False,
+        )
+    )
+
+    assert admin.can_view_user_abac_section is True
+    assert admin.abac_manageable_roles() == [admin_role]
+    assert admin.role_link_manageable_roles() == [admin_role]
+    assert ordinary.can_view_user_abac_section is False
+    assert ordinary.abac_manageable_roles() == []
+    assert ordinary.role_link_manageable_roles() == []
