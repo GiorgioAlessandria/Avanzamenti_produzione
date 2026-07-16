@@ -141,3 +141,70 @@ def test_intervento_richiesto_diventa_completato_dopo_lo_straordinario():
     straordinaria.intervento_eseguito = "Sostituito il componente"
 
     assert service.get_stato_visuale_evento(evento) == "COMPLETATA"
+
+
+def test_elimina_evento_programmato_solo_con_permesso_admin(monkeypatch):
+    app = Flask(__name__)
+    app.config.update(
+        TESTING=True,
+        SQLALCHEMY_DATABASE_URI="sqlite://",
+        SQLALCHEMY_BINDS={"manutenzioni": "sqlite://"},
+    )
+    db.init_app(app)
+
+    class User:
+        def __init__(self, admin):
+            self.admin = admin
+
+        def has_role(self, role_name):
+            return self.admin and role_name == "admin"
+
+    class Policy:
+        def __init__(self, admin):
+            self.user = User(admin)
+
+        def can(self, permission):
+            return False
+
+    with app.app_context():
+        db.create_all(bind_key="manutenzioni")
+        macchinario = Macchinario(
+            codice="M1",
+            descrizione="Macchina 1",
+            reparto_codice="R1",
+        )
+        piano = ManutenzioneRicorrente(
+            macchinario=macchinario,
+            titolo="Controllo",
+            frequenza_unita="mesi",
+            frequenza_intervallo=1,
+            data_inizio=date(2026, 6, 16),
+        )
+        evento = EventoManutenzione(
+            manutenzione_ricorrente=piano,
+            data_teorica=date(2026, 6, 16),
+            data_programmata=date(2026, 6, 16),
+            stato="PROGRAMMATA",
+            titolo_snapshot="Controllo",
+        )
+        db.session.add_all([macchinario, piano, evento])
+        db.session.commit()
+        evento_id = evento.id
+
+        monkeypatch.setattr(
+            service,
+            "get_evento_manutenzione",
+            lambda *args, **kwargs: evento,
+        )
+
+        try:
+            service.delete_evento_manutenzione(evento_id, Policy(False))
+            assert False, "Un non amministratore non può eliminare eventi"
+        except service.PermessoManutenzioniError:
+            pass
+
+        assert service.delete_evento_manutenzione(
+            evento_id,
+            Policy(True),
+        ) == evento_id
+        assert db.session.get(EventoManutenzione, evento_id) is None

@@ -506,9 +506,8 @@ def list_macchinari(
         )
 
     return query.order_by(
-        Macchinario.reparto_codice,
-        func.lower(Macchinario.descrizione),
         func.lower(Macchinario.codice),
+        func.lower(Macchinario.descrizione),
     ).all()
 
 

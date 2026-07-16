@@ -2081,7 +2081,9 @@
                 );
 
                 title.textContent = (
-                    item.title || "Manutenzione"
+                    item.macchinario_descrizione
+                    || item.macchinario_codice
+                    || "Macchinario"
                 );
 
                 const meta = document.createElement(
@@ -2092,19 +2094,7 @@
                     "maintenance-calendar-event-meta"
                 );
 
-                const metaParts = [];
-
-                if (item.piano_codice) {
-                    metaParts.push(item.piano_codice);
-                }
-
-                if (item.data_spostata) {
-                    metaParts.push(
-                        "data anticipata"
-                    );
-                }
-
-                meta.textContent = metaParts.join(" · ");
+                meta.textContent = item.titolo || "Manutenzione";
 
                 const tooltipParts = [
                     item.title,

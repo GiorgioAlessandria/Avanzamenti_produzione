@@ -912,6 +912,29 @@ def _assert_evento_programmato(
         )
 
 
+def delete_evento_manutenzione(
+    evento_id: int | str,
+    policy: RbacPolicy,
+) -> int:
+    user = getattr(policy, "user", None)
+    is_admin = policy.can("admin") or bool(
+        user is not None and user.has_role("admin")
+    )
+    if not is_admin:
+        raise PermessoManutenzioniError(
+            "Permesso admin richiesto."
+        )
+
+    evento = get_evento_manutenzione(evento_id, policy)
+    _assert_evento_programmato(evento)
+    deleted_id = evento.id
+
+    db.session.delete(evento)
+    db.session.commit()
+
+    return deleted_id
+
+
 def completa_evento_manutenzione(
     evento_id: int | str,
     data: dict[str, Any],

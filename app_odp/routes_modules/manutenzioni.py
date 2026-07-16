@@ -55,6 +55,7 @@ from app_odp.services.manutenzioni_eventi_service import (
     EventoManutenzioneChiusoError,
     EventoManutenzioneNonTrovatoError,
     build_scadenziario_manutenzioni,
+    delete_evento_manutenzione,
     gestisci_evento_manutenzione,
     get_evento_manutenzione,
     list_eventi_macchinario,
@@ -669,6 +670,10 @@ def manutenzioni_macchinario_detail(
         piani=serialize_piani_manutenzione(piani),
         giorni_settimana_labels=(GIORNI_SETTIMANA_LABELS),
         can_manage_plans=can_manage_plans,
+        can_admin=(
+            policy.can("admin")
+            or active_user().has_role("admin")
+        ),
         eventi=serialize_eventi_manutenzione(eventi),
         can_execute_events=can_execute_events,
         can_manage_machine=can_manage_machine,
@@ -1020,6 +1025,36 @@ def api_manutenzioni_evento_get(
         )
 
     except Exception as exc:
+        return _service_error_response(exc)
+
+
+@main_bp.delete("/api/manutenzioni/eventi/<int:evento_id>")
+@require_active_any_perm(
+    "admin",
+    "manutenzioni_gestisci_piani",
+    "manutenzioni_amministrazione",
+)
+def api_manutenzioni_evento_delete(
+    evento_id: int,
+):
+    policy = active_policy()
+
+    try:
+        deleted_id = delete_evento_manutenzione(
+            evento_id,
+            policy,
+        )
+
+        return jsonify(
+            {
+                "ok": True,
+                "message": "Evento programmato eliminato.",
+                "deleted_id": deleted_id,
+            }
+        )
+
+    except Exception as exc:
+        db.session.rollback()
         return _service_error_response(exc)
 
 
