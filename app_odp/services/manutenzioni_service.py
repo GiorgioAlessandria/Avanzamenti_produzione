@@ -375,8 +375,10 @@ def set_operatori_macchinario(
 def filter_eventi_per_operatore(
     rows: list[dict[str, Any]],
     user: User,
+    *,
+    include_unassigned: bool = True,
 ) -> list[dict[str, Any]]:
-    """Filtra gli avvisi; i macchinari non assegnati restano visibili a tutti."""
+    """Filtra gli eventi in base alle assegnazioni del macchinario."""
     public_id = _norm_text(getattr(user, "public_id", None))
     macchinario_ids = {
         row.get("macchinario_id")
@@ -401,8 +403,14 @@ def filter_eventi_per_operatore(
     return [
         row
         for row in rows
-        if not operatori_per_macchinario.get(row.get("macchinario_id"))
-        or public_id in operatori_per_macchinario[row["macchinario_id"]]
+        if (
+            include_unassigned
+            and not operatori_per_macchinario.get(row.get("macchinario_id"))
+        )
+        or public_id in operatori_per_macchinario.get(
+            row.get("macchinario_id"),
+            set(),
+        )
     ]
 
 

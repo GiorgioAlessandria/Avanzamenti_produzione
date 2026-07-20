@@ -16,6 +16,7 @@ from app_odp.policy.policy import RbacPolicy
 from app_odp.services.manutenzioni_service import (
     ManutenzioniServiceError,
     PermessoManutenzioniError,
+    filter_eventi_per_operatore,
     get_macchinario,
     list_macchinari,
     serialize_macchinari,
@@ -1118,6 +1119,7 @@ def build_scadenziario_manutenzioni(
     data_fino: date | None = None,
     stato: str | None = None,
     search: str | None = None,
+    operatore=None,
 ) -> dict[str, Any]:
     """
     Costruisce lo scadenziario degli eventi relativi ai macchinari
@@ -1185,6 +1187,13 @@ def build_scadenziario_manutenzioni(
                     continue
 
             rows.append(row)
+
+    if operatore is not None:
+        rows = filter_eventi_per_operatore(
+            rows,
+            operatore,
+            include_unassigned=False,
+        )
 
     summary = {
         "totale": len(rows),

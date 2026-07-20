@@ -1,10 +1,12 @@
 from datetime import date, datetime
+from types import SimpleNamespace
 
 from flask import Flask
 
 from app_odp.manutenzioni_models import (
     EventoManutenzione,
     Macchinario,
+    MacchinarioOperatore,
     ManutenzioneRicorrente,
     ManutenzioneStraordinaria,
 )
@@ -208,3 +210,55 @@ def test_elimina_evento_programmato_solo_con_permesso_admin(monkeypatch):
             Policy(True),
         ) == evento_id
         assert db.session.get(EventoManutenzione, evento_id) is None
+
+
+def test_calendario_operatore_mostra_solo_macchinari_assegnati():
+    app = Flask(__name__)
+    app.config.update(
+        TESTING=True,
+        SQLALCHEMY_DATABASE_URI="sqlite://",
+        SQLALCHEMY_BINDS={"manutenzioni": "sqlite://"},
+    )
+    db.init_app(app)
+
+    with app.app_context():
+        db.create_all(bind_key="manutenzioni")
+        assegnato = Macchinario(
+            codice="M1",
+            descrizione="Assegnato",
+            reparto_codice="R1",
+        )
+        non_assegnato = Macchinario(
+            codice="M2",
+            descrizione="Non assegnato",
+            reparto_codice="R1",
+        )
+        assegnato_ad_altri = Macchinario(
+            codice="M3",
+            descrizione="Assegnato ad altri",
+            reparto_codice="R1",
+        )
+        assegnato.operatori_assegnati.append(
+            MacchinarioOperatore(
+                operatore_public_id="op-1",
+                operatore_username="operatore",
+            )
+        )
+        assegnato_ad_altri.operatori_assegnati.append(
+            MacchinarioOperatore(
+                operatore_public_id="op-2",
+                operatore_username="altro",
+            )
+        )
+        db.session.add_all([assegnato, non_assegnato, assegnato_ad_altri])
+        db.session.commit()
+
+        rows = [
+            {"macchinario_id": macchina.id}
+            for macchina in (assegnato, non_assegnato, assegnato_ad_altri)
+        ]
+        assert service.filter_eventi_per_operatore(
+            rows,
+            SimpleNamespace(public_id="op-1"),
+            include_unassigned=False,
+        ) == [{"macchinario_id": assegnato.id}]

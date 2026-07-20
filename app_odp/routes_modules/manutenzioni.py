@@ -279,6 +279,16 @@ def manutenzioni_home():
     ) or policy.can(
         "manutenzioni_amministrazione"
     )
+    can_view_all_machines = active_user().has_role("admin") or any(
+        policy.can(permission)
+        for permission in (
+            "admin",
+            "manutenzioni_amministrazione",
+            "manutenzioni_gestisci_piani",
+            "manutenzioni_gestisci_macchinari",
+            "manutenzioni_visualizza_tutti_reparti",
+        )
+    )
 
     selected_view = str(
         request.args.get("view") or "calendario"
@@ -312,6 +322,7 @@ def manutenzioni_home():
         can_view_register=can_view_register,
         can_execute_events=can_execute_events,
         can_manage_calendar=can_manage_calendar,
+        can_view_all_machines=can_view_all_machines,
         oggi=today_rome().isoformat(),
     )
 
@@ -1667,7 +1678,23 @@ def api_manutenzioni_calendario():
         request.args.get("search") or ""
     ).strip()
 
+    solo_assegnate = _parse_query_bool(
+        request.args.get("solo_assegnate"),
+        default=False,
+    )
+
     try:
+        can_view_all_machines = active_user().has_role("admin") or any(
+            policy.can(permission)
+            for permission in (
+                "admin",
+                "manutenzioni_amministrazione",
+                "manutenzioni_gestisci_piani",
+                "manutenzioni_gestisci_macchinari",
+                "manutenzioni_visualizza_tutti_reparti",
+            )
+        )
+
         result = build_scadenziario_manutenzioni(
             policy,
             reparto_codice=(
@@ -1677,6 +1704,11 @@ def api_manutenzioni_calendario():
             data_fino=data_fino,
             stato=stato or None,
             search=search or None,
+            operatore=(
+                active_user()
+                if solo_assegnate or not can_view_all_machines
+                else None
+            ),
         )
 
         items = []

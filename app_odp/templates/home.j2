@@ -75,6 +75,12 @@
                                 data-bs-dismiss="modal">
                             Chiudi
                         </button>
+                        <button type="button"
+                                class="btn btn-primary"
+                                id="conferma-manutenzioni-oggi">
+                            <i class="bi bi-check2 me-1"></i>
+                            Non mostrare più oggi
+                        </button>
                     </div>
                 </div>
             </div>
@@ -264,15 +270,44 @@
     {% if manutenzioni_da_eseguire %}
         <script>
             document.addEventListener("DOMContentLoaded", () => {
+                const storageKey = (
+                    "avp_manutenzioni_confermate:"
+                    + {{ operator_user.username|tojson }}
+                );
+                const today = {{ oggi_manutenzioni|tojson }};
                 const modalElement = document.getElementById(
                     "modalManutenzioniDaEseguire"
                 );
+                const confirmButton = document.getElementById(
+                    "conferma-manutenzioni-oggi"
+                );
 
-                if (modalElement) {
-                    bootstrap.Modal.getOrCreateInstance(
-                        modalElement
-                    ).show();
+                if (!modalElement) {
+                    return;
                 }
+
+                const modal = bootstrap.Modal.getOrCreateInstance(
+                    modalElement
+                );
+
+                try {
+                    if (localStorage.getItem(storageKey) === today) {
+                        return;
+                    }
+                } catch (_) {
+                    // Lo storage può essere disabilitato dal browser.
+                }
+
+                confirmButton?.addEventListener("click", () => {
+                    try {
+                        localStorage.setItem(storageKey, today);
+                    } catch (_) {
+                        // La conferma vale almeno per la pagina corrente.
+                    }
+                    modal.hide();
+                });
+
+                modal.show();
             });
         </script>
     {% endif %}

@@ -479,6 +479,16 @@
                                 </h2>
                             </div>
 
+                            {% if can_view_all_machines %}
+                                <button type="button"
+                                        class="btn btn-sm btn-outline-primary"
+                                        id="calendar-only-assigned"
+                                        aria-pressed="false">
+                                    <i class="bi bi-person-check"></i>
+                                    Solo assegnate a me
+                                </button>
+                            {% endif %}
+
                             <div class="maintenance-calendar-legend">
                                 <span class="maintenance-calendar-legend-item legend-overdue">
                                     Scaduta
@@ -1849,6 +1859,10 @@
                 "maintenance-calendar-loading"
             );
 
+            const onlyAssignedButton = document.getElementById(
+                "calendar-only-assigned"
+            );
+
             const calendarPane = document.getElementById(
                 "manutenzioni-calendario-pane"
             );
@@ -2049,6 +2063,10 @@
                         "stato",
                         stato
                     );
+                }
+
+                if (onlyAssignedButton?.ariaPressed === "true") {
+                    url.searchParams.set("solo_assegnate", "1");
                 }
 
                 return url.pathname + url.search;
@@ -2509,6 +2527,25 @@
                         loadCalendar();
                     }
                 );
+
+            onlyAssignedButton?.addEventListener(
+                "click",
+                () => {
+                    const enabled = (
+                        onlyAssignedButton.ariaPressed !== "true"
+                    );
+                    onlyAssignedButton.ariaPressed = String(enabled);
+                    onlyAssignedButton.classList.toggle(
+                        "btn-primary",
+                        enabled
+                    );
+                    onlyAssignedButton.classList.toggle(
+                        "btn-outline-primary",
+                        !enabled
+                    );
+                    loadCalendar();
+                }
+            );
 
             document
                 .querySelectorAll(
