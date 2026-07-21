@@ -493,7 +493,9 @@ class RbacPolicy:
         - serve il permesso impostazioni_utente
         - serve anche uno scope gestionale reale
         """
-        return self.can("impostazioni_utente") and self.user.has_management_scope()
+        return self.can("impostazioni_utente") and (
+            self.user.has_management_scope() or self.has_direct_admin_role
+        )
 
     @cached_property
     def can_view_home_config_section(self) -> bool:
@@ -537,11 +539,22 @@ class RbacPolicy:
     def direct_assigned_role_ids(self) -> set[int]:
         return {int(role.id) for role in self.direct_assigned_roles}
 
+    @cached_property
+    def has_direct_admin_role(self) -> bool:
+        return any(
+            _norm_role_name(role.name) == "admin"
+            for role in self.direct_assigned_roles
+        )
+
     def abac_manageable_roles(self) -> list[Roles]:
         if not self.can_view_user_abac_section:
             return []
 
-        return list(self.descendant_manageable_roles)
+        return list(self.descendant_manageable_roles) + [
+            role
+            for role in self.direct_assigned_roles
+            if _norm_role_name(role.name) == "admin"
+        ]
 
     @cached_property
     def can_view_role_creation_section(self) -> bool:
@@ -702,7 +715,11 @@ class RbacPolicy:
         if not self.can_view_role_links_section:
             return []
 
-        return list(self.descendant_manageable_roles)
+        return list(self.descendant_manageable_roles) + [
+            role
+            for role in self.direct_assigned_roles
+            if _norm_role_name(role.name) == "admin"
+        ]
 
     def permission_manageable_permissions(self):
         if not self.can_view_role_permission_section:

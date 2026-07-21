@@ -256,6 +256,15 @@
 </header>
 
 {% include "partials/_nav_offcanvas.j2" %}
+{% if tarature_alerts and tarature_alerts.scadute %}
+    <div class="alert alert-danger rounded-0 border-0 mb-0 py-2 text-center"
+         role="alert">
+        <strong>{{ tarature_alerts.scadute }} strument{{ 'o' if tarature_alerts.scadute == 1 else 'i' }}
+            con taratura scaduta.</strong>
+        <a class="alert-link ms-2"
+           href="{{ operator_url_for('main.tarature_home') }}">Apri Tarature</a>
+    </div>
+{% endif %}
 <div class="modal fade"
      id="modalRicercaArticolo"
      tabindex="-1"

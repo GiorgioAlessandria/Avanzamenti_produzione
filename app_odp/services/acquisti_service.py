@@ -928,7 +928,7 @@ def _is_open_order_state(stato: str) -> bool:
     if s == "chiusa":
         return False
 
-    return "attiv" in s or "pianificat" in s or "sospes" in s or "apert" in s
+    return "attiv" in s or "pianificat" in s or "sospes" in s or "apert"
 
 
 SCORTA_SEGNALAZIONE_LIBERA_MIN_LEN = 3

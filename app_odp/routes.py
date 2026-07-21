@@ -78,6 +78,12 @@ def inject_policy_and_nav():
                 }
             )
 
+    tarature_alerts = None
+    if policy.can("tarature"):
+        from app_odp.services.tarature_service import alerts_summary
+
+        tarature_alerts = alerts_summary()
+
     return {
         "policy": policy,
         "operator_user": getattr(g, "operator_user", None),
@@ -85,6 +91,7 @@ def inject_policy_and_nav():
         "tab_session": operator_token,
         "home_switch_items": items,
         "area_switch_items": area_switch_items,
+        "tarature_alerts": tarature_alerts,
     }
 
 
@@ -108,4 +115,6 @@ from app_odp.routes_modules import (
     report_settimanale,
     storico_ordini,
     manutenzioni,
+    rifiuti,
+    tarature,
 )

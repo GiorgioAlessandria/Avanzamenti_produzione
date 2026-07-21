@@ -1,0 +1,290 @@
+{% extends "base.j2" %}
+
+{% block title %}Tarature strumenti{% endblock %}
+
+{% block styles %}
+    {{ super() }}
+    <style>
+        .tarature-table td { vertical-align: middle; }
+        .tarature-actions summary { cursor: pointer; color: var(--bs-primary); }
+        .tarature-actions[open] { min-width: 22rem; }
+        .tarature-log { max-width: 36rem; white-space: normal; word-break: break-word; }
+    </style>
+{% endblock %}
+
+{% block content %}
+<main class="container-fluid px-3 px-lg-4 py-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+        <div>
+            <h1 class="h2 mb-1">Tarature strumenti</h1>
+            <p class="text-secondary mb-0">Anagrafica, scadenze, verifiche e spedizioni.</p>
+        </div>
+        <div class="d-flex gap-2 flex-wrap">
+            <span class="badge bg-danger fs-6">Scadute: {{ alerts.scadute }}</span>
+            <span class="badge bg-warning text-dark fs-6">Entro 30 gg: {{ alerts.entro_30 }}</span>
+            <span class="badge bg-secondary fs-6">31–60 gg: {{ alerts.entro_60 }}</span>
+        </div>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for category, message in messages %}
+            <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Chiudi"></button>
+            </div>
+        {% endfor %}
+    {% endwith %}
+
+    <ul class="nav nav-tabs mb-3" role="tablist">
+        <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#strumenti" type="button">Strumenti</button></li>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#spedizioni" type="button">Spedizioni</button></li>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tipologie" type="button">Tipologie</button></li>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#log" type="button">Log eventi</button></li>
+    </ul>
+
+    <div class="tab-content">
+        <section class="tab-pane fade show active" id="strumenti">
+            <details class="card mb-3">
+                <summary class="card-header fw-semibold">Aggiungi strumento</summary>
+                <div class="card-body">
+                    {% if not tipologie %}
+                        <div class="alert alert-warning mb-0">Crea prima almeno una tipologia di strumento.</div>
+                    {% else %}
+                    <form class="row g-3" method="post" action="{{ operator_url_for('main.tarature_strumento_create') }}">
+                        <div class="col-md-2"><label class="form-label">Codice interno</label><input class="form-control" name="codice_interno" required></div>
+                        <div class="col-md-2"><label class="form-label">Numero seriale</label><input class="form-control" name="numero_seriale" required></div>
+                        <div class="col-md-3"><label class="form-label">Descrizione</label><input class="form-control" name="descrizione" required></div>
+                        <div class="col-md-2">
+                            <label class="form-label">Tipologia</label>
+                            <select class="form-select" name="tipologia_id" required>
+                                {% for tipo in tipologie %}<option value="{{ tipo.id }}">{{ tipo.nome }}</option>{% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Reparto</label>
+                            <select class="form-select" name="reparto_codice" required>
+                                {% for reparto in reparti %}<option value="{{ reparto.codice }}">{{ reparto.codice }}{% if reparto.descrizione %} – {{ reparto.descrizione }}{% endif %}</option>{% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-1">
+                            <label class="form-label">Stato</label>
+                            <select class="form-select" name="stato"><option value="IN_USO">In uso</option><option value="NON_IN_USO">Non in uso</option></select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Ultima taratura (facoltativa)</label>
+                            <input class="form-control" type="date" name="data_ultima_taratura" max="{{ oggi.isoformat() }}">
+                            <div class="form-text">Se non indicata, viene usata la data di oggi.</div>
+                        </div>
+                        <div class="col-12"><button class="btn btn-primary">Inserisci</button></div>
+                    </form>
+                    {% endif %}
+                </div>
+            </details>
+
+            <div class="row g-2 mb-3">
+                <div class="col-md-5"><input id="strumenti-search" class="form-control" type="search" placeholder="Cerca codice, seriale, descrizione, tipologia o reparto"></div>
+                <div class="col-md-3">
+                    <select id="strumenti-state" class="form-select">
+                        <option value="">Tutti gli stati</option>
+                        <option value="IN_USO">In uso</option><option value="NON_IN_USO">Non in uso</option><option value="IN_TARATURA">In taratura</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-striped table-hover tarature-table">
+                    <thead><tr><th>Codice</th><th>Seriale</th><th>Descrizione</th><th>Tipologia</th><th>Reparto</th><th>Stato</th><th>Prossima attività</th><th>Operazioni</th></tr></thead>
+                    <tbody>
+                    {% for row in strumenti_rows %}
+                        {% set s = row.strumento %}
+                        {% set d = row.scadenza %}
+                        <tr class="strumento-row" data-state="{{ s.stato }}" data-search="{{ (s.codice_interno ~ ' ' ~ s.numero_seriale ~ ' ' ~ s.descrizione ~ ' ' ~ s.tipologia.nome ~ ' ' ~ s.reparto_codice)|lower }}">
+                            <td class="fw-semibold">{{ s.codice_interno }}</td>
+                            <td>{{ s.numero_seriale }}</td>
+                            <td>{{ s.descrizione }}</td>
+                            <td>{{ s.tipologia.nome }}</td>
+                            <td>{{ s.reparto_codice }}</td>
+                            <td>
+                                <span class="badge {{ 'bg-success' if s.stato == 'IN_USO' else 'bg-warning text-dark' if s.stato == 'IN_TARATURA' else 'bg-secondary' }}">
+                                    {{ {'IN_USO':'In uso','NON_IN_USO':'Non in uso','IN_TARATURA':'In taratura'}[s.stato] }}
+                                </span>
+                            </td>
+                            <td>
+                                {% if s.stato == 'IN_USO' %}
+                                    <span class="badge {{ 'bg-danger' if d.classe == 'SCADUTA' else 'bg-warning text-dark' if d.classe == 'ENTRO_30' else 'bg-secondary' if d.classe == 'ENTRO_60' else 'bg-success' }}">{{ d.tipo|title }}</span>
+                                    {{ d.data.strftime('%d/%m/%Y') }}
+                                {% else %}<span class="text-secondary">Avvisi sospesi</span>{% endif %}
+                            </td>
+                            <td>
+                                <details class="tarature-actions">
+                                    <summary>Gestisci</summary>
+                                    <div class="border rounded p-3 mt-2 bg-light">
+                                        {% if s.stato == 'IN_TARATURA' %}
+                                            <h3 class="h6">Registra rapporto esterno</h3>
+                                            <form class="row g-2 mb-3" method="post" action="{{ operator_url_for('main.tarature_esito_esterno', strumento_id=s.id) }}">
+                                                <div class="col-6"><label class="form-label">Data taratura</label><input class="form-control" type="date" name="data_evento" max="{{ oggi.isoformat() }}" required></div>
+                                                <div class="col-6"><label class="form-label">N. rapporto</label><input class="form-control" name="rapporto_riferimento" required></div>
+                                                <div class="col-6"><label class="form-label">Esito</label><select class="form-select" name="esito"><option value="CONFORME">Conforme</option><option value="NON_CONFORME">Non conforme</option></select></div>
+                                                <div class="col-6"><label class="form-label">Note</label><input class="form-control" name="note"></div>
+                                                <div class="col-12"><button class="btn btn-primary btn-sm">Registra e cambia stato</button></div>
+                                            </form>
+                                        {% elif s.stato == 'IN_USO' %}
+                                            <h3 class="h6">Verifica interna</h3>
+                                            <form class="row g-2 mb-3" method="post" action="{{ operator_url_for('main.tarature_verifica_interna', strumento_id=s.id) }}">
+                                                <div class="col-6"><label class="form-label">Data</label><input class="form-control" type="date" name="data_evento" value="{{ oggi.isoformat() }}" max="{{ oggi.isoformat() }}" required></div>
+                                                <div class="col-6"><label class="form-label">Esito</label><select class="form-select" name="esito"><option value="CONFORME">Conforme</option><option value="NON_CONFORME">Non conforme</option></select></div>
+                                                <div class="col-12"><label class="form-label">Note</label><input class="form-control" name="note"></div>
+                                                <div class="col-12"><button class="btn btn-outline-primary btn-sm">Registra verifica</button></div>
+                                            </form>
+                                        {% endif %}
+
+                                        {% if s.stato != 'IN_TARATURA' %}
+                                            <form class="mb-3" method="post" action="{{ operator_url_for('main.tarature_strumento_stato', strumento_id=s.id) }}">
+                                                <input type="hidden" name="stato" value="{{ 'NON_IN_USO' if s.stato == 'IN_USO' else 'IN_USO' }}">
+                                                <button class="btn btn-outline-secondary btn-sm">Imposta {{ 'Non in uso' if s.stato == 'IN_USO' else 'In uso' }}</button>
+                                            </form>
+                                        {% endif %}
+
+                                        <details>
+                                            <summary>Modifica anagrafica</summary>
+                                            <form class="row g-2 mt-2" method="post" action="{{ operator_url_for('main.tarature_strumento_update', strumento_id=s.id) }}">
+                                                <div class="col-6"><input class="form-control" name="codice_interno" value="{{ s.codice_interno }}" required></div>
+                                                <div class="col-6"><input class="form-control" name="numero_seriale" value="{{ s.numero_seriale }}" required></div>
+                                                <div class="col-12"><input class="form-control" name="descrizione" value="{{ s.descrizione }}" required></div>
+                                                <div class="col-6"><select class="form-select" name="tipologia_id">{% for tipo in tipologie %}<option value="{{ tipo.id }}" {{ 'selected' if tipo.id == s.tipologia_id }}>{{ tipo.nome }}</option>{% endfor %}</select></div>
+                                                <div class="col-6"><select class="form-select" name="reparto_codice">{% for reparto in reparti %}<option value="{{ reparto.codice }}" {{ 'selected' if reparto.codice == s.reparto_codice }}>{{ reparto.codice }}</option>{% endfor %}</select></div>
+                                                <div class="col-12"><button class="btn btn-outline-primary btn-sm">Salva anagrafica</button></div>
+                                            </form>
+                                        </details>
+
+                                        <details class="mt-2">
+                                            <summary>Storico ({{ s.eventi|length }})</summary>
+                                            <ul class="list-group list-group-flush mt-2">
+                                                {% for evento in s.eventi %}
+                                                    <li class="list-group-item px-0 small">
+                                                        <strong>{{ evento.data_evento.strftime('%d/%m/%Y') }} – {{ evento.tipo|title }}</strong>, {{ evento.esito|replace('_',' ')|title }}
+                                                        {% if evento.rapporto_riferimento %}<br>Rapporto: {{ evento.rapporto_riferimento }}{% endif %}
+                                                        {% if evento.note %}<br>{{ evento.note }}{% endif %}
+                                                    </li>
+                                                {% endfor %}
+                                            </ul>
+                                        </details>
+                                    </div>
+                                </details>
+                            </td>
+                        </tr>
+                    {% else %}
+                        <tr><td colspan="8" class="text-center text-secondary py-4">Nessuno strumento inserito.</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="tab-pane fade" id="spedizioni">
+            <div class="card mb-4">
+                <div class="card-header fw-semibold">Nuova spedizione</div>
+                <div class="card-body">
+                    <form method="post" action="{{ operator_url_for('main.tarature_spedizione_create') }}">
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-3"><label class="form-label">Data spedizione</label><input class="form-control" type="date" name="data_spedizione" value="{{ oggi.isoformat() }}" required></div>
+                            <div class="col-md-4"><label class="form-label">Laboratorio / studio metrologico</label><input class="form-control" name="laboratorio" required></div>
+                            <div class="col-md-5"><label class="form-label">Note</label><input class="form-control" name="note"></div>
+                        </div>
+                        <p class="fw-semibold mb-2">Seleziona strumenti</p>
+                        <div class="row g-2 mb-3">
+                            {% for row in strumenti_rows if row.strumento.stato != 'IN_TARATURA' %}
+                                {% set s = row.strumento %}
+                                <div class="col-md-4">
+                                    <label class="border rounded p-2 d-block h-100">
+                                        <input class="form-check-input me-2" type="checkbox" name="strumento_id" value="{{ s.id }}">
+                                        <strong>{{ s.codice_interno }}</strong> – {{ s.descrizione }}
+                                        <span class="badge {{ 'bg-secondary' if s.stato == 'NON_IN_USO' else 'bg-success' }}">{{ s.stato|replace('_',' ')|title }}</span>
+                                    </label>
+                                </div>
+                            {% else %}<p class="text-secondary">Non ci sono strumenti selezionabili.</p>{% endfor %}
+                        </div>
+                        <button class="btn btn-primary">Crea spedizione</button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead><tr><th>Numero</th><th>Data</th><th>Laboratorio</th><th>Stato</th><th>Strumenti</th><th>Note</th></tr></thead>
+                    <tbody>
+                    {% for spedizione in spedizioni %}
+                        <tr>
+                            <td class="fw-semibold">{{ spedizione.numero }}</td>
+                            <td>{{ spedizione.data_spedizione.strftime('%d/%m/%Y') }}</td>
+                            <td>{{ spedizione.laboratorio }}</td>
+                            <td><span class="badge {{ 'bg-success' if spedizione.chiusa else 'bg-warning text-dark' }}">{{ 'Chiusa' if spedizione.chiusa else 'In attesa' }}</span></td>
+                            <td>{% for item in spedizione.strumenti %}<div>{{ item.strumento.codice_interno }} – {{ 'concluso' if item.evento_id else 'in attesa' }}</div>{% endfor %}</td>
+                            <td>{{ spedizione.note or '' }}</td>
+                        </tr>
+                    {% else %}<tr><td colspan="6" class="text-center text-secondary">Nessuna spedizione.</td></tr>{% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="tab-pane fade" id="tipologie">
+            <div class="card mb-4">
+                <div class="card-header fw-semibold">Nuova tipologia</div>
+                <div class="card-body">
+                    <form class="row g-3" method="post" action="{{ operator_url_for('main.tarature_tipologia_create') }}">
+                        <div class="col-md-4"><label class="form-label">Nome</label><input class="form-control" name="nome" required></div>
+                        <div class="col-md-3"><label class="form-label">Taratura esterna (mesi)</label><input class="form-control" type="number" min="1" name="frequenza_esterna_mesi" required></div>
+                        <div class="col-md-3"><label class="form-label">Verifica interna (mesi)</label><input class="form-control" type="number" min="1" name="frequenza_interna_mesi" placeholder="Facoltativa"></div>
+                        <div class="col-md-2 d-flex align-items-end"><button class="btn btn-primary w-100">Crea</button></div>
+                    </form>
+                </div>
+            </div>
+            <div class="row g-3">
+                {% for tipo in tipologie %}
+                    <div class="col-md-6 col-xl-4">
+                        <form class="card card-body h-100" method="post" action="{{ operator_url_for('main.tarature_tipologia_update', tipologia_id=tipo.id) }}">
+                            <label class="form-label">Nome</label><input class="form-control mb-2" name="nome" value="{{ tipo.nome }}" required>
+                            <label class="form-label">Esterna (mesi)</label><input class="form-control mb-2" type="number" min="1" name="frequenza_esterna_mesi" value="{{ tipo.frequenza_esterna_mesi }}" required>
+                            <label class="form-label">Interna (mesi)</label><input class="form-control mb-3" type="number" min="1" name="frequenza_interna_mesi" value="{{ tipo.frequenza_interna_mesi or '' }}">
+                            <button class="btn btn-outline-primary btn-sm">Salva e ricalcola</button>
+                        </form>
+                    </div>
+                {% else %}<p class="text-secondary">Nessuna tipologia.</p>{% endfor %}
+            </div>
+        </section>
+
+        <section class="tab-pane fade" id="log">
+            <div class="table-responsive">
+                <table class="table table-sm table-striped">
+                    <thead><tr><th>Data e ora</th><th>Utente</th><th>Evento</th><th>Entità</th><th>Dettaglio</th></tr></thead>
+                    <tbody>
+                    {% for item in logs %}
+                        <tr><td>{{ item.created_at.strftime('%d/%m/%Y %H:%M') }}</td><td>{{ item.utente_username or 'Sistema' }}</td><td>{{ item.evento|replace('_',' ')|title }}</td><td>{{ item.entita }} #{{ item.entita_id or '' }}</td><td class="tarature-log"><code>{{ item.dettaglio }}</code></td></tr>
+                    {% else %}<tr><td colspan="5" class="text-center text-secondary">Nessun evento.</td></tr>{% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+</main>
+{% endblock %}
+
+{% block extra_js %}
+    {{ super() }}
+    <script>
+        (() => {
+            const search = document.getElementById("strumenti-search");
+            const state = document.getElementById("strumenti-state");
+            const rows = [...document.querySelectorAll(".strumento-row")];
+            function filterRows() {
+                const query = search.value.trim().toLowerCase();
+                rows.forEach(row => row.hidden =
+                    (query && !row.dataset.search.includes(query)) ||
+                    (state.value && row.dataset.state !== state.value));
+            }
+            search.addEventListener("input", filterRows);
+            state.addEventListener("change", filterRows);
+        })();
+    </script>
+{% endblock %}
