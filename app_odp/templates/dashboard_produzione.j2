@@ -91,7 +91,7 @@
         <div class="d-flex justify-content-between align-items-center mb-3">
             <div>
                 <h2 class="mb-0">Dashboard produzione</h2>
-                <div class="text-muted">Cruscotto linea e KPI produzione</div>
+                <div class="text-muted">Carico operativo e KPI produzione</div>
             </div>
         </div>
 
@@ -102,7 +102,7 @@
                     role="presentation">
                     <a class="nav-link {% if active_section == 'cruscotto' %}active{% endif %}"
                        href="{{ operator_url_for('main.dashboard_produzione', section='cruscotto') }}">
-                        Cruscotto linea
+                        Cruscotto operativo
                     </a>
                 </li>
             {% endif %}
@@ -151,8 +151,7 @@
                         </div>
                     </div>
                 </div>
-                <!-- Sezione riepilogo sopra Carico prossimo mese + Stati ordine -->
-                <!-- Sezione riepilogo sopra Carico prossimo mese + Stati ordine -->
+                <!-- Sezione riepilogo sopra Carico prossimo mese + Stati ODP -->
                 <div class="row g-3 mb-3">
                     <div class="col-12">
                         <div class="card shadow-sm">
@@ -163,7 +162,7 @@
 
                                     <div class="col">
                                         <div class="dashboard-summary-card border rounded p-2 h-100 text-center d-flex flex-column justify-content-center align-items-center">
-                                            <div class="text-muted small">Ordini totali</div>
+                                            <div class="text-muted small">ODP aperti</div>
                                             <div class="kpi-card-value"
                                                  data-dashboard-card="ordini_totali">0
                                             </div>
@@ -190,7 +189,7 @@
 
                                     <div class="col">
                                         <div class="dashboard-summary-card border rounded p-2 h-100 text-center d-flex flex-column justify-content-center align-items-center">
-                                            <div class="text-muted small">Ore previste produzione</div>
+                                            <div class="text-muted small">Ore aperte complessive</div>
                                             <div class="kpi-card-value"
                                                  data-dashboard-card="ore_previste_produzione">0 h
                                             </div>
@@ -211,11 +210,56 @@
                                     </div>
                                     <div class="col">
                                         <div class="dashboard-summary-card border rounded p-2 h-100 text-center d-flex flex-column justify-content-center align-items-center">
-                                            <div class="text-muted small">Saturazione totale oggi</div>
+                                            <div class="text-muted small">Saturazione carico entro oggi</div>
 
                                             <div class="kpi-card-value"
                                                  data-dashboard-card="saturazione_totale">
                                                 0%
+                                            </div>
+                                            <div class="small text-muted"
+                                                 data-dashboard-card-sub="saturazione_totale_ore">
+                                                0 h / 0 h
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="col">
+                                        <div class="dashboard-summary-card border rounded p-2 h-100 text-center d-flex flex-column justify-content-center align-items-center">
+                                            <div class="text-muted small">Incidenza sospensioni</div>
+                                            <div class="kpi-card-value"
+                                                 data-dashboard-card="incidenza_sospensioni">
+                                                0%
+                                            </div>
+                                            <div class="small text-muted"
+                                                 data-dashboard-card-sub="incidenza_sospensioni">
+                                                0 / 0 ODP
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="col">
+                                        <div class="dashboard-summary-card border rounded p-2 h-100 text-center d-flex flex-column justify-content-center align-items-center">
+                                            <div class="text-muted small">Gap capacità 7 giorni</div>
+                                            <div class="kpi-card-value"
+                                                 data-dashboard-card="gap_capacita_7_giorni">
+                                                0 h
+                                            </div>
+                                            <div class="small text-muted"
+                                                 data-dashboard-card-sub="gap_capacita_7_giorni">
+                                                0 h / 0 h
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="col">
+                                        <div class="dashboard-summary-card border rounded p-2 h-100 text-center d-flex flex-column justify-content-center align-items-center">
+                                            <div class="text-muted small">Risorse collo di bottiglia</div>
+                                            <div class="kpi-card-value"
+                                                 data-dashboard-card="risorse_collo_bottiglia">
+                                                0
+                                            </div>
+                                            <div class="small text-muted">
+                                                carico entro oggi &gt; capacità
                                             </div>
                                         </div>
                                     </div>
@@ -226,7 +270,7 @@
                     </div>
                 </div>
 
-                <!-- Grafici Carico prossimo mese + Stati ordine -->
+                <!-- Grafici Carico prossimo mese + Stati ODP -->
                 <div class="row g-3 mb-3">
                     <div class="col-12 col-xl-10">
                         <div class="card shadow-sm h-100">
@@ -245,7 +289,7 @@
 
                     <div class="col-12 col-xl-2">
                         <div class="card shadow-sm h-100">
-                            <div class="card-header">Stati ordine</div>
+                            <div class="card-header">Stati ODP</div>
                             <div class="card-body">
                                 <div class="dashboard-chart-box">
                                     <canvas id="chart-cruscotto-stati"></canvas>
@@ -277,7 +321,7 @@
 
                     <div class="col-12 col-xl-6">
                         <div class="card shadow-sm h-100">
-                            <div class="card-header">Ordini per reparto</div>
+                            <div class="card-header">ODP per reparto</div>
                             <div class="card-body">
                                 <div class="dashboard-chart-box">
                                     <canvas id="chart-cruscotto-ordini-reparto"></canvas>
@@ -309,7 +353,7 @@
 
                     <div class="col-12 col-xl-6">
                         <div class="card shadow-sm h-100">
-                            <div class="card-header">Ordini per risorsa</div>
+                            <div class="card-header">ODP per risorsa</div>
                             <div class="card-body">
                                 <div class="dashboard-chart-box">
                                     <canvas id="chart-cruscotto-ordini-risorsa"></canvas>
@@ -326,7 +370,7 @@
                 <div class="row g-3">
                     <div class="col-12 col-xl-6">
                         <div class="card shadow-sm h-100">
-                            <div class="card-header">Saturazione reparti</div>
+                            <div class="card-header">Saturazione reparti (carico entro oggi)</div>
                             <div class="card-body">
                                 <div class="dashboard-chart-box">
                                     <canvas id="chart-cruscotto-saturazione"></canvas>
@@ -346,6 +390,23 @@
                                 <div id="dashboard-criticita-list"
                                      class="dashboard-list">
                                     <div class="text-muted">Dati non caricati.</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row g-3 mt-1">
+                    <div class="col-12">
+                        <div class="card shadow-sm">
+                            <div class="card-header">Risorse collo di bottiglia</div>
+                            <div class="card-body">
+                                <div class="dashboard-chart-box">
+                                    <canvas id="chart-cruscotto-colli-risorsa"></canvas>
+                                    <div class="dashboard-empty"
+                                         data-empty-for="chart-cruscotto-colli-risorsa">
+                                        Nessuna risorsa oltre capacità.
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -420,7 +481,7 @@
                     <div class="col-12 col-md-2">
                         <div class="card shadow-sm h-100">
                             <div class="card-body">
-                                <div class="text-muted small">Ordini chiusi</div>
+                                <div class="text-muted small">Ordini completati</div>
                                 <div class="kpi-card-value"
                                      data-kpi-card="ordini_chiusi">0
                                 </div>
@@ -448,7 +509,7 @@
                                 <div class="kpi-card-value"
                                      data-kpi-card="giorni_medi_ritardo">0 g
                                 </div>
-                                <div class="small text-muted kpi-card-subtitle">solo ordini in ritardo</div>
+                                <div class="small text-muted kpi-card-subtitle">solo ordini completati in ritardo, giorni solari</div>
                             </div>
                         </div>
                     </div>
@@ -468,11 +529,11 @@
                     <div class="col-12 col-md-2">
                         <div class="card shadow-sm h-100">
                             <div class="card-body">
-                                <div class="text-muted small">Affidabilità tempi</div>
+                                <div class="text-muted small">Aderenza tempi</div>
                                 <div class="kpi-card-value"
                                      data-kpi-card="affidabilita_tempi">0%
                                 </div>
-                                <div class="small text-muted kpi-card-subtitle">entro +10%</div>
+                                <div class="small text-muted kpi-card-subtitle">fasi entro ±10%</div>
                             </div>
                         </div>
                     </div>
@@ -490,9 +551,54 @@
                 </div>
 
                 <div class="row g-3 mb-3">
+                    <div class="col-12 col-md-4">
+                        <div class="card shadow-sm h-100">
+                            <div class="card-body">
+                                <div class="text-muted small">Tasso non conformità</div>
+                                <div class="kpi-card-value"
+                                     data-kpi-card="tasso_non_conformita">0%
+                                </div>
+                                <div class="small text-muted kpi-card-subtitle"
+                                     data-kpi-card-sub="tasso_non_conformita">
+                                    0 NC / 0 consuntivati
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12 col-md-4">
+                        <div class="card shadow-sm h-100">
+                            <div class="card-body">
+                                <div class="text-muted small">Lead time medio</div>
+                                <div class="kpi-card-value"
+                                     data-kpi-card="lead_time_medio_ore">0 h
+                                </div>
+                                <div class="small text-muted kpi-card-subtitle"
+                                     data-kpi-card-sub="lead_time">
+                                    mediana 0 h · 0 ODP
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12 col-md-4">
+                        <div class="card shadow-sm h-100">
+                            <div class="card-body">
+                                <div class="text-muted small">Copertura dati KPI</div>
+                                <div class="kpi-card-value"
+                                     data-kpi-card="copertura_dati">0%
+                                </div>
+                                <div class="small text-muted kpi-card-subtitle"
+                                     data-kpi-card-sub="copertura_dati">
+                                    0 / 0 fasi complete
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row g-3 mb-3">
                     <div class="col-12 col-xl-4">
                         <div class="card shadow-sm h-100">
-                            <div class="card-header">Tempo reale vs previsto</div>
+                            <div class="card-header">Tempo fasi: reale vs previsto</div>
                             <div class="card-body">
                                 <div class="dashboard-chart-box-sm">
                                     <canvas id="chart-kpi-tempi"></canvas>
@@ -505,7 +611,7 @@
                     </div>
                     <div class="col-12 col-xl-4">
                         <div class="card shadow-sm h-100">
-                            <div class="card-header">Affidabilità tempi</div>
+                            <div class="card-header">Aderenza tempi delle fasi</div>
                             <div class="card-body">
                                 <div class="dashboard-chart-box-sm">
                                     <canvas id="chart-kpi-affidabilita"></canvas>
@@ -534,7 +640,7 @@
                 <div class="row g-3 mb-3">
                     <div class="col-12 col-xl-6">
                         <div class="card shadow-sm h-100">
-                            <div class="card-header">Top risorse per scostamento</div>
+                            <div class="card-header">Top risorse per scostamento fasi</div>
                             <div class="card-body">
                                 <div class="dashboard-chart-box">
                                     <canvas id="chart-kpi-risorse-scostamento"></canvas>
@@ -547,7 +653,7 @@
                     </div>
                     <div class="col-12 col-xl-6">
                         <div class="card shadow-sm h-100">
-                            <div class="card-header">Top lavorazioni per scostamento</div>
+                            <div class="card-header">Top lavorazioni per scostamento fasi</div>
                             <div class="card-body">
                                 <div class="dashboard-chart-box">
                                     <canvas id="chart-kpi-lavorazioni-scostamento"></canvas>
@@ -665,13 +771,12 @@
                                                 <th class="text-end">Tempo reale</th>
                                                 <th class="text-end">Scostamento</th>
                                                 <th class="text-end">% scostamento</th>
-                                                <th class="text-end">Tempo medio ordine</th>
                                                 <th class="text-end">Tempo medio fase</th>
                                             </tr>
                                             </thead>
                                             <tbody id="tbody-snapshot-tempi">
                                             <tr>
-                                                <td colspan="7"
+                                                <td colspan="6"
                                                     class="text-center text-muted py-3">
                                                     Dati non caricati.
                                                 </td>
@@ -944,7 +1049,7 @@
                     data: {
                         labels: rows.map(x => x.label),
                         datasets: [{
-                            label: "Carico / capacità oggi",
+                            label: "Carico entro oggi / capacità odierna",
                             data: rows.map(x => Number(x.saturazione || 0)),
                             backgroundColor: rows.map(x => colorByPercent(x.saturazione)),
                         }],
@@ -954,7 +1059,7 @@
                         scales: {
                             x: {
                                 beginAtZero: true,
-                                title: {display: true, text: "% saturazione oggi"}
+                                title: {display: true, text: "% saturazione carico entro oggi"}
                             }
                         },
                         plugins: {
@@ -965,11 +1070,56 @@
                                         const row = rows[context.dataIndex] || {};
 
                                         return [
-                                            `Saturazione oggi: ${formatPercent(row.saturazione)}`,
-                                            `Ore ordini oggi: ${formatHours(row.ore_totali)}`,
+                                            `Saturazione carico entro oggi: ${formatPercent(row.saturazione)}`,
+                                            `Ore da assorbire entro oggi: ${formatHours(row.ore_totali)}`,
                                             `Ore disponibili oggi: ${formatHours(row.capacita)}`,
                                             `Scostamento oggi: ${formatHours(row.scostamento_ore)}`,
                                             `Operatori reparto: ${row.operatori_capacita ?? 0}`,
+                                        ];
+                                    }
+                                }
+                            }
+                        },
+                    }),
+                }, rows.length > 0);
+            }
+
+            function renderCruscottoColliRisorsa(rows) {
+                rows = rows || [];
+
+                renderChart("cruscotto_colli_risorsa", "chart-cruscotto-colli-risorsa", {
+                    type: "bar",
+                    data: {
+                        labels: rows.map(x => x.label),
+                        datasets: [{
+                            label: "Saturazione carico entro oggi",
+                            data: rows.map(x => Number(x.saturazione || 0)),
+                            backgroundColor: rows.map(x => colorByPercent(x.saturazione)),
+                        }],
+                    },
+                    options: baseOptions({
+                        indexAxis: "y",
+                        scales: {
+                            x: {
+                                beginAtZero: true,
+                                title: {display: true, text: "% saturazione"}
+                            }
+                        },
+                        plugins: {
+                            legend: {display: false},
+                            tooltip: {
+                                callbacks: {
+                                    label: (context) => {
+                                        const row = rows[context.dataIndex] || {};
+                                        const capacita = row.senza_capacita
+                                            ? "non configurata"
+                                            : formatHours(row.capacita);
+
+                                        return [
+                                            `Saturazione: ${formatPercent(row.saturazione)}`,
+                                            `Carico entro oggi: ${formatHours(row.ore_totali)}`,
+                                            `Capacità odierna: ${capacita}`,
+                                            `Operatori abilitati: ${row.operatori_capacita ?? 0}`,
                                         ];
                                     }
                                 }
@@ -1089,7 +1239,7 @@
                                 },
                                 title: {
                                     display: true,
-                                    text: "Numero ordini"
+                                    text: "Numero ODP"
                                 }
                             },
                             y: {
@@ -1140,7 +1290,7 @@
                                 },
                                 title: {
                                     display: true,
-                                    text: "Numero ordini"
+                                    text: "Numero ODP"
                                 }
                             },
                             y: {
@@ -1275,7 +1425,32 @@
                 setCard(
                     "data-dashboard-card-sub",
                     "saturazione_totale_ore",
-                    `${formatHours(cards.ore_previste_produzione)} / ${formatHours(cards.ore_disponibili_oggi)}`
+                    `${formatHours(cards.ore_previste_oggi)} / ${formatHours(cards.ore_disponibili_oggi)}`
+                );
+                setCard(
+                    "data-dashboard-card",
+                    "incidenza_sospensioni",
+                    formatPercent(cards.incidenza_sospensioni)
+                );
+                setCard(
+                    "data-dashboard-card-sub",
+                    "incidenza_sospensioni",
+                    `${cards.ordini_sospesi ?? 0} / ${cards.ordini_totali ?? 0} ODP`
+                );
+                setCard(
+                    "data-dashboard-card",
+                    "gap_capacita_7_giorni",
+                    formatSignedHours(cards.gap_capacita_7_giorni)
+                );
+                setCard(
+                    "data-dashboard-card-sub",
+                    "gap_capacita_7_giorni",
+                    `${formatHours(cards.carico_7_giorni)} / ${formatHours(cards.capacita_7_giorni)}`
+                );
+                setCard(
+                    "data-dashboard-card",
+                    "risorse_collo_bottiglia",
+                    cards.risorse_collo_bottiglia ?? 0
                 );
 
                 setCard("data-dashboard-card", "ordini_critici", cards.ordini_critici ?? 0);
@@ -1284,6 +1459,7 @@
                 renderCruscottoCarico(data.charts?.carico_prossimi_giorni || []);
                 renderCruscottoStati(data.charts?.stati_ordine || []);
                 renderCruscottoSaturazione(data.charts?.saturazione_risorse || []);
+                renderCruscottoColliRisorsa(data.charts?.colli_bottiglia_risorse || []);
                 renderCruscottoReparti(data.charts?.carico_per_reparto || []);
                 renderCruscottoRisorse(data.charts?.carico_per_risorsa || []);
                 renderCruscottoOrdiniReparto(data.charts?.ordini_per_reparto || []);
@@ -1295,11 +1471,15 @@
                 const fromInput = document.getElementById("kpi-date-from");
                 const toInput = document.getElementById("kpi-date-to");
                 if (!fromInput || !toInput) return;
+                const localDate = date => {
+                    const offset = date.getTimezoneOffset() * 60_000;
+                    return new Date(date.getTime() - offset).toISOString().slice(0, 10);
+                };
                 const today = new Date();
                 const from = new Date(today);
                 from.setFullYear(today.getFullYear() - 1);
-                if (!fromInput.value) fromInput.value = from.toISOString().slice(0, 10);
-                if (!toInput.value) toInput.value = today.toISOString().slice(0, 10);
+                if (!fromInput.value) fromInput.value = localDate(from);
+                if (!toInput.value) toInput.value = localDate(today);
             }
 
             function getKpiFilters() {
@@ -1417,6 +1597,24 @@
                 setCard("data-kpi-card-sub", "ordini_in_ritardo", `${cards.ordini_in_ritardo ?? 0} ordini`);
                 setCard("data-kpi-card-sub", "scostamento_totale", formatHours(cards.scostamento_totale));
                 setCard("data-kpi-card", "macchine_prodotte", Number(cards.macchine_prodotte || 0).toFixed(0));
+                setCard("data-kpi-card", "tasso_non_conformita", formatPercent(cards.tasso_non_conformita));
+                setCard(
+                    "data-kpi-card-sub",
+                    "tasso_non_conformita",
+                    `${Number(cards.quantita_non_conforme || 0).toFixed(0)} NC / ${Number(cards.quantita_consuntivata || 0).toFixed(0)} consuntivati`
+                );
+                setCard("data-kpi-card", "lead_time_medio_ore", formatHours(cards.lead_time_medio_ore));
+                setCard(
+                    "data-kpi-card-sub",
+                    "lead_time",
+                    `mediana ${formatHours(cards.lead_time_mediano_ore)} · ${cards.lead_time_copertura ?? 0} ODP`
+                );
+                setCard("data-kpi-card", "copertura_dati", formatPercent(cards.copertura_dati));
+                setCard(
+                    "data-kpi-card-sub",
+                    "copertura_dati",
+                    `${cards.fasi_dati_completi ?? 0} / ${cards.fasi_totali ?? 0} fasi complete`
+                );
 
                 renderKpiTempoRealeVsPrevisto(data.charts?.tempo_reale_vs_previsto || []);
                 renderKpiAffidabilita(data.charts?.affidabilita_tempi || []);
@@ -1446,7 +1644,7 @@
                 if (el) el.textContent = value;
             }
 
-            function setSnapshotDelta(name, comparison, suffix = "") {
+            function setSnapshotDelta(name, comparison, suffix = "", positiveIsGood = false) {
                 const el = document.querySelector(`[data-snapshot-delta="${name}"]`);
                 if (!el) return;
                 if (!comparison) {
@@ -1456,8 +1654,8 @@
                 const delta = Number(comparison.delta || 0);
                 const sign = delta > 0 ? "+" : "";
                 el.textContent = `${sign}${delta.toFixed(2)}${suffix} vs precedente`;
-                el.classList.toggle("text-danger", delta > 0);
-                el.classList.toggle("text-success", delta < 0);
+                el.classList.toggle("text-danger", positiveIsGood ? delta < 0 : delta > 0);
+                el.classList.toggle("text-success", positiveIsGood ? delta > 0 : delta < 0);
             }
 
             function renderSnapshotScopeOptions(scopes, selectedValue) {
@@ -1490,7 +1688,7 @@
                                 tension: .25
                             },
                             {
-                                label: "Ordini chiusi",
+                                label: "Ordini completati",
                                 data: rows.map(x => Number(x.ordini_chiusi || 0)),
                                 borderColor: BORDER_COLORS.blue,
                                 backgroundColor: COLORS.blue,
@@ -1581,7 +1779,7 @@
                 if (!rows.length) {
                     tbody.innerHTML = `
             <tr>
-                <td colspan="7" class="text-center text-muted py-3">
+                <td colspan="6" class="text-center text-muted py-3">
                     Nessuno snapshot disponibile.
                 </td>
             </tr>
@@ -1604,7 +1802,6 @@
                 <td class="text-end">${formatHours(row.tempo_reale_totale)}</td>
                 <td class="text-end ${scostamentoClass}">${formatSignedHours(scostamento)}</td>
                 <td class="text-end ${scostamentoClass}">${formatPercent(row.scostamento_percentuale)}</td>
-                <td class="text-end">${formatHours(row.tempo_medio_ordine)}</td>
                 <td class="text-end">${formatHours(row.tempo_medio_fase)}</td>
             </tr>
         `;
@@ -1642,8 +1839,8 @@
 
                 setSnapshotCard("percentuale_ritardo", formatPercent(latest?.percentuale_ritardo));
                 setSnapshotCard("scostamento_totale", formatHours(latest?.scostamento_totale));
-                setSnapshotDelta("ordini_chiusi", data.comparison?.ordini_chiusi, "");
-                setSnapshotDelta("macchine_prodotte", data.comparison?.macchine_prodotte, "");
+                setSnapshotDelta("ordini_chiusi", data.comparison?.ordini_chiusi, "", true);
+                setSnapshotDelta("macchine_prodotte", data.comparison?.macchine_prodotte, "", true);
                 setSnapshotDelta("percentuale_ritardo", data.comparison?.percentuale_ritardo, "%");
                 setSnapshotDelta("scostamento_totale", data.comparison?.scostamento_totale, " h");
                 renderSnapshotCharts(rows);

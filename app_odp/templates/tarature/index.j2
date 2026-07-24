@@ -6,6 +6,11 @@
     {{ super() }}
     <style>
         .tarature-table td { vertical-align: middle; }
+        .tarature-sort { border: 0; padding: 0; background: none; color: inherit; font: inherit; font-weight: inherit; }
+        .tarature-sort::after { content: " ↕"; opacity: .45; }
+        .tarature-sort[data-direction="asc"]::after { content: " ↑"; opacity: 1; }
+        .tarature-sort[data-direction="desc"]::after { content: " ↓"; opacity: 1; }
+        .tarature-sort:focus-visible { outline: 2px solid var(--bs-primary); outline-offset: 2px; }
         .tarature-actions summary { cursor: pointer; color: var(--bs-primary); }
         .tarature-actions[open] { min-width: 22rem; }
         .tarature-log { max-width: 36rem; white-space: normal; word-break: break-word; }
@@ -52,8 +57,9 @@
                     {% else %}
                     <form class="row g-3" method="post" action="{{ operator_url_for('main.tarature_strumento_create') }}">
                         <div class="col-md-2"><label class="form-label">Codice interno</label><input class="form-control" name="codice_interno" required></div>
-                        <div class="col-md-2"><label class="form-label">Numero seriale</label><input class="form-control" name="numero_seriale" required></div>
+                        <div class="col-md-2"><label class="form-label">Numero seriale</label><input class="form-control" name="numero_seriale" placeholder="- se assente" required></div>
                         <div class="col-md-3"><label class="form-label">Descrizione</label><input class="form-control" name="descrizione" required></div>
+                        <div class="col-md-2"><label class="form-label">Costruttore</label><input class="form-control" name="costruttore" required></div>
                         <div class="col-md-2">
                             <label class="form-label">Tipologia</label>
                             <select class="form-select" name="tipologia_id" required>
@@ -75,6 +81,12 @@
                             <input class="form-control" type="date" name="data_ultima_taratura" max="{{ oggi.isoformat() }}">
                             <div class="form-text">Se non indicata, viene usata la data di oggi.</div>
                         </div>
+                        <div class="col-md-3 d-flex align-items-end">
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" name="solo_verifica_interna" value="1" id="solo-verifica-interna">
+                                <label class="form-check-label" for="solo-verifica-interna">Solo verifica interna</label>
+                            </div>
+                        </div>
                         <div class="col-12"><button class="btn btn-primary">Inserisci</button></div>
                     </form>
                     {% endif %}
@@ -82,7 +94,7 @@
             </details>
 
             <div class="row g-2 mb-3">
-                <div class="col-md-5"><input id="strumenti-search" class="form-control" type="search" placeholder="Cerca codice, seriale, descrizione, tipologia o reparto"></div>
+                <div class="col-md-5"><input id="strumenti-search" class="form-control" type="search" placeholder="Cerca codice, seriale, descrizione, costruttore, tipologia o reparto"></div>
                 <div class="col-md-3">
                     <select id="strumenti-state" class="form-select">
                         <option value="">Tutti gli stati</option>
@@ -93,23 +105,37 @@
 
             <div class="table-responsive">
                 <table class="table table-striped table-hover tarature-table">
-                    <thead><tr><th>Codice</th><th>Seriale</th><th>Descrizione</th><th>Tipologia</th><th>Reparto</th><th>Stato</th><th>Prossima attività</th><th>Operazioni</th></tr></thead>
+                    <thead>
+                        <tr>
+                            <th aria-sort="none"><button type="button" class="tarature-sort" data-sort-column="0">Codice</button></th>
+                            <th aria-sort="none"><button type="button" class="tarature-sort" data-sort-column="1">Seriale</button></th>
+                            <th aria-sort="none"><button type="button" class="tarature-sort" data-sort-column="2">Descrizione</button></th>
+                            <th aria-sort="none"><button type="button" class="tarature-sort" data-sort-column="3">Costruttore</button></th>
+                            <th aria-sort="none"><button type="button" class="tarature-sort" data-sort-column="4">Tipologia</button></th>
+                            <th aria-sort="none"><button type="button" class="tarature-sort" data-sort-column="5">Reparto</button></th>
+                            <th aria-sort="none"><button type="button" class="tarature-sort" data-sort-column="6">Stato</button></th>
+                            <th aria-sort="none"><button type="button" class="tarature-sort" data-sort-column="7">Prossima attività</button></th>
+                            <th>Operazioni</th>
+                        </tr>
+                    </thead>
                     <tbody>
                     {% for row in strumenti_rows %}
                         {% set s = row.strumento %}
+                        {% set seriale = '-' if s.numero_seriale.startswith('__NO_SERIAL__:') else s.numero_seriale %}
                         {% set d = row.scadenza %}
-                        <tr class="strumento-row" data-state="{{ s.stato }}" data-search="{{ (s.codice_interno ~ ' ' ~ s.numero_seriale ~ ' ' ~ s.descrizione ~ ' ' ~ s.tipologia.nome ~ ' ' ~ s.reparto_codice)|lower }}">
+                        <tr class="strumento-row" data-state="{{ s.stato }}" data-search="{{ (s.codice_interno ~ ' ' ~ seriale ~ ' ' ~ s.descrizione ~ ' ' ~ (s.costruttore or '') ~ ' ' ~ s.tipologia.nome ~ ' ' ~ s.reparto_codice)|lower }}">
                             <td class="fw-semibold">{{ s.codice_interno }}</td>
-                            <td>{{ s.numero_seriale }}</td>
+                            <td>{{ seriale }}</td>
                             <td>{{ s.descrizione }}</td>
-                            <td>{{ s.tipologia.nome }}</td>
+                            <td>{{ s.costruttore or '' }}</td>
+                            <td>{{ s.tipologia.nome }}{% if s.solo_verifica_interna %}<br><span class="badge bg-info text-dark">Solo interna</span>{% endif %}</td>
                             <td>{{ s.reparto_codice }}</td>
                             <td>
                                 <span class="badge {{ 'bg-success' if s.stato == 'IN_USO' else 'bg-warning text-dark' if s.stato == 'IN_TARATURA' else 'bg-secondary' }}">
                                     {{ {'IN_USO':'In uso','NON_IN_USO':'Non in uso','IN_TARATURA':'In taratura'}[s.stato] }}
                                 </span>
                             </td>
-                            <td>
+                            <td data-sort="{{ d.data.isoformat() if s.stato == 'IN_USO' else '' }}">
                                 {% if s.stato == 'IN_USO' %}
                                     <span class="badge {{ 'bg-danger' if d.classe == 'SCADUTA' else 'bg-warning text-dark' if d.classe == 'ENTRO_30' else 'bg-secondary' if d.classe == 'ENTRO_60' else 'bg-success' }}">{{ d.tipo|title }}</span>
                                     {{ d.data.strftime('%d/%m/%Y') }}
@@ -149,8 +175,10 @@
                                             <summary>Modifica anagrafica</summary>
                                             <form class="row g-2 mt-2" method="post" action="{{ operator_url_for('main.tarature_strumento_update', strumento_id=s.id) }}">
                                                 <div class="col-6"><input class="form-control" name="codice_interno" value="{{ s.codice_interno }}" required></div>
-                                                <div class="col-6"><input class="form-control" name="numero_seriale" value="{{ s.numero_seriale }}" required></div>
+                                                <div class="col-6"><input class="form-control" name="numero_seriale" value="{{ seriale }}" required></div>
                                                 <div class="col-12"><input class="form-control" name="descrizione" value="{{ s.descrizione }}" required></div>
+                                                <div class="col-12"><input class="form-control" name="costruttore" value="{{ s.costruttore or '' }}" placeholder="Costruttore" required></div>
+                                                <div class="col-12 form-check ms-1"><input class="form-check-input" type="checkbox" name="solo_verifica_interna" value="1" id="solo-interna-{{ s.id }}" {{ 'checked' if s.solo_verifica_interna }}><label class="form-check-label" for="solo-interna-{{ s.id }}">Solo verifica interna</label></div>
                                                 <div class="col-6"><select class="form-select" name="tipologia_id">{% for tipo in tipologie %}<option value="{{ tipo.id }}" {{ 'selected' if tipo.id == s.tipologia_id }}>{{ tipo.nome }}</option>{% endfor %}</select></div>
                                                 <div class="col-6"><select class="form-select" name="reparto_codice">{% for reparto in reparti %}<option value="{{ reparto.codice }}" {{ 'selected' if reparto.codice == s.reparto_codice }}>{{ reparto.codice }}</option>{% endfor %}</select></div>
                                                 <div class="col-12"><button class="btn btn-outline-primary btn-sm">Salva anagrafica</button></div>
@@ -193,7 +221,7 @@
                         </div>
                         <p class="fw-semibold mb-2">Seleziona strumenti</p>
                         <div class="row g-2 mb-3">
-                            {% for row in strumenti_rows if row.strumento.stato != 'IN_TARATURA' %}
+                            {% for row in strumenti_rows if row.strumento.stato != 'IN_TARATURA' and row.strumento.tipologia.taratura_esterna_attiva and not row.strumento.solo_verifica_interna %}
                                 {% set s = row.strumento %}
                                 <div class="col-md-4">
                                     <label class="border rounded p-2 d-block h-100">
@@ -234,9 +262,10 @@
                 <div class="card-body">
                     <form class="row g-3" method="post" action="{{ operator_url_for('main.tarature_tipologia_create') }}">
                         <div class="col-md-4"><label class="form-label">Nome</label><input class="form-control" name="nome" required></div>
-                        <div class="col-md-3"><label class="form-label">Taratura esterna (mesi)</label><input class="form-control" type="number" min="1" name="frequenza_esterna_mesi" required></div>
+                        <div class="col-md-3"><label class="form-label">Taratura esterna (mesi)</label><input class="form-control" type="number" min="1" name="frequenza_esterna_mesi" placeholder="Facoltativa"></div>
                         <div class="col-md-3"><label class="form-label">Verifica interna (mesi)</label><input class="form-control" type="number" min="1" name="frequenza_interna_mesi" placeholder="Facoltativa"></div>
                         <div class="col-md-2 d-flex align-items-end"><button class="btn btn-primary w-100">Crea</button></div>
+                        <div class="col-12 form-text">Indicare almeno una frequenza tra interna ed esterna.</div>
                     </form>
                 </div>
             </div>
@@ -245,7 +274,7 @@
                     <div class="col-md-6 col-xl-4">
                         <form class="card card-body h-100" method="post" action="{{ operator_url_for('main.tarature_tipologia_update', tipologia_id=tipo.id) }}">
                             <label class="form-label">Nome</label><input class="form-control mb-2" name="nome" value="{{ tipo.nome }}" required>
-                            <label class="form-label">Esterna (mesi)</label><input class="form-control mb-2" type="number" min="1" name="frequenza_esterna_mesi" value="{{ tipo.frequenza_esterna_mesi }}" required>
+                            <label class="form-label">Esterna (mesi, facoltativa)</label><input class="form-control mb-2" type="number" min="1" name="frequenza_esterna_mesi" value="{{ tipo.frequenza_esterna_mesi if tipo.taratura_esterna_attiva else '' }}">
                             <label class="form-label">Interna (mesi)</label><input class="form-control mb-3" type="number" min="1" name="frequenza_interna_mesi" value="{{ tipo.frequenza_interna_mesi or '' }}">
                             <button class="btn btn-outline-primary btn-sm">Salva e ricalcola</button>
                         </form>
@@ -276,13 +305,38 @@
         (() => {
             const search = document.getElementById("strumenti-search");
             const state = document.getElementById("strumenti-state");
-            const rows = [...document.querySelectorAll(".strumento-row")];
+            const table = document.querySelector(".tarature-table");
+            const rows = [...table.querySelectorAll(".strumento-row")];
+            const sorters = [...table.querySelectorAll("[data-sort-column]")];
+            const collator = new Intl.Collator("it", { numeric: true, sensitivity: "base" });
+
             function filterRows() {
                 const query = search.value.trim().toLowerCase();
                 rows.forEach(row => row.hidden =
                     (query && !row.dataset.search.includes(query)) ||
                     (state.value && row.dataset.state !== state.value));
             }
+
+            sorters.forEach(sorter => sorter.addEventListener("click", () => {
+                const column = Number(sorter.dataset.sortColumn);
+                const ascending = sorter.dataset.direction !== "asc";
+                const value = row => {
+                    const cell = row.cells[column];
+                    return cell.hasAttribute("data-sort")
+                        ? cell.dataset.sort
+                        : cell.textContent.trim();
+                };
+
+                sorters.forEach(item => {
+                    delete item.dataset.direction;
+                    item.closest("th").setAttribute("aria-sort", "none");
+                });
+                sorter.dataset.direction = ascending ? "asc" : "desc";
+                sorter.closest("th").setAttribute("aria-sort", ascending ? "ascending" : "descending");
+                rows.sort((left, right) => collator.compare(value(left), value(right)) * (ascending ? 1 : -1));
+                rows.forEach(row => table.tBodies[0].append(row));
+            }));
+
             search.addEventListener("input", filterRows);
             state.addEventListener("change", filterRows);
         })();

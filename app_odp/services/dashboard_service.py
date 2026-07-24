@@ -3,6 +3,7 @@
 from datetime import date, datetime, timedelta
 import re
 import json
+from statistics import median
 from flask import request
 from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
@@ -30,6 +31,7 @@ from app_odp.services.order_helpers import (
     _active_value_for_phase,
     _parse_phase_list,
     _ordine_ref_label,
+    _qty_da_lavorare_text,
 )
 
 DASHBOARD_FILTER_KEYS = (
@@ -70,22 +72,14 @@ def _dashboard_lavorazione_attiva(ordine: InputOdp) -> str:
     )
 
 
-def _dashboard_attrezzaggio_ore(ordine: InputOdp) -> float:
-    raw = getattr(ordine, "AttrezzaggioAttivo", "") or getattr(
-        ordine, "TempoAttrezzaggio", ""
-    )
-
-    value = _safe_float(raw)
-
-    # Attrezzaggio nel tuo codice storico era gestito come minuti.
-    return value / 60.0 if value > 0 else 0.0
-
-
 def _dashboard_carico_ore(ordine: InputOdp) -> float:
-    return round(
-        _dashboard_tempo_previsto_ore(ordine) + _dashboard_attrezzaggio_ore(ordine),
-        2,
-    )
+    minuti_per_pezzo = _dashboard_tempo_previsto_minuti_pezzo(ordine)
+    quantita_residua = _safe_float(_qty_da_lavorare_text(ordine))
+
+    if minuti_per_pezzo <= 0 or quantita_residua <= 0:
+        return 0.0
+
+    return round((minuti_per_pezzo * quantita_residua) / 60.0, 2)
 
 
 def _dashboard_order_label(ordine: InputOdp) -> str:
@@ -299,12 +293,12 @@ def _dashboard_capacity_hours_today(capacity_by_weekday: dict[int, float]) -> fl
 
 def _dashboard_ordine_in_saturation_day(ordine: InputOdp) -> bool:
     """
-    Stabilisce se l'ordine deve pesare nella saturazione di oggi.
+    Stabilisce se l'ordine deve pesare nel carico da assorbire entro oggi.
 
-    Regola consigliata:
-    - ordini senza data fine prevista: inclusi oggi;
-    - ordini arretrati: inclusi oggi;
-    - ordini con data fine prevista oggi: inclusi oggi;
+    Regola:
+    - ordini senza data fine prevista: inclusi nel carico da gestire;
+    - ordini arretrati: inclusi;
+    - ordini con data fine prevista oggi: inclusi;
     - ordini futuri: esclusi.
     """
     data_fine = _dashboard_data_fine_prevista(ordine)
@@ -315,6 +309,20 @@ def _dashboard_ordine_in_saturation_day(ordine: InputOdp) -> bool:
     today = _dashboard_today()
 
     return data_fine <= today
+
+
+def _dashboard_carico_entro_giorno(
+    ordini: list[InputOdp],
+    end_day: date,
+) -> float:
+    total = 0.0
+
+    for ordine in ordini or []:
+        data_fine = _dashboard_data_fine_prevista(ordine)
+        if data_fine is None or data_fine <= end_day:
+            total += _dashboard_carico_ore(ordine)
+
+    return round(total, 2)
 
 
 def _dashboard_capacity_by_reparto_today_for_policy(
@@ -374,7 +382,7 @@ def _dashboard_saturazione_risorse(
     ma calcola la saturazione per reparto sul solo giorno attuale.
 
     Formula:
-        ore ordini reparto oggi / ore disponibili oggi operatori reparto * 100
+        ore da assorbire entro oggi / ore disponibili oggi operatori reparto * 100
     """
     reparto_labels = _dashboard_reparti_label_map()
     capacity_by_reparto = _dashboard_capacity_by_reparto_today_for_policy(
@@ -486,7 +494,62 @@ def _dashboard_saturazione_risorse(
             }
         )
 
-    return sorted(out, key=lambda x: (-x["saturazione"], x["label"].lower()))[:12]
+    return sorted(out, key=lambda x: (-x["saturazione"], x["label"].lower()))
+
+
+def _dashboard_colli_bottiglia_risorse(
+    ordini: list[InputOdp],
+    policy: RbacPolicy,
+    filters: dict | None = None,
+) -> list[dict]:
+    carico = {}
+
+    for ordine in ordini or []:
+        if not _dashboard_ordine_in_saturation_day(ordine):
+            continue
+
+        risorsa = _dashboard_risorsa_attiva(ordine)
+        if not risorsa:
+            continue
+
+        carico[risorsa] = carico.get(risorsa, 0.0) + _dashboard_carico_ore(ordine)
+
+    labels = _dashboard_model_label_map(Risorse)
+    today_weekday = _dashboard_today().weekday()
+    out = []
+
+    for risorsa, ore in carico.items():
+        scoped_filters = {**(filters or {}), "risorsa": risorsa}
+        capacity_by_weekday, operatori = _dashboard_capacity_by_weekday_for_policy(
+            policy,
+            scoped_filters,
+        )
+        capacita = round(
+            float(capacity_by_weekday.get(today_weekday, 0.0) or 0.0),
+            2,
+        )
+        ore = round(float(ore or 0.0), 2)
+        saturazione = (
+            round((ore / capacita) * 100, 2) if capacita > 0 else 120.0
+        )
+
+        if capacita > 0 and saturazione <= 100:
+            continue
+
+        out.append(
+            {
+                "label": labels.get(risorsa, risorsa),
+                "risorsa": risorsa,
+                "ore_totali": ore,
+                "capacita": capacita,
+                "scostamento_ore": round(capacita - ore, 2),
+                "saturazione": saturazione,
+                "operatori_capacita": int(operatori or 0),
+                "senza_capacita": capacita <= 0,
+            }
+        )
+
+    return sorted(out, key=lambda x: (-x["saturazione"], x["label"].lower()))
 
 
 def _dashboard_ordini_per_reparto(ordini: list[InputOdp]) -> list[dict]:
@@ -995,14 +1058,14 @@ def _dashboard_build_cruscotto_payload(policy: RbacPolicy) -> dict:
         if not _dashboard_row_matches_filters(base_row, filters):
             continue
 
-        filtered_ordini.append(ordine)
-
         is_attivo = "attiv" in stato
         is_sospeso = "sospes" in stato
         is_pianificata = "pianificat" in stato
 
         if not (is_attivo or is_sospeso or is_pianificata):
             continue
+
+        filtered_ordini.append(ordine)
         payload["details"].append(base_row)
         payload["cards"]["ordini_totali"] += 1
         payload["cards"]["ore_previste_produzione"] += ore
@@ -1111,6 +1174,13 @@ def _dashboard_build_cruscotto_payload(policy: RbacPolicy) -> dict:
     )
 
     payload["cards"]["operatori_impegnati"] = len(operatori)
+    ordini_totali = int(payload["cards"].get("ordini_totali") or 0)
+    ordini_sospesi = int(payload["cards"].get("ordini_sospesi") or 0)
+    payload["cards"]["incidenza_sospensioni"] = (
+        round((ordini_sospesi / ordini_totali) * 100, 2)
+        if ordini_totali
+        else 0.0
+    )
 
     payload["charts"]["stati_ordine"] = [
         {"label": key, "value": value} for key, value in stati_chart.items()
@@ -1130,21 +1200,21 @@ def _dashboard_build_cruscotto_payload(policy: RbacPolicy) -> dict:
         float(capacity_by_weekday.get(today_weekday, 0.0) or 0.0),
         2,
     )
-    ore_previste_produzione = float(
-        payload["cards"].get("ore_previste_produzione") or 0.0
-    )
-
     ore_disponibili_oggi = float(payload["cards"].get("ore_disponibili_oggi") or 0.0)
-
-    payload["cards"]["scostamento_ore_totale"] = round(
-        ore_disponibili_oggi - ore_previste_produzione,
-        2,
+    days_7 = _dashboard_next_month_days()[:7]
+    capacita_7_giorni = _dashboard_capacity_hours_from_weekday(
+        capacity_by_weekday,
+        days=days_7,
     )
-
-    payload["cards"]["saturazione_totale"] = (
-        round((ore_previste_produzione / ore_disponibili_oggi) * 100, 2)
-        if ore_disponibili_oggi > 0
-        else 0.0
+    carico_7_giorni = _dashboard_carico_entro_giorno(
+        filtered_ordini,
+        days_7[-1],
+    )
+    payload["cards"]["carico_7_giorni"] = carico_7_giorni
+    payload["cards"]["capacita_7_giorni"] = capacita_7_giorni
+    payload["cards"]["gap_capacita_7_giorni"] = round(
+        capacita_7_giorni - carico_7_giorni,
+        2,
     )
 
     payload["charts"]["carico_prossimi_giorni"] = _dashboard_carico_prossimo_mese(
@@ -1204,6 +1274,33 @@ def _dashboard_build_cruscotto_payload(policy: RbacPolicy) -> dict:
         policy,
         filters,
     )
+    payload["charts"]["colli_bottiglia_risorse"] = (
+        _dashboard_colli_bottiglia_risorse(
+            filtered_ordini,
+            policy,
+            filters,
+        )
+    )
+    payload["cards"]["risorse_collo_bottiglia"] = len(
+        payload["charts"]["colli_bottiglia_risorse"]
+    )
+    ore_previste_oggi = round(
+        sum(
+            float(row.get("ore_totali") or 0.0)
+            for row in payload["charts"]["saturazione_risorse"]
+        ),
+        2,
+    )
+    payload["cards"]["ore_previste_oggi"] = ore_previste_oggi
+    payload["cards"]["scostamento_ore_totale"] = round(
+        ore_disponibili_oggi - ore_previste_oggi,
+        2,
+    )
+    payload["cards"]["saturazione_totale"] = (
+        round((ore_previste_oggi / ore_disponibili_oggi) * 100, 2)
+        if ore_disponibili_oggi > 0
+        else 0.0
+    )
 
     payload["cards"]["reparti_sovraccarichi"] = sum(
         1
@@ -1258,8 +1355,20 @@ def _dashboard_kpi_empty_payload() -> dict:
             "tempo_medio_collaudo": 0.0,
             "collaudi_chiusi_oggi": 0,
             "affidabilita_tempi": 0.0,
+            "fasi_tempi_affidabili": 0,
+            "fasi_tempi_non_affidabili": 0,
             "ordini_tempi_affidabili": 0,
             "ordini_tempi_non_affidabili": 0,
+            "tasso_non_conformita": 0.0,
+            "quantita_conforme": 0.0,
+            "quantita_non_conforme": 0.0,
+            "quantita_consuntivata": 0.0,
+            "lead_time_medio_ore": 0.0,
+            "lead_time_mediano_ore": 0.0,
+            "lead_time_copertura": 0,
+            "copertura_dati": 0.0,
+            "fasi_dati_completi": 0,
+            "fasi_totali": 0,
         },
         "charts": {
             "tempo_reale_vs_previsto": [],
@@ -1282,22 +1391,30 @@ def _dashboard_kpi_empty_payload() -> dict:
     }
 
 
+def _kpi_is_order_completed(
+    rt: OdpRuntimeLog, il: InputOdpLog | None = None
+) -> bool:
+    stato = (
+        _norm_text(getattr(il, "StatoOrdinePost", "")) if il is not None else ""
+    ) or _norm_text(getattr(rt, "StatoOrdinePost", "")) or _norm_text(
+        getattr(rt, "StatoOdpPost", "")
+    )
+    stato = stato.lower()
+    return "chius" in stato or "terminat" in stato
+
+
 def _kpi_macchine_prodotte(rt: OdpRuntimeLog, il: InputOdpLog | None) -> float:
     """
     Numero macchine prodotte.
 
-    Regola corretta per il KPI:
-    - conta 1 macchina per ogni chiusura_finale valida;
-    - non somma QuantitaConforme;
-    - non somma Quantita;
-    - non conta chiusura_macchina, per evitare doppioni su ordini multifase.
+    Conta una macchina solo quando un ordine con gestione matricola
+    raggiunge realmente lo stato finale.
     """
-    azione = _norm_text(getattr(rt, "Azione", "")).lower()
-
-    if azione != "chiusura_finale":
+    if il is None or not _kpi_is_order_completed(rt, il):
         return 0.0
 
-    return 1.0
+    gestione_matricola = _norm_text(getattr(il, "GestioneMatricola", "")).lower()
+    return 1.0 if gestione_matricola in {"1", "true", "si", "sì", "yes"} else 0.0
 
 
 def _kpi_parse_date(value) -> date | None:
@@ -1395,7 +1512,8 @@ def _add_aggregate_sheet(wb, title: str, rows: list[dict]):
 
     headers = [
         ("key", "Voce"),
-        ("ordini", "Ordini"),
+        ("fasi_consuntivate", "Fasi consuntivate"),
+        ("ordini", "Ordini completati"),
         ("ritardi", "Ordini in ritardo"),
         ("percentuale_ritardo", "% ritardo"),
         ("giorni_medi_ritardo", "Giorni medi ritardo"),
@@ -1556,11 +1674,15 @@ def _kpi_matches_filters(row: dict, filters: dict) -> bool:
 
 
 def _apply_kpi_group(bucket: dict, row: dict) -> None:
-    bucket["ordini"] += 1
+    bucket["fasi_consuntivate"] += 1
     bucket["tempo_previsto"] += float(row.get("tempo_previsto_ore") or 0.0)
     bucket["tempo_reale"] += float(row.get("tempo_reale_ore") or 0.0)
     bucket["scostamento"] += float(row.get("scostamento_ore") or 0.0)
 
+    if not row.get("is_order_completed"):
+        return
+
+    bucket["ordini"] += 1
     ritardo_giorni = float(row.get("ritardo_giorni") or 0.0)
     if ritardo_giorni > 0:
         bucket["ritardi"] += 1
@@ -1578,6 +1700,7 @@ def _finalize_kpi_group(bucket: dict) -> dict:
     return {
         "key": bucket["key"],
         "ordini": ordini,
+        "fasi_consuntivate": int(bucket.get("fasi_consuntivate") or 0),
         "ritardi": ritardi,
         "percentuale_ritardo": round((ritardi / ordini) * 100, 2) if ordini else 0.0,
         "giorni_medi_ritardo": round((bucket["giorni_ritardo_totali"] / ritardi), 2)
@@ -1759,9 +1882,9 @@ def _dashboard_parse_date(value) -> date | None:
     return None
 
 
-def _dashboard_tempo_previsto_ore(ordine: InputOdp) -> float:
+def _dashboard_tempo_previsto_minuti_pezzo(ordine: InputOdp) -> float:
     """
-    Restituisce le ore previste della fase attiva.
+    Restituisce i minuti previsti per pezzo della fase attiva.
 
     Gestisce anche valori salvati come lista JSON, ad esempio:
     ["1.5", "2.0", "0.75"]
@@ -1897,6 +2020,7 @@ def _dashboard_cruscotto_empty_payload() -> dict:
         "cards": {
             "ordini_totali": 0,
             "ore_previste_produzione": 0.0,
+            "ore_previste_oggi": 0.0,
             "ore_disponibili_oggi": 0.0,
             "ordini_attivi": 0,
             "ordini_sospesi": 0,
@@ -1912,6 +2036,11 @@ def _dashboard_cruscotto_empty_payload() -> dict:
             "ordini_collaudo": 0,
             "saturazione_totale": 0.0,
             "scostamento_ore_totale": 0.0,
+            "incidenza_sospensioni": 0.0,
+            "carico_7_giorni": 0.0,
+            "capacita_7_giorni": 0.0,
+            "gap_capacita_7_giorni": 0.0,
+            "risorse_collo_bottiglia": 0,
         },
         "charts": {
             "carico_prossimi_giorni": [],
@@ -1919,6 +2048,7 @@ def _dashboard_cruscotto_empty_payload() -> dict:
             "carico_per_risorsa": [],
             "carico_per_reparto": [],
             "saturazione_risorse": [],
+            "colli_bottiglia_risorse": [],
         },
         "criticita": [],
         "details": [],
@@ -2182,6 +2312,20 @@ def _kpi_tempo_reale_ore(rt: OdpRuntimeLog, il: InputOdpLog | None) -> float:
     return 0.0
 
 
+def _kpi_quantita_consuntivata(
+    il: InputOdpLog | None,
+) -> tuple[float, float]:
+    if il is None:
+        return 0.0, 0.0
+
+    conforme = max(_safe_float(getattr(il, "QuantitaConforme", "")), 0.0)
+    non_conforme = max(
+        _safe_float(getattr(il, "QuantitaNonConforme", "")),
+        0.0,
+    )
+    return conforme, non_conforme
+
+
 def _kpi_closed_at(rt: OdpRuntimeLog, il: InputOdpLog | None) -> datetime | None:
     if il is not None:
         dt = _kpi_parse_datetime(getattr(il, "ClosedAt", ""))
@@ -2191,11 +2335,50 @@ def _kpi_closed_at(rt: OdpRuntimeLog, il: InputOdpLog | None) -> datetime | None
     return _kpi_parse_datetime(getattr(rt, "EventAt", ""))
 
 
+def _kpi_lead_time_ore(
+    rt: OdpRuntimeLog,
+    closed_at: datetime,
+) -> float | None:
+    started_at = _kpi_parse_datetime(
+        getattr(rt, "DataInCaricoPre", "")
+    ) or _kpi_parse_datetime(getattr(rt, "DataInCaricoPost", ""))
+
+    if started_at is None or closed_at <= started_at:
+        return None
+
+    return (closed_at - started_at).total_seconds() / 3600.0
+
+
 def _kpi_data_fine_prevista(il: InputOdpLog | None) -> date | None:
     if il is None:
         return None
 
-    return _kpi_parse_date(getattr(il, "DataFineSched", ""))
+    fase = _norm_text(getattr(il, "FaseConsuntivata", "")) or _norm_text(
+        getattr(il, "FaseAttiva", "")
+    )
+    raw = _kpi_active_value_from_list(
+        getattr(il, "DataFineSched", ""),
+        getattr(il, "NumFase", ""),
+        fase,
+    )
+    return _kpi_parse_date(raw)
+
+
+def _kpi_tempo_is_affidabile(
+    tempo_previsto: float, tempo_reale: float, *, tolleranza: float = 0.10
+) -> bool:
+    if tempo_previsto <= 0 or tempo_reale <= 0:
+        return False
+    return abs(tempo_reale - tempo_previsto) <= tempo_previsto * tolleranza
+
+
+def _kpi_row_has_complete_data(row: dict) -> bool:
+    return bool(
+        float(row.get("tempo_previsto_ore") or 0.0) > 0
+        and float(row.get("tempo_reale_ore") or 0.0) > 0
+        and float(row.get("quantita_consuntivata") or 0.0) > 0
+        and _norm_text(row.get("data_fine_prevista"))
+    )
 
 
 def _kpi_is_collaudo(reparto: str, risorsa: str, lavorazione: str) -> bool:
@@ -2210,6 +2393,7 @@ def _new_kpi_group_bucket(key: str) -> dict:
     return {
         "key": key,
         "ordini": 0,
+        "fasi_consuntivate": 0,
         "ritardi": 0,
         "giorni_ritardo_totali": 0.0,
         "tempo_previsto": 0.0,
@@ -2280,11 +2464,17 @@ def _build_dashboard_kpi_payload(*, detail_limit: int | None = 500) -> dict:
         reparto = _kpi_reparto_for_log(rt, il)
         risorsa = _kpi_risorsa_for_log(il)
         lavorazione = _kpi_lavorazione_for_log(il)
+        is_order_completed = _kpi_is_order_completed(rt, il)
         macchine_prodotte = _kpi_macchine_prodotte(rt, il)
 
         tempo_previsto = _kpi_tempo_previsto_ore(il)
         tempo_reale = _kpi_tempo_reale_ore(rt, il)
         scostamento = tempo_reale - tempo_previsto
+        quantita_conforme, quantita_non_conforme = _kpi_quantita_consuntivata(il)
+        quantita_consuntivata = quantita_conforme + quantita_non_conforme
+        lead_time_ore = (
+            _kpi_lead_time_ore(rt, closed_at) if is_order_completed else None
+        )
 
         data_fine_prevista = _kpi_data_fine_prevista(il)
         ritardo_giorni = 0
@@ -2324,6 +2514,9 @@ def _build_dashboard_kpi_payload(*, detail_limit: int | None = 500) -> dict:
             else _norm_text(getattr(rt, "FasePost", "")),
             "tempo_previsto_ore": round(tempo_previsto, 2),
             "tempo_reale_ore": round(tempo_reale, 2),
+            "quantita_conforme": round(quantita_conforme, 2),
+            "quantita_non_conforme": round(quantita_non_conforme, 2),
+            "quantita_consuntivata": round(quantita_consuntivata, 2),
             "macchine_prodotte": round(macchine_prodotte, 2),
             "scostamento_ore": round(scostamento, 2),
             "scostamento_percentuale": round((scostamento / tempo_previsto) * 100, 2)
@@ -2334,8 +2527,13 @@ def _build_dashboard_kpi_payload(*, detail_limit: int | None = 500) -> dict:
             else "",
             "ritardo_giorni": ritardo_giorni,
             "is_ritardo": ritardo_giorni > 0,
+            "is_order_completed": is_order_completed,
             "is_collaudo": _kpi_is_collaudo(reparto, risorsa, lavorazione),
+            "lead_time_ore": round(lead_time_ore, 2)
+            if lead_time_ore is not None
+            else None,
         }
+        row["dati_completi"] = _kpi_row_has_complete_data(row)
 
         _dashboard_collect_filter_options_from_row(
             filter_options,
@@ -2363,13 +2561,42 @@ def _build_dashboard_kpi_payload(*, detail_limit: int | None = 500) -> dict:
 
         if row["is_collaudo"]:
             collaudo_tempi.append(tempo_reale)
-            if closed_at.date() == today:
+            if row["is_order_completed"] and closed_at.date() == today:
                 collaudi_chiusi_oggi += 1
 
-    ordini = len(detail_rows)
-    ritardi = sum(1 for row in detail_rows if row["is_ritardo"])
+    completed_rows = [row for row in detail_rows if row["is_order_completed"]]
+    ordini = len(completed_rows)
+    fasi = len(detail_rows)
+    ritardi = sum(1 for row in completed_rows if row["is_ritardo"])
     macchine_prodotte = sum(
-        float(row.get("macchine_prodotte", 0.0) or 0.0) for row in detail_rows
+        float(row.get("macchine_prodotte", 0.0) or 0.0) for row in completed_rows
+    )
+    quantita_conforme = sum(
+        float(row.get("quantita_conforme") or 0.0) for row in detail_rows
+    )
+    quantita_non_conforme = sum(
+        float(row.get("quantita_non_conforme") or 0.0) for row in detail_rows
+    )
+    quantita_consuntivata = quantita_conforme + quantita_non_conforme
+    tasso_non_conformita = (
+        round((quantita_non_conforme / quantita_consuntivata) * 100, 2)
+        if quantita_consuntivata > 0
+        else 0.0
+    )
+    lead_times = [
+        float(row["lead_time_ore"])
+        for row in completed_rows
+        if row.get("lead_time_ore") is not None
+    ]
+    lead_time_medio = (
+        round(sum(lead_times) / len(lead_times), 2) if lead_times else 0.0
+    )
+    lead_time_mediano = round(median(lead_times), 2) if lead_times else 0.0
+    fasi_dati_completi = sum(
+        1 for row in detail_rows if row.get("dati_completi")
+    )
+    copertura_dati = (
+        round((fasi_dati_completi / fasi) * 100, 2) if fasi else 0.0
     )
 
     tempo_previsto_totale = sum(
@@ -2381,25 +2608,32 @@ def _build_dashboard_kpi_payload(*, detail_limit: int | None = 500) -> dict:
     scostamento_totale = tempo_reale_totale - tempo_previsto_totale
 
     giorni_ritardo_totali = sum(
-        float(row["ritardo_giorni"] or 0.0) for row in detail_rows if row["is_ritardo"]
+        float(row["ritardo_giorni"] or 0.0)
+        for row in completed_rows
+        if row["is_ritardo"]
     )
 
-    rows_con_tempo_previsto = [
-        row for row in detail_rows if float(row.get("tempo_previsto_ore") or 0.0) > 0
+    rows_con_tempi_validi = [
+        row
+        for row in detail_rows
+        if float(row.get("tempo_previsto_ore") or 0.0) > 0
+        and float(row.get("tempo_reale_ore") or 0.0) > 0
     ]
-    ordini_tempi_affidabili = sum(
+    fasi_tempi_affidabili = sum(
         1
-        for row in rows_con_tempo_previsto
-        if float(row.get("tempo_reale_ore") or 0.0)
-        <= float(row.get("tempo_previsto_ore") or 0.0) * 1.10
+        for row in rows_con_tempi_validi
+        if _kpi_tempo_is_affidabile(
+            float(row.get("tempo_previsto_ore") or 0.0),
+            float(row.get("tempo_reale_ore") or 0.0),
+        )
     )
-    ordini_tempi_non_affidabili = max(
-        len(rows_con_tempo_previsto) - ordini_tempi_affidabili,
+    fasi_tempi_non_affidabili = max(
+        len(rows_con_tempi_validi) - fasi_tempi_affidabili,
         0,
     )
     affidabilita_tempi = (
-        round((ordini_tempi_affidabili / len(rows_con_tempo_previsto)) * 100, 2)
-        if rows_con_tempo_previsto
+        round((fasi_tempi_affidabili / len(rows_con_tempi_validi)) * 100, 2)
+        if rows_con_tempi_validi
         else 0.0
     )
 
@@ -2420,16 +2654,29 @@ def _build_dashboard_kpi_payload(*, detail_limit: int | None = 500) -> dict:
         )
         if tempo_previsto_totale > 0
         else 0.0,
-        "scostamento_medio": round(scostamento_totale / ordini, 2) if ordini else 0.0,
-        "tempo_medio_ordine": round(tempo_reale_totale / ordini, 2) if ordini else 0.0,
-        "tempo_medio_fase": round(tempo_reale_totale / ordini, 2) if ordini else 0.0,
+        "scostamento_medio": round(scostamento_totale / fasi, 2) if fasi else 0.0,
+        "tempo_medio_ordine": None,
+        "tempo_medio_fase": round(tempo_reale_totale / fasi, 2) if fasi else 0.0,
         "tempo_medio_collaudo": round(sum(collaudo_tempi) / len(collaudo_tempi), 2)
         if collaudo_tempi
         else 0.0,
         "collaudi_chiusi_oggi": collaudi_chiusi_oggi,
         "affidabilita_tempi": affidabilita_tempi,
-        "ordini_tempi_affidabili": ordini_tempi_affidabili,
-        "ordini_tempi_non_affidabili": ordini_tempi_non_affidabili,
+        "fasi_tempi_affidabili": fasi_tempi_affidabili,
+        "fasi_tempi_non_affidabili": fasi_tempi_non_affidabili,
+        # Alias mantenuti per compatibilità con eventuali client esterni.
+        "ordini_tempi_affidabili": fasi_tempi_affidabili,
+        "ordini_tempi_non_affidabili": fasi_tempi_non_affidabili,
+        "tasso_non_conformita": tasso_non_conformita,
+        "quantita_conforme": round(quantita_conforme, 2),
+        "quantita_non_conforme": round(quantita_non_conforme, 2),
+        "quantita_consuntivata": round(quantita_consuntivata, 2),
+        "lead_time_medio_ore": lead_time_medio,
+        "lead_time_mediano_ore": lead_time_mediano,
+        "lead_time_copertura": len(lead_times),
+        "copertura_dati": copertura_dati,
+        "fasi_dati_completi": fasi_dati_completi,
+        "fasi_totali": fasi,
     }
 
     payload["charts"]["tempo_reale_vs_previsto"] = [
@@ -2446,7 +2693,7 @@ def _build_dashboard_kpi_payload(*, detail_limit: int | None = 500) -> dict:
     payload["aggregati"] = {
         name: sorted(
             [_finalize_kpi_group(bucket) for bucket in group.values()],
-            key=lambda x: (-x["ordini"], x["key"].lower()),
+            key=lambda x: (-x["fasi_consuntivate"], x["key"].lower()),
         )[:50]
         for name, group in groups.items()
     }
@@ -2535,8 +2782,8 @@ def _build_dashboard_kpi_payload(*, detail_limit: int | None = 500) -> dict:
     ][:10]
 
     payload["charts"]["affidabilita_tempi"] = [
-        {"label": "Entro +10%", "value": ordini_tempi_affidabili},
-        {"label": "Oltre +10%", "value": ordini_tempi_non_affidabili},
+        {"label": "Entro ±10%", "value": fasi_tempi_affidabili},
+        {"label": "Fuori ±10%", "value": fasi_tempi_non_affidabili},
     ]
 
     sorted_details = sorted(
@@ -2586,7 +2833,7 @@ def _write_kpi_summary_sheet(ws, data: dict):
         ("Filtro articolo", filters.get("articolo", "")),
         ("Filtro stato", filters.get("stato", "")),
         ("", ""),
-        ("Ordini chiusi", cards.get("ordini_chiusi", 0)),
+        ("Ordini completati", cards.get("ordini_chiusi", 0)),
         ("Macchine prodotte", cards.get("macchine_prodotte", 0)),
         ("Ordini in ritardo", cards.get("ordini_in_ritardo", 0)),
         ("% ritardo", cards.get("percentuale_ritardo", 0)),
@@ -2596,10 +2843,17 @@ def _write_kpi_summary_sheet(ws, data: dict):
         ("Scostamento totale", cards.get("scostamento_totale", 0)),
         ("% scostamento", cards.get("scostamento_percentuale", 0)),
         ("Scostamento medio", cards.get("scostamento_medio", 0)),
-        ("Tempo medio ordine", cards.get("tempo_medio_ordine", 0)),
         ("Tempo medio fase", cards.get("tempo_medio_fase", 0)),
         ("Tempo medio collaudo", cards.get("tempo_medio_collaudo", 0)),
         ("Collaudi chiusi oggi", cards.get("collaudi_chiusi_oggi", 0)),
+        ("Tasso non conformità", cards.get("tasso_non_conformita", 0)),
+        ("Quantità conforme", cards.get("quantita_conforme", 0)),
+        ("Quantità non conforme", cards.get("quantita_non_conforme", 0)),
+        ("Lead time medio ore", cards.get("lead_time_medio_ore", 0)),
+        ("Lead time mediano ore", cards.get("lead_time_mediano_ore", 0)),
+        ("Copertura dati", cards.get("copertura_dati", 0)),
+        ("Fasi con dati completi", cards.get("fasi_dati_completi", 0)),
+        ("Fasi totali", cards.get("fasi_totali", 0)),
     ]
 
     ws.cell(row=1, column=1, value="Parametro").font = Font(bold=True)

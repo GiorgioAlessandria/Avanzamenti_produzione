@@ -68,6 +68,33 @@ def _ensure_manutenzioni_schema() -> None:
             "WHERE evento_manutenzione_id IS NOT NULL"
         )
 
+    strumenti_columns = {
+        column["name"]
+        for column in inspect(engine).get_columns("strumenti_misura")
+    }
+    if "costruttore" not in strumenti_columns:
+        with engine.begin() as connection:
+            connection.exec_driver_sql(
+                "ALTER TABLE strumenti_misura ADD COLUMN costruttore TEXT"
+            )
+    if "solo_verifica_interna" not in strumenti_columns:
+        with engine.begin() as connection:
+            connection.exec_driver_sql(
+                "ALTER TABLE strumenti_misura ADD COLUMN "
+                "solo_verifica_interna BOOLEAN NOT NULL DEFAULT 0"
+            )
+
+    tipologie_columns = {
+        column["name"]
+        for column in inspect(engine).get_columns("tipologie_strumento")
+    }
+    if "taratura_esterna_attiva" not in tipologie_columns:
+        with engine.begin() as connection:
+            connection.exec_driver_sql(
+                "ALTER TABLE tipologie_strumento ADD COLUMN "
+                "taratura_esterna_attiva BOOLEAN NOT NULL DEFAULT 1"
+            )
+
 
 def load_config(config: Path) -> dict:
     """

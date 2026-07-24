@@ -3,8 +3,10 @@ from types import SimpleNamespace
 
 from app_odp.services import dashboard_service as service
 from app_odp.services.dashboard_service import (
+    _dashboard_carico_ore,
+    _dashboard_carico_entro_giorno,
     _dashboard_stato_norm,
-    _dashboard_tempo_previsto_ore,
+    _dashboard_tempo_previsto_minuti_pezzo,
 )
 
 
@@ -23,7 +25,7 @@ def test_dashboard_stato_norm_falls_back_to_order_and_erp_state():
     assert _dashboard_stato_norm(SimpleNamespace(StatoOrdine="", StatoOrdineErp="ERP")) == "ERP"
 
 
-def test_dashboard_tempo_previsto_ore_reads_active_phase_value():
+def test_dashboard_tempo_previsto_minuti_pezzo_reads_active_phase_value():
     ordine = SimpleNamespace(
         runtime_row=None,
         FaseAttiva="2",
@@ -31,10 +33,10 @@ def test_dashboard_tempo_previsto_ore_reads_active_phase_value():
         TempoPrevistoLavoraz='["1.5", "2.25"]',
     )
 
-    assert _dashboard_tempo_previsto_ore(ordine) == 2.25
+    assert _dashboard_tempo_previsto_minuti_pezzo(ordine) == 2.25
 
 
-def test_dashboard_tempo_previsto_ore_returns_zero_for_invalid_values():
+def test_dashboard_tempo_previsto_minuti_pezzo_returns_zero_for_invalid_values():
     ordine = SimpleNamespace(
         runtime_row=None,
         FaseAttiva="1",
@@ -42,7 +44,59 @@ def test_dashboard_tempo_previsto_ore_returns_zero_for_invalid_values():
         TempoPrevistoLavoraz="non-numero",
     )
 
-    assert _dashboard_tempo_previsto_ore(ordine) == 0.0
+    assert _dashboard_tempo_previsto_minuti_pezzo(ordine) == 0.0
+
+
+def test_dashboard_carico_ore_uses_remaining_quantity_without_setup():
+    ordine = SimpleNamespace(
+        runtime_row=None,
+        FaseAttiva="1",
+        NumFase='["1"]',
+        TempoPrevistoLavoraz='["20"]',
+        QtyDaLavorare="400",
+        Quantita="400",
+        AttrezzaggioAttivo="120",
+        TempoAttrezzaggio='["120"]',
+    )
+
+    assert _dashboard_carico_ore(ordine) == 133.33
+
+
+def test_dashboard_carico_entro_giorno_includes_backlog_and_unscheduled(monkeypatch):
+    ordini = [
+        SimpleNamespace(key="arretrato"),
+        SimpleNamespace(key="senza_scadenza"),
+        SimpleNamespace(key="entro_finestra"),
+        SimpleNamespace(key="fuori_finestra"),
+    ]
+    dates = {
+        "arretrato": date(2026, 7, 20),
+        "senza_scadenza": None,
+        "entro_finestra": date(2026, 7, 30),
+        "fuori_finestra": date(2026, 7, 31),
+    }
+    hours = {
+        "arretrato": 3.0,
+        "senza_scadenza": 2.0,
+        "entro_finestra": 4.0,
+        "fuori_finestra": 10.0,
+    }
+
+    monkeypatch.setattr(
+        service,
+        "_dashboard_data_fine_prevista",
+        lambda ordine: dates[ordine.key],
+    )
+    monkeypatch.setattr(
+        service,
+        "_dashboard_carico_ore",
+        lambda ordine: hours[ordine.key],
+    )
+
+    assert _dashboard_carico_entro_giorno(
+        ordini,
+        date(2026, 7, 30),
+    ) == 9.0
 
 
 def test_dashboard_order_payload_builds_confirmed_ui_fields(monkeypatch):

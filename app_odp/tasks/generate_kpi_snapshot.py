@@ -37,20 +37,28 @@ def _positive_float(value) -> float:
     return out if out > 0 else 0.0
 
 
+def _is_order_completed(rt: OdpRuntimeLog, il: InputOdpLog | None = None) -> bool:
+    stato = (
+        _norm_text(getattr(il, "StatoOrdinePost", "")) if il is not None else ""
+    ) or _norm_text(getattr(rt, "StatoOrdinePost", "")) or _norm_text(
+        getattr(rt, "StatoOdpPost", "")
+    )
+    stato = stato.lower()
+    return "chius" in stato or "terminat" in stato
+
+
 def _macchine_prodotte_for_log(rt: OdpRuntimeLog, il: InputOdpLog | None) -> float:
     """
     Numero macchine prodotte nello snapshot mensile.
 
-    Conta 1 macchina per ogni chiusura_finale valida.
-    Non usa QuantitaConforme/Quantita perché quei campi possono rappresentare pezzi,
-    quantità o componenti, non necessariamente macchine finite.
+    Conta una macchina solo quando un ordine con gestione matricola
+    raggiunge realmente lo stato finale.
     """
-    azione = _norm_text(getattr(rt, "Azione", "")).lower()
-
-    if azione != "chiusura_finale":
+    if il is None or not _is_order_completed(rt, il):
         return 0.0
 
-    return 1.0
+    gestione_matricola = _norm_text(getattr(il, "GestioneMatricola", "")).lower()
+    return 1.0 if gestione_matricola in {"1", "true", "si", "sì", "yes"} else 0.0
 
 
 def _parse_date(value) -> date | None:
@@ -309,7 +317,15 @@ def _data_fine_prevista(il: InputOdpLog | None) -> date | None:
     if il is None:
         return None
 
-    return _parse_date(getattr(il, "DataFineSched", ""))
+    fase = _norm_text(getattr(il, "FaseConsuntivata", "")) or _norm_text(
+        getattr(il, "FaseAttiva", "")
+    )
+    raw = _active_value_from_list(
+        getattr(il, "DataFineSched", ""),
+        getattr(il, "NumFase", ""),
+        fase,
+    )
+    return _parse_date(raw)
 
 
 def _month_bounds(month: str) -> tuple[date, date]:
@@ -336,6 +352,7 @@ def _new_bucket(scope_type: str, scope_code: str) -> dict:
     return {
         "scope_type": scope_type,
         "scope_code": scope_code,
+        "fasi_consuntivate": 0,
         "ordini_chiusi": 0,
         "ordini_in_ritardo": 0,
         "giorni_ritardo_totali": 0.0,
@@ -349,6 +366,14 @@ def _new_bucket(scope_type: str, scope_code: str) -> dict:
 
 
 def _apply_to_bucket(bucket: dict, row: dict) -> None:
+    bucket["fasi_consuntivate"] += 1
+    bucket["tempo_previsto_totale"] += row["tempo_previsto_ore"]
+    bucket["tempo_reale_totale"] += row["tempo_reale_ore"]
+    bucket["rows"].append(row)
+
+    if not row.get("is_order_completed"):
+        return
+
     bucket["ordini_chiusi"] += 1
     bucket["macchine_prodotte"] += float(row.get("macchine_prodotte", 0.0) or 0.0)
 
@@ -356,15 +381,12 @@ def _apply_to_bucket(bucket: dict, row: dict) -> None:
         bucket["ordini_in_ritardo"] += 1
         bucket["giorni_ritardo_totali"] += row["ritardo_giorni"]
 
-    bucket["tempo_previsto_totale"] += row["tempo_previsto_ore"]
-    bucket["tempo_reale_totale"] += row["tempo_reale_ore"]
-    bucket["rows"].append(row)
-
 
 def _finalize_bucket(
     bucket: dict, *, snapshot_month: str, period_start: date, period_end: date
 ) -> dict:
     ordini = int(bucket["ordini_chiusi"] or 0)
+    fasi = int(bucket["fasi_consuntivate"] or 0)
     ritardi = int(bucket["ordini_in_ritardo"] or 0)
     macchine_prodotte = float(bucket.get("macchine_prodotte", 0.0) or 0.0)
 
@@ -391,11 +413,11 @@ def _finalize_bucket(
         "scostamento_percentuale": round((scostamento / tempo_previsto) * 100, 2)
         if tempo_previsto > 0
         else 0.0,
-        "tempo_medio_ordine": round(tempo_reale / ordini, 2) if ordini else 0.0,
-        "tempo_medio_fase": round(tempo_reale / ordini, 2) if ordini else 0.0,
+        "tempo_medio_ordine": None,
+        "tempo_medio_fase": round(tempo_reale / fasi, 2) if fasi else 0.0,
         "payload_json": json.dumps(
             {
-                "details_count": len(bucket["rows"]),
+                "fasi_consuntivate": fasi,
                 "generated_at": datetime.now(ROME_TZ).isoformat(timespec="seconds"),
             },
             ensure_ascii=False,
@@ -472,6 +494,7 @@ def generate_snapshot_for_month(
             buckets[key] = _new_bucket(scope_type, scope_code)
         return buckets[key]
 
+    bucket("global", "*")
     eligible_count = 0
 
     for rt, il in rows:
@@ -497,6 +520,7 @@ def generate_snapshot_for_month(
 
         tempo_previsto = _tempo_previsto_ore(il)
         tempo_reale = _tempo_reale_ore(rt, il)
+        is_order_completed = _is_order_completed(rt, il)
         macchine_prodotte = _macchine_prodotte_for_log(rt, il)
 
         data_fine_prevista = _data_fine_prevista(il)
@@ -519,6 +543,7 @@ def generate_snapshot_for_month(
             "tempo_previsto_ore": tempo_previsto,
             "tempo_reale_ore": tempo_reale,
             "ritardo_giorni": ritardo_giorni,
+            "is_order_completed": is_order_completed,
         }
 
         eligible_count += 1
@@ -542,6 +567,11 @@ def generate_snapshot_for_month(
         )
         for b in buckets.values()
     ]
+
+    valid_keys = {(record["scope_type"], record["scope_code"]) for record in records}
+    for old_row in ProductionKpiSnapshot.query.filter_by(snapshot_month=month).all():
+        if (old_row.scope_type, old_row.scope_code) not in valid_keys:
+            db.session.delete(old_row)
 
     for record in records:
         _upsert_snapshot(record, created_by=created_by)

@@ -33,6 +33,12 @@ class TipologiaStrumento(db.Model):
     nome = db.Column(db.String(120), nullable=False, unique=True)
     frequenza_esterna_mesi = db.Column(db.Integer, nullable=False)
     frequenza_interna_mesi = db.Column(db.Integer)
+    taratura_esterna_attiva = db.Column(
+        db.Boolean,
+        nullable=False,
+        default=True,
+        server_default="1",
+    )
     created_at = db.Column(db.DateTime, nullable=False, default=_now_rome)
     updated_at = db.Column(
         db.DateTime,
@@ -71,6 +77,13 @@ class StrumentoMisura(db.Model):
     codice_interno = db.Column(db.String(80), nullable=False, unique=True)
     numero_seriale = db.Column(db.String(120), nullable=False, unique=True)
     descrizione = db.Column(db.Text, nullable=False)
+    costruttore = db.Column(db.String(160), nullable=False)
+    solo_verifica_interna = db.Column(
+        db.Boolean,
+        nullable=False,
+        default=False,
+        server_default="0",
+    )
     tipologia_id = db.Column(
         db.Integer,
         db.ForeignKey("tipologie_strumento.id", ondelete="RESTRICT"),
@@ -118,7 +131,7 @@ class StrumentoMisura(db.Model):
     def validate_identifier(self, key, value):
         return _required(value, key).upper()
 
-    @validates("descrizione", "reparto_codice")
+    @validates("descrizione", "costruttore", "reparto_codice")
     def validate_required_text(self, key, value):
         return _required(value, key)
 

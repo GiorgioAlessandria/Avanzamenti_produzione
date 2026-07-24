@@ -31,6 +31,24 @@ def _optional_text(value) -> str | None:
     return normalized or None
 
 
+def _numero_seriale(value, codice_interno) -> str:
+    normalized = _optional_text(value)
+    if normalized in {None, "-"}:
+        return f"__NO_SERIAL__:{_text(codice_interno, 'codice interno').upper()}"
+    return normalized.upper()
+
+
+def _checked(value) -> bool:
+    return str(value or "").strip().lower() in {"1", "true", "on", "yes"}
+
+
+def _richiede_taratura_esterna(strumento: StrumentoMisura) -> bool:
+    return (
+        strumento.tipologia.taratura_esterna_attiva is not False
+        and not strumento.solo_verifica_interna
+    )
+
+
 def _positive_int(value, field: str, *, optional: bool = False) -> int | None:
     if optional and (value is None or str(value).strip() == ""):
         return None
@@ -125,19 +143,24 @@ def list_reparti() -> list[dict]:
 def due_for_instrument(strumento: StrumentoMisura, today: date | None = None) -> dict:
     today = today or today_rome()
     conformi = [row for row in strumento.eventi if row.esito == "CONFORME"]
+    if not conformi:
+        tipo = "ESTERNA" if _richiede_taratura_esterna(strumento) else "INTERNA"
+        return {"tipo": tipo, "data": today, "classe": "SCADUTA", "giorni": 0}
+
     esterne = [
         row.data_evento
         for row in conformi
         if row.tipo in {"INIZIALE", "ESTERNA"}
     ]
-    if not esterne:
+    if _richiede_taratura_esterna(strumento) and not esterne:
         return {"tipo": "ESTERNA", "data": today, "classe": "SCADUTA"}
 
-    ultima_esterna = max(esterne)
-    scadenza_esterna = add_months(
-        ultima_esterna,
-        strumento.tipologia.frequenza_esterna_mesi,
-    )
+    scadenza_esterna = None
+    if _richiede_taratura_esterna(strumento):
+        scadenza_esterna = add_months(
+            max(esterne),
+            strumento.tipologia.frequenza_esterna_mesi,
+        )
     scadenza_interna = None
     if strumento.tipologia.frequenza_interna_mesi:
         ultima_verifica = max(row.data_evento for row in conformi)
@@ -146,8 +169,10 @@ def due_for_instrument(strumento: StrumentoMisura, today: date | None = None) ->
             strumento.tipologia.frequenza_interna_mesi,
         )
 
+    if not _richiede_taratura_esterna(strumento):
+        tipo, prossima = "INTERNA", scadenza_interna
     # In caso di coincidenza o sorpasso, la taratura esterna prevale.
-    if scadenza_interna is None or scadenza_esterna <= scadenza_interna:
+    elif scadenza_interna is None or scadenza_esterna <= scadenza_interna:
         tipo, prossima = "ESTERNA", scadenza_esterna
     else:
         tipo, prossima = "INTERNA", scadenza_interna
@@ -173,17 +198,23 @@ def alerts_summary(today: date | None = None) -> dict[str, int]:
 
 
 def create_tipologia(data, user) -> TipologiaStrumento:
+    esterna = _positive_int(
+        data.get("frequenza_esterna_mesi"),
+        "frequenza esterna",
+        optional=True,
+    )
+    interna = _positive_int(
+        data.get("frequenza_interna_mesi"),
+        "frequenza interna",
+        optional=True,
+    )
+    if esterna is None and interna is None:
+        raise ValueError("Indica almeno una frequenza, interna o esterna.")
     row = TipologiaStrumento(
         nome=_text(data.get("nome"), "nome"),
-        frequenza_esterna_mesi=_positive_int(
-            data.get("frequenza_esterna_mesi"),
-            "frequenza esterna",
-        ),
-        frequenza_interna_mesi=_positive_int(
-            data.get("frequenza_interna_mesi"),
-            "frequenza interna",
-            optional=True,
-        ),
+        frequenza_esterna_mesi=esterna or 1,
+        frequenza_interna_mesi=interna,
+        taratura_esterna_attiva=esterna is not None,
     )
     db.session.add(row)
     db.session.flush()
@@ -198,17 +229,24 @@ def update_tipologia(tipologia_id: int, data, user) -> TipologiaStrumento:
         "nome": row.nome,
         "frequenza_esterna_mesi": row.frequenza_esterna_mesi,
         "frequenza_interna_mesi": row.frequenza_interna_mesi,
+        "taratura_esterna_attiva": row.taratura_esterna_attiva,
     }
-    row.nome = _text(data.get("nome"), "nome")
-    row.frequenza_esterna_mesi = _positive_int(
+    esterna = _positive_int(
         data.get("frequenza_esterna_mesi"),
         "frequenza esterna",
+        optional=True,
     )
-    row.frequenza_interna_mesi = _positive_int(
+    interna = _positive_int(
         data.get("frequenza_interna_mesi"),
         "frequenza interna",
         optional=True,
     )
+    if esterna is None and interna is None:
+        raise ValueError("Indica almeno una frequenza, interna o esterna.")
+    row.nome = _text(data.get("nome"), "nome")
+    row.frequenza_esterna_mesi = esterna or row.frequenza_esterna_mesi or 1
+    row.frequenza_interna_mesi = interna
+    row.taratura_esterna_attiva = esterna is not None
     _log("TIPOLOGIA_MODIFICATA", "TIPOLOGIA", row.id, {"prima": before}, user)
     _commit()
     return row
@@ -223,6 +261,9 @@ def create_strumento(data, user, *, data_inserimento: date | None = None) -> Str
     stato = str(data.get("stato") or "IN_USO").strip().upper()
     if stato not in {"IN_USO", "NON_IN_USO"}:
         raise ValueError("Un nuovo strumento può essere In uso o Non in uso.")
+    solo_verifica_interna = _checked(data.get("solo_verifica_interna"))
+    if solo_verifica_interna and not tipologia.frequenza_interna_mesi:
+        raise ValueError("La tipologia deve avere una frequenza di verifica interna.")
 
     data_ultima_taratura = str(data.get("data_ultima_taratura") or "").strip()
     ultima_taratura = data_inserimento or (
@@ -236,8 +277,13 @@ def create_strumento(data, user, *, data_inserimento: date | None = None) -> Str
     public_id, username = _actor(user)
     row = StrumentoMisura(
         codice_interno=data.get("codice_interno"),
-        numero_seriale=data.get("numero_seriale"),
+        numero_seriale=_numero_seriale(
+            data.get("numero_seriale"),
+            data.get("codice_interno"),
+        ),
         descrizione=data.get("descrizione"),
+        costruttore=data.get("costruttore"),
+        solo_verifica_interna=solo_verifica_interna,
         tipologia=tipologia,
         reparto_codice=_validate_reparto(data.get("reparto_codice")),
         stato=stato,
@@ -276,17 +322,29 @@ def update_strumento(strumento_id: int, data, user) -> StrumentoMisura:
         "codice_interno": row.codice_interno,
         "numero_seriale": row.numero_seriale,
         "descrizione": row.descrizione,
+        "costruttore": row.costruttore,
+        "solo_verifica_interna": row.solo_verifica_interna,
         "tipologia_id": row.tipologia_id,
         "reparto_codice": row.reparto_codice,
     }
-    row.codice_interno = data.get("codice_interno")
-    row.numero_seriale = data.get("numero_seriale")
-    row.descrizione = data.get("descrizione")
-    row.tipologia = _get(
+    tipologia = _get(
         TipologiaStrumento,
         int(data.get("tipologia_id") or 0),
         "Tipologia",
     )
+    solo_verifica_interna = _checked(data.get("solo_verifica_interna"))
+    if solo_verifica_interna and not tipologia.frequenza_interna_mesi:
+        raise ValueError("La tipologia deve avere una frequenza di verifica interna.")
+
+    row.codice_interno = data.get("codice_interno")
+    row.numero_seriale = _numero_seriale(
+        data.get("numero_seriale"),
+        data.get("codice_interno"),
+    )
+    row.descrizione = data.get("descrizione")
+    row.costruttore = data.get("costruttore")
+    row.solo_verifica_interna = solo_verifica_interna
+    row.tipologia = tipologia
     row.reparto_codice = _validate_reparto(data.get("reparto_codice"))
     _log("STRUMENTO_MODIFICATO", "STRUMENTO", row.id, {"prima": before}, user)
     _commit()
@@ -358,6 +416,8 @@ def create_spedizione(data, strumento_ids, user) -> SpedizioneTaratura:
         raise ValueError("Uno o più strumenti non esistono.")
     if any(row.stato == "IN_TARATURA" for row in strumenti):
         raise ValueError("Uno o più strumenti sono già In taratura.")
+    if any(not _richiede_taratura_esterna(row) for row in strumenti):
+        raise ValueError("Gli strumenti con sola verifica interna non possono essere spediti.")
 
     public_id, username = _actor(user)
     spedizione = SpedizioneTaratura(
