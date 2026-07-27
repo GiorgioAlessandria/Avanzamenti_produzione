@@ -246,9 +246,13 @@ def create_app():
     app.config["METODO_UTILIZZO_DIR"] = configurazione["Percorsi"][
         "percorso_metodo_utilizzo"
     ]
-    app.config["TARATURE_CERTIFICATI_DIR"] = configurazione["Percorsi"][
+    app.config["TARATURE_CERTIFICATI_DIR"] = configurazione["Percorsi"].get(
         "percorso_certificati_tarature"
-    ]
+    ) or str(
+        Path(app.root_path).parent
+        / "materiale_avanzmaneti_produzione"
+        / "tarature_strumenti"
+    )
     label_params = configurazione.get("parametri_etichette", {})
 
     app.config["LABEL_PRINT_ROTATION"] = int(label_params.get("stampa_rotazione", 0))
