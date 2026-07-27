@@ -239,6 +239,12 @@ class EventoTaratura(db.Model):
         db.Index("ix_eventi_taratura_data", "data_evento"),
     )
 
+    @validates("certificato_nome", "certificato_file")
+    def validate_certificato(self, key, value):
+        if value and self.tipo != "ESTERNA":
+            raise ValueError("Il certificato è consentito solo per tarature esterne.")
+        return value
+
 
 class TaraturaLog(db.Model):
     __bind_key__ = TARATURE_BIND_KEY

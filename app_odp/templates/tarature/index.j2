@@ -193,7 +193,7 @@
                                                     <li class="list-group-item px-0 small">
                                                         <strong>{{ evento.data_evento.strftime('%d/%m/%Y') }} – {{ evento.tipo|title }}</strong>, {{ evento.esito|replace('_',' ')|title }}
                                                         {% if evento.rapporto_riferimento %}<br>Rapporto: {{ evento.rapporto_riferimento }}{% endif %}
-                                                        {% if evento.certificato_file %}<br><a href="{{ operator_url_for('main.tarature_certificato', evento_id=evento.id) }}" target="_blank" rel="noopener">Visualizza certificato PDF</a>{% endif %}
+                                                        {% if evento.tipo == 'ESTERNA' and evento.certificato_file %}<br><a href="{{ operator_url_for('main.tarature_certificato', evento_id=evento.id) }}" target="_blank" rel="noopener">Visualizza certificato PDF</a>{% endif %}
                                                         {% if evento.note %}<br>{{ evento.note }}{% endif %}
                                                     </li>
                                                 {% endfor %}
@@ -249,7 +249,7 @@
                             <td>{{ spedizione.data_spedizione.strftime('%d/%m/%Y') }}</td>
                             <td>{{ spedizione.laboratorio }}</td>
                             <td><span class="badge {{ 'bg-success' if spedizione.chiusa else 'bg-warning text-dark' }}">{{ 'Chiusa' if spedizione.chiusa else 'In attesa' }}</span></td>
-                            <td>{% for item in spedizione.strumenti %}<div>{{ item.strumento.codice_interno }} – {% if item.evento_id %}concluso{% if item.evento.certificato_file %} – <a href="{{ operator_url_for('main.tarature_certificato', evento_id=item.evento_id) }}" target="_blank" rel="noopener">certificato PDF</a>{% endif %}{% else %}in attesa{% endif %}</div>{% endfor %}</td>
+                            <td>{% for item in spedizione.strumenti %}<div>{{ item.strumento.codice_interno }} – {% if item.evento_id %}concluso{% if item.evento.tipo == 'ESTERNA' and item.evento.certificato_file %} – <a href="{{ operator_url_for('main.tarature_certificato', evento_id=item.evento_id) }}" target="_blank" rel="noopener">certificato PDF</a>{% endif %}{% else %}in attesa{% endif %}</div>{% endfor %}</td>
                             <td>{{ spedizione.note or '' }}</td>
                         </tr>
                     {% else %}<tr><td colspan="6" class="text-center text-secondary">Nessuna spedizione.</td></tr>{% endfor %}

@@ -130,6 +130,7 @@ def tarature_certificato(evento_id: int):
     evento = db.session.get(EventoTaratura, evento_id)
     if (
         evento is None
+        or evento.tipo != "ESTERNA"
         or not evento.certificato_nome
         or not evento.certificato_file
     ):

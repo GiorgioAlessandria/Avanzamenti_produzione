@@ -3,6 +3,7 @@ from io import BytesIO
 import pytest
 from werkzeug.datastructures import FileStorage
 
+from app_odp.tarature_models import EventoTaratura
 from app_odp.services.tarature_service import (
     _numero_seriale,
     _read_certificato_pdf,
@@ -45,3 +46,22 @@ def test_certificato_viene_salvato_fuori_dal_database(tmp_path):
 
     assert filename.endswith(".pdf")
     assert (tmp_path / filename).read_bytes() == payload
+
+
+@pytest.mark.parametrize("tipo", ["INIZIALE", "INTERNA"])
+def test_certificato_rifiutato_per_attivita_non_esterna(tipo):
+    with pytest.raises(ValueError, match="solo per tarature esterne"):
+        EventoTaratura(tipo=tipo, certificato_nome="certificato.pdf")
+
+    evento = EventoTaratura(tipo=tipo)
+    with pytest.raises(ValueError, match="solo per tarature esterne"):
+        evento.certificato_file = "archivio.pdf"
+
+
+def test_certificato_consentito_per_taratura_esterna():
+    evento = EventoTaratura(
+        tipo="ESTERNA",
+        certificato_nome="certificato.pdf",
+        certificato_file="archivio.pdf",
+    )
+    assert evento.certificato_file == "archivio.pdf"
