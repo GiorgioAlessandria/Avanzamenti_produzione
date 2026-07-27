@@ -3,10 +3,14 @@ from __future__ import annotations
 import calendar
 import json
 from datetime import date, datetime
+from pathlib import Path
+from uuid import uuid4
 from zoneinfo import ZoneInfo
 
+from flask import current_app
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
+from werkzeug.utils import secure_filename
 
 from app_odp.models import Reparti, db
 from app_odp.tarature_models import (
@@ -17,6 +21,9 @@ from app_odp.tarature_models import (
     TaraturaLog,
     TipologiaStrumento,
 )
+
+
+MAX_CERTIFICATO_PDF_BYTES = 20 * 1024 * 1024
 
 
 def _text(value, field: str) -> str:
@@ -36,6 +43,38 @@ def _numero_seriale(value, codice_interno) -> str:
     if normalized in {None, "-"}:
         return f"__NO_SERIAL__:{_text(codice_interno, 'codice interno').upper()}"
     return normalized.upper()
+
+
+def _read_certificato_pdf(file_storage) -> tuple[str, bytes]:
+    if file_storage is None or not str(file_storage.filename or "").strip():
+        raise ValueError("Il certificato PDF è obbligatorio.")
+
+    filename = secure_filename(file_storage.filename)
+    if not filename or not filename.lower().endswith(".pdf"):
+        raise ValueError("Il certificato deve essere un file PDF.")
+
+    payload = file_storage.read(MAX_CERTIFICATO_PDF_BYTES + 1)
+    if len(payload) > MAX_CERTIFICATO_PDF_BYTES:
+        raise ValueError("Il certificato PDF non può superare 20 MB.")
+    if not payload.startswith(b"%PDF-"):
+        raise ValueError("Il file caricato non è un PDF valido.")
+    return filename, payload
+
+
+def _save_certificato_pdf(directory, payload: bytes) -> str:
+    base_dir = Path(directory)
+    filename = f"{uuid4().hex}.pdf"
+    target = base_dir / filename
+    try:
+        base_dir.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(payload)
+    except OSError as exc:
+        try:
+            target.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise ValueError("Impossibile salvare il certificato PDF.") from exc
+    return filename
 
 
 def _checked(value) -> bool:
@@ -455,10 +494,11 @@ def create_spedizione(data, strumento_ids, user) -> SpedizioneTaratura:
     return spedizione
 
 
-def record_external_calibration(strumento_id: int, data, user) -> EventoTaratura:
+def record_external_calibration(strumento_id: int, data, user, certificato) -> EventoTaratura:
     row = _get(StrumentoMisura, strumento_id, "Strumento")
     if row.stato != "IN_TARATURA":
         raise ValueError("Lo strumento non è In taratura.")
+    certificato_nome, certificato_contenuto = _read_certificato_pdf(certificato)
     data_evento = parse_date(data.get("data_evento"), "data taratura")
     if data_evento > today_rome():
         raise ValueError("La data della taratura non può essere futura.")
@@ -487,6 +527,7 @@ def record_external_calibration(strumento_id: int, data, user) -> EventoTaratura
         esito=esito,
         rapporto_riferimento=rapporto,
         note=_optional_text(data.get("note")),
+        certificato_nome=certificato_nome,
         registrato_da_public_id=public_id,
         registrato_da_username=username,
     )
@@ -505,10 +546,21 @@ def record_external_calibration(strumento_id: int, data, user) -> EventoTaratura
             "data": data_evento,
             "esito": esito,
             "rapporto": rapporto,
+            "certificato": certificato_nome,
         },
         user,
     )
-    _commit()
+    directory = current_app.config["TARATURE_CERTIFICATI_DIR"]
+    certificato_file = _save_certificato_pdf(directory, certificato_contenuto)
+    evento.certificato_file = certificato_file
+    try:
+        _commit()
+    except Exception:
+        try:
+            (Path(directory) / certificato_file).unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
     return evento
 
 

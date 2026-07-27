@@ -1,11 +1,23 @@
 from __future__ import annotations
 
-from flask import flash, redirect, render_template, request, url_for
+from pathlib import Path
+
+from flask import (
+    abort,
+    current_app,
+    flash,
+    redirect,
+    render_template,
+    request,
+    send_file,
+    url_for,
+)
 
 from app_odp.models import db
 from app_odp.operator_session import active_token, active_user
 from app_odp.policy.decorator import require_active_any_perm
 from app_odp.routes_blueprint import main_bp
+from app_odp.tarature_models import EventoTaratura
 from app_odp.services.tarature_service import (
     build_page_context,
     create_spedizione,
@@ -106,9 +118,41 @@ def tarature_esito_esterno(strumento_id: int):
             strumento_id,
             request.form,
             active_user(),
+            request.files.get("certificato"),
         ),
-        "Rapporto di taratura registrato.",
+        "Rapporto e certificato di taratura registrati.",
     )
+
+
+@main_bp.get("/tarature/certificati/<int:evento_id>")
+@require_active_any_perm("tarature")
+def tarature_certificato(evento_id: int):
+    evento = db.session.get(EventoTaratura, evento_id)
+    if (
+        evento is None
+        or not evento.certificato_nome
+        or not evento.certificato_file
+    ):
+        abort(404)
+
+    try:
+        base_dir = Path(current_app.config["TARATURE_CERTIFICATI_DIR"]).resolve()
+        pdf_path = (base_dir / evento.certificato_file).resolve()
+        pdf_path.relative_to(base_dir)
+        if not pdf_path.is_file():
+            abort(404)
+    except (OSError, ValueError):
+        abort(404)
+
+    response = send_file(
+        pdf_path,
+        mimetype="application/pdf",
+        as_attachment=False,
+        download_name=evento.certificato_nome,
+        max_age=0,
+    )
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
 
 
 @main_bp.post("/tarature/spedizioni")

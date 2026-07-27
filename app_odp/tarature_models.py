@@ -218,6 +218,8 @@ class EventoTaratura(db.Model):
     esito = db.Column(db.String(20), nullable=False)
     rapporto_riferimento = db.Column(db.Text)
     note = db.Column(db.Text)
+    certificato_nome = db.Column(db.Text)
+    certificato_file = db.Column(db.Text)
     registrato_da_public_id = db.Column(db.Text)
     registrato_da_username = db.Column(db.Text)
     created_at = db.Column(db.DateTime, nullable=False, default=_now_rome)

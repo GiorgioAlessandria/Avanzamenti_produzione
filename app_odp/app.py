@@ -95,6 +95,22 @@ def _ensure_manutenzioni_schema() -> None:
                 "taratura_esterna_attiva BOOLEAN NOT NULL DEFAULT 1"
             )
 
+    eventi_taratura_columns = {
+        column["name"]
+        for column in inspect(engine).get_columns("eventi_taratura")
+    }
+    with engine.begin() as connection:
+        if "certificato_nome" not in eventi_taratura_columns:
+            connection.exec_driver_sql(
+                "ALTER TABLE eventi_taratura "
+                "ADD COLUMN certificato_nome TEXT"
+            )
+        if "certificato_file" not in eventi_taratura_columns:
+            connection.exec_driver_sql(
+                "ALTER TABLE eventi_taratura "
+                "ADD COLUMN certificato_file TEXT"
+            )
+
 
 def load_config(config: Path) -> dict:
     """
@@ -229,6 +245,9 @@ def create_app():
     )
     app.config["METODO_UTILIZZO_DIR"] = configurazione["Percorsi"][
         "percorso_metodo_utilizzo"
+    ]
+    app.config["TARATURE_CERTIFICATI_DIR"] = configurazione["Percorsi"][
+        "percorso_certificati_tarature"
     ]
     label_params = configurazione.get("parametri_etichette", {})
 
