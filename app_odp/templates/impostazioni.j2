@@ -69,6 +69,9 @@
     <script id="registry-users-data"
             type="application/json">
         {{ registry_users|tojson }}</script>
+    <script id="registry-reparti-data"
+            type="application/json">
+        {{ registry_reparti_options|tojson }}</script>
     <script>
         function getTabSession() {
             const params = new URLSearchParams(window.location.search);
@@ -1345,9 +1348,11 @@
 
         (() => {
             const usersDataEl = document.getElementById("registry-users-data");
+            const repartiDataEl = document.getElementById("registry-reparti-data");
             const feedbackEl = document.getElementById("user-registry-feedback");
             const selectUserEl = document.getElementById("select-registry-user");
             const detailEl = document.getElementById("registry-user-detail");
+            const canEditRegistry = {{ can_edit_user_registry|tojson }};
 
             const createUsernameEl = document.getElementById("create-user-username");
             const createRoleEl = document.getElementById("create-user-role");
@@ -1358,12 +1363,19 @@
             const createLoginCodeEl = document.getElementById("create-user-login-code");
 
             let registryUsers = [];
+            let registryReparti = [];
             let selectedUserId = "";
 
             try {
                 registryUsers = JSON.parse(usersDataEl?.textContent || "[]");
             } catch (_) {
                 registryUsers = [];
+            }
+
+            try {
+                registryReparti = JSON.parse(repartiDataEl?.textContent || "[]");
+            } catch (_) {
+                registryReparti = [];
             }
 
             function escapeHtml(value) {
@@ -1408,11 +1420,82 @@
                 if (!user) {
                     detailEl.innerHTML = `
                 <div class="alert alert-info mb-0">
-                    Seleziona un utente per modificarne lo stato.
+                    Seleziona un utente per modificarne ${canEditRegistry ? "stato e anagrafica" : "lo stato"}.
                 </div>
             `;
                     return;
                 }
+
+                const genere = String(user.genere || "").toLowerCase();
+                const currentReparto = String(user.reparto_princ || "");
+                const currentRepartoIsKnown = registryReparti.some(
+                    rep => String(rep.codice) === currentReparto
+                );
+                const unknownRepartoOption = currentReparto && !currentRepartoIsKnown
+                    ? `<option value="${escapeHtml(currentReparto)}" selected>
+                           ${escapeHtml(currentReparto)} - non presente in anagrafica reparti
+                       </option>`
+                    : "";
+                const repartoOptions = registryReparti.map(rep => `
+                    <option value="${escapeHtml(rep.codice)}"
+                            ${String(rep.codice) === currentReparto ? "selected" : ""}>
+                        ${escapeHtml(rep.codice)}${rep.descrizione ? ` - ${escapeHtml(rep.descrizione)}` : ""}
+                    </option>
+                `).join("");
+
+                const editForm = canEditRegistry ? `
+                    <hr>
+                    <h5 class="mb-3">Modifica anagrafica</h5>
+                    <div class="row g-3 mb-4">
+                        <div class="col-12 col-md-6">
+                            <label for="edit-user-username" class="form-label fw-semibold">
+                                Username
+                            </label>
+                            <input type="text"
+                                   id="edit-user-username"
+                                   class="form-control"
+                                   maxlength="100"
+                                   value="${escapeHtml(user.username)}">
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label for="edit-user-public-id" class="form-label fw-semibold">
+                                Public ID
+                            </label>
+                            <input type="text"
+                                   id="edit-user-public-id"
+                                   class="form-control"
+                                   maxlength="100"
+                                   value="${escapeHtml(user.public_id || "")}">
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label for="edit-user-genere" class="form-label fw-semibold">
+                                Genere
+                            </label>
+                            <select id="edit-user-genere" class="form-select">
+                                <option value="" ${genere === "" ? "selected" : ""}>-- Non specificato --</option>
+                                <option value="m" ${genere === "m" ? "selected" : ""}>M</option>
+                                <option value="f" ${genere === "f" ? "selected" : ""}>F</option>
+                            </select>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label for="edit-user-reparto-princ" class="form-label fw-semibold">
+                                Reparto principale
+                            </label>
+                            <select id="edit-user-reparto-princ" class="form-select">
+                                <option value="" ${currentReparto ? "" : "selected"}>-- Nessun reparto --</option>
+                                ${unknownRepartoOption}
+                                ${repartoOptions}
+                            </select>
+                        </div>
+                        <div class="col-12">
+                            <button type="button"
+                                    class="btn btn-primary"
+                                    id="btn-edit-user-save">
+                                Salva anagrafica
+                            </button>
+                        </div>
+                    </div>
+                ` : "";
 
                 detailEl.innerHTML = `
             <div class="mb-4">
@@ -1425,6 +1508,8 @@
                     <strong>${user.active ? "Attivo" : "Inattivo"}</strong>
                 </div>
             </div>
+
+            ${editForm}
 
             <div class="d-grid gap-2">
                 <button type="button"
@@ -1511,6 +1596,58 @@
                 }
             }
 
+            async function updateUser() {
+                const user = getSelectedUser();
+                if (!user || !canEditRegistry) return;
+
+                const payload = {
+                    user_id: Number(user.id),
+                    username: (document.getElementById("edit-user-username")?.value || "").trim(),
+                    public_id: (document.getElementById("edit-user-public-id")?.value || "").trim(),
+                    genere: (document.getElementById("edit-user-genere")?.value || "").trim(),
+                    reparto_princ: (document.getElementById("edit-user-reparto-princ")?.value || "").trim(),
+                };
+
+                if (!payload.username) {
+                    showFeedback("warning", "Inserisci lo username.");
+                    return;
+                }
+                if (!payload.public_id) {
+                    showFeedback("warning", "Inserisci il Public ID.");
+                    return;
+                }
+
+                try {
+                    const resp = await fetch(apiUrl("/api/impostazioni/modifica-utente"), {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "X-Requested-With": "XMLHttpRequest",
+                        },
+                        credentials: "same-origin",
+                        body: JSON.stringify(payload),
+                    });
+
+                    let data = {};
+                    try {
+                        data = await resp.json();
+                    } catch (_) {
+                        data = {};
+                    }
+
+                    if (!resp.ok || data.ok === false) {
+                        showFeedback("danger", data.error || "Errore modifica anagrafica utente.");
+                        return;
+                    }
+
+                    showFeedback("success", data.message || "Anagrafica utente aggiornata.");
+                    window.location.reload();
+                } catch (err) {
+                    console.error(err);
+                    showFeedback("danger", "Errore di comunicazione con il server.");
+                }
+            }
+
             async function toggleUserActive() {
                 const user = getSelectedUser();
                 if (!user) return;
@@ -1562,6 +1699,11 @@
             document.addEventListener("click", function (event) {
                 if (event.target.closest("#btn-create-user-save")) {
                     createUser();
+                    return;
+                }
+
+                if (event.target.closest("#btn-edit-user-save")) {
+                    updateUser();
                     return;
                 }
 

@@ -114,7 +114,13 @@
     <div class="col-12 col-lg-8">
         <div class="card shadow-sm h-100">
             <div class="card-header">
-                <h3 class="mb-0">Stato utenti</h3>
+                <h3 class="mb-0">
+                    {% if can_edit_user_registry %}
+                        Stato e anagrafica utenti
+                    {% else %}
+                        Stato utenti
+                    {% endif %}
+                </h3>
             </div>
 
             <div class="card-body">
@@ -140,7 +146,11 @@
 
                 <div id="registry-user-detail">
                     <div class="alert alert-info mb-0">
-                        Seleziona un utente per modificarne lo stato.
+                        {% if can_edit_user_registry %}
+                            Seleziona un utente per modificarne stato e anagrafica.
+                        {% else %}
+                            Seleziona un utente per modificarne lo stato.
+                        {% endif %}
                     </div>
                 </div>
             </div>

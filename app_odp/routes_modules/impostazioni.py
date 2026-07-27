@@ -23,6 +23,7 @@ from app_odp.models import (
     roles_manageable_roles,
     ProductionCapacityCalendar,
 )
+from app_odp.manutenzioni_models import MacchinarioOperatore
 from app_odp.operator_session import (
     active_policy,
     active_user,
@@ -54,6 +55,7 @@ from app_odp.services.impostazioni_service import (
     _is_login_code_integrity_error,
     _normalize_id_list,
     _normalize_role_creation_links,
+    _normalize_user_registry_payload,
     _prepare_login_code_or_response,
     _role_config_items_for_creation,
     _valid_role_creation_ids,
@@ -114,6 +116,7 @@ def impostazioni():
     deletable_role_details = {}
 
     show_user_registry_section = policy.can_view_role_assignment_section
+    can_edit_user_registry = bool(policy.has_direct_admin_role)
 
     registry_role_options = []
     registry_users = []
@@ -369,6 +372,7 @@ def impostazioni():
                 {
                     "id": utente.id,
                     "username": utente.username or "",
+                    "public_id": utente.public_id or "",
                     "active": bool(utente.active),
                     "genere": utente.genere or "",
                     "reparto_princ": utente.RepartoPrinc or "",
@@ -406,6 +410,7 @@ def impostazioni():
         registry_role_options=registry_role_options,
         registry_users=registry_users,
         registry_reparti_options=registry_reparti_options,
+        can_edit_user_registry=can_edit_user_registry,
         show_home_config_section=show_home_config_section,
         home_config_payload=home_config_payload,
         show_capacity_config_section=show_capacity_config_section,
@@ -1060,6 +1065,142 @@ def api_reset_login_code():
             "ok": True,
             "message": "Login code aggiornato correttamente.",
             "user_id": utente.id,
+        }
+    ), 200
+
+
+@main_bp.post("/api/impostazioni/modifica-utente")
+@require_active_perm("impostazioni_utente")
+def api_modifica_utente():
+    user = active_user()
+    policy = active_policy()
+
+    if not policy.has_direct_admin_role:
+        return jsonify({"ok": False, "error": "Permesso insufficiente."}), 403
+
+    data = request.get_json(silent=True) or {}
+
+    try:
+        user_id = int(data.get("user_id"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "Utente non valido."}), 400
+
+    utente = User.query.get(user_id)
+    if utente is None:
+        return jsonify({"ok": False, "error": "Utente non trovato."}), 404
+
+    if int(utente.id) == int(user.id):
+        return jsonify(
+            {"ok": False, "error": "Non puoi modificare la tua anagrafica."}
+        ), 403
+
+    if not policy.can_manage_target_user(utente):
+        return jsonify({"ok": False, "error": "Utente non gestibile."}), 403
+
+    try:
+        values = _normalize_user_registry_payload(data)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+    username_in_uso = User.query.filter(
+        func.lower(User.username) == values["username"].lower(),
+        User.id != utente.id,
+    ).first()
+    if username_in_uso is not None:
+        return jsonify(
+            {"ok": False, "error": "Esiste già un utente con questo username."}
+        ), 409
+
+    public_id_in_uso = User.query.filter(
+        func.lower(User.public_id) == values["public_id"].lower(),
+        User.id != utente.id,
+    ).first()
+    if public_id_in_uso is not None:
+        return jsonify(
+            {"ok": False, "error": "Esiste già un utente con questo Public ID."}
+        ), 409
+
+    if values["reparto_princ"]:
+        reparto_exists = Reparti.query.filter(
+            Reparti.Codice == values["reparto_princ"]
+        ).first()
+        if reparto_exists is None:
+            return jsonify(
+                {"ok": False, "error": "Reparto principale non valido."}
+            ), 400
+
+    old_username = utente.username
+    old_public_id = utente.public_id
+
+    try:
+        utente.username = values["username"]
+        utente.public_id = values["public_id"]
+        utente.genere = values["genere"] or None
+        utente.RepartoPrinc = values["reparto_princ"] or None
+
+        if old_username != values["username"]:
+            InputOdpRuntime.query.filter(
+                InputOdpRuntime.Utente_operazione == old_username,
+                InputOdpRuntime.Stato_odp.in_(["Attivo", "In Sospeso"]),
+            ).update(
+                {InputOdpRuntime.Utente_operazione: values["username"]},
+                synchronize_session=False,
+            )
+            revoke_operator_sessions_for_user(utente.id, commit=False)
+
+        if (
+            old_username != values["username"]
+            or old_public_id != values["public_id"]
+        ):
+            MacchinarioOperatore.query.filter(
+                MacchinarioOperatore.operatore_public_id == old_public_id
+            ).update(
+                {
+                    MacchinarioOperatore.operatore_public_id: values["public_id"],
+                    MacchinarioOperatore.operatore_username: values["username"],
+                },
+                synchronize_session=False,
+            )
+
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify(
+            {
+                "ok": False,
+                "error": "Username o Public ID già utilizzato da un altro utente.",
+            }
+        ), 409
+    except Exception as exc:
+        db.session.rollback()
+        current_app.logger.exception("Errore modifica anagrafica utente")
+        return jsonify(
+            {
+                "ok": False,
+                "error": f"Errore modifica anagrafica utente: {exc}",
+            }
+        ), 500
+
+    ruolo = utente.roles[0] if utente.roles else None
+    return jsonify(
+        {
+            "ok": True,
+            "message": "Anagrafica utente aggiornata correttamente.",
+            "user": {
+                "id": utente.id,
+                "username": utente.username or "",
+                "public_id": utente.public_id or "",
+                "active": bool(utente.active),
+                "genere": utente.genere or "",
+                "reparto_princ": utente.RepartoPrinc or "",
+                "current_role_id": ruolo.id if ruolo else None,
+                "current_role_name": ruolo.name if ruolo else "",
+                "current_role_description": (
+                    ruolo.description or ruolo.name
+                )
+                if ruolo
+                else "",
+            },
         }
     ), 200
 

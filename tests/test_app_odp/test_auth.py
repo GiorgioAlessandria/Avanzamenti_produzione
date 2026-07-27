@@ -104,6 +104,10 @@ def _register_main_routes(app):
     def home_acquisti():
         return "home_acquisti"
 
+    @main_bp.route("/carichi-scarichi", endpoint="logistica_page")
+    def logistica_page():
+        return "logistica"
+
     app.register_blueprint(main_bp)
 
 
@@ -300,6 +304,41 @@ def test_login_post_produzione_only_redirects_to_home_with_session(
     assert response.headers["Location"].endswith("/?tab_session=tok-3")
     assert login_calls == []
     assert session_calls == [user]
+
+
+def test_login_post_carica_uses_logistica_as_main_page(
+    client, install_fake_user_model, mod, monkeypatch
+):
+    user = FakeUserRow(30, permissions={"carica", "home", "home_acquisti"})
+    install_fake_user_model([user])
+    login_calls = []
+    monkeypatch.setattr(mod, "login_user", lambda current_user: login_calls.append(current_user))
+    monkeypatch.setattr(
+        mod,
+        "create_operator_session",
+        lambda current_user: pytest.fail("sessione operatore non attesa"),
+    )
+
+    response = client.post("/login", data={"login_code": "ABC123"})
+
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/carichi-scarichi")
+    assert login_calls == [user]
+
+
+def test_login_post_ricezione_only_redirects_to_logistica(
+    client, install_fake_user_model, mod, monkeypatch
+):
+    user = FakeUserRow(31, permissions={"ricezione"})
+    install_fake_user_model([user])
+    login_calls = []
+    monkeypatch.setattr(mod, "login_user", lambda current_user: login_calls.append(current_user))
+
+    response = client.post("/login", data={"login_code": "ABC123"})
+
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/carichi-scarichi")
+    assert login_calls == [user]
 
 
 def test_login_post_user_without_permissions_returns_403(

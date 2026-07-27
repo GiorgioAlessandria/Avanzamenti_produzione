@@ -1,0 +1,329 @@
+{% extends "base.j2" %}
+
+{% block title %}Carichi e scarichi{% endblock %}
+
+{% block styles %}
+    {{ super() }}
+    <style>
+        .logistica-table-wrap {
+            max-height: calc(100vh - 360px);
+            overflow: auto;
+        }
+
+        .logistica-table-wrap thead th {
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            background: var(--bs-tertiary-bg);
+        }
+
+        .movimento-cliente > * {
+            background-color: #d1e7dd !important;
+        }
+
+        .movimento-fornitore > * {
+            background-color: #cfe2ff !important;
+        }
+
+        .movimento-scaduto > * {
+            background-color: #f8d7da !important;
+        }
+
+        .logistica-actions {
+            min-width: 22rem;
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+    <main class="container-fluid py-3" id="logistica-page">
+        <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+            <div>
+                <h1 class="h4 mb-1">Carichi e scarichi attesi</h1>
+                <div class="text-muted small">
+                    Pianificazione degli arrivi e delle partenze di clienti e fornitori
+                </div>
+            </div>
+
+            <div class="d-flex flex-wrap align-items-center gap-2 small" aria-label="Legenda colori">
+                <span class="badge text-dark" style="background: #d1e7dd;">Cliente</span>
+                <span class="badge text-dark" style="background: #cfe2ff;">Fornitore</span>
+                <span class="badge text-dark" style="background: #f8d7da;">Data superata</span>
+            </div>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button"
+                            class="btn-close"
+                            data-bs-dismiss="alert"
+                            aria-label="Chiudi"></button>
+                </div>
+            {% endfor %}
+        {% endwith %}
+
+        {% if can_carica %}
+            <div class="row g-3 mb-3">
+                <div class="col-12 col-xl-3">
+                    <form method="post"
+                          action="{{ operator_url_for('main.logistica_vettore_create') }}"
+                          class="card shadow-sm h-100">
+                        <div class="card-header">Nuovo vettore</div>
+                        <div class="card-body">
+                            <label class="form-label" for="logistica-vettore-nome">Nome vettore</label>
+                            <div class="input-group">
+                                <input class="form-control"
+                                       id="logistica-vettore-nome"
+                                       name="nome"
+                                       maxlength="120"
+                                       autocomplete="off"
+                                       required>
+                                <button class="btn btn-primary" type="submit">Aggiungi</button>
+                            </div>
+                            <div class="form-text">{{ vettori|length }} vettori disponibili</div>
+                        </div>
+                    </form>
+                </div>
+
+                <div class="col-12 col-xl-9">
+                    <form method="post"
+                          action="{{ operator_url_for('main.logistica_movimento_create') }}"
+                          class="card shadow-sm h-100">
+                        <div class="card-header">Nuova spedizione</div>
+                        <div class="card-body">
+                            <div class="row g-2 align-items-end">
+                                <div class="col-12 col-md-4 col-xl-3">
+                                    <label class="form-label" for="logistica-vettore">Vettore</label>
+                                    <select class="form-select"
+                                            id="logistica-vettore"
+                                            name="vettore_id"
+                                            required>
+                                        <option value="">Seleziona</option>
+                                        {% for vettore in vettori %}
+                                            <option value="{{ vettore.id }}">{{ vettore.nome }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+
+                                <div class="col-6 col-md-2">
+                                    <label class="form-label" for="logistica-movimento">Movimento</label>
+                                    <select class="form-select"
+                                            id="logistica-movimento"
+                                            name="movimento"
+                                            required>
+                                        <option value="CARICO">Carico</option>
+                                        <option value="SCARICO">Scarico</option>
+                                    </select>
+                                </div>
+
+                                <div class="col-6 col-md-2">
+                                    <label class="form-label" for="logistica-tipologia">Tipologia</label>
+                                    <select class="form-select"
+                                            id="logistica-tipologia"
+                                            name="tipologia"
+                                            required>
+                                        <option value="CLIENTE">Cliente</option>
+                                        <option value="FORNITORE">Fornitore</option>
+                                    </select>
+                                </div>
+
+                                <div class="col-12 col-md-4 col-xl-3">
+                                    <label class="form-label" for="logistica-controparte">Controparte</label>
+                                    <input class="form-control"
+                                           id="logistica-controparte"
+                                           name="controparte"
+                                           maxlength="160"
+                                           autocomplete="off"
+                                           required>
+                                </div>
+
+                                <div class="col-6 col-md-3 col-xl-2">
+                                    <label class="form-label" for="logistica-data">Data</label>
+                                    <input class="form-control"
+                                           type="date"
+                                           id="logistica-data"
+                                           name="data"
+                                           value="{{ oggi.isoformat() }}"
+                                           required>
+                                </div>
+
+                                <div class="col-12 col-md-5">
+                                    <label class="form-label" for="logistica-materiale">Materiale</label>
+                                    <input class="form-control"
+                                           id="logistica-materiale"
+                                           name="materiale"
+                                           maxlength="300"
+                                           autocomplete="off"
+                                           required>
+                                </div>
+
+                                <div class="col-12 col-md-5">
+                                    <label class="form-label" for="logistica-note">Note</label>
+                                    <input class="form-control"
+                                           id="logistica-note"
+                                           name="note"
+                                           maxlength="1000"
+                                           autocomplete="off">
+                                </div>
+
+                                <div class="col-12 col-md-2">
+                                    <button class="btn btn-primary w-100"
+                                            type="submit"
+                                            {% if not vettori %}disabled{% endif %}>
+                                        Registra
+                                    </button>
+                                </div>
+                            </div>
+
+                            {% if not vettori %}
+                                <div class="form-text text-danger">
+                                    Inserire prima almeno un vettore.
+                                </div>
+                            {% endif %}
+                        </div>
+                    </form>
+                </div>
+            </div>
+        {% endif %}
+
+        <section class="card shadow-sm mb-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>Movimentazioni attese</span>
+                <span class="badge text-bg-secondary">{{ attesi|length }}</span>
+            </div>
+
+            <div class="logistica-table-wrap">
+                <table class="table table-hover align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Vettore</th>
+                            <th>Movimento</th>
+                            <th>Controparte</th>
+                            <th>Data</th>
+                            <th>Materiale</th>
+                            <th>Note</th>
+                            <th>Azioni</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for movimento in attesi %}
+                            <tr class="{{ row_class(movimento, oggi) }}">
+                                <td class="fw-semibold">{{ movimento.id }}</td>
+                                <td>
+                                    {{ movimento.vettore.nome }}
+                                    {% if movimento.sollecitato_il %}
+                                        <span class="badge text-bg-warning">Sollecitato</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ movimento.movimento|title }}</td>
+                                <td>
+                                    <span class="badge {{ 'text-bg-success' if movimento.tipologia == 'CLIENTE' else 'text-bg-primary' }}">
+                                        {{ movimento.tipologia|title }}
+                                    </span>
+                                    {{ movimento.controparte }}
+                                </td>
+                                <td class="text-nowrap fw-semibold">
+                                    {{ movimento.data.strftime('%d/%m/%Y') }}
+                                </td>
+                                <td>{{ movimento.materiale }}</td>
+                                <td>{{ movimento.note or '-' }}</td>
+                                <td class="logistica-actions">
+                                    <div class="d-flex flex-wrap gap-2">
+                                        {% if can_carica %}
+                                            <form method="post"
+                                                  action="{{ operator_url_for('main.logistica_movimento_sollecito', movimento_id=movimento.id) }}">
+                                                <button class="btn btn-sm btn-outline-warning" type="submit">
+                                                    {{ 'Rimuovi sollecito' if movimento.sollecitato_il else 'Sollecita' }}
+                                                </button>
+                                            </form>
+
+                                            <form method="post"
+                                                  class="d-flex"
+                                                  action="{{ operator_url_for('main.logistica_movimento_data', movimento_id=movimento.id) }}">
+                                                <label class="visually-hidden"
+                                                       for="logistica-nuova-data-{{ movimento.id }}">
+                                                    Nuova data
+                                                </label>
+                                                <input class="form-control form-control-sm"
+                                                       type="date"
+                                                       id="logistica-nuova-data-{{ movimento.id }}"
+                                                       name="data"
+                                                       min="{{ movimento.data.isoformat() }}"
+                                                       required>
+                                                <button class="btn btn-sm btn-outline-primary ms-1"
+                                                        type="submit">
+                                                    Posticipa
+                                                </button>
+                                            </form>
+                                        {% endif %}
+
+                                        <form method="post"
+                                              action="{{ operator_url_for('main.logistica_movimento_conferma', movimento_id=movimento.id) }}"
+                                              onsubmit="return confirm('Confermi che la movimentazione è avvenuta?');">
+                                            <button class="btn btn-sm btn-success" type="submit">
+                                                Conferma movimentazione
+                                            </button>
+                                        </form>
+                                    </div>
+                                </td>
+                            </tr>
+                        {% else %}
+                            <tr>
+                                <td colspan="8" class="text-center text-muted py-4">
+                                    Nessuna movimentazione attesa.
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="card shadow-sm">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>Ultime movimentazioni completate</span>
+                <span class="badge text-bg-secondary">{{ completati|length }}</span>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-striped table-hover align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Vettore</th>
+                            <th>Movimento</th>
+                            <th>Controparte</th>
+                            <th>Data prevista</th>
+                            <th>Materiale</th>
+                            <th>Confermata</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for movimento in completati %}
+                            <tr>
+                                <td>{{ movimento.id }}</td>
+                                <td>{{ movimento.vettore.nome }}</td>
+                                <td>{{ movimento.movimento|title }}</td>
+                                <td>{{ movimento.tipologia|title }} — {{ movimento.controparte }}</td>
+                                <td>{{ movimento.data.strftime('%d/%m/%Y') }}</td>
+                                <td>{{ movimento.materiale }}</td>
+                                <td class="text-nowrap">
+                                    {{ movimento.completato_il.strftime('%d/%m/%Y %H:%M') }}
+                                    — {{ movimento.completato_da_nome }}
+                                </td>
+                            </tr>
+                        {% else %}
+                            <tr>
+                                <td colspan="7" class="text-center text-muted py-4">
+                                    Nessuna movimentazione completata.
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+{% endblock %}

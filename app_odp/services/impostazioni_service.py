@@ -237,6 +237,43 @@ def _build_public_id_from_full_name(value: str) -> str:
     return normalized
 
 
+def _normalize_user_registry_payload(data) -> dict:
+    data = data or {}
+    if not isinstance(data, dict):
+        raise ValueError("Formato dati non valido.")
+
+    username = _norm_text(data.get("username"))
+    public_id = _norm_text(data.get("public_id"))
+    genere = _norm_text(data.get("genere")).lower()
+    reparto_princ = _norm_text(data.get("reparto_princ"))
+
+    if not username:
+        raise ValueError("Username obbligatorio.")
+    if len(username) < 3:
+        raise ValueError("Username troppo corto.")
+    if len(username) > 100:
+        raise ValueError("Username troppo lungo.")
+
+    if not public_id:
+        raise ValueError("Public ID obbligatorio.")
+    if len(public_id) > 100:
+        raise ValueError("Public ID troppo lungo.")
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+", public_id):
+        raise ValueError(
+            "Il Public ID può contenere solo lettere, numeri, punto, trattino e underscore."
+        )
+
+    if genere not in {"", "m", "f"}:
+        raise ValueError("Genere non valido: usare m, f oppure lasciare vuoto.")
+
+    return {
+        "username": username,
+        "public_id": public_id,
+        "genere": genere,
+        "reparto_princ": reparto_princ,
+    }
+
+
 def _login_code_error_response(message: str, status_code: int = 400):
     return jsonify(
         {

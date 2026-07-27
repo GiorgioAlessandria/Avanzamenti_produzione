@@ -108,6 +108,7 @@ from app_odp.routes_modules import (
     dashboard,
     etichette,
     impostazioni,
+    logistica,
     ordini,
     erp,
     documenti,

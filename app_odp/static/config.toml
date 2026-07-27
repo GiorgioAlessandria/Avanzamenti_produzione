@@ -51,6 +51,7 @@ percorso_metodo_utilizzo = "//Serverspring02/PythonDB/materiale_avanzamenti_prod
 percorso_metodi_collaudo = "//Serverspring02/PythonDB/materiale_avanzamenti_produzione/metodi_collaudo"
 percorso_db_manutenzioni = "//Serverspring02/PythonDB/Avanzamenti_produzione/app_odp/instance/manutenzioni.sqlite"
 percorso_db_rifiuti = "//Serverspring02/PythonDB/Avanzamenti_produzione/app_odp/instance/db_rifiuti.sqlite"
+percorso_db_logistica = "//Serverspring02/PythonDB/Avanzamenti_produzione/app_odp/instance/db_carichi_scarichi.sqlite"
 [sync_config]
 tempo_polling = 30
 counter_righe = 0

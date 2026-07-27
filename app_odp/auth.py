@@ -29,6 +29,11 @@ def _get_post_login_redirect(user):
         or policy.can("manutenzioni_amministrazione")
     )
     has_tarature = policy.can("tarature")
+    has_carica = policy.can("carica")
+    has_ricezione = policy.can("ricezione")
+
+    if has_carica:
+        return url_for("main.logistica_page")
 
     if has_acquisti and has_produzione:
         token = create_operator_session(user)
@@ -40,6 +45,9 @@ def _get_post_login_redirect(user):
     if has_produzione:
         token = create_operator_session(user)
         return url_for("main.home", tab_session=token)
+
+    if has_ricezione:
+        return url_for("main.logistica_page")
 
     if has_rifiuti:
         return url_for("main.rifiuti_page")
@@ -97,6 +105,12 @@ def login():
             or policy.can("manutenzioni_amministrazione")
         )
         has_tarature = policy.can("tarature")
+        has_carica = policy.can("carica")
+        has_ricezione = policy.can("ricezione")
+
+        if has_carica:
+            login_user(user)
+            return redirect(url_for("main.logistica_page"))
 
         if has_acquisti and has_produzione:
             login_user(user)
@@ -110,6 +124,10 @@ def login():
         if has_produzione:
             token = create_operator_session(user)
             return redirect(url_for("main.home", tab_session=token))
+
+        if has_ricezione:
+            login_user(user)
+            return redirect(url_for("main.logistica_page"))
 
         if has_rifiuti:
             login_user(user)

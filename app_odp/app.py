@@ -3,7 +3,12 @@ from flask_login import LoginManager
 from .filters import register_filters
 from app_odp.operator_session import active_user, active_policy, active_token
 from app_odp.models import db, Permissions, User
-from app_odp import manutenzioni_models, rifiuti_models, tarature_models
+from app_odp import (
+    logistica_models,
+    manutenzioni_models,
+    rifiuti_models,
+    tarature_models,
+)
 from app_odp.auth import auth_bp
 from app_odp.routes import main_bp
 import tomllib
@@ -125,6 +130,11 @@ def load_config(config: Path) -> dict:
 
 configurazione = load_config(CONFIG_PATH)
 
+def _resolve_logistica_db_path(paths: dict) -> str:
+    return paths.get("percorso_db_logistica") or str(
+        Path(paths["percorso_db"]).with_name("db_carichi_scarichi.sqlite")
+    )
+
 
 def setup_request_logging(app):
     # livello log
@@ -161,6 +171,13 @@ def _ensure_builtin_permissions() -> None:
         ),
         "rifiuti_elimina": (
             "Registrazione dello smaltimento dei rifiuti dallo stock virtuale"
+        ),
+        # Carichi e scarichi
+        "carica": (
+            "Gestione dei vettori e delle movimentazioni logistiche attese"
+        ),
+        "ricezione": (
+            "Conferma delle movimentazioni logistiche avvenute"
         ),
         # Manutenzioni
         "manutenzioni_visualizza": ("Accesso alla gestione delle manutenzioni"),
@@ -208,6 +225,7 @@ def create_app():
     app.config["SQLALCHEMY_DATABASE_URI"] = (
         f"sqlite:///{configurazione['Percorsi']['percorso_db']}"
     )
+    logistica_db_path = _resolve_logistica_db_path(configurazione["Percorsi"])
     app.config["SQLALCHEMY_BINDS"] = {
         "log": f"sqlite:///{configurazione['Percorsi']['percorso_db_log']}",
         "acq": f"sqlite:///{configurazione['Percorsi']['percorso_db_acq']}",
@@ -215,6 +233,7 @@ def create_app():
             f"sqlite:///{configurazione['Percorsi']['percorso_db_manutenzioni']}"
         ),
         "rifiuti": f"sqlite:///{configurazione['Percorsi']['percorso_db_rifiuti']}",
+        "logistica": f"sqlite:///{logistica_db_path}",
     }
     app.config["ERP_EXPORT_DIR"] = configurazione["Percorsi"]["percorso_file_output"]
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
@@ -324,6 +343,7 @@ def create_app():
         db.create_all(bind_key="acq")
         db.create_all(bind_key="manutenzioni")
         db.create_all(bind_key="rifiuti")
+        db.create_all(bind_key="logistica")
         _ensure_manutenzioni_schema()
         _ensure_builtin_permissions()
 
