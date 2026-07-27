@@ -2,7 +2,7 @@
 import hashlib
 
 from flask import Blueprint, render_template, request, redirect, url_for
-from flask_login import login_user, logout_user, login_required, current_user
+from flask_login import login_user, logout_user, current_user
 from app_odp.policy.policy import RbacPolicy
 from app_odp.models import User
 from app_odp.operator_session import (
@@ -109,8 +109,8 @@ def login():
         has_ricezione = policy.can("ricezione")
 
         if has_carica:
-            login_user(user)
-            return redirect(url_for("main.logistica_page"))
+            token = create_operator_session(user)
+            return redirect(url_for("main.logistica_page", tab_session=token))
 
         if has_acquisti and has_produzione:
             login_user(user)
@@ -126,8 +126,8 @@ def login():
             return redirect(url_for("main.home", tab_session=token))
 
         if has_ricezione:
-            login_user(user)
-            return redirect(url_for("main.logistica_page"))
+            token = create_operator_session(user)
+            return redirect(url_for("main.logistica_page", tab_session=token))
 
         if has_rifiuti:
             login_user(user)
@@ -152,17 +152,14 @@ def login():
 
 
 @auth_bp.route("/logout")
-@login_required
 def logout():
+    row = resolve_operator_session()
+    if row is not None:
+        revoke_operator_sessions_for_user(row.user_id)
     logout_user()
     return redirect(url_for("auth.login"))
 
 
 @auth_bp.route("/operator-logout")
 def operator_logout():
-    row = resolve_operator_session()
-
-    if row is not None:
-        revoke_operator_sessions_for_user(row.user_id)
-
-    return redirect(url_for("auth.login"))
+    return logout()

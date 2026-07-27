@@ -312,18 +312,22 @@ def test_login_post_carica_uses_logistica_as_main_page(
     user = FakeUserRow(30, permissions={"carica", "home", "home_acquisti"})
     install_fake_user_model([user])
     login_calls = []
+    session_calls = []
     monkeypatch.setattr(mod, "login_user", lambda current_user: login_calls.append(current_user))
     monkeypatch.setattr(
         mod,
         "create_operator_session",
-        lambda current_user: pytest.fail("sessione operatore non attesa"),
+        lambda current_user: session_calls.append(current_user) or "tok-30",
     )
 
     response = client.post("/login", data={"login_code": "ABC123"})
 
     assert response.status_code == 302
-    assert response.headers["Location"].endswith("/carichi-scarichi")
-    assert login_calls == [user]
+    assert response.headers["Location"].endswith(
+        "/carichi-scarichi?tab_session=tok-30"
+    )
+    assert login_calls == []
+    assert session_calls == [user]
 
 
 def test_login_post_ricezione_only_redirects_to_logistica(
@@ -332,13 +336,22 @@ def test_login_post_ricezione_only_redirects_to_logistica(
     user = FakeUserRow(31, permissions={"ricezione"})
     install_fake_user_model([user])
     login_calls = []
+    session_calls = []
     monkeypatch.setattr(mod, "login_user", lambda current_user: login_calls.append(current_user))
+    monkeypatch.setattr(
+        mod,
+        "create_operator_session",
+        lambda current_user: session_calls.append(current_user) or "tok-31",
+    )
 
     response = client.post("/login", data={"login_code": "ABC123"})
 
     assert response.status_code == 302
-    assert response.headers["Location"].endswith("/carichi-scarichi")
-    assert login_calls == [user]
+    assert response.headers["Location"].endswith(
+        "/carichi-scarichi?tab_session=tok-31"
+    )
+    assert login_calls == []
+    assert session_calls == [user]
 
 
 def test_login_post_user_without_permissions_returns_403(
@@ -372,20 +385,28 @@ def test_login_get_authenticated_user_redirects(client, mod, monkeypatch):
     assert response.headers["Location"].endswith("/acquisti")
 
 
-def test_logout_calls_logout_user_and_redirects_to_login(client, mod, monkeypatch):
+def test_logout_closes_both_sessions_and_redirects_to_login(
+    client, mod, monkeypatch
+):
     calls = []
+    row = SimpleNamespace(user_id=77)
+    monkeypatch.setattr(mod, "resolve_operator_session", lambda: row)
+    monkeypatch.setattr(
+        mod,
+        "revoke_operator_sessions_for_user",
+        lambda user_id: calls.append(("revoke", user_id)),
+    )
     monkeypatch.setattr(mod, "logout_user", lambda: calls.append("logout"))
 
     response = client.get("/logout")
 
     assert response.status_code == 302
     assert response.headers["Location"].endswith("/login")
-    assert calls == ["logout"]
+    assert calls == [("revoke", 77), "logout"]
 
 
-def test_logout_requires_login_with_real_client(client_auth_required):
+def test_logout_is_available_without_an_active_flask_session(client_auth_required):
     response = client_auth_required.get("/logout")
 
     assert response.status_code == 302
-    assert "/login" in response.headers["Location"]
-    assert "next=" in response.headers["Location"]
+    assert response.headers["Location"].endswith("/login")
