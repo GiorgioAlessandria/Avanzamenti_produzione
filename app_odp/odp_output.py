@@ -177,15 +177,15 @@ def _phase_sequence_from_payload(payload: dict) -> list[str]:
 
 
 def _should_emit_product_line(payload: dict) -> bool:
-    explicit_emit = _bool_from_payload(payload.get("emit_product_line"))
-
-    if explicit_emit is not None:
-        return explicit_emit
-
     is_last_phase = _bool_from_payload(payload.get("is_last_phase"))
 
     if is_last_phase is not None:
         return is_last_phase
+
+    explicit_emit = _bool_from_payload(payload.get("emit_product_line"))
+
+    if explicit_emit is not None:
+        return explicit_emit
 
     fase_corrente = _text(payload.get("fase"))
     fasi = _phase_sequence_from_payload(payload)

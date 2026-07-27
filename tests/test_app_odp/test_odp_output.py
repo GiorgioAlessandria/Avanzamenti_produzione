@@ -45,3 +45,22 @@ def test_txt_generator_numbers_703_components_from_one_ignoring_source_row_ids()
         "2026.1.403.1,00.2,00",
     ]
     assert all(".400,00" not in ref for ref in refs_703)
+
+
+def test_txt_generator_emits_701_for_last_phase_despite_legacy_false_flag():
+    payload = {
+        **_base_payload(),
+        "phase_sequence": ["1"],
+        "is_last_phase": True,
+        "emit_product_line": False,
+    }
+
+    lines = txt_generator(
+        [{"payload": payload}],
+        include_time_line=False,
+    )
+
+    product_lines = [line for line in lines if line.split(";")[4] == "701"]
+
+    assert len(product_lines) == 1
+    assert product_lines[0].split(";")[11] == "0"
