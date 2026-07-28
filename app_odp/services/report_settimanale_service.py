@@ -7,7 +7,14 @@ from typing import Any
 
 from sqlalchemy import and_, or_, select
 
-from app_odp.models import db, InputOdpLog, OdpRuntimeLog, InputOdpRuntime, User
+from app_odp.models import (
+    db,
+    InputOdpLog,
+    OdpRuntimeLog,
+    InputOdpRuntime,
+    ProductionCapacityCalendar,
+    User,
+)
 
 CLOSED_STATES = {"chiusa", "chiuso"}
 DELETED_STATE = "eliminato dal gestionale"
@@ -36,6 +43,29 @@ def _to_float(value: Any) -> float:
 
 def _round2(value: float) -> float:
     return round(float(value or 0), 2)
+
+
+def _weekly_capacity_hours(user_id: int) -> float:
+    hours = (
+        db.session.execute(
+            select(ProductionCapacityCalendar.hours_capacity).where(
+                ProductionCapacityCalendar.active.is_(True),
+                ProductionCapacityCalendar.scope_type == "operatore",
+                ProductionCapacityCalendar.scope_code == str(int(user_id)),
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    return _round2(sum(float(value or 0.0) for value in hours))
+
+
+def _employment_coefficient(worked: float, capacity: float) -> float | None:
+    if not capacity:
+        return None
+
+    return round((worked / capacity) * 100, 2)
 
 
 def _percent(real: float, planned: float) -> float | None:
@@ -261,15 +291,28 @@ def _is_closed_log(row) -> bool:
     )
 
 
+def _runtime_event_key(row) -> tuple[str, str, str]:
+    return (
+        _norm(getattr(row, "IdDocumento", "")),
+        _norm(getattr(row, "IdRiga", "")),
+        _norm(getattr(row, "EventAt", "")),
+    )
+
+
 def _runtime_by_operation_group(
     runtime_logs: list[OdpRuntimeLog],
 ) -> dict[str, OdpRuntimeLog]:
     out: dict[str, OdpRuntimeLog] = {}
+    actual_by_event = {
+        _runtime_event_key(row): row
+        for row in runtime_logs
+        if _runtime_delta_hours(row) > 0
+    }
 
     for row in runtime_logs:
         key = _norm(row.OperationGroupId)
         if key:
-            out[key] = row
+            out[key] = actual_by_event.get(_runtime_event_key(row), row)
 
     return out
 
@@ -282,8 +325,28 @@ def _get_runtime_for_input_log(
 
 
 def _runtime_delta_hours(runtime_log: OdpRuntimeLog | None) -> float:
+    """
+    Ore effettive dell'intervallo dall'ultima attivazione all'arresto.
+
+    ElapsedSeconds esclude già il tempo trascorso mentre l'ordine era sospeso.
+    Il delta cumulativo resta come compatibilità per i log storici.
+    """
     if runtime_log is None:
         return 0.0
+
+    elapsed_raw = getattr(runtime_log, "ElapsedSeconds", None)
+
+    if _norm(elapsed_raw):
+        non_working_raw = getattr(runtime_log, "TempoNonFunzionamentoSecondi", None)
+        non_working_seconds = _to_float(non_working_raw)
+
+        if not _norm(non_working_raw):
+            non_working_seconds = (
+                _to_float(getattr(runtime_log, "TempoNonFunzionamentoMinuti", None))
+                * 60
+            )
+
+        return max(_to_float(elapsed_raw) - non_working_seconds, 0.0) / 3600.0
 
     pre = _to_float(runtime_log.TempoFunzionamentoPre)
     post = _to_float(runtime_log.TempoFunzionamentoPost)
@@ -326,21 +389,20 @@ def _worked_hours_with_fallback(
     runtime_current_by_rif: dict[str, InputOdpRuntime],
 ) -> float:
     """
-    Prima prova OdpRuntimeLog.
-    Se non trova un delta valido, usa InputOdpRuntime.Tempo_funzionamento.
+    Usa l'intervallo effettivo di OdpRuntimeLog.
+    I valori cumulativi restano fallback solo per eventi storici senza runtime.
 
     Fallback:
     1. OperationGroupId -> OdpRuntimeLog
-    2. IdDocumento + IdRiga + fase
-    3. IdDocumento + IdRiga
-    4. RifRegistraz
+    2. chiusura storica
+    3. IdDocumento + IdRiga + fase
+    4. IdDocumento + IdRiga
+    5. RifRegistraz
     """
     runtime_row = _get_runtime_for_input_log(input_log, runtime_map)
 
-    worked = _runtime_delta_hours(runtime_row)
-
-    if worked > 0:
-        return worked
+    if runtime_row is not None:
+        return _runtime_delta_hours(runtime_row)
 
     if _is_closed_log(input_log):
         final_hours = _final_close_hours(input_log)
@@ -975,7 +1037,6 @@ def build_report_settimanale_for_user(
             "stato": _latest_state(snapshot),
             "ultimo_evento": _format_dt(getattr(snapshot, "ClosedAt", "")),
             "fase": _phase_label_from_key(phase_key),
-            "ore_previste": 0.0,
             "ore_impiegate": 0.0,
         }
 
@@ -993,11 +1054,6 @@ def build_report_settimanale_for_user(
         if phase_snapshot is None:
             continue
 
-        planned = _planned_hours_for_phase(
-            phase_snapshot,
-            phase_key=phase_key,
-        )
-
         worked = selected_worked_phases.get(phase_key, 0.0)
 
         if worked <= 0:
@@ -1009,12 +1065,11 @@ def build_report_settimanale_for_user(
                 runtime_current_by_rif=runtime_current_by_rif,
             )
 
-        row_data["ore_previste"] += planned
         row_data["ore_impiegate"] += worked
 
     ordini_lavorati: list[dict[str, Any]] = []
+    worked_order_keys: set[tuple[str, str]] = set()
 
-    total_planned = 0.0
     total_worked = 0.0
     total_macchine = 0.0
     total_semilavorati = 0.0
@@ -1027,39 +1082,41 @@ def build_report_settimanale_for_user(
             _phase_sort_key(item[0]),
         ),
     ):
-        planned = row_data["ore_previste"]
         worked = row_data["ore_impiegate"]
-        delta = worked - planned
+
+        if worked <= 0:
+            continue
 
         if row_data["tipo"] == "Macchina":
             total_macchine += row_data["qta_finale"]
         else:
             total_semilavorati += row_data["qta_finale"]
 
-        total_planned += planned
         total_worked += worked
+        worked_order_keys.add(
+            (row_data["id_documento"], row_data["id_riga"])
+        )
 
         row_data.update(
             {
                 "fasi_lavorate": row_data.get("fase") or "-",
-                "ore_previste": _round2(planned),
                 "ore_impiegate": _round2(worked),
-                "delta_ore": _round2(delta),
-                "scostamento_percentuale": _percent(worked, planned),
             }
         )
 
         ordini_lavorati.append(row_data)
 
-    total_delta = total_worked - total_planned
+    weekly_capacity = _weekly_capacity_hours(selected_user.id)
 
     kpi = {
         "utente": selected_username,
-        "ordini_lavorati": len(ordini_lavorati),
-        "ore_previste": _round2(total_planned),
+        "ore_capacita_produttiva": weekly_capacity,
+        "ordini_lavorati": len(worked_order_keys),
         "ore_impiegate": _round2(total_worked),
-        "delta_ore": _round2(total_delta),
-        "scostamento_percentuale": _percent(total_worked, total_planned),
+        "coefficiente_impiego": _employment_coefficient(
+            total_worked,
+            weekly_capacity,
+        ),
         "componenti_macchine": _round2(total_macchine),
         "componenti_semilavorati": _round2(total_semilavorati),
     }

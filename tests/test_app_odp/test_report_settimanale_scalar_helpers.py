@@ -63,12 +63,47 @@ def test_log_state_helpers_detect_deleted_activation_stop_and_closed_states():
 
 def test_runtime_delta_hours_returns_positive_delta_only():
     assert service._runtime_delta_hours(
+        SimpleNamespace(
+            ElapsedSeconds="7200",
+            TempoNonFunzionamentoSecondi="3600",
+        )
+    ) == 1.0
+    assert service._runtime_delta_hours(
         SimpleNamespace(TempoFunzionamentoPre="1,5", TempoFunzionamentoPost="2.75")
     ) == 1.25
+    assert service._runtime_delta_hours(
+        SimpleNamespace(
+            ElapsedSeconds="0",
+            TempoFunzionamentoPre="1",
+            TempoFunzionamentoPost="8",
+        )
+    ) == 0.0
     assert service._runtime_delta_hours(
         SimpleNamespace(TempoFunzionamentoPre="3", TempoFunzionamentoPost="2")
     ) == 0.0
     assert service._runtime_delta_hours(None) == 0.0
+
+
+def test_runtime_map_links_group_stop_to_actual_elapsed_event():
+    actual = SimpleNamespace(
+        OperationGroupId="runtime",
+        IdDocumento="DOC",
+        IdRiga="1",
+        EventAt="2026-07-24T07:09:55+02:00",
+        ElapsedSeconds="1800",
+        TempoNonFunzionamentoSecondi="",
+    )
+    stop = SimpleNamespace(
+        OperationGroupId="stop",
+        IdDocumento="DOC",
+        IdRiga="1",
+        EventAt="2026-07-24T07:09:55+02:00",
+        ElapsedSeconds="0",
+        TempoFunzionamentoPre="",
+        TempoFunzionamentoPost="12",
+    )
+
+    assert service._runtime_by_operation_group([actual, stop])["stop"] is actual
 
 
 def test_final_close_and_runtime_current_hours_read_scalar_fields():

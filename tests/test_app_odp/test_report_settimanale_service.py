@@ -14,6 +14,13 @@ def test_percent_returns_rounded_deviation():
     assert _percent(2, 2) == 0.0
 
 
+def test_employment_coefficient_relates_worked_hours_to_capacity():
+    assert service._employment_coefficient(20, 40) == 50.0
+    assert service._employment_coefficient(40, 40) == 100.0
+    assert service._employment_coefficient(50, 40) == 125.0
+    assert service._employment_coefficient(10, 0) is None
+
+
 def test_worked_hours_with_fallback_uses_confirmed_source_precedence():
     input_log = SimpleNamespace(
         StatoOrdinePost="Chiuso",
@@ -41,6 +48,8 @@ def test_worked_hours_with_fallback_uses_confirmed_source_precedence():
 
     assert service._worked_hours_with_fallback(input_log=input_log, **sources) == 7.0
     runtime.TempoFunzionamentoPost = "1"
+    assert service._worked_hours_with_fallback(input_log=input_log, **sources) == 0.0
+    sources["runtime_map"].clear()
     assert service._worked_hours_with_fallback(input_log=input_log, **sources) == 9.0
     input_log.StatoOrdinePost = "Attivo"
     assert service._worked_hours_with_fallback(input_log=input_log, **sources) == 5.0

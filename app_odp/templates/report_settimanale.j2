@@ -52,9 +52,9 @@
             <div class="col-6 col-md-4 col-xl">
                 <div class="card shadow-sm h-100">
                     <div class="card-body text-center">
-                        <div class="text-muted small">Utente</div>
-                        <div class="fs-6 fw-semibold text-truncate"
-                             data-kpi="utente">-
+                        <div class="text-muted small">Ore capacità produttiva</div>
+                        <div class="fs-4 fw-semibold"
+                             data-kpi="ore_capacita_produttiva">0,00
                         </div>
                     </div>
                 </div>
@@ -74,17 +74,6 @@
             <div class="col-6 col-md-4 col-xl">
                 <div class="card shadow-sm h-100">
                     <div class="card-body text-center">
-                        <div class="text-muted small">Ore previste</div>
-                        <div class="fs-4 fw-semibold"
-                             data-kpi="ore_previste">0,00
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="col-6 col-md-4 col-xl">
-                <div class="card shadow-sm h-100">
-                    <div class="card-body text-center">
                         <div class="text-muted small">Ore lavorate</div>
                         <div class="fs-4 fw-semibold"
                              data-kpi="ore_impiegate">0,00
@@ -96,20 +85,9 @@
             <div class="col-6 col-md-4 col-xl">
                 <div class="card shadow-sm h-100">
                     <div class="card-body text-center">
-                        <div class="text-muted small">Delta ore</div>
+                        <div class="text-muted small">Coefficiente di impiego</div>
                         <div class="fs-4 fw-semibold"
-                             data-kpi="delta_ore">0,00
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="col-6 col-md-4 col-xl">
-                <div class="card shadow-sm h-100">
-                    <div class="card-body text-center">
-                        <div class="text-muted small">Scostamento</div>
-                        <div class="fs-4 fw-semibold"
-                             data-kpi="scostamento_percentuale">-
+                             data-kpi="coefficiente_impiego">-
                         </div>
                     </div>
                 </div>
@@ -157,15 +135,12 @@
                                 <th>Stato</th>
                                 <th>Ultimo evento</th>
                                 <th class="text-end">Q.tà</th>
-                                <th class="text-end">Ore prev.</th>
                                 <th class="text-end">Ore lavorate</th>
-                                <th class="text-end">Delta</th>
-                                <th class="text-end">%</th>
                             </tr>
                             </thead>
                             <tbody id="report-worked-orders-body">
                             <tr>
-                                <td colspan="12"
+                                <td colspan="9"
                                     class="text-center text-muted py-3">
                                     Caricamento...
                                 </td>
@@ -221,36 +196,6 @@
                 return `${formatNumber(value, 2)}%`;
             }
 
-            function applyDeltaClass(el, value) {
-                const numberValue = Number(value || 0);
-
-                el.classList.remove("text-warning", "text-success", "text-danger");
-
-                if (numberValue > 0) {
-                    el.classList.add("text-danger");
-                } else if (numberValue < 0) {
-                    el.classList.add("text-success");
-                }
-            }
-
-            function applyScostamentoClass(el, value) {
-                const numberValue = Number(value || 0);
-
-                el.classList.remove("text-warning", "text-success", "text-danger");
-
-                if (value === null || value === undefined) {
-                    return;
-                }
-
-                if (numberValue < -20) {
-                    el.classList.add("text-warning");
-                } else if (numberValue <= 10) {
-                    el.classList.add("text-success");
-                } else {
-                    el.classList.add("text-danger");
-                }
-            }
-
             function setKpi(name, value) {
                 const el = page.querySelector(`[data-kpi="${name}"]`);
 
@@ -260,56 +205,26 @@
 
                 el.classList.remove("text-warning", "text-success", "text-danger");
 
-                if (name === "utente") {
-                    el.textContent = value || "-";
-                    return;
-                }
-
                 if (name === "ordini_lavorati") {
                     el.textContent = formatInteger(value);
                     return;
                 }
 
-                if (name === "scostamento_percentuale") {
+                if (name === "coefficiente_impiego") {
                     el.textContent = formatPercent(value);
-                    applyScostamentoClass(el, value);
                     return;
                 }
 
                 el.textContent = formatNumber(value, 2);
-
-                if (name === "delta_ore") {
-                    applyDeltaClass(el, value);
-                }
             }
 
             function renderKpi(kpi) {
-                setKpi("utente", kpi.utente);
+                setKpi("ore_capacita_produttiva", kpi.ore_capacita_produttiva);
                 setKpi("ordini_lavorati", kpi.ordini_lavorati);
-                setKpi("ore_previste", kpi.ore_previste);
                 setKpi("ore_impiegate", kpi.ore_impiegate);
-                setKpi("delta_ore", kpi.delta_ore);
-                setKpi("scostamento_percentuale", kpi.scostamento_percentuale);
+                setKpi("coefficiente_impiego", kpi.coefficiente_impiego);
                 setKpi("componenti_macchine", kpi.componenti_macchine);
                 setKpi("componenti_semilavorati", kpi.componenti_semilavorati);
-            }
-
-            function buildScostamentoCell(value) {
-                const span = document.createElement("span");
-
-                span.textContent = formatPercent(value);
-                applyScostamentoClass(span, value);
-
-                return span;
-            }
-
-            function buildDeltaCell(value) {
-                const span = document.createElement("span");
-
-                span.textContent = formatNumber(value, 2);
-                applyDeltaClass(span, value);
-
-                return span;
             }
 
             function appendTextCell(tr, value, className = "") {
@@ -339,24 +254,13 @@
                 tr.appendChild(td);
             }
 
-            function appendNodeCell(tr, node, className = "") {
-                const td = document.createElement("td");
-
-                if (className) {
-                    td.className = className;
-                }
-
-                td.appendChild(node);
-                tr.appendChild(td);
-            }
-
             function renderWorkedOrders(rows) {
                 workedOrdersBody.innerHTML = "";
 
                 if (!rows || rows.length === 0) {
                     workedOrdersBody.innerHTML = `
                         <tr>
-                            <td colspan="12" class="text-center text-muted py-3">
+                            <td colspan="9" class="text-center text-muted py-3">
                                 Nessun ordine lavorato dall'utente negli ultimi 7 giorni.
                             </td>
                         </tr>
@@ -375,10 +279,7 @@
                     appendTextCell(tr, row.stato);
                     appendTextCell(tr, row.ultimo_evento);
                     appendTextCell(tr, formatNumber(row.qta_finale, 2), "text-end");
-                    appendTextCell(tr, formatNumber(row.ore_previste, 2), "text-end");
                     appendTextCell(tr, formatNumber(row.ore_impiegate, 2), "text-end");
-                    appendNodeCell(tr, buildDeltaCell(row.delta_ore), "text-end");
-                    appendNodeCell(tr, buildScostamentoCell(row.scostamento_percentuale), "text-end");
 
                     workedOrdersBody.appendChild(tr);
                 }
