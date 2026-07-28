@@ -166,6 +166,7 @@
                     and (
                         visible_user.has_role('responsabile_produzione')
                         or visible_user.has_role('responsabile_acquisti')
+                        or visible_user.has_role('admin')
                 ) %}
 
                 {% if visible_user.genere|default('') == "m" %}

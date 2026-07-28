@@ -42,7 +42,7 @@ def _percent(real: float, planned: float) -> float | None:
     if not planned:
         return None
 
-    return round((real / planned) * 100, 2)
+    return round(((real - planned) / planned) * 100, 2)
 
 
 def _parse_iso(value: Any) -> datetime | None:
@@ -335,17 +335,18 @@ def _worked_hours_with_fallback(
     3. IdDocumento + IdRiga
     4. RifRegistraz
     """
-    if _is_closed_log(input_log):
-        final_hours = _final_close_hours(input_log)
-
-        if final_hours > 0:
-            return final_hours
     runtime_row = _get_runtime_for_input_log(input_log, runtime_map)
 
     worked = _runtime_delta_hours(runtime_row)
 
     if worked > 0:
         return worked
+
+    if _is_closed_log(input_log):
+        final_hours = _final_close_hours(input_log)
+
+        if final_hours > 0:
+            return final_hours
 
     phase_runtime = runtime_current_map.get(_phase_key(input_log))
     phase_hours = _runtime_current_hours(phase_runtime)

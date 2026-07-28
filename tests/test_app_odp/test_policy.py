@@ -19,6 +19,32 @@ def deco_mod():
     return importlib.import_module(DECORATOR_MODULE_PATH)
 
 
+def test_direct_admin_can_access_production_home(mod):
+    policy = mod.RbacPolicy(
+        SimpleNamespace(
+            roles=[SimpleNamespace(name="admin")],
+        )
+    )
+
+    assert policy.can("home") is True
+
+
+def test_direct_admin_can_access_home_config_without_reparto_assignment():
+    from app_odp.services.home_service import _policy_can_access_home_config
+
+    policy = SimpleNamespace(
+        has_direct_admin_role=True,
+        allowed_reparti=set(),
+        can=lambda permission: False,
+    )
+    config = SimpleNamespace(
+        reparto=SimpleNamespace(Codice="20"),
+        permesso="home",
+    )
+
+    assert _policy_can_access_home_config(policy, config) is True
+
+
 Base = declarative_base()
 metadata = Base.metadata
 

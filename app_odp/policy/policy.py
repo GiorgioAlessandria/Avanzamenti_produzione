@@ -244,6 +244,9 @@ class RbacPolicy:
         if not raw:
             return False
 
+        if raw.lower() == "home" and self.has_direct_admin_role:
+            return True
+
         stmt = (
             select(Permissions.id)
             .select_from(roles_permission)
@@ -899,7 +902,11 @@ class RbacPolicy:
 
         # La home deve sempre restare nello scope dei reparti consentiti.
         # Anche se l'utente ha permessi larghi, la vista reparto resta vincolata al config.
-        if reparto_code not in self.allowed_reparti and not self.can("odp.read_all"):
+        if (
+            reparto_code not in self.allowed_reparti
+            and not self.can("odp.read_all")
+            and not self.has_direct_admin_role
+        ):
             return q.filter(false())
 
         q = q.outerjoin(

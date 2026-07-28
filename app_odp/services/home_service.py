@@ -100,6 +100,9 @@ def _policy_can_access_home_config(
     if not reparto_code:
         return False
 
+    if getattr(policy, "has_direct_admin_role", False):
+        return True
+
     if reparto_code not in policy.allowed_reparti:
         return False
 

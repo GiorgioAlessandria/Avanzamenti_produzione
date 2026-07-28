@@ -8,9 +8,10 @@ def test_percent_returns_none_when_planned_is_zero():
     assert _percent(10, 0) is None
 
 
-def test_percent_returns_rounded_percentage():
-    assert _percent(3, 2) == 150.0
-    assert _percent(1, 3) == 33.33
+def test_percent_returns_rounded_deviation():
+    assert _percent(3, 2) == 50.0
+    assert _percent(1, 3) == -66.67
+    assert _percent(2, 2) == 0.0
 
 
 def test_worked_hours_with_fallback_uses_confirmed_source_precedence():
@@ -38,10 +39,10 @@ def test_worked_hours_with_fallback_uses_confirmed_source_precedence():
         "runtime_current_by_rif": rif_map,
     }
 
-    assert service._worked_hours_with_fallback(input_log=input_log, **sources) == 9.0
-    input_log.StatoOrdinePost = "Attivo"
     assert service._worked_hours_with_fallback(input_log=input_log, **sources) == 7.0
     runtime.TempoFunzionamentoPost = "1"
+    assert service._worked_hours_with_fallback(input_log=input_log, **sources) == 9.0
+    input_log.StatoOrdinePost = "Attivo"
     assert service._worked_hours_with_fallback(input_log=input_log, **sources) == 5.0
     phase_map.clear()
     assert service._worked_hours_with_fallback(input_log=input_log, **sources) == 3.0

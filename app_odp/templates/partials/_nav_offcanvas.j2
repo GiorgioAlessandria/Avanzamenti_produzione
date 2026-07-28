@@ -27,21 +27,21 @@
 
 <div class="offcanvas offcanvas-start h-100"
      tabindex="-1"
-     id="offcanvas-2">
+     id="offcanvas-2"
+     aria-labelledby="offcanvas-2-label">
     <div class="offcanvas-header ps-4">
         <h5 class="offcanvas-title"
+            id="offcanvas-2-label"
             style="font-size: 30px;">Schede utente</h5>
         <button class="btn-close"
                 type="button"
-                aria-label="Close"
+                aria-label="Chiudi"
                 data-bs-dismiss="offcanvas"></button>
     </div>
     <div class="offcanvas-body d-flex flex-row justify-content-start align-items-start ps-4">
-        <section class="d-flex justify-content-end align-items-end"></section>
         <div class="container ms-2 ps-3 me-0"
              style="width: auto;height: auto;">
             {% set nav_policy = operator_policy if operator_policy else policy %}
-            {% set nav_user = operator_user if operator_user else current_user %}
             {% set can_return_produzione = nav_policy and nav_policy.can('home') %}
             {% set is_impostazioni = request.endpoint == 'main.impostazioni' %}
             {% set is_dash_reparto = request.endpoint == 'main.dash_reparto' %}
@@ -95,15 +95,19 @@
                                  viewBox="0 0 24 24"
                                  fill="none"
                                  stroke="currentColor"
-                                 stroke-width="2"
+                                 stroke-width="1.7"
                                  stroke-linecap="round"
                                  stroke-linejoin="round"
-                                 style="font-size: 25px;">
-                                <path d="M4 6h16"></path>
-                                <path d="M4 12h10"></path>
-                                <path d="M4 18h7"></path>
-                                <path d="M18 14v6"></path>
-                                <path d="M15 17h6"></path>
+                                 style="font-size: 25px;"
+                                 aria-hidden="true">
+                                <path d="M9 6h11M9 12h11M9 18h11"></path>
+                                <circle cx="5"
+                                        cy="6"
+                                        r="1"></circle>
+                                <circle cx="5"
+                                        cy="18"
+                                        r="1"></circle>
+                                <path d="M3 12h4M5 10l2 2-2 2"></path>
                             </svg>
 
                             {% if nav_policy.can('priorita_edit') %}
@@ -136,14 +140,21 @@
                                  viewBox="0 0 24 24"
                                  fill="none"
                                  stroke="currentColor"
-                                 stroke-width="2"
+                                 stroke-width="1.7"
                                  stroke-linecap="round"
                                  stroke-linejoin="round"
-                                 style="font-size: 25px;">
-                                <path d="M3 7h18"></path>
-                                <path d="M6 11h12"></path>
-                                <path d="M10 15h4"></path>
-                                <path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"></path>
+                                 style="font-size: 25px;"
+                                 aria-hidden="true">
+                                <path d="M2.5 4h2l2.2 11h12.1l2-8H6"></path>
+                                <path d="M8 7.5 12.5 5 17 7.5v5L12.5 15 8 12.5z"></path>
+                                <path d="m8 7.5 4.5 2.5L17 7.5"></path>
+                                <path d="M12.5 10v5"></path>
+                                <circle cx="9"
+                                        cy="19"
+                                        r="1.5"></circle>
+                                <circle cx="18"
+                                        cy="19"
+                                        r="1.5"></circle>
                             </svg>
                             <a href="{{ operator_url_for('main.home_acquisti') }}"
                                style="color: rgb(0,0,0);font-size: 25px;">
@@ -169,13 +180,19 @@
                             <svg xmlns="http://www.w3.org/2000/svg"
                                  width="1em"
                                  height="1em"
-                                 fill="currentColor"
-                                 viewBox="0 0 16 16"
-                                 class="bi bi-tools"
-                                 style="font-size: 25px;">
-
-                                <path d="M1 0 0 1l2.2 3.081a1 1 0 0 0 .815.419h.07a1 1 0 0 1 .708.293l2.675 2.675-2.617 2.617a3 3 0 0 0-1.64 5.19l.177.177a3 3 0 0 0 5.19-1.64l2.617-2.617 2.675 2.675a1 1 0 0 1 .293.708v.07a1 1 0 0 0 .419.815L15 16l1-1-2.2-3.081a1 1 0 0 0-.815-.419h-.07a1 1 0 0 1-.708-.293L9.532 8.532l.733-.733a3.5 3.5 0 0 0 4.89-4.89l-2.148 2.148-1.414-1.414 2.148-2.148a3.5 3.5 0 0 0-4.89 4.89l-.733.733L5.443 4.443a1 1 0 0 1-.293-.708v-.07a1 1 0 0 0-.419-.815L1 0zM5.057 11.057a2 2 0 1 1 2.828 2.828 2 2 0 0 1-2.828-2.828z">
-                                </path>
+                                 viewBox="0 0 24 24"
+                                 fill="none"
+                                 stroke="currentColor"
+                                 stroke-width="1.7"
+                                 stroke-linecap="round"
+                                 stroke-linejoin="round"
+                                 style="font-size: 25px;"
+                                 aria-hidden="true">
+                                <circle cx="16.5" cy="16.5" r="3"></circle>
+                                <circle cx="16.5" cy="16.5" r="1"></circle>
+                                <path d="M16.5 11.8v1.7M16.5 19.5v1.7M11.8 16.5h1.7M19.5 16.5h1.7"></path>
+                                <path d="M13.2 13.2l1.2 1.2M18.6 18.6l1.2 1.2M19.8 13.2l-1.2 1.2M14.4 18.6l-1.2 1.2"></path>
+                                <path d="M14.7 6.3a4 4 0 0 0-5 5L3 18v3h3l6.7-6.7a4 4 0 0 0 5-5l-2.3 2.3-3-3z"></path>
                             </svg>
 
                             <a href="{{ operator_url_for(
@@ -202,14 +219,26 @@
                             <svg xmlns="http://www.w3.org/2000/svg"
                                  width="1em"
                                  height="1em"
-                                 fill="currentColor"
-                                 viewBox="0 0 16 16"
-                                 class="bi bi-speedometer"
+                                 viewBox="0 0 24 24"
+                                 fill="none"
+                                 stroke="currentColor"
+                                 stroke-width="1.7"
+                                 stroke-linecap="round"
+                                 stroke-linejoin="round"
                                  style="font-size: 25px;"
                                  aria-hidden="true">
-                                <path d="M8 2a.5.5 0 0 1 .5.5V4a.5.5 0 0 1-1 0V2.5A.5.5 0 0 1 8 2M3.732 3.732a.5.5 0 0 1 .707 0l.915.914a.5.5 0 1 1-.708.708l-.914-.915a.5.5 0 0 1 0-.707zM2 8a.5.5 0 0 1 .5-.5h1.586a.5.5 0 0 1 0 1H2.5A.5.5 0 0 1 2 8m9.5 0a.5.5 0 0 1 .5-.5h1.5a.5.5 0 0 1 0 1H12a.5.5 0 0 1-.5-.5m.754-4.246a.389.389 0 0 0-.527-.02L7.547 7.31A.91.91 0 1 0 8.85 8.569l3.434-4.297a.389.389 0 0 0-.029-.518z"></path>
-                                <path fill-rule="evenodd"
-                                      d="M6.664 15.889A8 8 0 1 1 9.336.11a8 8 0 0 1-2.672 15.78zm-4.665-4.283A11.945 11.945 0 0 1 8 10c2.186 0 4.236.585 6.001 1.606a7 7 0 1 0-12.002 0z"></path>
+                                <path d="M3 10h19v5H3z"></path>
+                                <path d="M4 10V4c2 1.5 3 3.5 3 6"></path>
+                                <path d="M10 10c0-2.5 1-4.5 3-6v6"></path>
+                                <path d="M4 15v5l2 2v-7"></path>
+                                <path d="M10 15v7l2-2 1.5-5"></path>
+                                <rect x="9"
+                                      y="9"
+                                      width="7"
+                                      height="7"
+                                      rx="1"></rect>
+                                <path d="M6 13v2M8 12v3M18 12v3M20 13v2"></path>
+                                <path d="m22 11.5 1.5 1-1.5 1"></path>
                             </svg>
                             <a href="{{ operator_url_for('main.tarature_home') }}"
                                style="color: rgb(0,0,0);font-size: 25px;">
@@ -303,39 +332,6 @@
                     </div>
                 {% endif %}
             {% endif %}
-            {% if nav_policy and nav_policy.can('controllo_qualita') %}
-                <div class="row d-flex w-100 h-100 justify-content-start align-items-center ms-0 me-0 mb-0"
-                     style="font-size: 25px;">
-                    <div class="col-md-12 text-start d-flex justify-content-start align-items-center ps-0 pe-0"
-                         style="width: auto;height: auto;font-size: 25px;">
-                        <svg xmlns="http://www.w3.org/2000/svg"
-                             width="1em"
-                             height="1em"
-                             viewBox="0 0 24 24"
-                             stroke-width="2"
-                             stroke="currentColor"
-                             fill="none"
-                             stroke-linecap="round"
-                             stroke-linejoin="round"
-                             class="icon icon-tabler icon-tabler-clipboard-list d-flex justify-content-center align-items-center"
-                             style="font-size: 25px;">
-                            <path stroke="none"
-                                  d="M0 0h24v24H0z"
-                                  fill="none"></path>
-                            <path d="M9 5h-2a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-12a2 2 0 0 0 -2 -2h-2">
-                            </path>
-                            <path d="M9 3m0 2a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v0a2 2 0 0 1 -2 2h-2a2 2 0 0 1 -2 -2z">
-                            </path>
-                            <path d="M9 12l.01 0"></path>
-                            <path d="M13 12l2 0"></path>
-                            <path d="M9 16l.01 0"></path>
-                            <path d="M13 16l2 0"></path>
-                        </svg>
-                        <a href="controllo_qualità.j2"
-                           style="color: rgb(0,0,0);font-size: 25px;"><span
-                                style="color: rgb(33, 37, 41);">Controllo qualità</span></a></div>
-                </div>
-            {% endif %}
             {% if nav_policy and (nav_policy.can('impostazioni_utente') or nav_policy.can('impostazioni_reparto')) %}
                 {% if is_impostazioni %}
                     <div class="row d-flex w-100 h-100 justify-content-start align-items-center ms-0 me-0 mb-0"
@@ -384,30 +380,6 @@
                 {% endif %}
             {% endif %}
 
-            {% if nav_policy and nav_policy.can('priorita') %}
-                <div class="row d-flex w-100 h-100 justify-content-start align-items-center ms-0 me-0 mb-0"
-                     style="width: auto;height: auto;font-size: 25px;">
-                    <div class="col-md-12 text-start d-flex justify-content-start align-items-center ps-0 pe-0"
-                         style="width: auto;height: auto;font-size: 25px;">
-                        <svg xmlns="http://www.w3.org/2000/svg"
-                             width="1em"
-                             height="1em"
-                             viewBox="0 0 24 24"
-                             fill="none"
-                             style="font-size: 25px;">
-                            <path
-                                    d="M16.2427 5.24264L14.8285 6.65685L13 4.82839L13.0001 9.24268H17.0001V11.2427H7.00012V9.24268H11.0001L11 4.82846L9.17161 6.65685L7.75739 5.24264L12 1L16.2427 5.24264Z"
-                                    fill="currentColor"></path>
-                            <path
-                                    d="M7 15.2527V13.2527H17V15.2527H13.0001L13 19.6669L14.8284 17.8385L16.2426 19.2527L12 23.4954L7.75732 19.2527L9.17154 17.8385L11 19.667V15.2527L7 15.2527Z"
-                                    fill="currentColor"></path>
-                        </svg>
-                        <a href="priorità.j2"
-                           style="color: rgb(0,0,0);font-size: 25px;">Imposta priorità</a>
-                    </div>
-                </div>
-            {% endif %}
-
             {% if nav_policy and nav_policy.can('dash_reparto') %}
                 {% if is_dash_reparto %}
                     <div class="row d-flex w-100 h-100 justify-content-start align-items-center ms-0 me-0 mb-0"
@@ -443,27 +415,19 @@
                                  viewBox="0 0 24 24"
                                  fill="none"
                                  stroke="currentColor"
-                                 stroke-width="2"
+                                 stroke-width="1.7"
                                  stroke-linecap="round"
                                  stroke-linejoin="round"
-                                 style="font-size: 25px;">
-                                <!-- persona davanti -->
-                                <circle cx="12"
-                                        cy="10"
-                                        r="3"></circle>
-                                <path d="M7 20a5 5 0 0 1 11 0"></path>
-
-                                <!-- persona dietro a sinistra -->
-                                <circle cx="6.5"
-                                        cy="8.5"
-                                        r="2.5"></circle>
-                                <path d="M2.5 18a4 4 0 0 1 6-3.5"></path>
-
-                                <!-- persona dietro a destra -->
-                                <circle cx="17.5"
-                                        cy="8.5"
-                                        r="2.5"></circle>
-                                <path d="M16.5 14.5a4 4 0 0 1 6 3.5"></path>
+                                 style="font-size: 25px;"
+                                 aria-hidden="true">
+                                <rect x="2" y="2" width="20" height="18" rx="2"></rect>
+                                <path d="M3 11h18"></path>
+                                <path d="M5 9V7M8 9V5M11 9V8"></path>
+                                <circle cx="17.5" cy="6.5" r="2.5"></circle>
+                                <path d="m17.5 6.5 1.5-1.5"></path>
+                                <path d="M5 14h7M5 17h5"></path>
+                                <circle cx="18" cy="17" r="2.2"></circle>
+                                <path d="M18 13.5v1.3M18 19.2v1.3M14.5 17h1.3M20.2 17h1.3"></path>
                             </svg>
                             <a href="{{ operator_url_for('main.dash_reparto') }}"
                                style="color: rgb(0,0,0);font-size: 25px;">Dashboard reparto</a>
@@ -480,7 +444,7 @@
                         <div class="col-md-12 text-start d-flex justify-content-start align-items-center ps-0 pe-0"
                              style="width: auto;height: auto;font-size: 25px;">
 
-                            <a href="{{ url_for('main.report_settimanale_page', tab_session=request.args.get('tab_session')) }}"
+                            <a href="{{ operator_url_for('main.report_settimanale_page') }}"
                                class="d-flex justify-content-start align-items-center text-decoration-underline"
                                style="color: rgb(0,0,0);font-size: 25px;gap: 0.35rem;">
 
@@ -540,8 +504,7 @@
                 {% endif %}
             {% endif %}
 
-            {% if current_user.is_authenticated
-                  and current_user.has_permission('utility_ricrea_avp') %}
+            {% if nav_policy and nav_policy.can('utility_ricrea_avp') %}
                 {% if request.endpoint == 'main.admin_ricrea_avp_page' %}
                     {{ torna_produzione() }}
                 {% else %}
@@ -560,7 +523,7 @@
                                  stroke-linejoin="round">
                                 <path d="M14.7 6.3a4 4 0 0 0-5 5L3 18v3h3l6.7-6.7a4 4 0 0 0 5-5l-2.3 2.3-3-3z"></path>
                             </svg>
-                            <a href="{{ url_for('main.admin_ricrea_avp_page') }}"
+                            <a href="{{ operator_url_for('main.admin_ricrea_avp_page') }}"
                                style="color: rgb(0,0,0);font-size: 25px;">
                                 <span style="color: rgb(33, 37, 41);">Utility AVP</span>
                             </a>
