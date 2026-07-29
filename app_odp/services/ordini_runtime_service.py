@@ -225,22 +225,46 @@ def _runtime_snapshot(stato) -> dict:
     }
 
 
+def _ensure_stop_minutes_within_elapsed(
+    minuti_non_funzionamento: int,
+    elapsed_seconds: int,
+) -> None:
+    requested_seconds = max(0, int(minuti_non_funzionamento or 0)) * 60
+    measured_seconds = max(0, int(elapsed_seconds or 0))
+    if requested_seconds <= measured_seconds:
+        return
+
+    hours, remainder = divmod(measured_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    raise ValueError(
+        "Il tempo non funzionamento inserito supera il tempo misurato "
+        "dall'ultima attivazione. "
+        f"Tempo massimo disponibile: {hours:02d}:{minutes:02d}:{seconds:02d}."
+    )
+
+
 def _apply_stop_minutes_to_runtime(
     stato,
     minuti_non_funzionamento: int,
     *,
-    max_removable_seconds: int | None = None,
+    max_removable_seconds: int,
 ) -> tuple[int, str]:
     if stato is None or minuti_non_funzionamento <= 0:
         return 0, _norm_text(getattr(stato, "Tempo_funzionamento", "")) or "0"
 
+    _ensure_stop_minutes_within_elapsed(
+        minuti_non_funzionamento,
+        max_removable_seconds,
+    )
+
     total_seconds = _tempo_to_seconds(stato.Tempo_funzionamento)
     requested_seconds = minuti_non_funzionamento * 60
 
-    removable_seconds = min(requested_seconds, total_seconds)
-
-    if max_removable_seconds is not None:
-        removable_seconds = min(removable_seconds, max(0, int(max_removable_seconds)))
+    removable_seconds = min(
+        requested_seconds,
+        total_seconds,
+        max(0, int(max_removable_seconds)),
+    )
 
     new_total_seconds = max(0, total_seconds - removable_seconds)
     stato.Tempo_funzionamento = _seconds_to_tempo_text(new_total_seconds)

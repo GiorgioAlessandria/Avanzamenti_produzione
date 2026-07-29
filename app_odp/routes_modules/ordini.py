@@ -1309,10 +1309,15 @@ def api_sospendi_ordine():
 
         elapsed_seconds = _accumulate_runtime_until(stato, now_dt)
 
-        removed_seconds, tempo_funzionamento = _apply_stop_minutes_to_runtime(
-            stato,
-            minuti_non_funzionamento,
-        )
+        try:
+            removed_seconds, tempo_funzionamento = _apply_stop_minutes_to_runtime(
+                stato,
+                minuti_non_funzionamento,
+                max_removable_seconds=elapsed_seconds,
+            )
+        except ValueError as exc:
+            db.session.rollback()
+            return jsonify({"ok": False, "error": str(exc)}), 400
 
         operation_group_id = _build_operation_group_id(
             ordine=ordine,
@@ -2210,10 +2215,15 @@ def _chiudi_ordine_da_payload(
         if _norm_text(stato.Stato_odp).lower().startswith("attiv"):
             elapsed_seconds = _accumulate_runtime_until(stato, now_dt)
 
-        removed_seconds, tempo_finale = _apply_stop_minutes_to_runtime(
-            stato,
-            minuti_non_funzionamento,
-        )
+        try:
+            removed_seconds, tempo_finale = _apply_stop_minutes_to_runtime(
+                stato,
+                minuti_non_funzionamento,
+                max_removable_seconds=elapsed_seconds,
+            )
+        except ValueError as exc:
+            db.session.rollback()
+            return jsonify({"ok": False, "error": str(exc)}), 400
 
     outbox = None
 

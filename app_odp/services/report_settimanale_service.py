@@ -308,11 +308,41 @@ def _runtime_by_operation_group(
         for row in runtime_logs
         if _runtime_delta_hours(row) > 0
     }
+    group_runtime_by_order: dict[tuple[str, str], list[OdpRuntimeLog]] = (
+        defaultdict(list)
+    )
+
+    for row in runtime_logs:
+        if _norm_l(getattr(row, "Azione", "")) == "runtime_gruppo":
+            group_runtime_by_order[_order_key(row)].append(row)
 
     for row in runtime_logs:
         key = _norm(row.OperationGroupId)
-        if key:
-            out[key] = actual_by_event.get(_runtime_event_key(row), row)
+        if not key:
+            continue
+
+        actual = actual_by_event.get(_runtime_event_key(row))
+
+        if (
+            actual is None
+            and _norm_l(getattr(row, "Azione", "")).startswith("chiusura")
+            and not _norm(getattr(row, "DataUltimaAttivazionePre", ""))
+        ):
+            event_at = _norm(getattr(row, "EventAt", ""))
+            actual = max(
+                (
+                    candidate
+                    for candidate in group_runtime_by_order.get(_order_key(row), [])
+                    if _norm(getattr(candidate, "EventAt", "")) <= event_at
+                ),
+                key=lambda candidate: (
+                    _norm(getattr(candidate, "EventAt", "")),
+                    int(getattr(candidate, "log_id", 0) or 0),
+                ),
+                default=None,
+            )
+
+        out[key] = actual or row
 
     return out
 
@@ -322,6 +352,17 @@ def _get_runtime_for_input_log(
     runtime_map: dict[str, OdpRuntimeLog],
 ) -> OdpRuntimeLog | None:
     return runtime_map.get(_norm(input_log.OperationGroupId))
+
+
+def _non_working_seconds(row) -> float:
+    raw_seconds = getattr(row, "TempoNonFunzionamentoSecondi", None)
+
+    if _norm(raw_seconds):
+        return _to_float(raw_seconds)
+
+    return (
+        _to_float(getattr(row, "TempoNonFunzionamentoMinuti", None)) * 60
+    )
 
 
 def _runtime_delta_hours(runtime_log: OdpRuntimeLog | None) -> float:
@@ -337,16 +378,7 @@ def _runtime_delta_hours(runtime_log: OdpRuntimeLog | None) -> float:
     elapsed_raw = getattr(runtime_log, "ElapsedSeconds", None)
 
     if _norm(elapsed_raw):
-        non_working_raw = getattr(runtime_log, "TempoNonFunzionamentoSecondi", None)
-        non_working_seconds = _to_float(non_working_raw)
-
-        if not _norm(non_working_raw):
-            non_working_seconds = (
-                _to_float(getattr(runtime_log, "TempoNonFunzionamentoMinuti", None))
-                * 60
-            )
-
-        return max(_to_float(elapsed_raw) - non_working_seconds, 0.0) / 3600.0
+        return max(_to_float(elapsed_raw) - _non_working_seconds(runtime_log), 0.0) / 3600.0
 
     pre = _to_float(runtime_log.TempoFunzionamentoPre)
     post = _to_float(runtime_log.TempoFunzionamentoPost)
@@ -354,6 +386,38 @@ def _runtime_delta_hours(runtime_log: OdpRuntimeLog | None) -> float:
     delta = post - pre
 
     return delta if delta > 0 else 0.0
+
+
+def _input_interval_hours(
+    active_log: InputOdpLog,
+    stop_log: InputOdpLog | None,
+    *,
+    start_dt: datetime,
+    end_dt: datetime,
+    actual_hours: float | None = None,
+) -> float:
+    active_at = _parse_iso(getattr(active_log, "ClosedAt", ""))
+    stop_at = (
+        _parse_iso(getattr(stop_log, "ClosedAt", ""))
+        if stop_log is not None
+        else end_dt
+    )
+
+    if active_at is None or stop_at is None or stop_at <= active_at:
+        return 0.0
+
+    overlap_start = max(active_at, start_dt)
+    overlap_end = min(stop_at, end_dt)
+    overlap_seconds = max((overlap_end - overlap_start).total_seconds(), 0.0)
+
+    if actual_hours is None:
+        actual_seconds = (stop_at - active_at).total_seconds()
+        if stop_log is not None:
+            actual_seconds -= _non_working_seconds(stop_log)
+    else:
+        actual_seconds = actual_hours * 3600.0
+
+    return min(max(actual_seconds, 0.0), overlap_seconds) / 3600.0
 
 
 def _final_close_hours(input_log: InputOdpLog) -> float:
@@ -382,50 +446,28 @@ def _runtime_current_hours(runtime_row: InputOdpRuntime | None) -> float:
 
 def _worked_hours_with_fallback(
     *,
+    active_log: InputOdpLog,
     input_log: InputOdpLog,
     runtime_map: dict[str, OdpRuntimeLog],
-    runtime_current_map: dict[tuple[str, str, str], InputOdpRuntime],
-    runtime_current_by_order: dict[tuple[str, str], InputOdpRuntime],
-    runtime_current_by_rif: dict[str, InputOdpRuntime],
+    start_dt: datetime,
+    end_dt: datetime,
 ) -> float:
     """
-    Usa l'intervallo effettivo di OdpRuntimeLog.
-    I valori cumulativi restano fallback solo per eventi storici senza runtime.
-
-    Fallback:
-    1. OperationGroupId -> OdpRuntimeLog
-    2. chiusura storica
-    3. IdDocumento + IdRiga + fase
-    4. IdDocumento + IdRiga
-    5. RifRegistraz
+    Usa l'intervallo runtime; per i log storici ricava l'intervallo
+    attivazione-sospensione senza riutilizzare il totale cumulativo.
     """
     runtime_row = _get_runtime_for_input_log(input_log, runtime_map)
+    actual_hours = (
+        _runtime_delta_hours(runtime_row) if runtime_row is not None else None
+    )
 
-    if runtime_row is not None:
-        return _runtime_delta_hours(runtime_row)
-
-    if _is_closed_log(input_log):
-        final_hours = _final_close_hours(input_log)
-
-        if final_hours > 0:
-            return final_hours
-
-    phase_runtime = runtime_current_map.get(_phase_key(input_log))
-    phase_hours = _runtime_current_hours(phase_runtime)
-
-    if phase_hours > 0:
-        return phase_hours
-
-    order_runtime = runtime_current_by_order.get(_order_key(input_log))
-    order_hours = _runtime_current_hours(order_runtime)
-
-    if order_hours > 0:
-        return order_hours
-
-    rif = _norm(getattr(input_log, "RifRegistraz", ""))
-    rif_runtime = runtime_current_by_rif.get(rif)
-
-    return _runtime_current_hours(rif_runtime)
+    return _input_interval_hours(
+        active_log,
+        input_log,
+        start_dt=start_dt,
+        end_dt=end_dt,
+        actual_hours=actual_hours,
+    )
 
 
 def _is_macchina(row: InputOdpLog) -> bool:
@@ -738,6 +780,46 @@ def _load_input_logs_in_period_for_user(
     ]
 
 
+def _load_active_runtime_order_keys_for_user(
+    *,
+    username: str,
+    end_iso: str,
+    deleted_keys: set[tuple[str, str]],
+) -> set[tuple[str, str]]:
+    rows = (
+        db.session.execute(
+            select(InputOdpRuntime).where(
+                InputOdpRuntime.Utente_operazione == username,
+                InputOdpRuntime.data_ultima_attivazione.is_not(None),
+                InputOdpRuntime.data_ultima_attivazione != "",
+                InputOdpRuntime.data_ultima_attivazione <= end_iso,
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    return {
+        _order_key(row)
+        for row in rows
+        if _norm_l(row.Stato_odp) in ACTIVE_STATES
+        and _order_key(row) not in deleted_keys
+    }
+
+
+def _candidate_order_keys(
+    *,
+    runtime_logs: list[OdpRuntimeLog],
+    input_logs: list[InputOdpLog],
+    active_runtime_order_keys: set[tuple[str, str]],
+) -> set[tuple[str, str]]:
+    return (
+        {_order_key(row) for row in runtime_logs}
+        | {_order_key(row) for row in input_logs}
+        | active_runtime_order_keys
+    )
+
+
 def _load_input_logs_for_orders(order_keys: set[tuple[str, str]]) -> list[InputOdpLog]:
     if not order_keys:
         return []
@@ -778,9 +860,8 @@ def _calculate_worked_hours_by_user_phase(
     *,
     input_logs: list[InputOdpLog],
     runtime_map: dict[str, OdpRuntimeLog],
-    runtime_current_map: dict[tuple[str, str, str], InputOdpRuntime],
-    runtime_current_by_order: dict[tuple[str, str], InputOdpRuntime],
-    runtime_current_by_rif: dict[str, InputOdpRuntime],
+    start_dt: datetime,
+    end_dt: datetime,
 ) -> dict[str, dict[tuple[str, str, str], float]]:
     """
     Calcola le ore lavorate per utente e per fase.
@@ -795,7 +876,9 @@ def _calculate_worked_hours_by_user_phase(
         lambda: defaultdict(float)
     )
 
-    active_by_operation: dict[str, tuple[str, tuple[str, str, str]]] = {}
+    active_by_operation: dict[
+        str, tuple[str, tuple[str, str, str], InputOdpLog]
+    ] = {}
 
     for row in input_logs:
         operation_group_id = _norm(row.OperationGroupId)
@@ -804,6 +887,7 @@ def _calculate_worked_hours_by_user_phase(
             active_by_operation[operation_group_id] = (
                 _norm(row.ClosedBy),
                 _phase_key(row),
+                row,
             )
 
     consumed_operations: set[str] = set()
@@ -813,23 +897,23 @@ def _calculate_worked_hours_by_user_phase(
             continue
 
         operation_group_id = _norm(row.OperationGroupId)
-        worked_hours = _worked_hours_with_fallback(
-            input_log=row,
-            runtime_map=runtime_map,
-            runtime_current_map=runtime_current_map,
-            runtime_current_by_order=runtime_current_by_order,
-            runtime_current_by_rif=runtime_current_by_rif,
-        )
-
-        if worked_hours <= 0:
-            continue
-
         active_data = active_by_operation.get(operation_group_id)
 
         if not active_data:
             continue
 
-        active_username, active_phase_key = active_data
+        active_username, active_phase_key, active_log = active_data
+        worked_hours = _worked_hours_with_fallback(
+            active_log=active_log,
+            input_log=row,
+            runtime_map=runtime_map,
+            start_dt=start_dt,
+            end_dt=end_dt,
+        )
+
+        if worked_hours <= 0:
+            continue
+
         stop_phase_key = _phase_key(row)
         phase_key = (
             active_phase_key if _is_unknown_phase(stop_phase_key) else stop_phase_key
@@ -851,6 +935,7 @@ def _calculate_worked_hours_by_user_phase(
     for rows in logs_by_order.values():
         active_username: str | None = None
         active_phase_key: tuple[str, str, str] | None = None
+        active_log: InputOdpLog | None = None
 
         for row in rows:
             operation_group_id = _norm(row.OperationGroupId)
@@ -858,6 +943,7 @@ def _calculate_worked_hours_by_user_phase(
             if _is_activation_input_log(row):
                 active_username = _norm(row.ClosedBy)
                 active_phase_key = _phase_key(row)
+                active_log = row
                 continue
 
             if not _is_stop_input_log(row):
@@ -866,19 +952,21 @@ def _calculate_worked_hours_by_user_phase(
             if operation_group_id in consumed_operations:
                 active_username = None
                 active_phase_key = None
+                active_log = None
                 continue
 
-            if not active_username:
+            if not active_username or active_log is None:
                 active_username = None
                 active_phase_key = None
+                active_log = None
                 continue
 
             worked_hours = _worked_hours_with_fallback(
+                active_log=active_log,
                 input_log=row,
                 runtime_map=runtime_map,
-                runtime_current_map=runtime_current_map,
-                runtime_current_by_order=runtime_current_by_order,
-                runtime_current_by_rif=runtime_current_by_rif,
+                start_dt=start_dt,
+                end_dt=end_dt,
             )
 
             if worked_hours > 0:
@@ -892,6 +980,18 @@ def _calculate_worked_hours_by_user_phase(
 
             active_username = None
             active_phase_key = None
+            active_log = None
+
+        if active_username and active_phase_key is not None and active_log is not None:
+            worked_hours = _input_interval_hours(
+                active_log,
+                None,
+                start_dt=start_dt,
+                end_dt=end_dt,
+            )
+
+            if worked_hours > 0:
+                result[active_username][active_phase_key] += worked_hours
 
     return {username: dict(values) for username, values in result.items()}
 
@@ -948,10 +1048,17 @@ def build_report_settimanale_for_user(
         deleted_keys=deleted_keys,
     )
 
-    runtime_order_keys = {_order_key(row) for row in runtime_logs_in_period}
-    user_input_order_keys = {_order_key(row) for row in user_input_logs_in_period}
+    active_runtime_order_keys = _load_active_runtime_order_keys_for_user(
+        username=selected_username,
+        end_iso=end_iso,
+        deleted_keys=deleted_keys,
+    )
 
-    candidate_order_keys = runtime_order_keys | user_input_order_keys
+    candidate_order_keys = _candidate_order_keys(
+        runtime_logs=runtime_logs_in_period,
+        input_logs=user_input_logs_in_period,
+        active_runtime_order_keys=active_runtime_order_keys,
+    )
 
     input_logs_for_candidate_orders = _load_input_logs_for_orders(candidate_order_keys)
     input_logs_for_candidate_orders = [
@@ -961,54 +1068,17 @@ def build_report_settimanale_for_user(
     ]
 
     runtime_map = _runtime_by_operation_group(runtime_logs_in_period)
-    runtime_current_rows = _load_runtime_current_for_orders(candidate_order_keys)
-    runtime_current_map = _runtime_current_by_phase(runtime_current_rows)
-    runtime_current_by_order = _runtime_current_by_order(runtime_current_rows)
-    runtime_current_by_rif = _runtime_current_by_rif(runtime_current_rows)
 
     worked_by_user_phase = _calculate_worked_hours_by_user_phase(
         input_logs=input_logs_for_candidate_orders,
         runtime_map=runtime_map,
-        runtime_current_map=runtime_current_map,
-        runtime_current_by_order=runtime_current_by_order,
-        runtime_current_by_rif=runtime_current_by_rif,
+        start_dt=start_dt,
+        end_dt=end_dt,
     )
 
     selected_worked_phases = dict(worked_by_user_phase.get(selected_username, {}))
 
-    selected_logged_phases = {
-        _phase_key(row)
-        for row in user_input_logs_in_period
-        if _norm(row.ClosedBy) == selected_username
-    }
-
-    phase_snapshot_by_key = {
-        _phase_key(row): row
-        for row in user_input_logs_in_period
-        if _norm(row.ClosedBy) == selected_username
-    }
-
-    for phase_key in selected_logged_phases:
-        if selected_worked_phases.get(phase_key, 0.0) > 0:
-            continue
-
-        runtime_current = runtime_current_map.get(phase_key)
-        current_hours = _runtime_current_hours(runtime_current)
-
-        if current_hours <= 0:
-            order_key = _order_key_from_phase_key(phase_key)
-            runtime_current = runtime_current_by_order.get(order_key)
-            current_hours = _runtime_current_hours(runtime_current)
-
-        if current_hours <= 0:
-            input_log = phase_snapshot_by_key.get(phase_key)
-            rif = _norm(getattr(input_log, "RifRegistraz", "")) if input_log else ""
-            runtime_current = runtime_current_by_rif.get(rif)
-            current_hours = _runtime_current_hours(runtime_current)
-
-        if current_hours > 0:
-            selected_worked_phases[phase_key] = current_hours
-    selected_phase_keys = set(selected_worked_phases) | selected_logged_phases
+    selected_phase_keys = set(selected_worked_phases)
 
     snapshot_by_order, snapshot_by_phase = _build_snapshots(
         input_logs_for_candidate_orders
@@ -1047,24 +1117,7 @@ def build_report_settimanale_for_user(
         if row_data is None:
             continue
 
-        phase_snapshot = snapshot_by_phase.get(phase_key) or snapshot_by_order.get(
-            order_key
-        )
-
-        if phase_snapshot is None:
-            continue
-
         worked = selected_worked_phases.get(phase_key, 0.0)
-
-        if worked <= 0:
-            worked = _worked_hours_with_fallback(
-                input_log=phase_snapshot,
-                runtime_map=runtime_map,
-                runtime_current_map=runtime_current_map,
-                runtime_current_by_order=runtime_current_by_order,
-                runtime_current_by_rif=runtime_current_by_rif,
-            )
-
         row_data["ore_impiegate"] += worked
 
     ordini_lavorati: list[dict[str, Any]] = []

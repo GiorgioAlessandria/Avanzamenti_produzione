@@ -39,6 +39,7 @@ from app_odp.services.priorita_service import (
 )
 from app_odp.services.ordini_runtime_service import (
     _accumulate_runtime_until,
+    _ensure_stop_minutes_within_elapsed,
     _ensure_stato_attivo,
     _ensure_operator_can_activate_group,
 )
@@ -715,10 +716,18 @@ def assign_elapsed_group_runtime(
                 break
 
     if start_dt is None:
+        _ensure_stop_minutes_within_elapsed(
+            minuti_non_funzionamento,
+            0,
+        )
         group.LastActivationAt = None
         return 0
 
     raw_elapsed_seconds = max(0, int((now_dt - start_dt).total_seconds()))
+    _ensure_stop_minutes_within_elapsed(
+        minuti_non_funzionamento,
+        raw_elapsed_seconds,
+    )
     if raw_elapsed_seconds <= 0:
         return 0
 
