@@ -35,16 +35,15 @@ def _base_payload():
     }
 
 
-def test_txt_generator_numbers_703_components_from_one_ignoring_source_row_ids():
+def test_txt_generator_uses_source_row_ids_for_703_components():
     lines = txt_generator([{"payload": _base_payload()}], include_time_line=False)
 
     refs_703 = [line.split(";")[5] for line in lines if line.split(";")[4] == "703"]
 
     assert refs_703 == [
-        "2026.1.403.1,00.1,00",
         "2026.1.403.1,00.2,00",
+        "2026.1.403.1,00.400,00",
     ]
-    assert all(".400,00" not in ref for ref in refs_703)
 
 
 def test_txt_generator_emits_701_for_last_phase_despite_legacy_false_flag():

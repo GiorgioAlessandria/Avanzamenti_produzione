@@ -228,6 +228,15 @@ def _phase_ref_for_export(base_ref: str, payload: dict) -> str:
     return _ref_with_suffix(base_ref, payload.get("fase"))
 
 
+def _component_row_index(component: dict, fallback: int) -> int:
+    for key in ("ProgressivoRiga", "IdRigacomponente", "IdRigaComponente"):
+        value_int = _to_int(component.get(key))
+        if value_int is not None and value_int > 0:
+            return value_int
+
+    return fallback
+
+
 def txt_generator(
     export_rows: list[dict],
     *,
@@ -261,6 +270,12 @@ def txt_generator(
     q_ok = _to_decimal(payload["quantita_ok"])
     q_ko = _to_decimal(payload["quantita_ko"])
     tempo_funzionamento = _to_decimal(payload["tempo_funzionamento"])
+    tempo_avanzamento_raw = payload.get("tempo_avanzamento_ore")
+    tempo_avanzamento = _to_decimal(
+        tempo_avanzamento_raw
+        if tempo_avanzamento_raw not in (None, "")
+        else payload["tempo_funzionamento"]
+    )
 
     distinta_base_raw = _load_distinta_base(payload.get("distinta_base"))
 
@@ -338,17 +353,18 @@ def txt_generator(
             magazzino_principale=magazzino,
             codice_risorsa=risorsa,
             causale_prestazione="",
-            ore_lavorate=str(tempo_funzionamento),
+            ore_lavorate=str(tempo_avanzamento),
         )
         lines.append(product_time_line)
 
-    for component_row_index, component in enumerate(distinta_base, start=1):
+    for fallback_row_index, component in enumerate(distinta_base, start=1):
         if not isinstance(component, dict):
             continue
 
         cod_art_component = _text(component.get("CodArt"))
         variante_component = _text(component.get("VarianteArt"))
 
+        component_row_index = _component_row_index(component, fallback_row_index)
         riferimento_ordine_component = _ref_with_suffix(
             riferimento_ordine_base, component_row_index
         )

@@ -157,6 +157,7 @@
                         <th>Ultimo evento</th>
                         <th>Tipo</th>
                         <th>Ordine / gruppo</th>
+                        <th>N. riga ERP</th>
                         <th>Articoli</th>
                         <th>Risorse</th>
                         <th>Operatori</th>
@@ -167,7 +168,7 @@
                     </thead>
                     <tbody id="storico-body">
                     <tr>
-                        <td colspan="9"
+                        <td colspan="10"
                             class="text-center text-muted py-3">Caricamento...
                         </td>
                     </tr>
@@ -277,7 +278,7 @@
             }
 
             async function loadList() {
-                body.innerHTML = `<tr><td colspan="9" class="text-center text-muted py-3">Caricamento...</td></tr>`;
+                body.innerHTML = `<tr><td colspan="10" class="text-center text-muted py-3">Caricamento...</td></tr>`;
                 const listSep = page.dataset.listUrl.includes("?") ? "&" : "?";
                 const url = `${page.dataset.listUrl}${listSep}${params().toString()}`;
                 let data = {};
@@ -290,12 +291,12 @@
                     }));
 
                     if (!resp.ok || !data.ok) {
-                        body.innerHTML = `<tr><td colspan="9" class="text-center text-danger py-3">${esc(data.error || "Errore caricamento")}</td></tr>`;
+                        body.innerHTML = `<tr><td colspan="10" class="text-center text-danger py-3">${esc(data.error || "Errore caricamento")}</td></tr>`;
                         return;
                     }
                 } catch (err) {
                     console.error("Errore caricamento storico ordini:", err);
-                    body.innerHTML = `<tr><td colspan="9" class="text-center text-danger py-3">Errore di comunicazione con il server.</td></tr>`;
+                    body.innerHTML = `<tr><td colspan="10" class="text-center text-danger py-3">Errore di comunicazione con il server.</td></tr>`;
                     return;
                 }
 
@@ -311,7 +312,7 @@
                 nextBtn.disabled = currentPage >= totalPages;
 
                 if (!data.rows.length) {
-                    body.innerHTML = `<tr><td colspan="9" class="text-center text-muted py-3">Nessun log trovato.</td></tr>`;
+                    body.innerHTML = `<tr><td colspan="10" class="text-center text-muted py-3">Nessun log trovato.</td></tr>`;
                     return;
                 }
 
@@ -323,6 +324,7 @@
                             <div class="fw-semibold">${esc(row.label)}</div>
                             <div class="small text-muted">${shortList(row.orders)}</div>
                         </td>
+                        <td>${shortList(row.num_progr_righe)}</td>
                         <td>${shortList(row.articles)}</td>
                         <td>${shortList(row.risorse)}</td>
                         <td>${shortList(row.operatori)}</td>
@@ -377,9 +379,10 @@
 
                 const membersHtml = header.members?.length ? `
                     <h3 class="h6">Ordini del gruppo</h3>
-                    ${table(["Ordine", "Articolo", "Ruolo", "Tempo", "Stato"], header.members, m => `
+                    ${table(["Ordine", "N. riga ERP", "Articolo", "Ruolo", "Tempo", "Stato"], header.members, m => `
                         <tr>
                             <td>${esc(m.ordine)}</td>
+                            <td>${esc(m.num_progr_riga)}</td>
                             <td>${esc(m.articolo)}<div class="small text-muted">${esc(m.descrizione)}</div></td>
                             <td>${esc(m.ruolo)}</td>
                             <td>${esc(m.time_share)}</td>
@@ -395,6 +398,9 @@
                                 <div class="fw-semibold">${esc(ev.azione_label)}</div>
                                 <div>${esc(ev.descrizione)}</div>
                                 <div class="small text-muted">${esc(ev.ordine)} - ${esc(ev.articolo || "")}</div>
+                                ${ev.num_progr_riga ? `
+                                    <div class="small">N. riga ERP: ${esc(ev.num_progr_riga)}</div>
+                                ` : ""}
                                 ${ev.tempo_lavorazione_ore ? `
                                     <div class="small">Tempo lavorazione: ${esc(ev.tempo_lavorazione_ore)} ore</div>
                                 ` : ""}
@@ -414,12 +420,13 @@
                 `).join("") : `<div class="text-muted">Nessun evento runtime.</div>`;
 
                 const inputHtml = table(
-                    ["Data", "Ordine", "Articolo", "Fase", "Risorsa", "OK", "KO", "Lavorazione (ore)", "Non funzionamento (min)", "Utente", "Matricola", "Note"],
+                    ["Data", "Ordine", "N. riga ERP", "Articolo", "Fase", "Risorsa", "OK", "KO", "Lavorazione (ore)", "Non funzionamento (min)", "Utente", "Matricola", "Note"],
                     data.input_logs || [],
                     row => `
                         <tr>
                             <td>${esc(row.closed_at_display)}</td>
                             <td>${esc(row.ordine)}</td>
+                            <td>${esc(row.num_progr_riga)}</td>
                             <td>${esc(row.articolo)}<div class="small text-muted">${esc(row.descrizione)}</div></td>
                             <td>${esc(row.fase)}</td>
                             <td>${esc(row.risorsa)}</td>

@@ -323,8 +323,8 @@ def _ensure_min_active_time_before_chiusura(
     min_seconds: int = MIN_SECONDS_BEFORE_CLOSE_WITHOUT_TIME_PERMISSION,
 ):
     """
-    Impedisce la chiusura troppo rapida agli operatori senza permission
-    export_avp_senza_riga_tempo.
+    Impedisce la chiusura troppo rapida, salvo una forzatura valida del tempo
+    avanzamento autorizzata dal chiamante.
 
     Usa data_ultima_attivazione come riferimento principale.
     Se manca, usa Data_in_carico come fallback.

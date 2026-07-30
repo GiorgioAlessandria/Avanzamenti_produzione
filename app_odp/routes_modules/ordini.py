@@ -12,7 +12,7 @@ from app_odp.models import (
     InputOdpLog,
     OdpRuntimeLog,
 )
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from app_odp.operator_session import active_policy, active_token, operator_perm_required
 from app_odp.services.ordini_log_service import (
     _add_input_odp_closure_log,
@@ -124,6 +124,36 @@ def _response_json_payload(result) -> dict:
     if callable(getter):
         return getter(silent=True) or {}
     return {}
+
+
+def _parse_tempo_avanzamento_override(
+    raw_value,
+    *,
+    allowed: bool,
+    include_time_line: bool = True,
+) -> tuple[int | None, str | None]:
+    if not allowed or not include_time_line:
+        return None, None
+
+    value = _norm_text(raw_value)
+    if not value:
+        return None, None
+    if not value.isascii() or not value.isdigit():
+        raise ValueError(
+            "Tempo avanzamento deve essere espresso in minuti interi maggiori di 0."
+        )
+
+    minutes = int(value)
+    if minutes <= 0:
+        raise ValueError(
+            "Tempo avanzamento deve essere espresso in minuti interi maggiori di 0."
+        )
+
+    hours = (Decimal(minutes) / Decimal("60")).quantize(
+        Decimal("0.01"),
+        rounding=ROUND_HALF_UP,
+    )
+    return minutes, format(hours, ".2f")
 
 
 def _quantita_totale_ordine_decimal(ordine, fallback: Decimal) -> Decimal:
@@ -1935,13 +1965,22 @@ def _chiudi_ordine_da_payload(
             force_include_time_line = group_close_options["force_include_time_line"]
 
     can_override_registration_date = policy.can("modifica_data_chiusura")
-    can_choose_time_line = policy.can("export_avp_senza_riga_tempo")
-    include_time_line = True
-
-    if force_include_time_line is not None:
-        include_time_line = bool(force_include_time_line)
-    elif can_choose_time_line:
-        include_time_line = _parse_bool_flag(data.get("include_time_line", True))
+    can_force_tempo_avanzamento = policy.can("export_avp_senza_riga_tempo")
+    include_time_line = (
+        True
+        if force_include_time_line is None
+        else bool(force_include_time_line)
+    )
+    try:
+        tempo_avanzamento_minuti, tempo_avanzamento_ore = (
+            _parse_tempo_avanzamento_override(
+                data.get("tempo_avanzamento_minuti"),
+                allowed=can_force_tempo_avanzamento,
+                include_time_line=include_time_line,
+            )
+        )
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
 
     fase_corrente = _fase_corrente_for_export(ordine)
     blocking_outbox = _get_blocking_outbox_for_phase(
@@ -1979,7 +2018,7 @@ def _chiudi_ordine_da_payload(
         min_time_error = _ensure_min_active_time_before_chiusura(
             stato,
             now_dt,
-            can_bypass=can_choose_time_line and not include_time_line,
+            can_bypass=tempo_avanzamento_ore is not None,
         )
         if min_time_error:
             return min_time_error
@@ -2262,6 +2301,8 @@ def _chiudi_ordine_da_payload(
             magazzino=ordine.CodMagPrincipale,
             variante=ordine.VarianteArt,
             include_time_line=include_time_line,
+            tempo_avanzamento_minuti=tempo_avanzamento_minuti,
+            tempo_avanzamento_ore=tempo_avanzamento_ore,
             **phase_export_flags,
         )
         outbox = _queue_phase_export(
@@ -2288,6 +2329,8 @@ def _chiudi_ordine_da_payload(
             magazzino=ordine.CodMagPrincipale,
             variante=ordine.VarianteArt,
             include_time_line=include_time_line,
+            tempo_avanzamento_minuti=tempo_avanzamento_minuti,
+            tempo_avanzamento_ore=tempo_avanzamento_ore,
             **phase_export_flags,
         )
         outbox = _queue_phase_export(
@@ -2402,6 +2445,13 @@ def _chiudi_ordine_da_payload(
             "is_last_phase": phase_export_flags["is_last_phase"],
             "fase_successiva": phase_export_flags["fase_successiva"],
             "phase_sequence": phase_export_flags["phase_sequence"],
+            "tempo_funzionamento_calcolato": tempo_finale,
+            "tempo_avanzamento_forzato": tempo_avanzamento_ore is not None,
+            "tempo_avanzamento_minuti": tempo_avanzamento_minuti,
+            "tempo_avanzamento_ore": tempo_avanzamento_ore or tempo_finale,
+            "tempo_avanzamento_operatore": (
+                _current_username() if tempo_avanzamento_ore is not None else ""
+            ),
         },
     )
 
@@ -2549,13 +2599,22 @@ def _chiudi_ordine_montaggio_macchina_da_payload(
             force_include_time_line = group_close_options["force_include_time_line"]
 
     can_override_registration_date = policy.can("modifica_data_chiusura")
-    can_choose_time_line = policy.can("export_avp_senza_riga_tempo")
-    include_time_line = True
-
-    if force_include_time_line is not None:
-        include_time_line = bool(force_include_time_line)
-    elif can_choose_time_line:
-        include_time_line = _parse_bool_flag(data.get("include_time_line", True))
+    can_force_tempo_avanzamento = policy.can("export_avp_senza_riga_tempo")
+    include_time_line = (
+        True
+        if force_include_time_line is None
+        else bool(force_include_time_line)
+    )
+    try:
+        tempo_avanzamento_minuti, tempo_avanzamento_ore = (
+            _parse_tempo_avanzamento_override(
+                data.get("tempo_avanzamento_minuti"),
+                allowed=can_force_tempo_avanzamento,
+                include_time_line=include_time_line,
+            )
+        )
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
 
     if _tab_from_ordine(ordine) != "montaggio":
         return (
@@ -2613,7 +2672,7 @@ def _chiudi_ordine_montaggio_macchina_da_payload(
         min_time_error = _ensure_min_active_time_before_chiusura(
             stato,
             now_dt,
-            can_bypass=can_choose_time_line and not include_time_line,
+            can_bypass=tempo_avanzamento_ore is not None,
         )
         if min_time_error:
             return min_time_error
@@ -2784,6 +2843,8 @@ def _chiudi_ordine_montaggio_macchina_da_payload(
         magazzino=ordine.CodMagPrincipale,
         variante=ordine.VarianteArt,
         include_time_line=include_time_line,
+        tempo_avanzamento_minuti=tempo_avanzamento_minuti,
+        tempo_avanzamento_ore=tempo_avanzamento_ore,
         **phase_export_flags,
     )
 
@@ -2853,6 +2914,13 @@ def _chiudi_ordine_montaggio_macchina_da_payload(
             "is_last_phase": phase_export_flags["is_last_phase"],
             "fase_successiva": phase_export_flags["fase_successiva"],
             "phase_sequence": phase_export_flags["phase_sequence"],
+            "tempo_funzionamento_calcolato": tempo_finale,
+            "tempo_avanzamento_forzato": tempo_avanzamento_ore is not None,
+            "tempo_avanzamento_minuti": tempo_avanzamento_minuti,
+            "tempo_avanzamento_ore": tempo_avanzamento_ore or tempo_finale,
+            "tempo_avanzamento_operatore": (
+                _current_username() if tempo_avanzamento_ore is not None else ""
+            ),
         },
     )
 

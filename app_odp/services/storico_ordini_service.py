@@ -83,8 +83,21 @@ def _payload(row) -> dict:
     try:
         parsed = json.loads(raw)
     except Exception:
-        return {"_raw": raw}
-    return parsed if isinstance(parsed, dict) else {"value": parsed}
+        return (
+            {} if "tempo_non_funzionamento_secondi" in raw.lower() else {"_raw": raw}
+        )
+    if isinstance(parsed, dict):
+        parsed.pop("tempo_non_funzionamento_secondi", None)
+        return parsed
+    return {"value": parsed}
+
+
+def _visible_note(value) -> str:
+    return " | ".join(
+        part.strip()
+        for part in _norm_text(value).split("|")
+        if not part.strip().lower().startswith("tempo non funzionamento secondi:")
+    )
 
 
 def _action_label(action: str) -> str:
@@ -276,7 +289,7 @@ def _input_event_label(row: InputOdpLog) -> str:
     if "sospes" in post:
         return "Sospensione"
 
-    note = _norm_text(row.NoteChiusura)
+    note = _visible_note(row.NoteChiusura)
     return note.split("|", 1)[0].strip() if note else "Log ordine"
 
 
@@ -295,6 +308,11 @@ def _event_entry(entries: dict, row, group_uid: str, payload: dict, groups_by_ui
                 "group_type_label": _group_label(group_type),
                 "label": f"Gruppo {group_uid}",
                 "orders": set(),
+                "num_progr_righe": {
+                    _norm_text(getattr(member, "NumProgrRiga", ""))
+                    for member in getattr(group, "members", [])
+                    if _norm_text(getattr(member, "NumProgrRiga", ""))
+                },
                 "articles": set(),
                 "risorse": set(),
                 "operatori": set(),
@@ -318,6 +336,7 @@ def _event_entry(entries: dict, row, group_uid: str, payload: dict, groups_by_ui
             "group_type_label": "Singolo",
             "label": label,
             "orders": set(),
+            "num_progr_righe": set(),
             "articles": set(),
             "risorse": set(),
             "operatori": set(),
@@ -333,6 +352,7 @@ def _event_entry(entries: dict, row, group_uid: str, payload: dict, groups_by_ui
 def _add_entry_event(entry: dict, row, event_label: str, user: str = "") -> None:
     order_ref = _norm_text(row.RifRegistraz) or f"{row.IdDocumento}/{row.IdRiga}"
     entry["orders"].add(order_ref)
+    entry["num_progr_righe"].add(_norm_text(getattr(row, "NumProgrRiga", "")))
     entry["articles"].add(_norm_text(getattr(row, "CodArt", "")))
     entry["operatori"].add(_norm_text(user))
     entry["eventi"].add(event_label)
@@ -492,7 +512,14 @@ def build_storico_ordini_list(params) -> dict:
     page_rows = filtered[start_idx : start_idx + page_size]
 
     for entry in page_rows:
-        for field in ("orders", "articles", "risorse", "operatori", "eventi"):
+        for field in (
+            "orders",
+            "num_progr_righe",
+            "articles",
+            "risorse",
+            "operatori",
+            "eventi",
+        ):
             entry[field] = [value for value in sorted(entry[field]) if value]
         entry["last_event_at_display"] = _format_dt(entry["last_event_at"])
 
@@ -620,11 +647,31 @@ def _event_description(row, payload: dict) -> str:
     if q_ok or q_ko:
         parts.append(f"OK {q_ok or '0'} / KO {q_ko or '0'}")
 
+    if payload.get("tempo_avanzamento_forzato") is True:
+        minuti = _norm_text(payload.get("tempo_avanzamento_minuti")) or "-"
+        ore = _norm_text(payload.get("tempo_avanzamento_ore")) or "-"
+        calcolato = (
+            _norm_text(payload.get("tempo_funzionamento_calcolato")) or "-"
+        )
+        parts.append(
+            f"Tempo avanzamento {minuti} min ({ore} h), tempo calcolato {calcolato} h"
+        )
+
     note = _norm_text(row.Note or row.Motivo)
     if note:
         parts.append(note)
 
     return " | ".join(parts)
+
+
+def _num_progr_by_order(*row_groups) -> dict[tuple[str, str], str]:
+    out = {}
+    for rows in row_groups:
+        for row in rows:
+            value = _norm_text(getattr(row, "NumProgrRiga", ""))
+            if value:
+                out[_order_key(row)] = value
+    return out
 
 
 def _runtime_to_dict(row):
@@ -641,6 +688,7 @@ def _runtime_to_dict(row):
         "ordine": _norm_text(row.RifRegistraz) or f"{row.IdDocumento}/{row.IdRiga}",
         "id_documento": _norm_text(row.IdDocumento),
         "id_riga": _norm_text(row.IdRiga),
+        "num_progr_riga": _norm_text(row.NumProgrRiga),
         "articolo": _norm_text(row.CodArt),
         "fase_pre": _norm_text(row.FasePre),
         "fase_post": _norm_text(row.FasePost),
@@ -658,7 +706,8 @@ def _runtime_to_dict(row):
     }
 
 
-def _input_to_dict(row):
+def _input_to_dict(row, num_progr_by_order=None):
+    num_progr_by_order = num_progr_by_order or {}
     return {
         "log_id": row.log_id,
         "closed_at": _norm_text(row.ClosedAt),
@@ -666,6 +715,7 @@ def _input_to_dict(row):
         "ordine": _norm_text(row.RifRegistraz) or f"{row.IdDocumento}/{row.IdRiga}",
         "id_documento": _norm_text(row.IdDocumento),
         "id_riga": _norm_text(row.IdRiga),
+        "num_progr_riga": num_progr_by_order.get(_order_key(row), ""),
         "articolo": _norm_text(row.CodArt),
         "descrizione": _norm_text(row.DesArt),
         "fase": _norm_text(row.FaseConsuntivata or row.FaseAttiva),
@@ -675,13 +725,14 @@ def _input_to_dict(row):
         "tempo_finale": _norm_text(row.TempoFunzionamentoFinale),
         "tempo_non_funzionamento_minuti": _non_working_minutes(row),
         "chiusura_parziale": _norm_text(row.ChiusuraParziale),
-        "note": _norm_text(row.NoteChiusura),
+        "note": _visible_note(row.NoteChiusura),
         "utente": _norm_text(row.ClosedBy),
         "matricola": _norm_text(row.CodMatricola),
     }
 
 
-def _input_timeline_to_dict(row):
+def _input_timeline_to_dict(row, num_progr_by_order=None):
+    num_progr_by_order = num_progr_by_order or {}
     label = _input_event_label(row)
     user = _norm_text(row.ClosedBy) or "-"
     description = f"{user} - {label}"
@@ -691,8 +742,9 @@ def _input_timeline_to_dict(row):
         description += f" | stato {state_pre or '-'} -> {state_post or '-'}"
     if _norm_text(row.QuantitaConforme) or _norm_text(row.QuantitaNonConforme):
         description += f" | OK {_norm_text(row.QuantitaConforme) or '0'} / KO {_norm_text(row.QuantitaNonConforme) or '0'}"
-    if _norm_text(row.NoteChiusura):
-        description += f" | {_norm_text(row.NoteChiusura)}"
+    note = _visible_note(row.NoteChiusura)
+    if note:
+        description += f" | {note}"
 
     payload = {
         "source": "input_odp_log",
@@ -715,6 +767,7 @@ def _input_timeline_to_dict(row):
         "ordine": _norm_text(row.RifRegistraz) or f"{row.IdDocumento}/{row.IdRiga}",
         "id_documento": _norm_text(row.IdDocumento),
         "id_riga": _norm_text(row.IdRiga),
+        "num_progr_riga": num_progr_by_order.get(_order_key(row), ""),
         "articolo": _norm_text(row.CodArt),
         "fase_pre": "",
         "fase_post": _norm_text(row.FaseConsuntivata or row.FaseAttiva),
@@ -760,6 +813,7 @@ def _lotto_generato_to_dict(row):
 
 def build_storico_ordini_detail(params) -> dict:
     kind = _norm_text(params.get("kind"))
+    members = []
 
     if kind == "group":
         group_uid = _norm_text(params.get("group_uid"))
@@ -784,6 +838,7 @@ def build_storico_ordini_detail(params) -> dict:
                     or f"{m.IdDocumento}/{m.IdRiga}",
                     "id_documento": _norm_text(m.IdDocumento),
                     "id_riga": _norm_text(m.IdRiga),
+                    "num_progr_riga": _norm_text(m.NumProgrRiga),
                     "articolo": _norm_text(m.CodArt),
                     "descrizione": _norm_text(m.DesArt),
                     "ruolo": _norm_text(m.Role),
@@ -815,6 +870,7 @@ def build_storico_ordini_detail(params) -> dict:
         order_keys=order_keys,
         group=group,
     )
+    num_progr_map = _num_progr_by_order(runtime_rows, members)
     used_lots = _lotti_for_runtime_or_inputs(
         LottiUsatiLog,
         runtime_rows,
@@ -833,7 +889,7 @@ def build_storico_ordini_detail(params) -> dict:
     timeline = [_runtime_to_dict(row) for row in runtime_rows]
     runtime_ops = set(_operation_ids(runtime_rows))
     timeline.extend(
-        _input_timeline_to_dict(row)
+        _input_timeline_to_dict(row, num_progr_map)
         for row in input_logs
         if _norm_text(row.OperationGroupId) not in runtime_ops
     )
@@ -846,7 +902,7 @@ def build_storico_ordini_detail(params) -> dict:
             "ok": True,
             "header": header,
             "timeline": timeline,
-            "input_logs": [_input_to_dict(row) for row in input_logs],
+            "input_logs": [_input_to_dict(row, num_progr_map) for row in input_logs],
             "lotti_usati": [_lotto_usato_to_dict(row) for row in used_lots],
             "lotti_generati": [_lotto_generato_to_dict(row) for row in generated_lots],
         }

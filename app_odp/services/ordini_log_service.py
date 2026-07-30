@@ -174,10 +174,6 @@ def _add_input_odp_suspend_log(
         note_parts.append(
             f"Tempo non funzionamento minuti: {_norm_text(minuti_non_funzionamento)}"
         )
-    if secondi_non_funzionamento not in (None, ""):
-        note_parts.append(
-            f"Tempo non funzionamento secondi: {_norm_text(secondi_non_funzionamento)}"
-        )
 
     db.session.add(
         InputOdpLog(

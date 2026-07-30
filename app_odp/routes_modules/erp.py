@@ -3,6 +3,10 @@
 from sqlalchemy import or_
 
 from app_odp.models import ErpOutbox, db
+from app_odp.ordine_ref import (
+    format_ordine_ref_display,
+    parse_ordine_ref_display,
+)
 from app_odp.odp_output import txt_generator
 from app_odp.operator_session import operator_perm_required
 from app_odp.policy.decorator import require_active_perm
@@ -19,6 +23,14 @@ from app_odp.services.order_helpers import (
     _now_rome_dt,
     _parse_bool_flag,
 )
+
+
+def _admin_outbox_ordine_ref(row) -> str:
+    return format_ordine_ref_display(
+        row.RifRegistraz,
+        _get_outbox_payload(row).get("num_progr_riga"),
+        row.IdRiga,
+    )
 
 
 @main_bp.post("/api/erp/export/avp")
@@ -116,9 +128,12 @@ def admin_ricrea_avp_page():
 @require_active_perm("utility_ricrea_avp")
 def api_admin_avanzamenti():
     q = _norm_text(request.args.get("q"))
+    ordine_filter = parse_ordine_ref_display(q)
     query = ErpOutbox.query.filter(ErpOutbox.kind == "consuntivo_fase")
 
-    if q:
+    if ordine_filter:
+        query = query.filter(ErpOutbox.RifRegistraz == ordine_filter[0])
+    elif q:
         like = f"%{q}%"
         query = query.filter(
             or_(
@@ -129,7 +144,17 @@ def api_admin_avanzamenti():
             )
         )
 
-    rows = query.order_by(ErpOutbox.outbox_id.desc()).limit(100).all()
+    query = query.order_by(ErpOutbox.outbox_id.desc())
+    if ordine_filter:
+        ordine_atteso = format_ordine_ref_display(*ordine_filter)
+        rows = [
+            row
+            for row in query.all()
+            if _admin_outbox_ordine_ref(row) == ordine_atteso
+        ][:100]
+    else:
+        rows = query.limit(100).all()
+
     return jsonify(
         {
             "ok": True,
@@ -137,7 +162,7 @@ def api_admin_avanzamenti():
                 {
                     "outbox_id": row.outbox_id,
                     "created_at": _norm_text(row.created_at),
-                    "ordine": _norm_text(row.RifRegistraz)
+                    "ordine": _admin_outbox_ordine_ref(row)
                     or f"{row.IdDocumento}/{row.IdRiga}",
                     "id_documento": _norm_text(row.IdDocumento),
                     "id_riga": _norm_text(row.IdRiga),

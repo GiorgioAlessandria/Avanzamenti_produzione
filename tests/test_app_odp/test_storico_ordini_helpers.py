@@ -34,6 +34,17 @@ def test_payload_returns_dict_raw_or_wrapped_value():
     assert service._payload(SimpleNamespace(PayloadJson="")) == {}
 
 
+def test_storico_hides_non_working_seconds_from_payload_and_notes():
+    assert service._payload(
+        SimpleNamespace(
+            PayloadJson='{"tempo_non_funzionamento_minuti": 10, "tempo_non_funzionamento_secondi": 600}'
+        )
+    ) == {"tempo_non_funzionamento_minuti": 10}
+    assert service._visible_note(
+        "Sospensione | Tempo non funzionamento minuti: 10 | Tempo non funzionamento secondi: 600"
+    ) == "Sospensione | Tempo non funzionamento minuti: 10"
+
+
 def test_bounded_int_clamps_or_falls_back_to_default():
     assert service._bounded_int("25", 50, 10, 100) == 25
     assert service._bounded_int("5", 50, 10, 100) == 10
@@ -60,6 +71,20 @@ def test_non_working_time_is_exposed_only_in_minutes():
             TempoNonFunzionamentoSecondi="0",
         )
     ) == ""
+
+
+def test_num_progr_riga_is_mapped_by_order():
+    rows = [
+        SimpleNamespace(
+            IdDocumento="DOC",
+            IdRiga="1",
+            NumProgrRiga="20",
+        )
+    ]
+
+    assert service._num_progr_by_order(rows) == {
+        ("DOC", "1"): "20",
+    }
 
 
 def test_order_key_and_row_event_at_normalize_fields():

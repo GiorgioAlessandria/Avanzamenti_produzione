@@ -1,3 +1,5 @@
+from decimal import Decimal
+import json
 from types import SimpleNamespace
 
 from app_odp.services import erp_export_service as service
@@ -32,3 +34,29 @@ def test_build_operation_group_id_uses_timestamp_and_safe_order_tokens():
         action="presa in carico",
         when_iso="2026-07-09T14:30:10",
     ) == "20260709143010_DOC_1_10_presa_in_carico"
+
+
+def test_build_export_distinta_keeps_global_component_progressive_between_phases(
+    monkeypatch,
+):
+    distinta = [
+        {"NumFase": 1, "CodArt": "C1", "Quantita": "1"},
+        {"NumFase": 1, "CodArt": "C2", "Quantita": "1"},
+        {"NumFase": 1, "CodArt": "C3", "Quantita": "1"},
+        {"NumFase": 1, "CodArt": "C4", "Quantita": "1"},
+        {"NumFase": 2, "CodArt": "C5", "Quantita": "1"},
+        {"NumFase": 2, "CodArt": "C6", "Quantita": "1"},
+    ]
+    monkeypatch.setattr(service, "_parse_distinta_materiale", lambda ordine: distinta)
+
+    phase_two = json.loads(
+        service._build_export_distinta_base(
+            ordine=SimpleNamespace(),
+            fase_corrente="2",
+            q_lavorata=Decimal("1"),
+            q_tot=Decimal("1"),
+        )
+    )
+
+    assert [row["CodArt"] for row in phase_two] == ["C5", "C6"]
+    assert [row["ProgressivoRiga"] for row in phase_two] == ["5", "6"]

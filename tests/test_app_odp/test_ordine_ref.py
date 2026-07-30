@@ -4,6 +4,7 @@ from app_odp.ordine_ref import (
     format_erp_decimal_ref_part,
     format_ordine_ref_display,
     format_ordine_ref_export,
+    parse_ordine_ref_display,
 )
 
 
@@ -21,6 +22,11 @@ from app_odp.ordine_ref import (
 )
 def test_format_erp_decimal_ref_part_normalizes_numeric_values(value, expected):
     assert format_erp_decimal_ref_part(value) == expected
+
+
+def test_parse_ordine_ref_display_recognizes_complete_order_filter():
+    assert parse_ordine_ref_display("2026.1.394 9,00") == ("2026.1.394", "9,00")
+    assert parse_ordine_ref_display("BE03 articolo 9,00") is None
 
 
 def test_format_ordine_ref_display_uses_first_available_row_part():

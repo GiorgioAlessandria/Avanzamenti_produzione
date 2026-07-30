@@ -1,5 +1,5 @@
 {% set has_modifica_data_chiusura_permission = policy and policy.can('modifica_data_chiusura') %}
-{% set has_export_senza_tempo_permission = policy and policy.can('export_avp_senza_riga_tempo') %}
+{% set has_tempo_avanzamento_permission = policy and policy.can('export_avp_senza_riga_tempo') %}
 {% set home_ui_texts = home_ui_texts|default({}, true) %}
 <!--toast nuovo ordine in carico SL -->
 <div class="toast lh-lg hide"
@@ -318,7 +318,7 @@
                     </label>
                 </div>
             </div>
-            {% if has_modifica_data_chiusura_permission or has_export_senza_tempo_permission %}
+            {% if has_modifica_data_chiusura_permission or has_tempo_avanzamento_permission %}
                 <div class="row mt-2 align-items-end">
                     {% if has_modifica_data_chiusura_permission %}
                         <div class="col">
@@ -332,19 +332,24 @@
                         </div>
                     {% endif %}
 
-                    {% if has_export_senza_tempo_permission %}
+                    {% if has_tempo_avanzamento_permission %}
                         <div class="col">
-                            <div class="form-check"
-                                 style="font-size: 20px;">
-                                <input class="form-check-input"
-                                       type="checkbox"
-                                       id="toast-chiudi-sl-include-time-line"
-                                       checked>
-                                <label class="form-check-label"
-                                       for="toast-chiudi-sl-include-time-line">
-                                    Inserisci tempo nel file ERP
-                                </label>
+                            <label class="form-label"
+                                   for="toast-chiudi-sl-tempo-avanzamento">
+                                Tempo avanzamento
+                            </label>
+                            <div class="input-group">
+                                <input class="form-control"
+                                       type="number"
+                                       inputmode="numeric"
+                                       min="1"
+                                       step="1"
+                                       pattern="[0-9]*"
+                                       id="toast-chiudi-sl-tempo-avanzamento"
+                                       placeholder="Tempo calcolato">
+                                <span class="input-group-text">min</span>
                             </div>
+                            <small class="text-muted">Lascia vuoto per usare il tempo calcolato.</small>
                         </div>
                     {% endif %}
                 </div>
@@ -604,7 +609,7 @@
                 </label>
             </div>
         </div>
-        {% if has_modifica_data_chiusura_permission or has_export_senza_tempo_permission %}
+        {% if has_modifica_data_chiusura_permission or has_tempo_avanzamento_permission %}
             <div class="row mt-2 align-items-end">
                 {% if has_modifica_data_chiusura_permission %}
                     <div class="col">
@@ -618,19 +623,24 @@
                     </div>
                 {% endif %}
 
-                {% if has_export_senza_tempo_permission %}
+                {% if has_tempo_avanzamento_permission %}
                     <div class="col">
-                        <div class="form-check"
-                             style="font-size: 20px;">
-                            <input class="form-check-input"
-                                   type="checkbox"
-                                   id="toast-chiudi-m-include-time-line"
-                                   checked>
-                            <label class="form-check-label"
-                                   for="toast-chiudi-m-include-time-line">
-                                Inserisci tempo nel file ERP
-                            </label>
+                        <label class="form-label"
+                               for="toast-chiudi-m-tempo-avanzamento">
+                            Tempo avanzamento
+                        </label>
+                        <div class="input-group">
+                            <input class="form-control"
+                                   type="number"
+                                   inputmode="numeric"
+                                   min="1"
+                                   step="1"
+                                   pattern="[0-9]*"
+                                   id="toast-chiudi-m-tempo-avanzamento"
+                                   placeholder="Tempo calcolato">
+                            <span class="input-group-text">min</span>
                         </div>
+                        <small class="text-muted">Lascia vuoto per usare il tempo calcolato.</small>
                     </div>
                 {% endif %}
             </div>
@@ -1829,7 +1839,7 @@
         const tbody = document.getElementById("tbody-lotti-m");
         const riepilogo = document.getElementById("lotti-riepilogo-m");
         const inpDataRegistrazione = document.getElementById("toast-chiudi-m-data-registrazione");
-        const chkIncludeTimeLine = document.getElementById("toast-chiudi-m-include-time-line");
+        const inpTempoAvanzamento = document.getElementById("toast-chiudi-m-tempo-avanzamento");
         if (!toastEl || !section || !tbody) return;
 
         function escHtml(s) {
@@ -1848,7 +1858,7 @@
         }
 
         function resetRegistrationDateInput() {
-            if (chkIncludeTimeLine) chkIncludeTimeLine.checked = true;
+            if (inpTempoAvanzamento) inpTempoAvanzamento.value = "";
             if (!inpDataRegistrazione) return;
             const today = todayIsoLocal();
             inpDataRegistrazione.max = today;
@@ -2305,7 +2315,7 @@
                         note: note,
                         lotti: lottiPayload,
                         data_registrazione: inpDataRegistrazione?.value || "",
-                        include_time_line: chkIncludeTimeLine ? chkIncludeTimeLine.checked : true,
+                        tempo_avanzamento_minuti: inpTempoAvanzamento?.value?.trim() || "",
                         num_progr_riga: numProgrRiga
                     })
                 });
@@ -2381,7 +2391,7 @@
         const chkParziale = document.getElementById("toast-chiudi-sl-parziale");
         const chkTotale = document.getElementById("toast-chiudi-sl-totale");
         const inpDataRegistrazione = document.getElementById("toast-chiudi-sl-data-registrazione");
-        const chkIncludeTimeLine = document.getElementById("toast-chiudi-sl-include-time-line");
+        const inpTempoAvanzamento = document.getElementById("toast-chiudi-sl-tempo-avanzamento");
 
         if (!toastEl || !section || !tbody || !inpConf || !inpNonConf) return;
 
@@ -2567,7 +2577,7 @@
         }
 
         function resetQuantitaInputs() {
-            if (chkIncludeTimeLine) chkIncludeTimeLine.checked = true;
+            if (inpTempoAvanzamento) inpTempoAvanzamento.value = "";
             resetRegistrationDateInput();
             const qResidua = getQuantitaResiduaCorrente();
 
@@ -3092,7 +3102,7 @@
                         lotti: lottiPayload,
                         chiusura_parziale: chiusuraParziale,
                         data_registrazione: inpDataRegistrazione?.value || "",
-                        include_time_line: chkIncludeTimeLine ? chkIncludeTimeLine.checked : true,
+                        tempo_avanzamento_minuti: inpTempoAvanzamento?.value?.trim() || "",
                         num_progr_riga: numProgrRiga
                     })
                 });
@@ -3410,11 +3420,6 @@
             return groupOrderEl(key)?.querySelector(`[data-field="${field}"]`)?.checked === true;
         }
 
-        function getGroupRowCheckedDefault(key, field, defaultValue) {
-            const el = groupOrderEl(key)?.querySelector(`[data-field="${field}"]`);
-            return el ? el.checked === true : defaultValue;
-        }
-
         function showGroupCloseFeedback(message) {
             const el = document.getElementById("modal-workgroup-close-feedback");
             if (!el) return;
@@ -3500,7 +3505,7 @@
                 quantita_non_conforme: qKo,
                 chiusura_parziale: singleClose ? false : (!isMacchina && getGroupRowChecked(key, "chiusura_parziale")),
                 data_registrazione: getGroupRowValue(key, "data_registrazione"),
-                include_time_line: getGroupRowCheckedDefault(key, "include_time_line", true),
+                tempo_avanzamento_minuti: getGroupRowValue(key, "tempo_avanzamento_minuti"),
                 lotti: workgroupCloseState.lottiByOrder[key] || []
             };
         }
@@ -3594,17 +3599,20 @@
                                data-field="data_registrazione">
                     </div>
                     {% endif %}
-                    {% if has_export_senza_tempo_permission %}
+                    {% if has_tempo_avanzamento_permission %}
                     <div class="col">
-                        <div class="form-check">
-                            <input class="form-check-input"
-                                   type="checkbox"
-                                   data-field="include_time_line"
-                                   ${timeZero ? "" : "checked"}
+                        <label class="form-label mb-1">Tempo avanzamento</label>
+                        <div class="input-group input-group-sm">
+                            <input class="form-control"
+                                   type="number"
+                                   inputmode="numeric"
+                                   min="1"
+                                   step="1"
+                                   pattern="[0-9]*"
+                                   data-field="tempo_avanzamento_minuti"
+                                   placeholder="${timeZero ? "Non previsto" : "Tempo calcolato"}"
                                    ${timeZero ? "disabled" : ""}>
-                            <label class="form-check-label">
-                                Inserisci tempo nel file ERP
-                            </label>
+                            <span class="input-group-text">min</span>
                         </div>
                     </div>
                     {% endif %}
@@ -3897,7 +3905,7 @@
                     quantita_non_conforme: qKo,
                     chiusura_parziale: !isMacchina && getGroupRowChecked(key, "chiusura_parziale"),
                     data_registrazione: getGroupRowValue(key, "data_registrazione"),
-                    include_time_line: getGroupRowCheckedDefault(key, "include_time_line", true),
+                    tempo_avanzamento_minuti: getGroupRowValue(key, "tempo_avanzamento_minuti"),
                     lotti: workgroupCloseState.lottiByOrder[key] || []
                 };
             });

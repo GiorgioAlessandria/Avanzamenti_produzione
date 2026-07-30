@@ -270,6 +270,8 @@ def _build_phase_payload(
     magazzino: str = "",
     variante: str = "",
     include_time_line: bool = True,
+    tempo_avanzamento_minuti: int | None = None,
+    tempo_avanzamento_ore: str | None = None,
     emit_product_line: bool | None = None,
     is_last_phase: bool | None = None,
     fase_successiva: str | None = None,
@@ -293,6 +295,7 @@ def _build_phase_payload(
 
     if emit_product_line is None:
         emit_product_line = bool(is_last_phase)
+    tempo_avanzamento_forzato = tempo_avanzamento_ore is not None
     return {
         "kind": "consuntivo_fase",
         "id_documento": ordine.IdDocumento,
@@ -304,6 +307,17 @@ def _build_phase_payload(
         "quantita_ok": str(q_ok),
         "quantita_ko": str(q_nok),
         "tempo_funzionamento": tempo_finale,
+        "tempo_funzionamento_calcolato": tempo_finale,
+        "tempo_avanzamento_forzato": tempo_avanzamento_forzato,
+        "tempo_avanzamento_minuti": (
+            tempo_avanzamento_minuti if tempo_avanzamento_forzato else None
+        ),
+        "tempo_avanzamento_ore": (
+            tempo_avanzamento_ore if tempo_avanzamento_forzato else tempo_finale
+        ),
+        "tempo_avanzamento_operatore": (
+            _current_username() if tempo_avanzamento_forzato else ""
+        ),
         "note": note,
         "lotti": _normalize_lotti_for_payload(lotti_input),
         "lotto_prodotto": _normalize_lotto_prodotto_for_payload(lotto_prodotto),

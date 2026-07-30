@@ -1,4 +1,5 @@
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+import re
 
 
 def _norm_text(value) -> str:
@@ -32,6 +33,14 @@ def format_erp_decimal_ref_part(value) -> str:
 
     number = number.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     return format(number, "f").replace(".", ",")
+
+
+def parse_ordine_ref_display(value):
+    match = re.fullmatch(
+        r"(\d+(?:\.\d+){2})\s+(\d+(?:[.,]\d+)?)",
+        _norm_text(value),
+    )
+    return match.groups() if match else None
 
 
 def format_ordine_ref_display(
