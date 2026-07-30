@@ -34,6 +34,34 @@ def test_payload_returns_dict_raw_or_wrapped_value():
     assert service._payload(SimpleNamespace(PayloadJson="")) == {}
 
 
+def test_bounded_int_clamps_or_falls_back_to_default():
+    assert service._bounded_int("25", 50, 10, 100) == 25
+    assert service._bounded_int("5", 50, 10, 100) == 10
+    assert service._bounded_int("500", 50, 10, 100) == 100
+    assert service._bounded_int("bad", 50, 10, 100) == 50
+
+
+def test_non_working_time_is_exposed_only_in_minutes():
+    assert service._non_working_minutes(
+        SimpleNamespace(
+            TempoNonFunzionamentoMinuti="7",
+            TempoNonFunzionamentoSecondi="420",
+        )
+    ) == "7"
+    assert service._non_working_minutes(
+        SimpleNamespace(
+            TempoNonFunzionamentoMinuti="",
+            TempoNonFunzionamentoSecondi="90",
+        )
+    ) == "1.5"
+    assert service._non_working_minutes(
+        SimpleNamespace(
+            TempoNonFunzionamentoMinuti="0",
+            TempoNonFunzionamentoSecondi="0",
+        )
+    ) == ""
+
+
 def test_order_key_and_row_event_at_normalize_fields():
     row = SimpleNamespace(
         IdDocumento=" DOC ",
@@ -61,6 +89,53 @@ def test_event_in_group_window_respects_start_and_five_minute_end_tolerance():
     assert service._event_in_group_window("2026-07-09T09:00:00", None) is False
 
 
+def test_group_for_event_prefers_latest_matching_group():
+    row = SimpleNamespace(
+        IdDocumento="DOC",
+        IdRiga="1",
+        EventAt="2026-07-09T10:04:00",
+    )
+    old_group = SimpleNamespace(
+        GroupUid="OLD",
+        CreatedAt="2026-07-09T08:00:00",
+        ClosedAt="2026-07-09T10:00:00",
+        DissolvedAt="",
+    )
+    new_group = SimpleNamespace(
+        GroupUid="NEW",
+        CreatedAt="2026-07-09T10:03:00",
+        ClosedAt="",
+        DissolvedAt="",
+    )
+    members = {
+        ("DOC", "1"): [
+            SimpleNamespace(GroupUid="OLD"),
+            SimpleNamespace(GroupUid="NEW"),
+        ]
+    }
+
+    assert service._group_for_event(
+        row,
+        {},
+        members,
+        {"OLD": old_group, "NEW": new_group},
+    ) == "NEW"
+
+
+def test_effective_group_type_detects_zero_time_member_as_mixed():
+    group = SimpleNamespace(
+        GroupType="MULTIPLO",
+        Note="",
+        members=[
+            SimpleNamespace(TimeShareMode="SPLIT"),
+            SimpleNamespace(TimeShareMode="ZERO"),
+        ],
+    )
+
+    assert service._effective_group_type(group) == "MISTO"
+    assert service._group_label(service._effective_group_type(group)) == "Misto"
+
+
 def test_operation_ids_returns_non_blank_unique_operation_ids():
     rows = [
         SimpleNamespace(OperationGroupId=" op-1 "),
@@ -70,6 +145,17 @@ def test_operation_ids_returns_non_blank_unique_operation_ids():
     ]
 
     assert set(service._operation_ids(rows)) == {"op-1", "op-2"}
+
+
+def test_input_rows_with_runtime_counterpart_are_not_counted_twice():
+    duplicate = SimpleNamespace(OperationGroupId="op-1")
+    input_only = SimpleNamespace(OperationGroupId="op-2")
+    legacy_without_id = SimpleNamespace(OperationGroupId="")
+
+    assert service._input_rows_without_runtime_duplicates(
+        [duplicate, input_only, legacy_without_id],
+        ["op-1"],
+    ) == [input_only, legacy_without_id]
 
 
 def test_event_description_formats_sections_and_omits_empty_ones():

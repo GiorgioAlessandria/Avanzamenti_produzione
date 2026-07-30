@@ -58,7 +58,8 @@
 
         <div class="card shadow-sm mb-3 storico-filter-card">
             <div class="card-body">
-                <div class="row g-2 align-items-end">
+                <form class="row g-2 align-items-end"
+                      id="storico-filters">
                     <div class="col-12 col-md-2">
                         <label class="form-label"
                                for="storico-date-from">Da</label>
@@ -124,7 +125,7 @@
                         </select>
                     </div>
                     <div class="col-12 col-md-2">
-                        <button type="button"
+                        <button type="submit"
                                 class="btn btn-primary w-100"
                                 id="storico-apply">
                             Applica
@@ -137,7 +138,7 @@
                             Reset
                         </button>
                     </div>
-                </div>
+                </form>
             </div>
         </div>
 
@@ -145,7 +146,9 @@
             <div class="card-header d-flex justify-content-between align-items-center">
                 <span class="fw-semibold">Risultati</span>
                 <span class="small text-muted"
-                      id="storico-count">-</span>
+                      id="storico-count"
+                      role="status"
+                      aria-live="polite">-</span>
             </div>
             <div class="table-responsive">
                 <table class="table table-sm table-hover align-middle mb-0">
@@ -158,14 +161,15 @@
                         <th>Risorse</th>
                         <th>Operatori</th>
                         <th>Eventi</th>
-                        <th class="text-end">Log</th>
+                        <th class="text-end">Operazioni</th>
                         <th></th>
                     </tr>
                     </thead>
                     <tbody id="storico-body">
                     <tr>
                         <td colspan="9"
-                            class="text-center text-muted py-3">Caricamento...</td>
+                            class="text-center text-muted py-3">Caricamento...
+                        </td>
                     </tr>
                     </tbody>
                 </table>
@@ -173,12 +177,15 @@
             <div class="card-footer d-flex justify-content-between align-items-center">
                 <button type="button"
                         class="btn btn-outline-secondary btn-sm"
-                        id="storico-prev">Precedente</button>
+                        id="storico-prev">Precedente
+                </button>
                 <div class="small"
-                     id="storico-page">Pagina 1</div>
+                     id="storico-page">Pagina 1
+                </div>
                 <button type="button"
                         class="btn btn-outline-secondary btn-sm"
-                        id="storico-next">Successiva</button>
+                        id="storico-next">Successiva
+                </button>
             </div>
         </div>
     </main>
@@ -203,7 +210,8 @@
                 </div>
                 <div class="modal-body">
                     <div id="storico-detail-content"
-                         class="text-muted">Caricamento...</div>
+                         class="text-muted">Caricamento...
+                    </div>
                 </div>
             </div>
         </div>
@@ -292,7 +300,12 @@
                 }
 
                 totalPages = data.total_pages || 1;
-                countEl.textContent = `${data.total || 0} risultati`;
+                const scanLimitReached = Boolean(data.scan_limit_reached);
+                countEl.textContent = scanLimitReached
+                    ? `${data.total || 0} risultati (limite raggiunto: restringere periodo o filtri)`
+                    : `${data.total || 0} risultati`;
+                countEl.classList.toggle("text-warning", scanLimitReached);
+                countEl.classList.toggle("text-muted", !scanLimitReached);
                 pageEl.textContent = `Pagina ${data.page || 1} di ${totalPages}`;
                 prevBtn.disabled = currentPage <= 1;
                 nextBtn.disabled = currentPage >= totalPages;
@@ -382,6 +395,12 @@
                                 <div class="fw-semibold">${esc(ev.azione_label)}</div>
                                 <div>${esc(ev.descrizione)}</div>
                                 <div class="small text-muted">${esc(ev.ordine)} - ${esc(ev.articolo || "")}</div>
+                                ${ev.tempo_lavorazione_ore ? `
+                                    <div class="small">Tempo lavorazione: ${esc(ev.tempo_lavorazione_ore)} ore</div>
+                                ` : ""}
+                                ${ev.tempo_non_funzionamento_minuti ? `
+                                    <div class="small">Non funzionamento: ${esc(ev.tempo_non_funzionamento_minuti)} min</div>
+                                ` : ""}
                             </div>
                             <div class="text-muted small text-end">${esc(ev.event_at_display)}</div>
                         </div>
@@ -395,7 +414,7 @@
                 `).join("") : `<div class="text-muted">Nessun evento runtime.</div>`;
 
                 const inputHtml = table(
-                    ["Data", "Ordine", "Articolo", "Fase", "Risorsa", "OK", "KO", "Tempo", "Utente", "Matricola", "Note"],
+                    ["Data", "Ordine", "Articolo", "Fase", "Risorsa", "OK", "KO", "Lavorazione (ore)", "Non funzionamento (min)", "Utente", "Matricola", "Note"],
                     data.input_logs || [],
                     row => `
                         <tr>
@@ -407,6 +426,7 @@
                             <td>${esc(row.q_ok)}</td>
                             <td>${esc(row.q_ko)}</td>
                             <td>${esc(row.tempo_finale)}</td>
+                            <td>${esc(row.tempo_non_funzionamento_minuti)}</td>
                             <td>${esc(row.utente)}</td>
                             <td>${esc(row.matricola)}</td>
                             <td>${esc(row.note)}</td>
@@ -488,16 +508,13 @@
                 }
             }
 
-            document.getElementById("storico-apply").addEventListener("click", () => {
+            document.getElementById("storico-filters").addEventListener("submit", event => {
+                event.preventDefault();
                 currentPage = 1;
                 loadList();
             });
             document.getElementById("storico-reset").addEventListener("click", () => {
-                ["storico-q", "storico-articolo", "storico-risorsa", "storico-operatore", "storico-reparto", "storico-evento"].forEach(id => {
-                    const el = document.getElementById(id);
-                    if (el) el.value = "";
-                });
-                document.getElementById("storico-tipo-gruppo").value = "";
+                document.getElementById("storico-filters").reset();
                 currentPage = 1;
                 loadList();
             });
