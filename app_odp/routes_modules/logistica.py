@@ -63,10 +63,15 @@ def _actor() -> tuple[int | None, str]:
     )
 
 
-def _movimento_atteso(movimento_id: int) -> MovimentoLogistico:
+def _movimento(movimento_id: int) -> MovimentoLogistico:
     movimento = db.session.get(MovimentoLogistico, movimento_id)
     if movimento is None:
         raise ValueError("Movimentazione non trovata.")
+    return movimento
+
+
+def _movimento_atteso(movimento_id: int) -> MovimentoLogistico:
+    movimento = _movimento(movimento_id)
     if movimento.completato_il is not None:
         raise ValueError("La movimentazione risulta già completata.")
     return movimento
@@ -190,6 +195,16 @@ def logistica_movimento_data(movimento_id: int):
         )
 
     return _save(action, "Data aggiornata.")
+
+
+@main_bp.post("/carichi-scarichi/movimenti/<int:movimento_id>/note")
+@require_active_perm("carica")
+def logistica_movimento_note(movimento_id: int):
+    def action():
+        movimento = _movimento(movimento_id)
+        movimento.note = _optional_text("note", 1000)
+
+    return _save(action, "Note aggiornate.")
 
 
 @main_bp.post("/carichi-scarichi/movimenti/<int:movimento_id>/conferma")

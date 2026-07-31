@@ -335,13 +335,13 @@ def format_peso_kg(value: Any) -> str:
     peso = Decimal(
         str(value or 0)
     ).quantize(
-        PESO_QUANTUM,
+        Decimal("0.1"),
         rounding=ROUND_HALF_UP,
     )
 
     return format(
         peso,
-        ".3f",
+        ".1f",
     ).replace(".", ",")
 
 

@@ -29,6 +29,10 @@
             background-color: #f8d7da !important;
         }
 
+        .logistica-note-cell {
+            min-width: 18rem;
+        }
+
         .logistica-actions {
             min-width: 22rem;
         }
@@ -229,10 +233,33 @@
                                     {{ movimento.data.strftime('%d/%m/%Y') }}
                                 </td>
                                 <td>{{ movimento.materiale }}</td>
-                                <td>{{ movimento.note or '-' }}</td>
+                                <td class="logistica-note-cell">
+                                    {% if can_carica %}
+                                        <label class="visually-hidden"
+                                               for="logistica-note-attesa-{{ movimento.id }}">
+                                            Note spedizione {{ movimento.id }}
+                                        </label>
+                                        <textarea class="form-control form-control-sm"
+                                                  id="logistica-note-attesa-{{ movimento.id }}"
+                                                  name="note"
+                                                  form="logistica-note-form-attesa-{{ movimento.id }}"
+                                                  maxlength="1000"
+                                                  rows="1">{{ movimento.note or '' }}</textarea>
+                                    {% else %}
+                                        {{ movimento.note or '-' }}
+                                    {% endif %}
+                                </td>
                                 <td class="logistica-actions">
                                     <div class="d-flex flex-wrap gap-2">
                                         {% if can_carica %}
+                                            <form method="post"
+                                                  id="logistica-note-form-attesa-{{ movimento.id }}"
+                                                  action="{{ operator_url_for('main.logistica_movimento_note', movimento_id=movimento.id) }}">
+                                                <button class="btn btn-sm btn-outline-primary" type="submit">
+                                                    Salva note
+                                                </button>
+                                            </form>
+
                                             <form method="post"
                                                   action="{{ operator_url_for('main.logistica_movimento_sollecito', movimento_id=movimento.id) }}">
                                                 <button class="btn btn-sm btn-outline-warning" type="submit">
@@ -298,6 +325,10 @@
                             <th>Data prevista</th>
                             <th>Materiale</th>
                             <th>Confermata</th>
+                            <th>Note</th>
+                            {% if can_carica %}
+                                <th>Azioni</th>
+                            {% endif %}
                         </tr>
                     </thead>
                     <tbody>
@@ -313,10 +344,39 @@
                                     {{ movimento.completato_il.strftime('%d/%m/%Y %H:%M') }}
                                     — {{ movimento.completato_da_nome }}
                                 </td>
+                                <td class="logistica-note-cell">
+                                    {% if can_carica %}
+                                        <label class="visually-hidden"
+                                               for="logistica-note-completata-{{ movimento.id }}">
+                                            Note spedizione {{ movimento.id }}
+                                        </label>
+                                        <textarea class="form-control form-control-sm"
+                                                  id="logistica-note-completata-{{ movimento.id }}"
+                                                  name="note"
+                                                  form="logistica-note-form-completata-{{ movimento.id }}"
+                                                  maxlength="1000"
+                                                  rows="1">{{ movimento.note or '' }}</textarea>
+                                    {% else %}
+                                        {{ movimento.note or '-' }}
+                                    {% endif %}
+                                </td>
+                                {% if can_carica %}
+                                    <td>
+                                        <form method="post"
+                                              id="logistica-note-form-completata-{{ movimento.id }}"
+                                              action="{{ operator_url_for('main.logistica_movimento_note', movimento_id=movimento.id) }}">
+                                            <button class="btn btn-sm btn-outline-primary text-nowrap"
+                                                    type="submit">
+                                                Salva note
+                                            </button>
+                                        </form>
+                                    </td>
+                                {% endif %}
                             </tr>
                         {% else %}
                             <tr>
-                                <td colspan="7" class="text-center text-muted py-4">
+                                <td colspan="{{ 9 if can_carica else 8 }}"
+                                    class="text-center text-muted py-4">
                                     Nessuna movimentazione completata.
                                 </td>
                             </tr>
