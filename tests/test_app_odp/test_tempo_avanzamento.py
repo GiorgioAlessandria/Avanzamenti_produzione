@@ -35,13 +35,8 @@ def test_tempo_avanzamento_rejects_non_positive_or_non_integer_values(
         _parse_tempo_avanzamento_override(invalid_value, allowed=True)
 
 
-def test_tempo_avanzamento_is_ignored_without_permission_or_without_709():
+def test_tempo_avanzamento_is_ignored_without_permission():
     assert _parse_tempo_avanzamento_override("10", allowed=False) == (None, None)
-    assert _parse_tempo_avanzamento_override(
-        "10",
-        allowed=True,
-        include_time_line=False,
-    ) == (None, None)
 
 
 def test_phase_payload_audits_calculated_and_forced_time(monkeypatch):

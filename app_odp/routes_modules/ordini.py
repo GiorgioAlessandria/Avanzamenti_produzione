@@ -61,7 +61,6 @@ from app_odp.services.ordini_gruppi_service import (
     mark_group_member_closed,
     mark_group_member_partial_closed,
     member_payload_key,
-    member_requires_time_line,
     prepare_group_for_full_closure,
     prepare_group_member_for_single_closure,
     reactivate_group,
@@ -130,9 +129,8 @@ def _parse_tempo_avanzamento_override(
     raw_value,
     *,
     allowed: bool,
-    include_time_line: bool = True,
 ) -> tuple[int | None, str | None]:
-    if not allowed or not include_time_line:
+    if not allowed:
         return None, None
 
     value = _norm_text(raw_value)
@@ -174,7 +172,7 @@ def _merge_fragment_payload(target: dict, source_result) -> None:
 def _dissolve_group_for_single_close(id_documento: str, id_riga: str) -> dict:
     active_group = get_active_group_for_order(id_documento, id_riga)
     if active_group is None:
-        return {"skip_min_active_time": False, "force_include_time_line": None}
+        return {"skip_min_active_time": False}
 
     # La chiusura singola scioglie il gruppo: da questo punto l'ordine segue
     # le regole di un ordine normale, anche se nel gruppo era un mascherato ZERO.
@@ -183,10 +181,7 @@ def _dissolve_group_for_single_close(id_documento: str, id_riga: str) -> dict:
         id_documento=id_documento,
         id_riga=id_riga,
     )
-    return {
-        "skip_min_active_time": True,
-        "force_include_time_line": None,
-    }
+    return {"skip_min_active_time": True}
 
 
 def _group_response_payload(group, policy, *, changed=True, message=""):
@@ -549,7 +544,6 @@ def api_chiudi_membro_gruppo(group_uid=None):
         if data.get("data_registrazione") and not member_payload.get("data_registrazione"):
             member_payload["data_registrazione"] = data.get("data_registrazione")
 
-        force_time_line = None if member_requires_time_line(member) else False
         is_machine = _norm_text(getattr(ordine_member, "GestioneMatricola", "")).lower() == "si"
         if is_machine:
             member_payload["matricola"] = _norm_text(
@@ -565,7 +559,6 @@ def api_chiudi_membro_gruppo(group_uid=None):
                 member_payload,
                 policy=policy,
                 commit=False,
-                force_include_time_line=force_time_line,
                 skip_min_active_time=True,
             )
             export_suffix = "montaggio_m"
@@ -574,7 +567,6 @@ def api_chiudi_membro_gruppo(group_uid=None):
                 member_payload,
                 policy=policy,
                 commit=False,
-                force_include_time_line=force_time_line,
                 skip_min_active_time=True,
             )
             export_suffix = (
@@ -779,7 +771,6 @@ def api_chiudi_gruppo_ordini(group_uid=None):
                 "time_share_mode": member.TimeShareMode,
             }
 
-            force_time_line = None if member_requires_time_line(member) else False
             if is_machine:
                 member_payload["matricola"] = _norm_text(
                     member_payload.get("matricola")
@@ -792,7 +783,6 @@ def api_chiudi_gruppo_ordini(group_uid=None):
                     member_payload,
                     policy=policy,
                     commit=False,
-                    force_include_time_line=force_time_line,
                     skip_min_active_time=True,
                 )
                 export_suffix = "montaggio_m"
@@ -801,7 +791,6 @@ def api_chiudi_gruppo_ordini(group_uid=None):
                     member_payload,
                     policy=policy,
                     commit=False,
-                    force_include_time_line=force_time_line,
                     skip_min_active_time=True,
                 )
                 export_suffix = (
@@ -1918,7 +1907,6 @@ def _chiudi_ordine_da_payload(
     *,
     policy=None,
     commit: bool = True,
-    force_include_time_line: bool | None = None,
     skip_min_active_time: bool = False,
 ):
     id_documento = _norm_text(data.get("id_documento"))
@@ -1958,25 +1946,14 @@ def _chiudi_ordine_da_payload(
         skip_min_active_time = skip_min_active_time or group_close_options[
             "skip_min_active_time"
         ]
-        if (
-            force_include_time_line is None
-            and group_close_options["force_include_time_line"] is not None
-        ):
-            force_include_time_line = group_close_options["force_include_time_line"]
 
     can_override_registration_date = policy.can("modifica_data_chiusura")
     can_force_tempo_avanzamento = policy.can("export_avp_senza_riga_tempo")
-    include_time_line = (
-        True
-        if force_include_time_line is None
-        else bool(force_include_time_line)
-    )
     try:
         tempo_avanzamento_minuti, tempo_avanzamento_ore = (
             _parse_tempo_avanzamento_override(
                 data.get("tempo_avanzamento_minuti"),
                 allowed=can_force_tempo_avanzamento,
-                include_time_line=include_time_line,
             )
         )
     except ValueError as exc:
@@ -2300,7 +2277,6 @@ def _chiudi_ordine_da_payload(
             risorsa=ordine.RisorsaAttiva,
             magazzino=ordine.CodMagPrincipale,
             variante=ordine.VarianteArt,
-            include_time_line=include_time_line,
             tempo_avanzamento_minuti=tempo_avanzamento_minuti,
             tempo_avanzamento_ore=tempo_avanzamento_ore,
             **phase_export_flags,
@@ -2328,7 +2304,6 @@ def _chiudi_ordine_da_payload(
             risorsa=ordine.RisorsaAttiva,
             magazzino=ordine.CodMagPrincipale,
             variante=ordine.VarianteArt,
-            include_time_line=include_time_line,
             tempo_avanzamento_minuti=tempo_avanzamento_minuti,
             tempo_avanzamento_ore=tempo_avanzamento_ore,
             **phase_export_flags,
@@ -2565,7 +2540,6 @@ def _chiudi_ordine_montaggio_macchina_da_payload(
     *,
     policy=None,
     commit: bool = True,
-    force_include_time_line: bool | None = None,
     skip_min_active_time: bool = False,
 ):
 
@@ -2592,25 +2566,14 @@ def _chiudi_ordine_montaggio_macchina_da_payload(
         skip_min_active_time = skip_min_active_time or group_close_options[
             "skip_min_active_time"
         ]
-        if (
-            force_include_time_line is None
-            and group_close_options["force_include_time_line"] is not None
-        ):
-            force_include_time_line = group_close_options["force_include_time_line"]
 
     can_override_registration_date = policy.can("modifica_data_chiusura")
     can_force_tempo_avanzamento = policy.can("export_avp_senza_riga_tempo")
-    include_time_line = (
-        True
-        if force_include_time_line is None
-        else bool(force_include_time_line)
-    )
     try:
         tempo_avanzamento_minuti, tempo_avanzamento_ore = (
             _parse_tempo_avanzamento_override(
                 data.get("tempo_avanzamento_minuti"),
                 allowed=can_force_tempo_avanzamento,
-                include_time_line=include_time_line,
             )
         )
     except ValueError as exc:
@@ -2842,7 +2805,6 @@ def _chiudi_ordine_montaggio_macchina_da_payload(
         risorsa=ordine.RisorsaAttiva,
         magazzino=ordine.CodMagPrincipale,
         variante=ordine.VarianteArt,
-        include_time_line=include_time_line,
         tempo_avanzamento_minuti=tempo_avanzamento_minuti,
         tempo_avanzamento_ore=tempo_avanzamento_ore,
         **phase_export_flags,

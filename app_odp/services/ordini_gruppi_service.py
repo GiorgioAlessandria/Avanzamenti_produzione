@@ -1180,10 +1180,6 @@ def group_members_for_close_payload(group: OdpWorkGroup) -> list[OdpWorkGroupMem
     return _members_for_closure(group)
 
 
-def member_requires_time_line(member: OdpWorkGroupMember) -> bool:
-    return _norm_text(member.TimeShareMode).upper() != SHARE_ZERO
-
-
 def _store_member_closure_quantities(
     member: OdpWorkGroupMember,
     *,

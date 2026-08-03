@@ -237,11 +237,7 @@ def _component_row_index(component: dict, fallback: int) -> int:
     return fallback
 
 
-def txt_generator(
-    export_rows: list[dict],
-    *,
-    include_time_line: bool = True,
-) -> list[str]:
+def txt_generator(export_rows: list[dict]) -> list[str]:
     if not export_rows:
         raise ValueError("Nessun record pending da esportare")
 
@@ -259,6 +255,7 @@ def txt_generator(
     rif_registraz = payload["rif_registraz"]
     fase = payload["fase"]
     num_progr_riga = payload.get("num_progr_riga")
+    riga_ordine = _to_int(_text(num_progr_riga) or id_riga)
 
     codice_articolo = payload["cod_art"]
     variante_articolo = payload.get("variante", "")
@@ -334,28 +331,27 @@ def txt_generator(
         )
         lines.append(product_line)
 
-    if include_time_line:
-        product_time_line = row_writer(
-            tipo_record="RIG",
-            tipo_documento=710,
-            registrazione_data=registrazione_data,
-            codice_documento=id_documento,
-            operazione_avanzamento="709",
-            riferimento_ordine=riferimento_ordine_fase,
-            codice_articolo=codice_articolo,
-            variante=variante_articolo,
-            quantita_principale=0,
-            quantita_scarti_prima=str(q_ko),
-            quantita_scarti_seconda=0,
-            riga_saldata=salda_riga,
-            riferimento_lotto_padre=lotto_articolo,
-            riferimento_lotto_pf=lotto_articolo,
-            magazzino_principale=magazzino,
-            codice_risorsa=risorsa,
-            causale_prestazione="",
-            ore_lavorate=str(tempo_avanzamento),
-        )
-        lines.append(product_time_line)
+    product_time_line = row_writer(
+        tipo_record="RIG",
+        tipo_documento=710,
+        registrazione_data=registrazione_data,
+        codice_documento=id_documento,
+        operazione_avanzamento="709",
+        riferimento_ordine=riferimento_ordine_fase,
+        codice_articolo=codice_articolo,
+        variante=variante_articolo,
+        quantita_principale=0,
+        quantita_scarti_prima=str(q_ko),
+        quantita_scarti_seconda=0,
+        riga_saldata=salda_riga,
+        riferimento_lotto_padre=lotto_articolo,
+        riferimento_lotto_pf=lotto_articolo,
+        magazzino_principale=magazzino,
+        codice_risorsa=risorsa,
+        causale_prestazione="",
+        ore_lavorate=str(tempo_avanzamento),
+    )
+    lines.append(product_time_line)
 
     for fallback_row_index, component in enumerate(distinta_base, start=1):
         if not isinstance(component, dict):
@@ -365,8 +361,13 @@ def txt_generator(
         variante_component = _text(component.get("VarianteArt"))
 
         component_row_index = _component_row_index(component, fallback_row_index)
-        riferimento_ordine_component = _ref_with_suffix(
-            riferimento_ordine_base, component_row_index
+        if _is_multiphase_payload(payload) and riga_ordine == 1:
+            component_row_index -= 1
+
+        riferimento_ordine_component = (
+            riferimento_ordine_base
+            if _text(lotto_articolo) and not _is_multiphase_payload(payload)
+            else _ref_with_suffix(riferimento_ordine_base, component_row_index)
         )
 
         righe_lotto_component = [

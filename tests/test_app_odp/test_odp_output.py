@@ -36,7 +36,7 @@ def _base_payload():
 
 
 def test_txt_generator_uses_source_row_ids_for_703_components():
-    lines = txt_generator([{"payload": _base_payload()}], include_time_line=False)
+    lines = txt_generator([{"payload": _base_payload()}])
 
     refs_703 = [line.split(";")[5] for line in lines if line.split(";")[4] == "703"]
 
@@ -54,12 +54,18 @@ def test_txt_generator_emits_701_for_last_phase_despite_legacy_false_flag():
         "emit_product_line": False,
     }
 
-    lines = txt_generator(
-        [{"payload": payload}],
-        include_time_line=False,
-    )
+    lines = txt_generator([{"payload": payload}])
 
     product_lines = [line for line in lines if line.split(";")[4] == "701"]
 
     assert len(product_lines) == 1
     assert product_lines[0].split(";")[11] == "0"
+
+
+def test_txt_generator_always_emits_709_despite_legacy_false_flag():
+    payload = {**_base_payload(), "include_time_line": False}
+
+    lines = txt_generator([{"payload": payload}])
+
+    time_lines = [line for line in lines if line.split(";")[4] == "709"]
+    assert len(time_lines) == 1

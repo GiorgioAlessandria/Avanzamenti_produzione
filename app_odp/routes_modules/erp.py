@@ -18,11 +18,7 @@ from app_odp.services.erp_export_service import (
     _get_pending_avp_export_rows,
     _write_txt_content,
 )
-from app_odp.services.order_helpers import (
-    _norm_text,
-    _now_rome_dt,
-    _parse_bool_flag,
-)
+from app_odp.services.order_helpers import _norm_text, _now_rome_dt
 
 
 def _admin_outbox_ordine_ref(row) -> str:
@@ -66,13 +62,7 @@ def api_export_avp_txt():
     outbox_rows = [row["outbox"] for row in export_rows]
 
     try:
-        payload = export_rows[0]["payload"]
-        include_time_line = _parse_bool_flag(payload.get("include_time_line", True))
-
-        list_line = txt_generator(
-            export_rows,
-            include_time_line=include_time_line,
-        )
+        list_line = txt_generator(export_rows)
         export_suffix = f"{suffix}_{outbox_id}"
         path_txt = _write_txt_content(
             list_line,
@@ -196,12 +186,7 @@ def api_admin_ricrea_avp():
 
     try:
         payload = _get_outbox_payload(outbox)
-        lines = txt_generator(
-            [{"outbox": outbox, "payload": payload}],
-            include_time_line=_parse_bool_flag(
-                payload.get("include_time_line", True)
-            ),
-        )
+        lines = txt_generator([{"outbox": outbox, "payload": payload}])
         path_txt = _write_txt_content(
             lines,
             prefix="AVPB",
