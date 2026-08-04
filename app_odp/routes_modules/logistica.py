@@ -17,6 +17,7 @@ from flask import (
 
 from app_odp.logistica_models import (
     ClientePackingList,
+    ImpostazioniPackingList,
     MovimentoLogistico,
     PackingList,
     RigaPackingList,
@@ -26,7 +27,10 @@ from app_odp.models import db
 from app_odp.operator_session import active_policy, active_token, active_user
 from app_odp.policy.decorator import require_active_any_perm, require_active_perm
 from app_odp.routes_blueprint import main_bp
-from app_odp.services.packing_list_pdf_service import build_packing_list_pdf
+from app_odp.services.packing_list_pdf_service import (
+    COMPANY_LINES,
+    build_packing_list_pdf,
+)
 
 
 def _redirect_logistica():
@@ -163,6 +167,32 @@ def _packing_rows() -> list[tuple[str, str, str, Decimal]]:
     if not rows:
         raise ValueError("Inserire almeno una riga nella packing list.")
     return rows
+
+
+def _packing_header() -> str:
+    lines = [
+        line.strip()
+        for line in _required_text(
+            "company_header",
+            "Intestazione PDF",
+            1000,
+        ).splitlines()
+        if line.strip()
+    ]
+    if len(lines) > 6:
+        raise ValueError("Intestazione PDF: usare al massimo 6 righe.")
+    if any(len(line) > 160 for line in lines):
+        raise ValueError(
+            "Intestazione PDF: ogni riga può contenere al massimo 160 caratteri."
+        )
+    return "\n".join(lines)
+
+
+def _company_header() -> str:
+    settings = db.session.get(ImpostazioniPackingList, 1)
+    if settings is None:
+        return "\n".join(COMPANY_LINES)
+    return settings.intestazione_pdf
 
 
 def _cliente_values(prefix: str = "") -> dict[str, str]:
@@ -361,7 +391,31 @@ def packing_list_page():
         )
         .limit(100)
         .all(),
+        company_header=_company_header(),
         oggi=date.today(),
+    )
+
+
+@main_bp.post("/carichi-scarichi/packing-list/intestazione")
+@require_active_perm("carica")
+def packing_list_header_update():
+    def action():
+        company_header = _packing_header()
+        settings = db.session.get(ImpostazioniPackingList, 1)
+        if settings is None:
+            db.session.add(
+                ImpostazioniPackingList(
+                    id=1,
+                    intestazione_pdf=company_header,
+                )
+            )
+        else:
+            settings.intestazione_pdf = company_header
+
+    return _save(
+        action,
+        "Intestazione PDF aggiornata.",
+        redirector=_redirect_packing_list,
     )
 
 
@@ -430,6 +484,7 @@ def packing_list_pdf(packing_list_id: int):
 
     pdf = build_packing_list_pdf(
         packing_list,
+        company_header=_company_header(),
         logo_path=(
             Path(current_app.static_folder)
             / "assets"

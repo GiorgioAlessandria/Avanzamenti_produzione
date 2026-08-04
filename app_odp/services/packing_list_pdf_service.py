@@ -27,10 +27,17 @@ from reportlab.platypus import (
 COMPANY_LINES = (
     "BERNARDI s.r.l.",
     "Via Pasquale Bottero, 16",
+    "12020 Villar San Costanzo",
     "CN - ITALY",
     "tel.: +39-0171-902352",
     "e-mail: info@bernardi.it",
 )
+
+
+def _company_lines(company_header: str | None) -> tuple[str, ...]:
+    custom_header = str(company_header or "")
+    lines = tuple(line.strip() for line in custom_header.splitlines() if line.strip())
+    return lines or COMPANY_LINES
 
 
 def _font_names(font_path: str | Path | None) -> tuple[str, str]:
@@ -85,6 +92,7 @@ def _logo(path: str | Path | None):
 def build_packing_list_pdf(
     packing_list,
     *,
+    company_header: str | None = None,
     logo_path: str | Path | None = None,
     font_path: str | Path | None = None,
 ) -> BytesIO:
@@ -200,9 +208,10 @@ def build_packing_list_pdf(
         )
         return [heading, field_table(rows, widths)]
 
+    company_lines = _company_lines(company_header)
     company_flowables = [
-        Paragraph(_text(COMPANY_LINES[0]), company_name),
-        Paragraph("<br/>".join(_text(line) for line in COMPANY_LINES[1:]), company),
+        Paragraph(_text(company_lines[0]), company_name),
+        Paragraph("<br/>".join(_text(line) for line in company_lines[1:]), company),
     ]
     page_header = Table(
         [

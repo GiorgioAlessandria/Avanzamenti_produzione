@@ -11,7 +11,21 @@
         .packing-items th:nth-child(4) { width: 16%; }
         .packing-items td { min-width: 9rem; }
         .packing-items td:nth-child(2) { min-width: 18rem; }
-        .packing-client-table { max-height: 24rem; overflow: auto; }
+        .packing-scroll-table { height: 24rem; overflow: auto; }
+        #packing-list-page .form-label {
+            font-size: 1.05rem;
+            font-weight: 700;
+        }
+        #packing-list-page .card-header,
+        #packing-list-page h2.h6,
+        #packing-list-page legend.fs-6 {
+            font-size: 1.2rem !important;
+            font-weight: 700;
+        }
+        #packing-list-page th {
+            font-size: 1.05rem;
+            font-weight: 700;
+        }
     </style>
 {% endblock %}
 
@@ -55,8 +69,17 @@
         <form method="post"
               action="{{ operator_url_for('main.packing_list_create') }}"
               class="card shadow-sm mb-3">
-            <div class="card-header fw-semibold">Nuova packing list</div>
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span class="fw-bold">Nuova packing list</span>
+                <button class="btn btn-sm btn-outline-secondary"
+                        type="button"
+                        data-bs-toggle="modal"
+                        data-bs-target="#packing-header-modal">
+                    Modifica intestazione PDF
+                </button>
+            </div>
             <div class="card-body">
+                <h2 class="h6 fw-bold mb-3">Cliente e indirizzi</h2>
                 <div class="row g-3 mb-3">
                     <div class="col-12 col-lg-5">
                         <label class="form-label" for="packing-client-search">Cerca cliente</label>
@@ -86,7 +109,7 @@
                 </div>
 
                 <fieldset class="border rounded p-3 mb-3" id="packing-consignee">
-                    <legend class="float-none w-auto px-2 fs-6 mb-0">Consignee name</legend>
+                    <legend class="float-none w-auto px-2 fs-6 fw-bold mb-0">Consignee name</legend>
                     <div class="row g-3">
                         <div class="col-12 col-md-6">
                             <label class="form-label" for="packing-new-name">Customer</label>
@@ -132,7 +155,7 @@
                 </fieldset>
 
                 <fieldset class="border rounded p-3 mb-3" id="packing-delivery-address">
-                    <legend class="float-none w-auto px-2 fs-6 mb-0">Delivery address</legend>
+                    <legend class="float-none w-auto px-2 fs-6 fw-bold mb-0">Delivery address</legend>
                     <div class="text-end mb-2">
                         <button class="btn btn-sm btn-outline-secondary"
                                 type="button"
@@ -184,6 +207,7 @@
                     </div>
                 </fieldset>
 
+                <h2 class="h6 fw-bold mb-3">Dati documento e pesi</h2>
                 <div class="row g-3 mb-3">
                     <div class="col-12 col-md-6 col-xl-4">
                         <label class="form-label" for="packing-transport-document">Transport document</label>
@@ -251,7 +275,7 @@
                 </div>
 
                 <div class="d-flex justify-content-between align-items-center mb-2">
-                    <h2 class="h6 mb-0">Articoli</h2>
+                    <h2 class="h6 fw-bold mb-0">Materiale</h2>
                     <button class="btn btn-sm btn-outline-primary"
                             type="button"
                             id="packing-add-row">
@@ -280,16 +304,16 @@
                                 </td>
                                 <td>
                                     <input class="form-control"
-                                           name="item_serial_number"
-                                           maxlength="200"
-                                           aria-label="Serial number riga 1"
+                                           name="item_description"
+                                           maxlength="500"
+                                           aria-label="Description riga 1"
                                            required>
                                 </td>
                                 <td>
                                     <input class="form-control"
-                                           name="item_description"
-                                           maxlength="500"
-                                           aria-label="Description riga 1"
+                                           name="item_serial_number"
+                                           maxlength="200"
+                                           aria-label="Serial number riga 1"
                                            required>
                                 </td>
                                 <td>
@@ -318,6 +342,7 @@
                     </table>
                 </div>
 
+                <h2 class="h6 fw-bold mb-3">Condizioni di consegna</h2>
                 <div class="row g-3">
                     <div class="col-12 col-md-6">
                         <label class="form-label" for="packing-delivery-terms">Delivery terms</label>
@@ -344,7 +369,57 @@
 
         <section class="card shadow-sm mb-3">
             <div class="card-header d-flex justify-content-between align-items-center">
-                <span class="fw-semibold">Anagrafica clienti</span>
+                <span class="fw-bold">Packing list salvate e stampa PDF</span>
+                <span class="badge text-bg-secondary">{{ packing_lists|length }}</span>
+            </div>
+            <div class="packing-scroll-table table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Cliente</th>
+                            <th>Transport document</th>
+                            <th>Invoice number</th>
+                            <th>Invoice date</th>
+                            <th>Creata</th>
+                            <th>PDF</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for packing in packing_lists %}
+                            <tr>
+                                <td class="fw-semibold">{{ packing.id }}</td>
+                                <td>{{ packing.cliente.nome }}</td>
+                                <td>{{ packing.transport_document }}</td>
+                                <td>{{ packing.invoice_number }}</td>
+                                <td class="text-nowrap">{{ packing.invoice_date.strftime('%d/%m/%Y') }}</td>
+                                <td class="text-nowrap">
+                                    {{ packing.creato_il.strftime('%d/%m/%Y %H:%M') }}
+                                    - {{ packing.creato_da_nome }}
+                                </td>
+                                <td>
+                                    <a class="btn btn-sm btn-outline-primary text-nowrap"
+                                       target="_blank"
+                                       href="{{ operator_url_for('main.packing_list_pdf', packing_list_id=packing.id) }}">
+                                        Apri PDF
+                                    </a>
+                                </td>
+                            </tr>
+                        {% else %}
+                            <tr>
+                                <td colspan="7" class="text-center text-muted py-4">
+                                    Nessuna packing list salvata.
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="card shadow-sm">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span class="fw-bold">Anagrafica clienti</span>
                 <span class="badge text-bg-secondary">{{ clienti|length }}</span>
             </div>
             <div class="card-body border-bottom">
@@ -372,7 +447,7 @@
                     </div>
                 </form>
             </div>
-            <div class="packing-client-table table-responsive">
+            <div class="packing-scroll-table table-responsive">
                 <table class="table table-striped table-hover align-middle mb-0">
                     <thead>
                         <tr>
@@ -453,55 +528,52 @@
             </div>
         </section>
 
-        <section class="card shadow-sm">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <span class="fw-semibold">Packing list salvate</span>
-                <span class="badge text-bg-secondary">{{ packing_lists|length }}</span>
+        <div class="modal fade"
+             id="packing-header-modal"
+             tabindex="-1"
+             aria-labelledby="packing-header-modal-title"
+             aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <form method="post"
+                          action="{{ operator_url_for('main.packing_list_header_update') }}">
+                        <div class="modal-header">
+                            <h2 class="modal-title fs-5 fw-bold" id="packing-header-modal-title">
+                                Intestazione PDF
+                            </h2>
+                            <button class="btn-close"
+                                    type="button"
+                                    data-bs-dismiss="modal"
+                                    aria-label="Chiudi"></button>
+                        </div>
+                        <div class="modal-body">
+                            <label class="form-label" for="packing-company-header">
+                                Dati aziendali (prima riga in grassetto)
+                            </label>
+                            <textarea class="form-control"
+                                      id="packing-company-header"
+                                      name="company_header"
+                                      maxlength="1000"
+                                      rows="6"
+                                      required>{{ company_header }}</textarea>
+                            <div class="form-text">
+                                Massimo 6 righe e 160 caratteri per riga.
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn btn-outline-secondary"
+                                    type="button"
+                                    data-bs-dismiss="modal">
+                                Annulla
+                            </button>
+                            <button class="btn btn-primary" type="submit">
+                                Salva intestazione
+                            </button>
+                        </div>
+                    </form>
+                </div>
             </div>
-            <div class="table-responsive">
-                <table class="table table-hover align-middle mb-0">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Cliente</th>
-                            <th>Transport document</th>
-                            <th>Invoice number</th>
-                            <th>Invoice date</th>
-                            <th>Creata</th>
-                            <th>PDF</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for packing in packing_lists %}
-                            <tr>
-                                <td class="fw-semibold">{{ packing.id }}</td>
-                                <td>{{ packing.cliente.nome }}</td>
-                                <td>{{ packing.transport_document }}</td>
-                                <td>{{ packing.invoice_number }}</td>
-                                <td class="text-nowrap">{{ packing.invoice_date.strftime('%d/%m/%Y') }}</td>
-                                <td class="text-nowrap">
-                                    {{ packing.creato_il.strftime('%d/%m/%Y %H:%M') }}
-                                    - {{ packing.creato_da_nome }}
-                                </td>
-                                <td>
-                                    <a class="btn btn-sm btn-outline-primary text-nowrap"
-                                       target="_blank"
-                                       href="{{ operator_url_for('main.packing_list_pdf', packing_list_id=packing.id) }}">
-                                        Apri PDF
-                                    </a>
-                                </td>
-                            </tr>
-                        {% else %}
-                            <tr>
-                                <td colspan="7" class="text-center text-muted py-4">
-                                    Nessuna packing list salvata.
-                                </td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </section>
+        </div>
 
     </main>
 

@@ -99,6 +99,14 @@ class ClientePackingList(db.Model):
     )
 
 
+class ImpostazioniPackingList(db.Model):
+    __bind_key__ = LOGISTICA_BIND_KEY
+    __tablename__ = "packing_impostazioni"
+
+    id = db.Column(db.Integer, primary_key=True)
+    intestazione_pdf = db.Column(db.String(1000), nullable=False)
+
+
 class PackingList(db.Model):
     __bind_key__ = LOGISTICA_BIND_KEY
     __tablename__ = "packing_lists"

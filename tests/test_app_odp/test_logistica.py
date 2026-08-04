@@ -11,6 +11,7 @@ from werkzeug.exceptions import Forbidden
 
 from app_odp.logistica_models import (
     ClientePackingList,
+    ImpostazioniPackingList,
     LOGISTICA_BIND_KEY,
     MovimentoLogistico,
     PackingList,
@@ -20,7 +21,13 @@ from app_odp.logistica_models import (
 from app_odp.models import db
 from app_odp.policy import decorator as policy_decorator
 from app_odp.routes_modules import logistica as logistica_routes
-from app_odp.routes_modules.logistica import _later_date, _packing_rows, _row_class
+from app_odp.routes_modules.logistica import (
+    _company_header,
+    _later_date,
+    _packing_header,
+    _packing_rows,
+    _row_class,
+)
 from app_odp.services.packing_list_pdf_service import _number, build_packing_list_pdf
 
 
@@ -45,6 +52,7 @@ def test_logistica_creates_tables_and_persists_a_movement(app):
         assert set(inspect(db.engines[LOGISTICA_BIND_KEY]).get_table_names()) == {
             "movimenti",
             "packing_clienti",
+            "packing_impostazioni",
             "packing_list_righe",
             "packing_lists",
             "vettori",
@@ -194,6 +202,44 @@ def test_packing_rows_require_all_four_editable_columns(app):
             _packing_rows()
 
 
+def test_packing_header_normalizes_and_limits_lines(app):
+    with app.test_request_context(
+        method="POST",
+        data={"company_header": " Azienda S.r.l. \n Via Roma 1 "},
+    ):
+        assert _packing_header() == "Azienda S.r.l.\nVia Roma 1"
+
+    with app.test_request_context(
+        method="POST",
+        data={"company_header": "\n".join(str(index) for index in range(7))},
+    ):
+        with pytest.raises(ValueError, match="massimo 6 righe"):
+            _packing_header()
+
+
+def test_packing_header_is_saved_as_a_global_setting(app, monkeypatch):
+    monkeypatch.setattr(logistica_routes, "_redirect_packing_list", lambda: None)
+    monkeypatch.setattr(logistica_routes, "flash", lambda *_args: None)
+
+    with app.test_request_context(
+        method="POST",
+        data={
+            "company_header": (
+                "Azienda personalizzata S.r.l.\n"
+                "Via Prova 10\n10100 Torino\nITALY"
+            )
+        },
+    ):
+        logistica_routes.packing_list_header_update.__wrapped__()
+
+    with app.app_context():
+        settings = db.session.get(ImpostazioniPackingList, 1)
+        assert settings.intestazione_pdf.startswith(
+            "Azienda personalizzata S.r.l."
+        )
+        assert _company_header() == settings.intestazione_pdf
+
+
 def test_packing_list_is_saved_and_can_be_printed(app, monkeypatch):
     form = MultiDict(
         [
@@ -251,6 +297,7 @@ def test_packing_list_is_saved_and_can_be_printed(app, monkeypatch):
         assert set(inspect(db.engines[LOGISTICA_BIND_KEY]).get_table_names()) == {
             "movimenti",
             "packing_clienti",
+            "packing_impostazioni",
             "packing_list_righe",
             "packing_lists",
             "vettori",
@@ -330,7 +377,13 @@ def test_packing_list_pdf_contains_a_valid_multipage_document(app):
             ],
         )
 
-        payload = build_packing_list_pdf(packing).getvalue()
+        payload = build_packing_list_pdf(
+            packing,
+            company_header=(
+                "Azienda personalizzata S.r.l.\n"
+                "Via Prova 10\n10100 Torino\nITALY"
+            ),
+        ).getvalue()
 
         assert payload.startswith(b"%PDF-")
         assert len(payload) > 1_000
