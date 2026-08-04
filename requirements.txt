@@ -7,4 +7,5 @@ pyodbc
 openpyxl
 Pillow
 qrcode
+reportlab
 wfastcgi

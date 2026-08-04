@@ -1,20 +1,26 @@
 from datetime import date, datetime
+from decimal import Decimal
 from types import SimpleNamespace
 
 import pytest
 from flask import Flask
 from sqlalchemy import inspect
+from werkzeug.datastructures import MultiDict
 from werkzeug.exceptions import Forbidden
 
 from app_odp.logistica_models import (
+    ClientePackingList,
     LOGISTICA_BIND_KEY,
     MovimentoLogistico,
+    PackingList,
+    RigaPackingList,
     VettoreTrasporto,
 )
 from app_odp.models import db
 from app_odp.policy import decorator as policy_decorator
 from app_odp.routes_modules import logistica as logistica_routes
-from app_odp.routes_modules.logistica import _later_date, _row_class
+from app_odp.routes_modules.logistica import _later_date, _packing_rows, _row_class
+from app_odp.services.packing_list_pdf_service import _number, build_packing_list_pdf
 
 
 @pytest.fixture()
@@ -33,10 +39,13 @@ def app(tmp_path):
     return app
 
 
-def test_logistica_creates_two_tables_and_persists_a_movement(app):
+def test_logistica_creates_tables_and_persists_a_movement(app):
     with app.app_context():
         assert set(inspect(db.engines[LOGISTICA_BIND_KEY]).get_table_names()) == {
             "movimenti",
+            "packing_clienti",
+            "packing_list_righe",
+            "packing_lists",
             "vettori",
         }
 
@@ -148,3 +157,124 @@ def test_note_update_requires_carica_permission(app, monkeypatch):
     with app.test_request_context(method="POST"):
         with pytest.raises(Forbidden):
             logistica_routes.logistica_movimento_note(1)
+
+
+def test_packing_list_persists_customer_header_and_editable_rows(app):
+    with app.app_context():
+        customer = ClientePackingList(
+            nome="Cliente S.p.A.",
+            indirizzo="Via Roma 1",
+            provincia="CN",
+            paese="Italia",
+        )
+        packing = PackingList(
+            cliente=customer,
+            transport_document="DDT-42",
+            invoice_number="INV-7",
+            invoice_date=date(2026, 8, 3),
+            total_pallets=2,
+            total_net_weight=Decimal("125.500"),
+            total_gross_weight=Decimal("140.750"),
+            comments="Maneggiare con cura",
+            delivery_terms="DAP",
+            forwarder="Trasporti Rossi",
+            creato_da_nome="operatore",
+            righe=[
+                RigaPackingList(
+                    posizione=1,
+                    codice="ART-1",
+                    descrizione="Primo articolo",
+                    quantita=Decimal("2.5"),
+                ),
+                RigaPackingList(
+                    posizione=2,
+                    codice="ART-2",
+                    descrizione="Secondo articolo",
+                    quantita=Decimal("4"),
+                ),
+            ],
+        )
+        db.session.add(packing)
+        db.session.commit()
+
+        saved = PackingList.query.one()
+        assert saved.cliente.nome == "Cliente S.p.A."
+        assert [row.codice for row in saved.righe] == ["ART-1", "ART-2"]
+        assert saved.righe[0].quantita == Decimal("2.500")
+
+
+def test_packing_rows_require_all_three_editable_columns(app):
+    with app.test_request_context(
+        method="POST",
+        data=MultiDict(
+            [
+                ("item_code", "ART-1"),
+                ("item_description", "Descrizione libera"),
+                ("item_quantity", "2,5"),
+            ]
+        ),
+    ):
+        assert _packing_rows() == [
+            ("ART-1", "Descrizione libera", Decimal("2.5"))
+        ]
+
+    with app.test_request_context(
+        method="POST",
+        data=MultiDict(
+            [
+                ("item_code", "ART-1"),
+                ("item_description", ""),
+                ("item_quantity", "2"),
+            ]
+        ),
+    ):
+        with pytest.raises(ValueError, match="Code, Description e Quantity"):
+            _packing_rows()
+
+
+def test_packing_list_pdf_contains_a_valid_pdf_document(app):
+    with app.app_context():
+        packing = PackingList(
+            id=12,
+            cliente=ClientePackingList(
+                nome="Cliente S.p.A.",
+                indirizzo="Via Roma 1",
+                provincia="CN",
+                paese="ITALY",
+            ),
+            transport_document="DDT-42",
+            invoice_number="INV-7",
+            invoice_date=date(2026, 8, 3),
+            total_pallets=1,
+            total_net_weight=Decimal("10"),
+            total_gross_weight=Decimal("12"),
+            comments=None,
+            delivery_terms="EXW",
+            forwarder="Trasporti Rossi",
+            creato_da_nome="operatore",
+            righe=[
+                RigaPackingList(
+                    posizione=1,
+                    codice="ART-1",
+                    descrizione="Descrizione compilata liberamente",
+                    quantita=Decimal("3"),
+                )
+            ],
+        )
+
+        payload = build_packing_list_pdf(packing).getvalue()
+
+        assert payload.startswith(b"%PDF-")
+        assert len(payload) > 1_000
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (Decimal("100"), "100"),
+        (Decimal("10.500"), "10.5"),
+        (Decimal("0.000"), "0"),
+    ],
+)
+def test_packing_list_pdf_number_format_preserves_integer_zeroes(value, expected):
+    assert _number(value) == expected

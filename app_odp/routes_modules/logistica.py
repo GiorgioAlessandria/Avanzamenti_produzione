@@ -1,20 +1,44 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from decimal import Decimal, InvalidOperation
+from pathlib import Path
 
-from flask import current_app, flash, redirect, render_template, request, url_for
+from flask import (
+    abort,
+    current_app,
+    flash,
+    redirect,
+    render_template,
+    request,
+    send_file,
+    url_for,
+)
 
-from app_odp.logistica_models import MovimentoLogistico, VettoreTrasporto
+from app_odp.logistica_models import (
+    ClientePackingList,
+    MovimentoLogistico,
+    PackingList,
+    RigaPackingList,
+    VettoreTrasporto,
+)
 from app_odp.models import db
 from app_odp.operator_session import active_policy, active_token, active_user
 from app_odp.policy.decorator import require_active_any_perm, require_active_perm
 from app_odp.routes_blueprint import main_bp
+from app_odp.services.packing_list_pdf_service import build_packing_list_pdf
 
 
 def _redirect_logistica():
     token = active_token()
     kwargs = {"tab_session": token} if token else {}
     return redirect(url_for("main.logistica_page", **kwargs))
+
+
+def _redirect_packing_list():
+    token = active_token()
+    kwargs = {"tab_session": token} if token else {}
+    return redirect(url_for("main.packing_list_page", **kwargs))
 
 
 def _required_text(name: str, label: str, max_length: int) -> str:
@@ -26,10 +50,14 @@ def _required_text(name: str, label: str, max_length: int) -> str:
     return value
 
 
-def _optional_text(name: str, max_length: int) -> str | None:
+def _optional_text(
+    name: str,
+    max_length: int,
+    label: str = "Note",
+) -> str | None:
     value = str(request.form.get(name) or "").strip()
     if len(value) > max_length:
-        raise ValueError(f"Note: massimo {max_length} caratteri.")
+        raise ValueError(f"{label}: massimo {max_length} caratteri.")
     return value or None
 
 
@@ -45,6 +73,108 @@ def _later_date(current: date, value) -> date:
     if new_date <= current:
         raise ValueError("La nuova data deve essere successiva a quella attuale.")
     return new_date
+
+
+def _non_negative_int(name: str, label: str) -> int:
+    value = str(request.form.get(name) or "").strip()
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise ValueError(f"{label}: inserire un numero intero valido.") from exc
+    if parsed < 0:
+        raise ValueError(f"{label}: il valore non può essere negativo.")
+    return parsed
+
+
+def _decimal_value(value, label: str, *, positive: bool = False) -> Decimal:
+    normalized = str(value or "").strip().replace(",", ".")
+    try:
+        parsed = Decimal(normalized)
+    except InvalidOperation as exc:
+        raise ValueError(f"{label}: inserire un numero valido.") from exc
+
+    if not parsed.is_finite() or parsed < 0 or (positive and parsed <= 0):
+        qualifier = "maggiore di zero" if positive else "non negativo"
+        raise ValueError(f"{label}: inserire un valore {qualifier}.")
+    if parsed > Decimal("999999999.999"):
+        raise ValueError(f"{label}: valore troppo grande.")
+    if parsed.as_tuple().exponent < -3:
+        raise ValueError(f"{label}: usare al massimo 3 decimali.")
+    return parsed
+
+
+def _packing_rows() -> list[tuple[str, str, Decimal]]:
+    codes = request.form.getlist("item_code")
+    descriptions = request.form.getlist("item_description")
+    quantities = request.form.getlist("item_quantity")
+    row_count = max(len(codes), len(descriptions), len(quantities), 0)
+    rows = []
+
+    for index in range(row_count):
+        code = str(codes[index] if index < len(codes) else "").strip()
+        description = str(
+            descriptions[index] if index < len(descriptions) else ""
+        ).strip()
+        raw_quantity = str(
+            quantities[index] if index < len(quantities) else ""
+        ).strip()
+
+        if not any((code, description, raw_quantity)):
+            continue
+        if not all((code, description, raw_quantity)):
+            raise ValueError(
+                f"Riga {index + 1}: compilare Code, Description e Quantity."
+            )
+        if len(code) > 120:
+            raise ValueError(f"Riga {index + 1}: Code massimo 120 caratteri.")
+        if len(description) > 500:
+            raise ValueError(
+                f"Riga {index + 1}: Description massimo 500 caratteri."
+            )
+
+        rows.append(
+            (
+                code,
+                description,
+                _decimal_value(
+                    raw_quantity,
+                    f"Riga {index + 1} - Quantity",
+                    positive=True,
+                ),
+            )
+        )
+
+    if not rows:
+        raise ValueError("Inserire almeno una riga nella packing list.")
+    return rows
+
+
+def _cliente_from_form(prefix: str = "") -> ClientePackingList:
+    return ClientePackingList(
+        nome=_required_text(f"{prefix}nome", "Nome cliente", 160),
+        indirizzo=_required_text(f"{prefix}indirizzo", "Indirizzo", 300),
+        provincia=_required_text(f"{prefix}provincia", "Provincia", 100),
+        paese=_required_text(f"{prefix}paese", "Paese", 100),
+    )
+
+
+def _selected_cliente() -> ClientePackingList:
+    cliente_id = str(request.form.get("cliente_id") or "").strip()
+    if cliente_id == "new":
+        cliente = _cliente_from_form("nuovo_cliente_")
+        db.session.add(cliente)
+        db.session.flush()
+        return cliente
+
+    try:
+        parsed_id = int(cliente_id)
+    except ValueError as exc:
+        raise ValueError("Selezionare un cliente valido.") from exc
+
+    cliente = db.session.get(ClientePackingList, parsed_id)
+    if cliente is None:
+        raise ValueError("Selezionare un cliente valido.")
+    return cliente
 
 
 def _row_class(movimento: MovimentoLogistico, oggi: date) -> str:
@@ -77,7 +207,7 @@ def _movimento_atteso(movimento_id: int) -> MovimentoLogistico:
     return movimento
 
 
-def _save(action, success_message: str):
+def _save(action, success_message: str, redirector=None):
     try:
         message = action() or success_message
         db.session.commit()
@@ -90,7 +220,7 @@ def _save(action, success_message: str):
         flash("Errore durante il salvataggio.", "danger")
     else:
         flash(message, "success")
-    return _redirect_logistica()
+    return (redirector or _redirect_logistica)()
 
 
 @main_bp.get("/carichi-scarichi")
@@ -116,6 +246,132 @@ def logistica_page():
         oggi=date.today(),
         row_class=_row_class,
         can_carica=policy.can("carica"),
+    )
+
+
+@main_bp.get("/carichi-scarichi/packing-list")
+@require_active_perm("carica")
+def packing_list_page():
+    return render_template(
+        "packing_list.j2",
+        clienti=ClientePackingList.query.order_by(
+            ClientePackingList.nome.asc(),
+            ClientePackingList.id.asc(),
+        ).all(),
+        packing_lists=PackingList.query.order_by(
+            PackingList.creato_il.desc(),
+            PackingList.id.desc(),
+        )
+        .limit(100)
+        .all(),
+        oggi=date.today(),
+    )
+
+
+@main_bp.post("/carichi-scarichi/packing-list/clienti")
+@require_active_perm("carica")
+def packing_list_cliente_create():
+    def action():
+        db.session.add(_cliente_from_form())
+
+    return _save(
+        action,
+        "Cliente aggiunto.",
+        redirector=_redirect_packing_list,
+    )
+
+
+@main_bp.post("/carichi-scarichi/packing-list")
+@require_active_perm("carica")
+def packing_list_create():
+    def action():
+        cliente = _selected_cliente()
+        net_weight = _decimal_value(
+            request.form.get("total_net_weight"),
+            "Total net weight (Kg.)",
+        )
+        gross_weight = _decimal_value(
+            request.form.get("total_gross_weight"),
+            "Total gross weight (Kg.)",
+        )
+        if gross_weight < net_weight:
+            raise ValueError(
+                "Total gross weight (Kg.) non può essere inferiore al peso netto."
+            )
+
+        user_id, username = _actor()
+        packing_list = PackingList(
+            cliente=cliente,
+            transport_document=_required_text(
+                "transport_document",
+                "Transport document",
+                120,
+            ),
+            invoice_number=_required_text(
+                "invoice_number",
+                "Invoice number",
+                120,
+            ),
+            invoice_date=_parse_date(request.form.get("invoice_date")),
+            total_pallets=_non_negative_int(
+                "total_pallets",
+                "Total Nr. of pallets",
+            ),
+            total_net_weight=net_weight,
+            total_gross_weight=gross_weight,
+            comments=_optional_text("comments", 2000, "Comments"),
+            delivery_terms=_required_text(
+                "delivery_terms",
+                "Delivery terms",
+                200,
+            ),
+            forwarder=_required_text("forwarder", "Forwarder", 200),
+            creato_da_id=user_id,
+            creato_da_nome=username,
+        )
+        packing_list.righe = [
+            RigaPackingList(
+                posizione=index,
+                codice=code,
+                descrizione=description,
+                quantita=quantity,
+            )
+            for index, (code, description, quantity) in enumerate(
+                _packing_rows(),
+                start=1,
+            )
+        ]
+        db.session.add(packing_list)
+
+    return _save(
+        action,
+        "Packing list salvata.",
+        redirector=_redirect_packing_list,
+    )
+
+
+@main_bp.get("/carichi-scarichi/packing-list/<int:packing_list_id>/pdf")
+@require_active_perm("carica")
+def packing_list_pdf(packing_list_id: int):
+    packing_list = db.session.get(PackingList, packing_list_id)
+    if packing_list is None:
+        abort(404)
+
+    pdf = build_packing_list_pdf(
+        packing_list,
+        logo_path=(
+            Path(current_app.static_folder)
+            / "assets"
+            / "img"
+            / "logo_completo.jpg"
+        ),
+        font_path=current_app.config.get("FONT_PATH"),
+    )
+    return send_file(
+        pdf,
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name=f"packing-list-{packing_list.id}.pdf",
     )
 
 

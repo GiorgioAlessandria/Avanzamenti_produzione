@@ -41,6 +41,24 @@
 
 {% block content %}
     <main class="container-fluid py-3" id="logistica-page">
+        <div class="card shadow-sm mb-3">
+            <div class="card-body py-2">
+                <div class="align-items-center d-flex justify-content-between mb-0">
+                    <a class="btn btn-primary active"
+                       href="{{ operator_url_for('main.logistica_page') }}"
+                       aria-current="page">
+                        Carichi e scarichi
+                    </a>
+                    {% if can_carica %}
+                        <a class="btn btn-outline-primary"
+                           href="{{ operator_url_for('main.packing_list_page') }}">
+                            Packing list
+                        </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
         <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
             <div>
                 <h1 class="h4 mb-1">Carichi e scarichi attesi</h1>
@@ -49,7 +67,8 @@
                 </div>
             </div>
 
-            <div class="d-flex flex-wrap align-items-center gap-2 small" aria-label="Legenda colori">
+            <div class="d-flex flex-wrap align-items-center gap-2 small"
+                 aria-label="Legenda colori">
                 <span class="badge text-dark" style="background: #d1e7dd;">Cliente</span>
                 <span class="badge text-dark" style="background: #cfe2ff;">Fornitore</span>
                 <span class="badge text-dark" style="background: #f8d7da;">Data superata</span>
