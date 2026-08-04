@@ -1,3 +1,4 @@
+import re
 from datetime import date, datetime
 from decimal import Decimal
 from types import SimpleNamespace
@@ -264,7 +265,7 @@ def test_packing_customer_can_be_updated_and_deleted(app, monkeypatch):
         assert db.session.get(ClientePackingList, cliente_id) is None
 
 
-def test_packing_list_pdf_contains_a_valid_pdf_document(app):
+def test_packing_list_pdf_contains_a_valid_multipage_document(app):
     with app.app_context():
         packing = SimpleNamespace(
             cliente=SimpleNamespace(
@@ -290,10 +291,11 @@ def test_packing_list_pdf_contains_a_valid_pdf_document(app):
             forwarder="Trasporti Rossi",
             righe=[
                 SimpleNamespace(
-                    codice="ART-1",
-                    descrizione="Descrizione compilata liberamente",
-                    quantita=Decimal("3"),
+                    codice=f"ART-{index}",
+                    descrizione=f"Descrizione compilata liberamente {index}",
+                    quantita=Decimal(index),
                 )
+                for index in range(1, 71)
             ],
         )
 
@@ -301,6 +303,7 @@ def test_packing_list_pdf_contains_a_valid_pdf_document(app):
 
         assert payload.startswith(b"%PDF-")
         assert len(payload) > 1_000
+        assert len(re.findall(rb"/Type\s*/Page\b", payload)) >= 3
 
 
 @pytest.mark.parametrize(

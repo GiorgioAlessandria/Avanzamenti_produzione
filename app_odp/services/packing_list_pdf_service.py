@@ -73,10 +73,10 @@ def _number(value) -> str:
 
 def _logo(path: str | Path | None):
     if not path or not Path(path).is_file():
-        return Spacer(1, 18 * mm)
+        return Spacer(1, 25 * mm)
 
     image = Image(str(path))
-    scale = min((65 * mm) / image.drawWidth, (20 * mm) / image.drawHeight)
+    scale = min((76 * mm) / image.drawWidth, (25 * mm) / image.drawHeight)
     image.drawWidth *= scale
     image.drawHeight *= scale
     return image
@@ -95,7 +95,7 @@ def build_packing_list_pdf(
         pagesize=A4,
         rightMargin=14 * mm,
         leftMargin=14 * mm,
-        topMargin=12 * mm,
+        topMargin=55 * mm,
         bottomMargin=16 * mm,
         title="Packing List",
         author="BERNARDI s.r.l.",
@@ -130,26 +130,26 @@ def build_packing_list_pdf(
         "PackingCompanyName",
         parent=body,
         fontName=bold_font,
-        fontSize=10,
-        leading=12,
+        fontSize=12,
+        leading=14,
         alignment=TA_RIGHT,
     )
     company = ParagraphStyle(
         "PackingCompany",
         parent=body,
-        fontSize=9,
-        leading=11,
+        fontSize=10,
+        leading=13,
         alignment=TA_RIGHT,
     )
     title = ParagraphStyle(
         "PackingTitle",
         parent=base_styles["Title"],
         fontName=bold_font,
-        fontSize=17,
-        leading=20,
+        fontSize=18,
+        leading=21,
         alignment=TA_LEFT,
         textColor=colors.HexColor("#bc8425"),
-        spaceAfter=5 * mm,
+        spaceAfter=0,
     )
 
     def paragraph(value, style=body):
@@ -204,20 +204,25 @@ def build_packing_list_pdf(
         Paragraph(_text(COMPANY_LINES[0]), company_name),
         Paragraph("<br/>".join(_text(line) for line in COMPANY_LINES[1:]), company),
     ]
-    header = Table(
-        [[_logo(logo_path), company_flowables]],
+    page_header = Table(
+        [
+            [_logo(logo_path), company_flowables],
+            [Paragraph("PACKING LIST", title), ""],
+        ],
         colWidths=[91 * mm, 91 * mm],
         hAlign="LEFT",
     )
-    header.setStyle(
+    page_header.setStyle(
         TableStyle(
             [
+                ("SPAN", (0, 1), (1, 1)),
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
                 ("ALIGN", (1, 0), (1, 0), "RIGHT"),
                 ("LEFTPADDING", (0, 0), (-1, -1), 0),
                 ("RIGHTPADDING", (0, 0), (-1, -1), 0),
                 ("TOPPADDING", (0, 0), (-1, -1), 0),
                 ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+                ("TOPPADDING", (0, 1), (-1, 1), 4 * mm),
             ]
         )
     )
@@ -324,9 +329,6 @@ def build_packing_list_pdf(
     )
 
     story = [
-        header,
-        Spacer(1, 6 * mm),
-        Paragraph("PACKING LIST", title),
         addresses,
         Spacer(1, 3 * mm),
         shipment_details,
@@ -335,8 +337,14 @@ def build_packing_list_pdf(
         KeepTogether([Spacer(1, 5 * mm), final_fields]),
     ]
 
-    def footer(canvas, _document):
+    def page_decorations(canvas, _document):
         canvas.saveState()
+        _, header_height = page_header.wrapOn(canvas, 182 * mm, 42 * mm)
+        page_header.drawOn(
+            canvas,
+            14 * mm,
+            A4[1] - 10 * mm - header_height,
+        )
         canvas.setStrokeColor(colors.HexColor("#d0d0d0"))
         canvas.line(14 * mm, 12 * mm, A4[0] - 14 * mm, 12 * mm)
         canvas.setFillColor(colors.HexColor("#666666"))
@@ -349,6 +357,10 @@ def build_packing_list_pdf(
         )
         canvas.restoreState()
 
-    document.build(story, onFirstPage=footer, onLaterPages=footer)
+    document.build(
+        story,
+        onFirstPage=page_decorations,
+        onLaterPages=page_decorations,
+    )
     stream.seek(0)
     return stream
