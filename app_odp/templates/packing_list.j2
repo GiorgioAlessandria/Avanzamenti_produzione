@@ -36,7 +36,7 @@
         <div class="mb-3">
             <h1 class="h4 mb-1">Packing list</h1>
             <div class="text-muted small">
-                Anagrafica clienti, compilazione e stampa PDF senza salvataggio
+                Anagrafica clienti, salvataggio e stampa PDF
             </div>
         </div>
 
@@ -53,10 +53,9 @@
         {% endwith %}
 
         <form method="post"
-              action="{{ operator_url_for('main.packing_list_print') }}"
-              target="_blank"
+              action="{{ operator_url_for('main.packing_list_create') }}"
               class="card shadow-sm mb-3">
-            <div class="card-header fw-semibold">Packing list da stampare</div>
+            <div class="card-header fw-semibold">Nuova packing list</div>
             <div class="card-body">
                 <div class="row g-3 mb-3">
                     <div class="col-12 col-lg-5">
@@ -337,7 +336,7 @@
                                required>
                     </div>
                     <div class="col-12 text-end">
-                        <button class="btn btn-primary" type="submit">Genera PDF da stampare</button>
+                        <button class="btn btn-primary" type="submit">Salva packing list</button>
                     </div>
                 </div>
             </div>
@@ -446,6 +445,56 @@
                             <tr>
                                 <td colspan="5" class="text-center text-muted py-4">
                                     Nessun cliente presente.
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="card shadow-sm">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span class="fw-semibold">Packing list salvate</span>
+                <span class="badge text-bg-secondary">{{ packing_lists|length }}</span>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Cliente</th>
+                            <th>Transport document</th>
+                            <th>Invoice number</th>
+                            <th>Invoice date</th>
+                            <th>Creata</th>
+                            <th>PDF</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for packing in packing_lists %}
+                            <tr>
+                                <td class="fw-semibold">{{ packing.id }}</td>
+                                <td>{{ packing.cliente.nome }}</td>
+                                <td>{{ packing.transport_document }}</td>
+                                <td>{{ packing.invoice_number }}</td>
+                                <td class="text-nowrap">{{ packing.invoice_date.strftime('%d/%m/%Y') }}</td>
+                                <td class="text-nowrap">
+                                    {{ packing.creato_il.strftime('%d/%m/%Y %H:%M') }}
+                                    - {{ packing.creato_da_nome }}
+                                </td>
+                                <td>
+                                    <a class="btn btn-sm btn-outline-primary text-nowrap"
+                                       target="_blank"
+                                       href="{{ operator_url_for('main.packing_list_pdf', packing_list_id=packing.id) }}">
+                                        Apri PDF
+                                    </a>
+                                </td>
+                            </tr>
+                        {% else %}
+                            <tr>
+                                <td colspan="7" class="text-center text-muted py-4">
+                                    Nessuna packing list salvata.
                                 </td>
                             </tr>
                         {% endfor %}

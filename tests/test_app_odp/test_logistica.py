@@ -13,6 +13,8 @@ from app_odp.logistica_models import (
     ClientePackingList,
     LOGISTICA_BIND_KEY,
     MovimentoLogistico,
+    PackingList,
+    RigaPackingList,
     VettoreTrasporto,
 )
 from app_odp.models import db
@@ -43,6 +45,8 @@ def test_logistica_creates_tables_and_persists_a_movement(app):
         assert set(inspect(db.engines[LOGISTICA_BIND_KEY]).get_table_names()) == {
             "movimenti",
             "packing_clienti",
+            "packing_list_righe",
+            "packing_lists",
             "vettori",
         }
 
@@ -190,7 +194,7 @@ def test_packing_rows_require_all_four_editable_columns(app):
             _packing_rows()
 
 
-def test_packing_list_prints_pdf_and_only_saves_the_new_customer(app):
+def test_packing_list_is_saved_and_can_be_printed(app, monkeypatch):
     form = MultiDict(
         [
             ("cliente_id", "new"),
@@ -218,17 +222,37 @@ def test_packing_list_prints_pdf_and_only_saves_the_new_customer(app):
         ]
     )
 
+    monkeypatch.setattr(
+        logistica_routes,
+        "active_user",
+        lambda: SimpleNamespace(id=7, username="operatore"),
+    )
+    monkeypatch.setattr(logistica_routes, "_redirect_packing_list", lambda: None)
+    monkeypatch.setattr(logistica_routes, "flash", lambda *_args: None)
+
     with app.test_request_context(method="POST", data=form):
-        response = logistica_routes.packing_list_print.__wrapped__()
+        logistica_routes.packing_list_create.__wrapped__()
+
+    with app.app_context():
+        packing = PackingList.query.one()
+        packing_id = packing.id
+        assert packing.cliente.nome == "Cliente S.p.A."
+        assert packing.delivery.nome == "Magazzino Cliente"
+        assert packing.creato_da_nome == "operatore"
+        assert RigaPackingList.query.one().numero_seriale == "SN-001"
+
+    with app.test_request_context():
+        response = logistica_routes.packing_list_pdf.__wrapped__(packing_id)
         response.direct_passthrough = False
         assert response.get_data().startswith(b"%PDF-")
         assert response.headers["Content-Disposition"].startswith("inline;")
 
     with app.app_context():
-        assert ClientePackingList.query.one().nome == "Cliente S.p.A."
         assert set(inspect(db.engines[LOGISTICA_BIND_KEY]).get_table_names()) == {
             "movimenti",
             "packing_clienti",
+            "packing_list_righe",
+            "packing_lists",
             "vettori",
         }
 

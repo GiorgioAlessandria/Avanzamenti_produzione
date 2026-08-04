@@ -117,6 +117,46 @@ def _ensure_manutenzioni_schema() -> None:
             )
 
 
+def _ensure_logistica_schema() -> None:
+    engine = db.engines.get("logistica")
+    if engine is None:
+        return
+
+    tables = set(inspect(engine).get_table_names())
+    additions = []
+    if "packing_lists" in tables:
+        columns = {
+            column["name"]
+            for column in inspect(engine).get_columns("packing_lists")
+        }
+        for name, column_type in (
+            ("delivery_nome", "VARCHAR(160)"),
+            ("delivery_indirizzo", "VARCHAR(300)"),
+            ("delivery_provincia", "VARCHAR(100)"),
+            ("delivery_paese", "VARCHAR(100)"),
+        ):
+            if name not in columns:
+                additions.append(
+                    f"ALTER TABLE packing_lists ADD COLUMN {name} {column_type}"
+                )
+
+    if "packing_list_righe" in tables:
+        columns = {
+            column["name"]
+            for column in inspect(engine).get_columns("packing_list_righe")
+        }
+        if "numero_seriale" not in columns:
+            additions.append(
+                "ALTER TABLE packing_list_righe "
+                "ADD COLUMN numero_seriale VARCHAR(200)"
+            )
+
+    if additions:
+        with engine.begin() as connection:
+            for statement in additions:
+                connection.exec_driver_sql(statement)
+
+
 def load_config(config: Path) -> dict:
     """
     Caricamento e lettura file configurazioni
@@ -344,6 +384,7 @@ def create_app():
         db.create_all(bind_key="manutenzioni")
         db.create_all(bind_key="rifiuti")
         db.create_all(bind_key="logistica")
+        _ensure_logistica_schema()
         _ensure_manutenzioni_schema()
         _ensure_builtin_permissions()
 
