@@ -3,9 +3,9 @@ from __future__ import annotations
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
+from types import SimpleNamespace
 
 from flask import (
-    abort,
     current_app,
     flash,
     redirect,
@@ -18,8 +18,6 @@ from flask import (
 from app_odp.logistica_models import (
     ClientePackingList,
     MovimentoLogistico,
-    PackingList,
-    RigaPackingList,
     VettoreTrasporto,
 )
 from app_odp.models import db
@@ -149,13 +147,24 @@ def _packing_rows() -> list[tuple[str, str, Decimal]]:
     return rows
 
 
+def _cliente_values(prefix: str = "") -> dict[str, str]:
+    return {
+        "nome": _required_text(f"{prefix}nome", "Nome cliente", 160),
+        "indirizzo": _required_text(f"{prefix}indirizzo", "Indirizzo", 300),
+        "provincia": _required_text(f"{prefix}provincia", "Provincia", 100),
+        "paese": _required_text(f"{prefix}paese", "Paese", 100),
+    }
+
+
 def _cliente_from_form(prefix: str = "") -> ClientePackingList:
-    return ClientePackingList(
-        nome=_required_text(f"{prefix}nome", "Nome cliente", 160),
-        indirizzo=_required_text(f"{prefix}indirizzo", "Indirizzo", 300),
-        provincia=_required_text(f"{prefix}provincia", "Provincia", 100),
-        paese=_required_text(f"{prefix}paese", "Paese", 100),
-    )
+    return ClientePackingList(**_cliente_values(prefix))
+
+
+def _cliente(cliente_id: int) -> ClientePackingList:
+    cliente = db.session.get(ClientePackingList, cliente_id)
+    if cliente is None:
+        raise ValueError("Cliente non trovato.")
+    return cliente
 
 
 def _selected_cliente() -> ClientePackingList:
@@ -171,10 +180,73 @@ def _selected_cliente() -> ClientePackingList:
     except ValueError as exc:
         raise ValueError("Selezionare un cliente valido.") from exc
 
-    cliente = db.session.get(ClientePackingList, parsed_id)
-    if cliente is None:
-        raise ValueError("Selezionare un cliente valido.")
-    return cliente
+    return _cliente(parsed_id)
+
+
+def _packing_list_from_form():
+    cliente = _selected_cliente()
+    net_weight = _decimal_value(
+        request.form.get("total_net_weight"),
+        "Total net weight (Kg.)",
+    )
+    gross_weight = _decimal_value(
+        request.form.get("total_gross_weight"),
+        "Total gross weight (Kg.)",
+    )
+    if gross_weight < net_weight:
+        raise ValueError(
+            "Total gross weight (Kg.) non può essere inferiore al peso netto."
+        )
+
+    return SimpleNamespace(
+        cliente=cliente,
+        transport_document=_required_text(
+            "transport_document",
+            "Transport document",
+            120,
+        ),
+        invoice_number=_required_text("invoice_number", "Invoice number", 120),
+        invoice_date=_parse_date(request.form.get("invoice_date")),
+        total_pallets=_non_negative_int(
+            "total_pallets",
+            "Total Nr. of pallets",
+        ),
+        total_net_weight=net_weight,
+        total_gross_weight=gross_weight,
+        comments=_optional_text("comments", 2000, "Comments"),
+        delivery=SimpleNamespace(
+            nome=_required_text(
+                "delivery_nome",
+                "Delivery address - Customer",
+                160,
+            ),
+            indirizzo=_required_text(
+                "delivery_indirizzo",
+                "Delivery address - Address",
+                300,
+            ),
+            provincia=_required_text(
+                "delivery_provincia",
+                "Delivery address - Province",
+                100,
+            ),
+            paese=_required_text(
+                "delivery_paese",
+                "Delivery address - Country",
+                100,
+            ),
+        ),
+        delivery_terms=_required_text("delivery_terms", "Delivery terms", 200),
+        forwarder=_required_text("forwarder", "Forwarder", 200),
+        righe=[
+            SimpleNamespace(
+                codice=code,
+                descrizione=description,
+                quantita=quantity,
+            )
+            for code, description, quantity in _packing_rows()
+        ],
+    )
 
 
 def _row_class(movimento: MovimentoLogistico, oggi: date) -> str:
@@ -258,12 +330,6 @@ def packing_list_page():
             ClientePackingList.nome.asc(),
             ClientePackingList.id.asc(),
         ).all(),
-        packing_lists=PackingList.query.order_by(
-            PackingList.creato_il.desc(),
-            PackingList.id.desc(),
-        )
-        .limit(100)
-        .all(),
         oggi=date.today(),
     )
 
@@ -281,97 +347,68 @@ def packing_list_cliente_create():
     )
 
 
-@main_bp.post("/carichi-scarichi/packing-list")
+@main_bp.post("/carichi-scarichi/packing-list/clienti/<int:cliente_id>")
 @require_active_perm("carica")
-def packing_list_create():
+def packing_list_cliente_update(cliente_id: int):
     def action():
-        cliente = _selected_cliente()
-        net_weight = _decimal_value(
-            request.form.get("total_net_weight"),
-            "Total net weight (Kg.)",
-        )
-        gross_weight = _decimal_value(
-            request.form.get("total_gross_weight"),
-            "Total gross weight (Kg.)",
-        )
-        if gross_weight < net_weight:
-            raise ValueError(
-                "Total gross weight (Kg.) non può essere inferiore al peso netto."
-            )
-
-        user_id, username = _actor()
-        packing_list = PackingList(
-            cliente=cliente,
-            transport_document=_required_text(
-                "transport_document",
-                "Transport document",
-                120,
-            ),
-            invoice_number=_required_text(
-                "invoice_number",
-                "Invoice number",
-                120,
-            ),
-            invoice_date=_parse_date(request.form.get("invoice_date")),
-            total_pallets=_non_negative_int(
-                "total_pallets",
-                "Total Nr. of pallets",
-            ),
-            total_net_weight=net_weight,
-            total_gross_weight=gross_weight,
-            comments=_optional_text("comments", 2000, "Comments"),
-            delivery_terms=_required_text(
-                "delivery_terms",
-                "Delivery terms",
-                200,
-            ),
-            forwarder=_required_text("forwarder", "Forwarder", 200),
-            creato_da_id=user_id,
-            creato_da_nome=username,
-        )
-        packing_list.righe = [
-            RigaPackingList(
-                posizione=index,
-                codice=code,
-                descrizione=description,
-                quantita=quantity,
-            )
-            for index, (code, description, quantity) in enumerate(
-                _packing_rows(),
-                start=1,
-            )
-        ]
-        db.session.add(packing_list)
+        cliente = _cliente(cliente_id)
+        for field, value in _cliente_values().items():
+            setattr(cliente, field, value)
 
     return _save(
         action,
-        "Packing list salvata.",
+        "Cliente aggiornato.",
         redirector=_redirect_packing_list,
     )
 
 
-@main_bp.get("/carichi-scarichi/packing-list/<int:packing_list_id>/pdf")
+@main_bp.post(
+    "/carichi-scarichi/packing-list/clienti/<int:cliente_id>/elimina"
+)
 @require_active_perm("carica")
-def packing_list_pdf(packing_list_id: int):
-    packing_list = db.session.get(PackingList, packing_list_id)
-    if packing_list is None:
-        abort(404)
+def packing_list_cliente_delete(cliente_id: int):
+    def action():
+        db.session.delete(_cliente(cliente_id))
 
-    pdf = build_packing_list_pdf(
-        packing_list,
-        logo_path=(
-            Path(current_app.static_folder)
-            / "assets"
-            / "img"
-            / "logo_completo.jpg"
-        ),
-        font_path=current_app.config.get("FONT_PATH"),
+    return _save(
+        action,
+        "Cliente eliminato.",
+        redirector=_redirect_packing_list,
     )
+
+
+@main_bp.post("/carichi-scarichi/packing-list")
+@require_active_perm("carica")
+def packing_list_print():
+    try:
+        pdf = build_packing_list_pdf(
+            _packing_list_from_form(),
+            logo_path=(
+                Path(current_app.static_folder)
+                / "assets"
+                / "img"
+                / "logo_completo.jpg"
+            ),
+            font_path=current_app.config.get("FONT_PATH"),
+        )
+        db.session.commit()
+    except ValueError as exc:
+        db.session.rollback()
+        flash(str(exc), "danger")
+        return _redirect_packing_list()
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception(
+            "Errore durante la generazione della packing list."
+        )
+        flash("Errore durante la generazione del PDF.", "danger")
+        return _redirect_packing_list()
+
     return send_file(
         pdf,
         mimetype="application/pdf",
-        as_attachment=True,
-        download_name=f"packing-list-{packing_list.id}.pdf",
+        as_attachment=False,
+        download_name="packing-list.pdf",
     )
 
 

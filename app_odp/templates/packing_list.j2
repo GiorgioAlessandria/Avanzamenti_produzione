@@ -35,7 +35,7 @@
         <div class="mb-3">
             <h1 class="h4 mb-1">Packing list</h1>
             <div class="text-muted small">
-                Anagrafica clienti, compilazione e generazione PDF
+                Anagrafica clienti, compilazione e stampa PDF senza salvataggio
             </div>
         </div>
 
@@ -52,16 +52,21 @@
         {% endwith %}
 
         <form method="post"
-              action="{{ operator_url_for('main.packing_list_create') }}"
+              action="{{ operator_url_for('main.packing_list_print') }}"
+              target="_blank"
               class="card shadow-sm mb-3">
-            <div class="card-header fw-semibold">Nuova packing list</div>
+            <div class="card-header fw-semibold">Packing list da stampare</div>
             <div class="card-body">
                 <div class="row g-3 mb-3">
                     <div class="col-12 col-lg-5">
                         <label class="form-label" for="packing-cliente">Cliente</label>
                         <select class="form-select" id="packing-cliente" name="cliente_id" required>
                             {% for cliente in clienti %}
-                                <option value="{{ cliente.id }}">
+                                <option value="{{ cliente.id }}"
+                                        data-nome="{{ cliente.nome }}"
+                                        data-indirizzo="{{ cliente.indirizzo }}"
+                                        data-provincia="{{ cliente.provincia }}"
+                                        data-paese="{{ cliente.paese }}">
                                     {{ cliente.nome }} - {{ cliente.provincia }}, {{ cliente.paese }}
                                 </option>
                             {% endfor %}
@@ -72,40 +77,101 @@
                     </div>
                 </div>
 
-                <fieldset class="border rounded p-3 mb-3" id="packing-new-client" hidden>
-                    <legend class="float-none w-auto px-2 fs-6 mb-0">Nuovo cliente</legend>
+                <fieldset class="border rounded p-3 mb-3" id="packing-consignee">
+                    <legend class="float-none w-auto px-2 fs-6 mb-0">Consignee name</legend>
                     <div class="row g-3">
                         <div class="col-12 col-md-6">
-                            <label class="form-label" for="packing-new-name">Nome del cliente</label>
+                            <label class="form-label" for="packing-new-name">Customer</label>
                             <input class="form-control"
                                    id="packing-new-name"
                                    name="nuovo_cliente_nome"
+                                   data-customer-field="nome"
                                    maxlength="160"
-                                   autocomplete="organization">
+                                   autocomplete="organization"
+                                   required>
                         </div>
                         <div class="col-12 col-md-6">
-                            <label class="form-label" for="packing-new-address">Indirizzo</label>
+                            <label class="form-label" for="packing-new-address">Address</label>
                             <input class="form-control"
                                    id="packing-new-address"
                                    name="nuovo_cliente_indirizzo"
+                                   data-customer-field="indirizzo"
                                    maxlength="300"
-                                   autocomplete="street-address">
+                                   autocomplete="street-address"
+                                   required>
                         </div>
                         <div class="col-12 col-md-6">
-                            <label class="form-label" for="packing-new-province">Provincia</label>
+                            <label class="form-label" for="packing-new-province">Province</label>
                             <input class="form-control"
                                    id="packing-new-province"
                                    name="nuovo_cliente_provincia"
+                                   data-customer-field="provincia"
                                    maxlength="100"
-                                   autocomplete="address-level1">
+                                   autocomplete="address-level1"
+                                   required>
                         </div>
                         <div class="col-12 col-md-6">
-                            <label class="form-label" for="packing-new-country">Paese</label>
+                            <label class="form-label" for="packing-new-country">Country</label>
                             <input class="form-control"
                                    id="packing-new-country"
                                    name="nuovo_cliente_paese"
+                                   data-customer-field="paese"
                                    maxlength="100"
-                                   autocomplete="country-name">
+                                   autocomplete="country-name"
+                                   required>
+                        </div>
+                    </div>
+                </fieldset>
+
+                <fieldset class="border rounded p-3 mb-3" id="packing-delivery-address">
+                    <legend class="float-none w-auto px-2 fs-6 mb-0">Delivery address</legend>
+                    <div class="text-end mb-2">
+                        <button class="btn btn-sm btn-outline-secondary"
+                                type="button"
+                                id="packing-copy-delivery">
+                            Copia da Consignee
+                        </button>
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-12 col-md-6">
+                            <label class="form-label" for="packing-delivery-name">Customer</label>
+                            <input class="form-control"
+                                   id="packing-delivery-name"
+                                   name="delivery_nome"
+                                   data-delivery-field="nome"
+                                   maxlength="160"
+                                   autocomplete="shipping organization"
+                                   required>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label" for="packing-delivery-address-field">Address</label>
+                            <input class="form-control"
+                                   id="packing-delivery-address-field"
+                                   name="delivery_indirizzo"
+                                   data-delivery-field="indirizzo"
+                                   maxlength="300"
+                                   autocomplete="shipping street-address"
+                                   required>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label" for="packing-delivery-province">Province</label>
+                            <input class="form-control"
+                                   id="packing-delivery-province"
+                                   name="delivery_provincia"
+                                   data-delivery-field="provincia"
+                                   maxlength="100"
+                                   autocomplete="shipping address-level1"
+                                   required>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label" for="packing-delivery-country">Country</label>
+                            <input class="form-control"
+                                   id="packing-delivery-country"
+                                   name="delivery_paese"
+                                   data-delivery-field="paese"
+                                   maxlength="100"
+                                   autocomplete="shipping country-name"
+                                   required>
                         </div>
                     </div>
                 </fieldset>
@@ -249,7 +315,7 @@
                                required>
                     </div>
                     <div class="col-12 text-end">
-                        <button class="btn btn-primary" type="submit">Salva packing list</button>
+                        <button class="btn btn-primary" type="submit">Genera PDF da stampare</button>
                     </div>
                 </div>
             </div>
@@ -293,19 +359,70 @@
                             <th>Indirizzo</th>
                             <th>Provincia</th>
                             <th>Paese</th>
+                            <th class="text-end">Azioni</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for cliente in clienti %}
                             <tr>
-                                <td class="fw-semibold">{{ cliente.nome }}</td>
-                                <td>{{ cliente.indirizzo }}</td>
-                                <td>{{ cliente.provincia }}</td>
-                                <td>{{ cliente.paese }}</td>
+                                <td>
+                                    <input class="form-control form-control-sm"
+                                           form="packing-customer-update-{{ cliente.id }}"
+                                           name="nome"
+                                           value="{{ cliente.nome }}"
+                                           maxlength="160"
+                                           aria-label="Nome del cliente"
+                                           required>
+                                </td>
+                                <td>
+                                    <input class="form-control form-control-sm"
+                                           form="packing-customer-update-{{ cliente.id }}"
+                                           name="indirizzo"
+                                           value="{{ cliente.indirizzo }}"
+                                           maxlength="300"
+                                           aria-label="Indirizzo"
+                                           required>
+                                </td>
+                                <td>
+                                    <input class="form-control form-control-sm"
+                                           form="packing-customer-update-{{ cliente.id }}"
+                                           name="provincia"
+                                           value="{{ cliente.provincia }}"
+                                           maxlength="100"
+                                           aria-label="Provincia"
+                                           required>
+                                </td>
+                                <td>
+                                    <input class="form-control form-control-sm"
+                                           form="packing-customer-update-{{ cliente.id }}"
+                                           name="paese"
+                                           value="{{ cliente.paese }}"
+                                           maxlength="100"
+                                           aria-label="Paese"
+                                           required>
+                                </td>
+                                <td class="text-end text-nowrap">
+                                    <form id="packing-customer-update-{{ cliente.id }}"
+                                          method="post"
+                                          action="{{ operator_url_for('main.packing_list_cliente_update', cliente_id=cliente.id) }}"
+                                          class="d-inline">
+                                        <button class="btn btn-sm btn-outline-primary" type="submit">
+                                            Salva
+                                        </button>
+                                    </form>
+                                    <form method="post"
+                                          action="{{ operator_url_for('main.packing_list_cliente_delete', cliente_id=cliente.id) }}"
+                                          class="d-inline"
+                                          onsubmit="return confirm('Eliminare questo cliente?');">
+                                        <button class="btn btn-sm btn-outline-danger" type="submit">
+                                            Elimina
+                                        </button>
+                                    </form>
+                                </td>
                             </tr>
                         {% else %}
                             <tr>
-                                <td colspan="4" class="text-center text-muted py-4">
+                                <td colspan="5" class="text-center text-muted py-4">
                                     Nessun cliente presente.
                                 </td>
                             </tr>
@@ -315,54 +432,6 @@
             </div>
         </section>
 
-        <section class="card shadow-sm">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <span class="fw-semibold">Packing list salvate</span>
-                <span class="badge text-bg-secondary">{{ packing_lists|length }}</span>
-            </div>
-            <div class="table-responsive">
-                <table class="table table-hover align-middle mb-0">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Cliente</th>
-                            <th>Transport document</th>
-                            <th>Invoice number</th>
-                            <th>Invoice date</th>
-                            <th>Creata</th>
-                            <th>PDF</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for packing in packing_lists %}
-                            <tr>
-                                <td class="fw-semibold">{{ packing.id }}</td>
-                                <td>{{ packing.cliente.nome }}</td>
-                                <td>{{ packing.transport_document }}</td>
-                                <td>{{ packing.invoice_number }}</td>
-                                <td class="text-nowrap">{{ packing.invoice_date.strftime('%d/%m/%Y') }}</td>
-                                <td class="text-nowrap">
-                                    {{ packing.creato_il.strftime('%d/%m/%Y %H:%M') }}
-                                    - {{ packing.creato_da_nome }}
-                                </td>
-                                <td>
-                                    <a class="btn btn-sm btn-outline-primary text-nowrap"
-                                       href="{{ operator_url_for('main.packing_list_pdf', packing_list_id=packing.id) }}">
-                                        Scarica PDF
-                                    </a>
-                                </td>
-                            </tr>
-                        {% else %}
-                            <tr>
-                                <td colspan="7" class="text-center text-muted py-4">
-                                    Nessuna packing list salvata.
-                                </td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </section>
     </main>
 
     <template id="packing-item-row-template">
@@ -382,15 +451,30 @@
     <script>
         (() => {
             const customerSelect = document.getElementById("packing-cliente");
-            const newCustomer = document.getElementById("packing-new-client");
-            const customerInputs = [...newCustomer.querySelectorAll("input")];
+            const customerInputs = [...document.querySelectorAll("[data-customer-field]")];
+            const deliveryInputs = [...document.querySelectorAll("[data-delivery-field]")];
             const rows = document.getElementById("packing-item-rows");
             const rowTemplate = document.getElementById("packing-item-row-template");
+            let deliveryEdited = false;
+
+            const copyDelivery = () => {
+                customerInputs.forEach((input) => {
+                    const field = input.dataset.customerField;
+                    document.querySelector(`[data-delivery-field="${field}"]`).value = input.value;
+                });
+            };
 
             const updateCustomerFields = () => {
-                const visible = customerSelect.value === "new";
-                newCustomer.hidden = !visible;
-                customerInputs.forEach((input) => { input.required = visible; });
+                const isNew = customerSelect.value === "new";
+                const option = customerSelect.selectedOptions[0];
+                customerInputs.forEach((input) => {
+                    input.readOnly = !isNew;
+                    input.value = isNew
+                        ? ""
+                        : option.dataset[input.dataset.customerField] || "";
+                });
+                deliveryEdited = false;
+                copyDelivery();
             };
 
             const updateRowLabels = () => {
@@ -402,6 +486,18 @@
             };
 
             customerSelect.addEventListener("change", updateCustomerFields);
+            customerInputs.forEach((input) => {
+                input.addEventListener("input", () => {
+                    if (!deliveryEdited) copyDelivery();
+                });
+            });
+            deliveryInputs.forEach((input) => {
+                input.addEventListener("input", () => { deliveryEdited = true; });
+            });
+            document.getElementById("packing-copy-delivery").addEventListener("click", () => {
+                deliveryEdited = false;
+                copyDelivery();
+            });
             document.getElementById("packing-add-row").addEventListener("click", () => {
                 rows.append(rowTemplate.content.cloneNode(true));
                 updateRowLabels();

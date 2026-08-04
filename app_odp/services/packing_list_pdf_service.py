@@ -97,7 +97,7 @@ def build_packing_list_pdf(
         leftMargin=14 * mm,
         topMargin=12 * mm,
         bottomMargin=16 * mm,
-        title=f"Packing List {packing_list.id}",
+        title="Packing List",
         author="BERNARDI s.r.l.",
     )
 
@@ -180,6 +180,26 @@ def build_packing_list_pdf(
         )
         return table
 
+    def titled_field_table(title_text, rows, widths):
+        heading = Table(
+            [[paragraph(title_text, table_header)]],
+            colWidths=[sum(widths)],
+            hAlign="LEFT",
+        )
+        heading.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, -1), header_background),
+                    ("GRID", (0, 0), (-1, -1), 0.5, border),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 5),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+                    ("TOPPADDING", (0, 0), (-1, -1), 4),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ]
+            )
+        )
+        return [heading, field_table(rows, widths)]
+
     company_flowables = [
         Paragraph(_text(COMPANY_LINES[0]), company_name),
         Paragraph("<br/>".join(_text(line) for line in COMPANY_LINES[1:]), company),
@@ -203,16 +223,48 @@ def build_packing_list_pdf(
     )
 
     cliente = packing_list.cliente
-    customer_table = field_table(
+    delivery = packing_list.delivery
+    addresses = Table(
         [
-            ("Customer", cliente.nome),
-            ("Address", cliente.indirizzo),
-            ("Province", cliente.provincia),
-            ("Country", cliente.paese),
+            [
+                titled_field_table(
+                    "Consignee name",
+                    [
+                        ("Customer", cliente.nome),
+                        ("Address", cliente.indirizzo),
+                        ("Province", cliente.provincia),
+                        ("Country", cliente.paese),
+                    ],
+                    [28 * mm, 61 * mm],
+                ),
+                "",
+                titled_field_table(
+                    "Delivery address",
+                    [
+                        ("Customer", delivery.nome),
+                        ("Address", delivery.indirizzo),
+                        ("Province", delivery.provincia),
+                        ("Country", delivery.paese),
+                    ],
+                    [28 * mm, 61 * mm],
+                ),
+            ]
         ],
-        [28 * mm, 59 * mm],
+        colWidths=[89 * mm, 2 * mm, 89 * mm],
+        hAlign="LEFT",
     )
-    details_table = field_table(
+    addresses.setStyle(
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                ("TOPPADDING", (0, 0), (-1, -1), 0),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+            ]
+        )
+    )
+    shipment_details = field_table(
         [
             ("Transport document", packing_list.transport_document),
             ("Invoice number", packing_list.invoice_number),
@@ -220,30 +272,8 @@ def build_packing_list_pdf(
             ("Total Nr. of pallets", packing_list.total_pallets),
             ("Total net weight (Kg.)", _number(packing_list.total_net_weight)),
             ("Total gross weight (Kg.)", _number(packing_list.total_gross_weight)),
+            ("Comments", packing_list.comments or "-"),
         ],
-        [39 * mm, 50 * mm],
-    )
-    overview = Table(
-        [[customer_table, details_table]],
-        colWidths=[89 * mm, 91 * mm],
-        hAlign="LEFT",
-    )
-    overview.setStyle(
-        TableStyle(
-            [
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("LEFTPADDING", (0, 0), (0, 0), 0),
-                ("RIGHTPADDING", (0, 0), (0, 0), 2 * mm),
-                ("LEFTPADDING", (1, 0), (1, 0), 0),
-                ("RIGHTPADDING", (1, 0), (1, 0), 0),
-                ("TOPPADDING", (0, 0), (-1, -1), 0),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
-            ]
-        )
-    )
-
-    comments = field_table(
-        [("Comments", packing_list.comments or "-")],
         [39 * mm, 141 * mm],
     )
 
@@ -297,9 +327,9 @@ def build_packing_list_pdf(
         header,
         Spacer(1, 6 * mm),
         Paragraph("PACKING LIST", title),
-        overview,
+        addresses,
         Spacer(1, 3 * mm),
-        comments,
+        shipment_details,
         Spacer(1, 5 * mm),
         items,
         KeepTogether([Spacer(1, 5 * mm), final_fields]),
@@ -311,7 +341,7 @@ def build_packing_list_pdf(
         canvas.line(14 * mm, 12 * mm, A4[0] - 14 * mm, 12 * mm)
         canvas.setFillColor(colors.HexColor("#666666"))
         canvas.setFont(regular_font, 7.5)
-        canvas.drawString(14 * mm, 8 * mm, f"Packing list #{packing_list.id}")
+        canvas.drawString(14 * mm, 8 * mm, "Packing list")
         canvas.drawRightString(
             A4[0] - 14 * mm,
             8 * mm,

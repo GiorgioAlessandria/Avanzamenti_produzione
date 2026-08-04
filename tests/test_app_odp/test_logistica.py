@@ -12,8 +12,6 @@ from app_odp.logistica_models import (
     ClientePackingList,
     LOGISTICA_BIND_KEY,
     MovimentoLogistico,
-    PackingList,
-    RigaPackingList,
     VettoreTrasporto,
 )
 from app_odp.models import db
@@ -44,8 +42,6 @@ def test_logistica_creates_tables_and_persists_a_movement(app):
         assert set(inspect(db.engines[LOGISTICA_BIND_KEY]).get_table_names()) == {
             "movimenti",
             "packing_clienti",
-            "packing_list_righe",
-            "packing_lists",
             "vettori",
         }
 
@@ -159,50 +155,6 @@ def test_note_update_requires_carica_permission(app, monkeypatch):
             logistica_routes.logistica_movimento_note(1)
 
 
-def test_packing_list_persists_customer_header_and_editable_rows(app):
-    with app.app_context():
-        customer = ClientePackingList(
-            nome="Cliente S.p.A.",
-            indirizzo="Via Roma 1",
-            provincia="CN",
-            paese="Italia",
-        )
-        packing = PackingList(
-            cliente=customer,
-            transport_document="DDT-42",
-            invoice_number="INV-7",
-            invoice_date=date(2026, 8, 3),
-            total_pallets=2,
-            total_net_weight=Decimal("125.500"),
-            total_gross_weight=Decimal("140.750"),
-            comments="Maneggiare con cura",
-            delivery_terms="DAP",
-            forwarder="Trasporti Rossi",
-            creato_da_nome="operatore",
-            righe=[
-                RigaPackingList(
-                    posizione=1,
-                    codice="ART-1",
-                    descrizione="Primo articolo",
-                    quantita=Decimal("2.5"),
-                ),
-                RigaPackingList(
-                    posizione=2,
-                    codice="ART-2",
-                    descrizione="Secondo articolo",
-                    quantita=Decimal("4"),
-                ),
-            ],
-        )
-        db.session.add(packing)
-        db.session.commit()
-
-        saved = PackingList.query.one()
-        assert saved.cliente.nome == "Cliente S.p.A."
-        assert [row.codice for row in saved.righe] == ["ART-1", "ART-2"]
-        assert saved.righe[0].quantita == Decimal("2.500")
-
-
 def test_packing_rows_require_all_three_editable_columns(app):
     with app.test_request_context(
         method="POST",
@@ -232,14 +184,99 @@ def test_packing_rows_require_all_three_editable_columns(app):
             _packing_rows()
 
 
+def test_packing_list_prints_pdf_and_only_saves_the_new_customer(app):
+    form = MultiDict(
+        [
+            ("cliente_id", "new"),
+            ("nuovo_cliente_nome", "Cliente S.p.A."),
+            ("nuovo_cliente_indirizzo", "Via Roma 1"),
+            ("nuovo_cliente_provincia", "CN"),
+            ("nuovo_cliente_paese", "ITALY"),
+            ("transport_document", "DDT-42"),
+            ("invoice_number", "INV-7"),
+            ("invoice_date", "2026-08-03"),
+            ("total_pallets", "2"),
+            ("total_net_weight", "125.5"),
+            ("total_gross_weight", "140.75"),
+            ("comments", "Maneggiare con cura"),
+            ("delivery_nome", "Magazzino Cliente"),
+            ("delivery_indirizzo", "Via Torino 10"),
+            ("delivery_provincia", "TO"),
+            ("delivery_paese", "ITALY"),
+            ("item_code", "ART-1"),
+            ("item_description", "Primo articolo"),
+            ("item_quantity", "2.5"),
+            ("delivery_terms", "DAP"),
+            ("forwarder", "Trasporti Rossi"),
+        ]
+    )
+
+    with app.test_request_context(method="POST", data=form):
+        response = logistica_routes.packing_list_print.__wrapped__()
+        response.direct_passthrough = False
+        assert response.get_data().startswith(b"%PDF-")
+        assert response.headers["Content-Disposition"].startswith("inline;")
+
+    with app.app_context():
+        assert ClientePackingList.query.one().nome == "Cliente S.p.A."
+        assert set(inspect(db.engines[LOGISTICA_BIND_KEY]).get_table_names()) == {
+            "movimenti",
+            "packing_clienti",
+            "vettori",
+        }
+
+
+def test_packing_customer_can_be_updated_and_deleted(app, monkeypatch):
+    with app.app_context():
+        cliente = ClientePackingList(
+            nome="Cliente iniziale",
+            indirizzo="Via Roma 1",
+            provincia="CN",
+            paese="ITALY",
+        )
+        db.session.add(cliente)
+        db.session.commit()
+        cliente_id = cliente.id
+
+    monkeypatch.setattr(logistica_routes, "_redirect_packing_list", lambda: None)
+    monkeypatch.setattr(logistica_routes, "flash", lambda *_args: None)
+
+    with app.test_request_context(
+        method="POST",
+        data={
+            "nome": "Cliente aggiornato",
+            "indirizzo": "Via Torino 10",
+            "provincia": "TO",
+            "paese": "ITALY",
+        },
+    ):
+        logistica_routes.packing_list_cliente_update.__wrapped__(cliente_id)
+
+    with app.app_context():
+        assert db.session.get(ClientePackingList, cliente_id).nome == (
+            "Cliente aggiornato"
+        )
+
+    with app.test_request_context(method="POST"):
+        logistica_routes.packing_list_cliente_delete.__wrapped__(cliente_id)
+
+    with app.app_context():
+        assert db.session.get(ClientePackingList, cliente_id) is None
+
+
 def test_packing_list_pdf_contains_a_valid_pdf_document(app):
     with app.app_context():
-        packing = PackingList(
-            id=12,
-            cliente=ClientePackingList(
+        packing = SimpleNamespace(
+            cliente=SimpleNamespace(
                 nome="Cliente S.p.A.",
                 indirizzo="Via Roma 1",
                 provincia="CN",
+                paese="ITALY",
+            ),
+            delivery=SimpleNamespace(
+                nome="Magazzino Cliente",
+                indirizzo="Via Torino 10",
+                provincia="TO",
                 paese="ITALY",
             ),
             transport_document="DDT-42",
@@ -251,10 +288,8 @@ def test_packing_list_pdf_contains_a_valid_pdf_document(app):
             comments=None,
             delivery_terms="EXW",
             forwarder="Trasporti Rossi",
-            creato_da_nome="operatore",
             righe=[
-                RigaPackingList(
-                    posizione=1,
+                SimpleNamespace(
                     codice="ART-1",
                     descrizione="Descrizione compilata liberamente",
                     quantita=Decimal("3"),
