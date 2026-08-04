@@ -156,19 +156,20 @@ def test_note_update_requires_carica_permission(app, monkeypatch):
             logistica_routes.logistica_movimento_note(1)
 
 
-def test_packing_rows_require_all_three_editable_columns(app):
+def test_packing_rows_require_all_four_editable_columns(app):
     with app.test_request_context(
         method="POST",
         data=MultiDict(
             [
                 ("item_code", "ART-1"),
                 ("item_description", "Descrizione libera"),
+                ("item_serial_number", "SN-001"),
                 ("item_quantity", "2,5"),
             ]
         ),
     ):
         assert _packing_rows() == [
-            ("ART-1", "Descrizione libera", Decimal("2.5"))
+            ("ART-1", "Descrizione libera", "SN-001", Decimal("2.5"))
         ]
 
     with app.test_request_context(
@@ -176,12 +177,16 @@ def test_packing_rows_require_all_three_editable_columns(app):
         data=MultiDict(
             [
                 ("item_code", "ART-1"),
-                ("item_description", ""),
+                ("item_description", "Descrizione libera"),
+                ("item_serial_number", ""),
                 ("item_quantity", "2"),
             ]
         ),
     ):
-        with pytest.raises(ValueError, match="Code, Description e Quantity"):
+        with pytest.raises(
+            ValueError,
+            match="Code, Description, Serial number e Quantity",
+        ):
             _packing_rows()
 
 
@@ -206,6 +211,7 @@ def test_packing_list_prints_pdf_and_only_saves_the_new_customer(app):
             ("delivery_paese", "ITALY"),
             ("item_code", "ART-1"),
             ("item_description", "Primo articolo"),
+            ("item_serial_number", "SN-001"),
             ("item_quantity", "2.5"),
             ("delivery_terms", "DAP"),
             ("forwarder", "Trasporti Rossi"),
@@ -293,6 +299,7 @@ def test_packing_list_pdf_contains_a_valid_multipage_document(app):
                 SimpleNamespace(
                     codice=f"ART-{index}",
                     descrizione=f"Descrizione compilata liberamente {index}",
+                    numero_seriale=f"SN-{index:04d}",
                     quantita=Decimal(index),
                 )
                 for index in range(1, 71)

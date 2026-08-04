@@ -101,11 +101,18 @@ def _decimal_value(value, label: str, *, positive: bool = False) -> Decimal:
     return parsed
 
 
-def _packing_rows() -> list[tuple[str, str, Decimal]]:
+def _packing_rows() -> list[tuple[str, str, str, Decimal]]:
     codes = request.form.getlist("item_code")
     descriptions = request.form.getlist("item_description")
+    serial_numbers = request.form.getlist("item_serial_number")
     quantities = request.form.getlist("item_quantity")
-    row_count = max(len(codes), len(descriptions), len(quantities), 0)
+    row_count = max(
+        len(codes),
+        len(descriptions),
+        len(serial_numbers),
+        len(quantities),
+        0,
+    )
     rows = []
 
     for index in range(row_count):
@@ -113,15 +120,19 @@ def _packing_rows() -> list[tuple[str, str, Decimal]]:
         description = str(
             descriptions[index] if index < len(descriptions) else ""
         ).strip()
+        serial_number = str(
+            serial_numbers[index] if index < len(serial_numbers) else ""
+        ).strip()
         raw_quantity = str(
             quantities[index] if index < len(quantities) else ""
         ).strip()
 
-        if not any((code, description, raw_quantity)):
+        if not any((code, description, serial_number, raw_quantity)):
             continue
-        if not all((code, description, raw_quantity)):
+        if not all((code, description, serial_number, raw_quantity)):
             raise ValueError(
-                f"Riga {index + 1}: compilare Code, Description e Quantity."
+                f"Riga {index + 1}: compilare Code, Description, "
+                "Serial number e Quantity."
             )
         if len(code) > 120:
             raise ValueError(f"Riga {index + 1}: Code massimo 120 caratteri.")
@@ -129,11 +140,16 @@ def _packing_rows() -> list[tuple[str, str, Decimal]]:
             raise ValueError(
                 f"Riga {index + 1}: Description massimo 500 caratteri."
             )
+        if len(serial_number) > 200:
+            raise ValueError(
+                f"Riga {index + 1}: Serial number massimo 200 caratteri."
+            )
 
         rows.append(
             (
                 code,
                 description,
+                serial_number,
                 _decimal_value(
                     raw_quantity,
                     f"Riga {index + 1} - Quantity",
@@ -242,9 +258,10 @@ def _packing_list_from_form():
             SimpleNamespace(
                 codice=code,
                 descrizione=description,
+                numero_seriale=serial_number,
                 quantita=quantity,
             )
-            for code, description, quantity in _packing_rows()
+            for code, description, serial_number, quantity in _packing_rows()
         ],
     )
 

@@ -286,6 +286,7 @@ def build_packing_list_pdf(
         [
             paragraph("Code", table_header),
             paragraph("Description", table_header),
+            paragraph("Serial number", table_header),
             paragraph("Quantity", table_header),
         ]
     ]
@@ -293,13 +294,14 @@ def build_packing_list_pdf(
         [
             paragraph(row.codice),
             paragraph(row.descrizione),
+            paragraph(row.numero_seriale),
             Paragraph(_text(_number(row.quantita)), quantity),
         ]
         for row in packing_list.righe
     )
     items = LongTable(
         item_rows,
-        colWidths=[38 * mm, 112 * mm, 30 * mm],
+        colWidths=[30 * mm, 75 * mm, 50 * mm, 25 * mm],
         repeatRows=1,
         hAlign="LEFT",
     )
@@ -310,7 +312,7 @@ def build_packing_list_pdf(
                 ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
                 ("GRID", (0, 0), (-1, -1), 0.5, border),
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("ALIGN", (2, 1), (2, -1), "RIGHT"),
+                ("ALIGN", (3, 1), (3, -1), "RIGHT"),
                 ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8f8f8")]),
                 ("LEFTPADDING", (0, 0), (-1, -1), 5),
                 ("RIGHTPADDING", (0, 0), (-1, -1), 5),

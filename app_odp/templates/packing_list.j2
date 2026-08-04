@@ -5,9 +5,10 @@
 {% block styles %}
     {{ super() }}
     <style>
-        .packing-items th:nth-child(1) { width: 24%; }
-        .packing-items th:nth-child(2) { width: 58%; }
-        .packing-items th:nth-child(3) { width: 18%; }
+        .packing-items th:nth-child(1) { width: 18%; }
+        .packing-items th:nth-child(2) { width: 42%; }
+        .packing-items th:nth-child(3) { width: 24%; }
+        .packing-items th:nth-child(4) { width: 16%; }
         .packing-items td { min-width: 9rem; }
         .packing-items td:nth-child(2) { min-width: 18rem; }
         .packing-client-table { max-height: 24rem; overflow: auto; }
@@ -264,6 +265,7 @@
                             <tr>
                                 <th scope="col">Code</th>
                                 <th scope="col">Description</th>
+                                <th scope="col">Serial number</th>
                                 <th scope="col">Quantity</th>
                                 <th scope="col" class="text-end">Azioni</th>
                             </tr>
@@ -275,6 +277,13 @@
                                            name="item_code"
                                            maxlength="120"
                                            aria-label="Code riga 1"
+                                           required>
+                                </td>
+                                <td>
+                                    <input class="form-control"
+                                           name="item_serial_number"
+                                           maxlength="200"
+                                           aria-label="Serial number riga 1"
                                            required>
                                 </td>
                                 <td>
@@ -293,7 +302,12 @@
                                            aria-label="Quantity riga 1"
                                            required>
                                 </td>
-                                <td class="text-end">
+                                <td class="text-end text-nowrap">
+                                    <button class="btn btn-sm btn-outline-secondary"
+                                            type="button"
+                                            data-duplicate-row>
+                                        Duplica
+                                    </button>
                                     <button class="btn btn-sm btn-outline-danger"
                                             type="button"
                                             data-remove-row>
@@ -446,8 +460,10 @@
         <tr>
             <td><input class="form-control" name="item_code" maxlength="120" required></td>
             <td><input class="form-control" name="item_description" maxlength="500" required></td>
+            <td><input class="form-control" name="item_serial_number" maxlength="200" required></td>
             <td><input class="form-control" type="number" name="item_quantity" min="0.001" step="0.001" required></td>
-            <td class="text-end">
+            <td class="text-end text-nowrap">
+                <button class="btn btn-sm btn-outline-secondary" type="button" data-duplicate-row>Duplica</button>
                 <button class="btn btn-sm btn-outline-danger" type="button" data-remove-row>Rimuovi</button>
             </td>
         </tr>
@@ -513,6 +529,7 @@
                 [...rows.rows].forEach((row, index) => {
                     row.querySelector('[name="item_code"]').setAttribute("aria-label", `Code riga ${index + 1}`);
                     row.querySelector('[name="item_description"]').setAttribute("aria-label", `Description riga ${index + 1}`);
+                    row.querySelector('[name="item_serial_number"]').setAttribute("aria-label", `Serial number riga ${index + 1}`);
                     row.querySelector('[name="item_quantity"]').setAttribute("aria-label", `Quantity riga ${index + 1}`);
                 });
             };
@@ -537,9 +554,20 @@
                 rows.lastElementChild.querySelector("input").focus();
             });
             rows.addEventListener("click", (event) => {
-                const button = event.target.closest("[data-remove-row]");
+                const button = event.target.closest("[data-duplicate-row], [data-remove-row]");
                 if (!button) return;
                 const row = button.closest("tr");
+                if (button.matches("[data-duplicate-row]")) {
+                    const duplicate = row.cloneNode(true);
+                    const duplicateInputs = duplicate.querySelectorAll("input");
+                    row.querySelectorAll("input").forEach((input, index) => {
+                        duplicateInputs[index].value = input.value;
+                    });
+                    row.after(duplicate);
+                    updateRowLabels();
+                    duplicate.querySelector("input").focus();
+                    return;
+                }
                 if (rows.rows.length === 1) {
                     row.querySelectorAll("input").forEach((input) => { input.value = ""; });
                     row.querySelector("input").focus();
