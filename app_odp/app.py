@@ -8,6 +8,7 @@ from app_odp import (
     manutenzioni_models,
     rifiuti_models,
     tarature_models,
+    vendite_models,
 )
 from app_odp.auth import auth_bp
 from app_odp.routes import main_bp
@@ -204,7 +205,9 @@ def setup_request_logging(app):
 
 def _ensure_builtin_permissions() -> None:
     builtins = {
-        "vendite": "Visualizzazione della situazione ordini macchina per le vendite",
+        "vendite": (
+            "Visualizzazione ordini macchina e gestione ordini cliente per le vendite"
+        ),
         "storico_ordini": "Storico ordini",
         "scorte_segnalazione_libera": ("Segnalazione scorte con testo libero"),
         # Rifiuti

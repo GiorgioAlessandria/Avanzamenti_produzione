@@ -46,7 +46,10 @@
             {% set is_impostazioni = request.endpoint == 'main.impostazioni' %}
             {% set is_dash_reparto = request.endpoint == 'main.dash_reparto' %}
             {% set is_home_acquisti = request.endpoint == 'main.home_acquisti' %}
-            {% set is_vendite = request.endpoint == 'main.vendite_page' %}
+            {% set is_vendite = request.endpoint in [
+                'main.vendite_page',
+                'main.vendite_assegnazioni_page'
+            ] %}
             {% set is_priorita_view = request.endpoint == 'main.priorita_view' %}
             {% set is_manutenzioni = (
                 request.endpoint

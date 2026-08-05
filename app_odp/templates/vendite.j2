@@ -53,11 +53,17 @@
                     Situazione in tempo reale degli ordini macchina in produzione
                 </div>
             </div>
-            <button type="button"
-                    class="btn btn-outline-primary btn-sm"
-                    id="vendite-refresh">
-                Aggiorna ora
-            </button>
+            <div class="d-flex flex-wrap gap-2">
+                <a class="btn btn-primary btn-sm"
+                   href="{{ operator_url_for('main.vendite_assegnazioni_page') }}">
+                    Ordini cliente e assegnazioni
+                </a>
+                <button type="button"
+                        class="btn btn-outline-primary btn-sm"
+                        id="vendite-refresh">
+                    Aggiorna ora
+                </button>
+            </div>
         </div>
 
         <div class="alert alert-danger d-none"

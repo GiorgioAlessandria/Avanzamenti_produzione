@@ -106,6 +106,28 @@ def _latest_suspension_causes(order_keys) -> dict[tuple[str, str], str]:
     return latest
 
 
+def is_open_machine_order(order) -> bool:
+    return (
+        _norm_text(getattr(order, "GestioneMatricola", "")).casefold() == "si"
+        and _canonical_state(getattr(order, "StatoOrdine", "")).casefold()
+        not in _TERMINAL_STATES
+    )
+
+
+def load_machine_orders(*, include_closed: bool = False) -> list:
+    orders = (
+        _base_odp_query()
+        .filter(
+            func.lower(func.trim(func.coalesce(InputOdp.GestioneMatricola, "")))
+            == "si"
+        )
+        .all()
+    )
+    if include_closed:
+        return orders
+    return [order for order in orders if is_open_machine_order(order)]
+
+
 def _build_vendite_payload(
     orders,
     latest_causes=None,
@@ -212,19 +234,10 @@ def _build_vendite_payload(
 
 
 def build_vendite_payload() -> dict:
-    orders = (
-        _base_odp_query()
-        .filter(
-            func.lower(func.trim(func.coalesce(InputOdp.GestioneMatricola, "")))
-            == "si"
-        )
-        .all()
-    )
+    orders = load_machine_orders()
     order_keys = [
         (order.IdDocumento, order.IdRiga)
         for order in orders
-        if _canonical_state(getattr(order, "StatoOrdine", "")).casefold()
-        not in _TERMINAL_STATES
     ]
     return _build_vendite_payload(
         orders,

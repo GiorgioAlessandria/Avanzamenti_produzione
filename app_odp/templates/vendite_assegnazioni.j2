@@ -1,0 +1,892 @@
+{% extends "base.j2" %}
+
+{% block title %}Assegnazione ordini cliente{% endblock %}
+
+{% block styles %}
+    {{ super() }}
+    <style>
+        #vendite-assegnazioni-page .vendite-assignment-scroll {
+            max-height: calc(100vh - 330px);
+            min-height: 22rem;
+            overflow: auto;
+        }
+
+        #vendite-assegnazioni-page .vendite-assignment-scroll thead th {
+            position: sticky;
+            top: 0;
+            z-index: 2;
+        }
+
+        #vendite-assegnazioni-page .vendite-model-cell {
+            min-width: 13rem;
+            white-space: normal;
+        }
+
+        #vendite-assegnazioni-page .vendite-note-cell {
+            min-width: 12rem;
+            max-width: 20rem;
+            white-space: normal;
+        }
+
+        #vendite-assegnazioni-page .vendite-assignment-select {
+            min-width: 18rem;
+        }
+
+        #vendite-assegnazioni-page .vendite-customer-heading td {
+            position: sticky;
+            top: 41px;
+            z-index: 1;
+        }
+
+        #vendite-assegnazioni-page .vendite-machine-assigned {
+            opacity: .72;
+        }
+
+        @media (max-width: 1199.98px) {
+            #vendite-assegnazioni-page .vendite-assignment-scroll {
+                max-height: 36rem;
+                min-height: 0;
+            }
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+    <main class="container-fluid py-3"
+          id="vendite-assegnazioni-page"
+          data-api-url="{{ operator_url_for('main.api_vendite_assegnazioni') }}"
+          data-create-url="{{ operator_url_for('main.api_vendite_ordini_cliente_create') }}"
+          data-assign-url-template="{{ operator_url_for('main.api_vendite_riga_assegnazione', row_id=0) }}">
+        <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+            <div>
+                <h1 class="h4 mb-1">Assegnazione ordini cliente</h1>
+                <div class="text-muted small">
+                    Collega ogni richiesta cliente a una macchina presente in produzione
+                </div>
+            </div>
+            <div class="d-flex flex-wrap gap-2">
+                <a class="btn btn-outline-primary btn-sm"
+                   href="{{ operator_url_for('main.vendite_page') }}">
+                    Situazione produzione
+                </a>
+                <button class="btn btn-outline-secondary btn-sm"
+                        type="button"
+                        id="vendite-assignments-refresh">
+                    Aggiorna ora
+                </button>
+            </div>
+        </div>
+
+        <div class="alert d-none"
+             id="vendite-assignments-alert"
+             role="alert"></div>
+
+        <div class="row g-3 mb-3">
+            <div class="col-6 col-xl-3">
+                <div class="card h-100 shadow-sm">
+                    <div class="card-body">
+                        <div class="small text-muted">Macchine aperte</div>
+                        <div class="h3 mb-0" id="vendite-open-machines">-</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-xl-3">
+                <div class="card h-100 shadow-sm">
+                    <div class="card-body">
+                        <div class="small text-muted">Richieste cliente</div>
+                        <div class="h3 mb-0" id="vendite-total-demand">-</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-xl-3">
+                <div class="card h-100 shadow-sm">
+                    <div class="card-body">
+                        <div class="small text-muted">Assegnate</div>
+                        <div class="h3 mb-0 text-success" id="vendite-assigned-demand">-</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-xl-3">
+                <div class="card h-100 shadow-sm">
+                    <div class="card-body">
+                        <div class="small text-muted">Da assegnare</div>
+                        <div class="h3 mb-0 text-warning" id="vendite-unassigned-demand">-</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <section class="card shadow-sm mb-3">
+            <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <div>
+                    <div class="fw-semibold">Nuovo ordine cliente</div>
+                    <div class="small text-muted">
+                        La quantità viene trasformata in singole righe assegnabili
+                    </div>
+                </div>
+                <button class="btn btn-sm btn-outline-primary"
+                        type="button"
+                        id="vendite-add-customer-line">
+                    Aggiungi riga
+                </button>
+            </div>
+            <form id="vendite-customer-order-form">
+                <div class="card-body">
+                    <div class="row g-3 mb-3">
+                        <div class="col-12 col-md-6">
+                            <label class="form-label fw-semibold"
+                                   for="vendite-customer-name">
+                                Nome cliente
+                            </label>
+                            <input class="form-control"
+                                   id="vendite-customer-name"
+                                   maxlength="160"
+                                   autocomplete="organization"
+                                   required>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label fw-semibold"
+                                   for="vendite-customer-order">
+                                Ordine cliente
+                            </label>
+                            <input class="form-control"
+                                   id="vendite-customer-order"
+                                   maxlength="120"
+                                   autocomplete="off"
+                                   required>
+                        </div>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="table table-bordered align-middle mb-0">
+                            <thead class="table-light">
+                            <tr>
+                                <th scope="col" style="min-width: 16rem;">Modello macchina</th>
+                                <th scope="col" style="width: 8rem;">Quantità</th>
+                                <th scope="col" style="min-width: 16rem;">Note</th>
+                                <th scope="col" style="min-width: 11rem;">Data consegna</th>
+                                <th scope="col" class="text-end">Azioni</th>
+                            </tr>
+                            </thead>
+                            <tbody id="vendite-customer-lines"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="card-footer d-flex flex-wrap justify-content-between align-items-center gap-2">
+                    <div class="small text-muted">
+                        Tutti i campi tranne le note sono obbligatori.
+                    </div>
+                    <button class="btn btn-primary"
+                            type="submit"
+                            id="vendite-save-customer-order"
+                            disabled>
+                        Salva ordine cliente
+                    </button>
+                </div>
+            </form>
+        </section>
+
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+            <div class="small text-muted"
+                 id="vendite-assignments-status"
+                 role="status"
+                 aria-live="polite">
+                Caricamento...
+            </div>
+            <div class="small text-muted">Aggiornamento automatico ogni 5 secondi</div>
+        </div>
+
+        <div class="row g-3">
+            <section class="col-12 col-xl-5">
+                <div class="card shadow-sm h-100">
+                    <div class="card-header">
+                        <div class="fw-semibold">Ordini macchina aperti</div>
+                        <div class="small text-muted">
+                            Le macchine già utilizzate restano visibili ma non sono selezionabili altrove
+                        </div>
+                    </div>
+                    <div class="card-body py-2 border-bottom">
+                        <label class="visually-hidden" for="vendite-machine-filter">
+                            Filtra ordini macchina
+                        </label>
+                        <input class="form-control form-control-sm"
+                               type="search"
+                               id="vendite-machine-filter"
+                               placeholder="Filtra per modello, matricola, ordine o stato"
+                               autocomplete="off">
+                    </div>
+                    <div class="table-responsive vendite-assignment-scroll">
+                        <table class="table table-sm table-hover align-middle mb-0">
+                            <thead class="table-light">
+                            <tr>
+                                <th>Modello</th>
+                                <th>Matricola</th>
+                                <th>Ordine</th>
+                                <th>Fase / stato</th>
+                                <th>Assegnazione</th>
+                            </tr>
+                            </thead>
+                            <tbody id="vendite-machines-body">
+                            <tr>
+                                <td colspan="5" class="text-center text-muted py-4">
+                                    Caricamento...
+                                </td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <section class="col-12 col-xl-7">
+                <div class="card shadow-sm h-100">
+                    <div class="card-header">
+                        <div class="fw-semibold">Righe ordini cliente</div>
+                        <div class="small text-muted">
+                            Ogni riga corrisponde a una singola macchina richiesta
+                        </div>
+                    </div>
+                    <div class="card-body py-2 border-bottom">
+                        <label class="visually-hidden" for="vendite-demand-filter">
+                            Filtra ordini cliente
+                        </label>
+                        <input class="form-control form-control-sm"
+                               type="search"
+                               id="vendite-demand-filter"
+                               placeholder="Filtra per cliente, ordine, modello, note o matricola"
+                               autocomplete="off">
+                    </div>
+                    <div class="table-responsive vendite-assignment-scroll">
+                        <table class="table table-sm table-hover align-middle mb-0">
+                            <thead class="table-light">
+                            <tr>
+                                <th>#</th>
+                                <th>Modello</th>
+                                <th>Consegna</th>
+                                <th>Note</th>
+                                <th>Ordine macchina assegnato</th>
+                            </tr>
+                            </thead>
+                            <tbody id="vendite-customer-orders-body">
+                            <tr>
+                                <td colspan="5" class="text-center text-muted py-4">
+                                    Caricamento...
+                                </td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <template id="vendite-customer-line-template">
+        <tr>
+            <td>
+                <select class="form-select vendite-line-model" required></select>
+            </td>
+            <td>
+                <input class="form-control vendite-line-quantity"
+                       type="number"
+                       min="1"
+                       max="500"
+                       step="1"
+                       value="1"
+                       required>
+            </td>
+            <td>
+                <textarea class="form-control vendite-line-note"
+                          maxlength="1000"
+                          rows="1"></textarea>
+            </td>
+            <td>
+                <input class="form-control vendite-line-delivery"
+                       type="date"
+                       required>
+            </td>
+            <td class="text-end">
+                <button class="btn btn-sm btn-outline-danger"
+                        type="button"
+                        data-remove-customer-line>
+                    Rimuovi
+                </button>
+            </td>
+        </tr>
+    </template>
+{% endblock %}
+
+{% block extra_js %}
+    {{ super() }}
+    <script>
+        (() => {
+            const page = document.getElementById("vendite-assegnazioni-page");
+            if (!page) return;
+
+            const POLL_MS = 5000;
+            const alertBox = document.getElementById("vendite-assignments-alert");
+            const statusBox = document.getElementById("vendite-assignments-status");
+            const refreshButton = document.getElementById("vendite-assignments-refresh");
+            const createForm = document.getElementById("vendite-customer-order-form");
+            const customerName = document.getElementById("vendite-customer-name");
+            const customerOrder = document.getElementById("vendite-customer-order");
+            const createLines = document.getElementById("vendite-customer-lines");
+            const createLineTemplate = document.getElementById("vendite-customer-line-template");
+            const addLineButton = document.getElementById("vendite-add-customer-line");
+            const saveOrderButton = document.getElementById("vendite-save-customer-order");
+            const machinesBody = document.getElementById("vendite-machines-body");
+            const customerOrdersBody = document.getElementById("vendite-customer-orders-body");
+            const machineFilter = document.getElementById("vendite-machine-filter");
+            const demandFilter = document.getElementById("vendite-demand-filter");
+
+            let models = [];
+            let machines = [];
+            let formDirty = false;
+            let loadInFlight = false;
+            let mutationInFlight = false;
+            const dirtyAssignments = new Set();
+
+            function esc(value) {
+                return String(value ?? "").replace(/[&<>"']/g, character => ({
+                    "&": "&amp;",
+                    "<": "&lt;",
+                    ">": "&gt;",
+                    '"': "&quot;",
+                    "'": "&#39;",
+                }[character]));
+            }
+
+            function showAlert(type, message) {
+                alertBox.className = `alert alert-${type}`;
+                alertBox.textContent = message;
+                alertBox.classList.remove("d-none");
+            }
+
+            function clearAlert() {
+                alertBox.classList.add("d-none");
+                alertBox.textContent = "";
+            }
+
+            function modelLabel(item) {
+                const variant = item.variant
+                    ? ` <span class="badge text-bg-light border">${esc(item.variant)}</span>`
+                    : "";
+                const description = item.description
+                    ? `<div class="small text-muted">${esc(item.description)}</div>`
+                    : "";
+                return `<div class="fw-semibold">${esc(item.model_code)}${variant}</div>${description}`;
+            }
+
+            function modelOptionLabel(item) {
+                const variant = item.variant ? ` - ${item.variant}` : "";
+                const description = item.description ? ` · ${item.description}` : "";
+                return `${item.model_code}${variant}${description}`;
+            }
+
+            function stateBadge(state) {
+                const classes = {
+                    "Attivo": "text-bg-success",
+                    "In Sospeso": "text-bg-warning",
+                    "Pianificata": "text-bg-secondary",
+                };
+                return `<span class="badge ${classes[state] || "text-bg-info"}">${esc(state)}</span>`;
+            }
+
+            function formatDate(value) {
+                if (!value) return "-";
+                const parts = String(value).split("-");
+                if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+                return String(value);
+            }
+
+            function formatDateTime(value) {
+                const date = new Date(value);
+                if (Number.isNaN(date.getTime())) return String(value || "");
+                return new Intl.DateTimeFormat("it-IT", {
+                    dateStyle: "short",
+                    timeStyle: "medium",
+                }).format(date);
+            }
+
+            function modelOptions(selectedValue = "") {
+                return [
+                    '<option value="">Seleziona modello...</option>',
+                    ...models.map(model => `
+                        <option value="${esc(model.key)}"${String(model.key) === String(selectedValue) ? " selected" : ""}>
+                            ${esc(modelOptionLabel(model))}
+                        </option>`),
+                ].join("");
+            }
+
+            function updateCreateLineLabels() {
+                [...createLines.rows].forEach((row, index) => {
+                    const number = index + 1;
+                    row.querySelector(".vendite-line-model").setAttribute("aria-label", `Modello riga ${number}`);
+                    row.querySelector(".vendite-line-quantity").setAttribute("aria-label", `Quantità riga ${number}`);
+                    row.querySelector(".vendite-line-note").setAttribute("aria-label", `Note riga ${number}`);
+                    row.querySelector(".vendite-line-delivery").setAttribute("aria-label", `Data consegna riga ${number}`);
+                });
+            }
+
+            function addCreateLine(values = {}, {focus = true, dirty = true} = {}) {
+                const fragment = createLineTemplate.content.cloneNode(true);
+                const row = fragment.querySelector("tr");
+                row.querySelector(".vendite-line-model").innerHTML = modelOptions(values.model_key);
+                row.querySelector(".vendite-line-quantity").value = values.quantity || 1;
+                row.querySelector(".vendite-line-note").value = values.note || "";
+                row.querySelector(".vendite-line-delivery").value = values.delivery_date || "";
+                createLines.appendChild(fragment);
+                updateCreateLineLabels();
+                if (dirty) formDirty = true;
+                if (focus) row.querySelector("select").focus();
+            }
+
+            function refreshCreateModelOptions() {
+                createLines.querySelectorAll(".vendite-line-model").forEach(select => {
+                    const selected = select.value;
+                    select.innerHTML = modelOptions(selected);
+                });
+                const enabled = models.length > 0;
+                addLineButton.disabled = !enabled;
+                saveOrderButton.disabled = !enabled;
+            }
+
+            function resetCreateForm() {
+                createForm.reset();
+                createLines.innerHTML = "";
+                addCreateLine({}, {focus: false, dirty: false});
+                formDirty = false;
+            }
+
+            function machineIdentity(item) {
+                return JSON.stringify([
+                    String(item?.id_documento || ""),
+                    String(item?.id_riga || ""),
+                ]);
+            }
+
+            function assignmentIdentity(assignment) {
+                return assignment ? machineIdentity(assignment) : "";
+            }
+
+            function machineOptionLabel(machine) {
+                const serial = machine.serial_number || "Senza matricola";
+                return `${serial} · ${machine.order} · fase ${machine.phase} / ${machine.state}`;
+            }
+
+            function assignmentSelect(row) {
+                const currentIdentity = assignmentIdentity(row.assignment);
+                const compatible = machines.filter(machine => (
+                    String(machine.model_key) === String(row.model_key)
+                    && (!machine.assignment || Number(machine.assignment.row_id) === Number(row.id))
+                ));
+                const currentPresent = compatible.some(machine => (
+                    machineIdentity(machine) === currentIdentity
+                ));
+
+                const options = ['<option value="">Non assegnata</option>'];
+                compatible.forEach(machine => {
+                    const identity = machineIdentity(machine);
+                    options.push(`
+                        <option value="${esc(identity)}"
+                                data-id-documento="${esc(machine.id_documento)}"
+                                data-id-riga="${esc(machine.id_riga)}"
+                                ${identity === currentIdentity ? "selected" : ""}>
+                            ${esc(machineOptionLabel(machine))}
+                        </option>`);
+                });
+
+                if (row.assignment && !currentPresent) {
+                    options.push(`
+                        <option value="${esc(currentIdentity)}"
+                                data-id-documento="${esc(row.assignment.id_documento)}"
+                                data-id-riga="${esc(row.assignment.id_riga)}"
+                                selected>
+                            ${esc(`${row.assignment.serial_number || "Senza matricola"} · ${row.assignment.order || "Ordine non presente"} · non più in produzione`)}
+                        </option>`);
+                }
+
+                return `
+                    <div class="d-flex align-items-start gap-2">
+                        <select class="form-select form-select-sm vendite-assignment-select"
+                                data-assignment-row-id="${esc(row.id)}"
+                                data-version="${esc(row.version)}"
+                                data-original-value="${esc(currentIdentity)}"
+                                aria-label="Ordine macchina per riga ${esc(row.position)}">
+                            ${options.join("")}
+                        </select>
+                        <button class="btn btn-sm btn-outline-primary text-nowrap"
+                                type="button"
+                                data-save-assignment="${esc(row.id)}">
+                            Salva
+                        </button>
+                    </div>
+                    ${row.assignment && row.assignment.open === false
+                        ? '<div class="small text-danger mt-1">Macchina non più presente tra gli ordini aperti.</div>'
+                        : ""}`;
+            }
+
+            function renderSummary(summary = {}) {
+                document.getElementById("vendite-open-machines").textContent = Number(summary.open_machines || 0);
+                document.getElementById("vendite-total-demand").textContent = Number(summary.total_demand || 0);
+                document.getElementById("vendite-assigned-demand").textContent = Number(summary.assigned_demand || 0);
+                document.getElementById("vendite-unassigned-demand").textContent = Number(summary.unassigned_demand || 0);
+            }
+
+            function renderMachines() {
+                if (!machines.length) {
+                    machinesBody.innerHTML = `
+                        <tr>
+                            <td colspan="5" class="text-center text-muted py-4">
+                                Nessun ordine macchina aperto.
+                            </td>
+                        </tr>`;
+                    return;
+                }
+
+                machinesBody.innerHTML = machines.map(machine => {
+                    const assignment = machine.assignment;
+                    const search = [
+                        machine.model_code,
+                        machine.variant,
+                        machine.description,
+                        machine.serial_number,
+                        machine.order,
+                        machine.phase,
+                        machine.state,
+                        assignment?.customer_name,
+                        assignment?.customer_order,
+                    ].join(" ").toLocaleLowerCase("it");
+                    return `
+                        <tr class="${assignment ? "vendite-machine-assigned" : ""}"
+                            data-machine-search="${esc(search)}">
+                            <td class="vendite-model-cell">${modelLabel(machine)}</td>
+                            <td class="fw-semibold">${esc(machine.serial_number || "-")}</td>
+                            <td>${esc(machine.order)}</td>
+                            <td>
+                                <div>Fase ${esc(machine.phase)}</div>
+                                ${stateBadge(machine.state)}
+                            </td>
+                            <td>
+                                ${assignment
+                                    ? `<span class="badge text-bg-secondary">Assegnata</span>
+                                       <div class="small mt-1">${esc(assignment.customer_name)} · ${esc(assignment.customer_order)}</div>`
+                                    : '<span class="badge text-bg-success">Disponibile</span>'}
+                            </td>
+                        </tr>`;
+                }).join("");
+                applyMachineFilter();
+            }
+
+            function renderCustomerOrders(customerOrders) {
+                if (!customerOrders.length) {
+                    customerOrdersBody.innerHTML = `
+                        <tr>
+                            <td colspan="5" class="text-center text-muted py-4">
+                                Nessun ordine cliente inserito.
+                            </td>
+                        </tr>`;
+                    return;
+                }
+
+                const html = [];
+                customerOrders.forEach(order => {
+                    const orderSearch = [
+                        order.customer_name,
+                        order.customer_order,
+                        order.created_by_name,
+                    ].join(" ").toLocaleLowerCase("it");
+                    html.push(`
+                        <tr class="table-light vendite-customer-heading"
+                            data-demand-search="${esc(orderSearch)}">
+                            <td colspan="5">
+                                <div class="d-flex flex-wrap justify-content-between gap-2">
+                                    <div>
+                                        <span class="fw-semibold">${esc(order.customer_name)}</span>
+                                        <span class="text-muted"> · Ordine ${esc(order.customer_order)}</span>
+                                    </div>
+                                    <div class="small text-muted">
+                                        ${Number(order.assigned_rows || 0)}/${Number(order.total_rows || 0)} assegnate
+                                        ${order.created_at ? ` · ${esc(formatDateTime(order.created_at))}` : ""}
+                                        ${order.created_by_name ? ` · ${esc(order.created_by_name)}` : ""}
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>`);
+
+                    (order.rows || []).forEach(row => {
+                        const search = [
+                            order.customer_name,
+                            order.customer_order,
+                            row.model_code,
+                            row.variant,
+                            row.description,
+                            row.note,
+                            row.delivery_date,
+                            row.assignment?.order,
+                            row.assignment?.serial_number,
+                        ].join(" ").toLocaleLowerCase("it");
+                        html.push(`
+                            <tr data-demand-search="${esc(search)}"
+                                data-customer-order-id="${esc(order.id)}">
+                                <td class="fw-semibold">${esc(row.position)}</td>
+                                <td class="vendite-model-cell">${modelLabel(row)}</td>
+                                <td>${esc(formatDate(row.delivery_date))}</td>
+                                <td class="vendite-note-cell">${esc(row.note || "-")}</td>
+                                <td>${assignmentSelect(row)}</td>
+                            </tr>`);
+                    });
+                });
+
+                customerOrdersBody.innerHTML = html.join("");
+                dirtyAssignments.clear();
+                applyDemandFilter();
+            }
+
+            function render(data) {
+                models = Array.isArray(data.models) ? data.models : [];
+                machines = Array.isArray(data.machines) ? data.machines : [];
+                renderSummary(data.summary || {});
+                refreshCreateModelOptions();
+                renderMachines();
+                renderCustomerOrders(Array.isArray(data.customer_orders) ? data.customer_orders : []);
+                statusBox.textContent = `Ultimo aggiornamento: ${formatDateTime(data.generated_at)}`;
+            }
+
+            function applyMachineFilter() {
+                const query = machineFilter.value.trim().toLocaleLowerCase("it");
+                machinesBody.querySelectorAll("tr[data-machine-search]").forEach(row => {
+                    row.hidden = Boolean(query) && !row.dataset.machineSearch.includes(query);
+                });
+            }
+
+            function applyDemandFilter() {
+                const query = demandFilter.value.trim().toLocaleLowerCase("it");
+                let currentHeading = null;
+                let currentOrderRows = [];
+
+                const flushOrder = () => {
+                    if (!currentHeading) return;
+                    const headingMatches = !query || currentHeading.dataset.demandSearch.includes(query);
+                    const anyRowMatches = currentOrderRows.some(row => (
+                        !query || row.dataset.demandSearch.includes(query)
+                    ));
+                    currentHeading.hidden = !headingMatches && !anyRowMatches;
+                    currentOrderRows.forEach(row => {
+                        row.hidden = !headingMatches && Boolean(query) && !row.dataset.demandSearch.includes(query);
+                    });
+                };
+
+                customerOrdersBody.querySelectorAll("tr[data-demand-search]").forEach(row => {
+                    if (row.classList.contains("vendite-customer-heading")) {
+                        flushOrder();
+                        currentHeading = row;
+                        currentOrderRows = [];
+                    } else {
+                        currentOrderRows.push(row);
+                    }
+                });
+                flushOrder();
+            }
+
+            function hasFocusedEditor() {
+                const active = document.activeElement;
+                return Boolean(
+                    active
+                    && page.contains(active)
+                    && ["INPUT", "SELECT", "TEXTAREA"].includes(active.tagName)
+                );
+            }
+
+            function hasUnsavedChanges() {
+                return formDirty || dirtyAssignments.size > 0;
+            }
+
+            async function refresh({force = false} = {}) {
+                if (loadInFlight || mutationInFlight) return;
+                if (!force && (hasFocusedEditor() || hasUnsavedChanges())) {
+                    statusBox.textContent = hasUnsavedChanges()
+                        ? "Aggiornamento sospeso: ci sono modifiche non salvate."
+                        : "Aggiornamento sospeso durante la compilazione.";
+                    return;
+                }
+
+                loadInFlight = true;
+                refreshButton.disabled = true;
+                statusBox.textContent = "Aggiornamento in corso...";
+                try {
+                    const response = await window.avpFetch(page.dataset.apiUrl);
+                    const payload = await response.json().catch(() => ({}));
+                    if (!response.ok || !payload.ok) {
+                        throw new Error(payload.error || `Errore server (${response.status})`);
+                    }
+                    render(payload.data || {});
+                    if (alertBox.dataset.source === "load") clearAlert();
+                } catch (error) {
+                    console.error("Errore caricamento assegnazioni vendite:", error);
+                    alertBox.dataset.source = "load";
+                    showAlert("danger", error.message || "Impossibile aggiornare le assegnazioni.");
+                    statusBox.textContent = "Aggiornamento non riuscito";
+                } finally {
+                    loadInFlight = false;
+                    refreshButton.disabled = false;
+                }
+            }
+
+            async function createCustomerOrder(event) {
+                event.preventDefault();
+                if (mutationInFlight || !createForm.reportValidity()) return;
+
+                const lines = [...createLines.rows].map(row => ({
+                    model_key: row.querySelector(".vendite-line-model").value,
+                    quantity: Number(row.querySelector(".vendite-line-quantity").value),
+                    note: row.querySelector(".vendite-line-note").value.trim(),
+                    delivery_date: row.querySelector(".vendite-line-delivery").value,
+                }));
+                if (!lines.length || lines.some(line => !Number.isInteger(line.quantity) || line.quantity < 1)) {
+                    showAlert("warning", "Inserire almeno una riga con una quantità intera maggiore di zero.");
+                    return;
+                }
+
+                mutationInFlight = true;
+                saveOrderButton.disabled = true;
+                try {
+                    const response = await window.avpFetch(page.dataset.createUrl, {
+                        method: "POST",
+                        headers: {"Content-Type": "application/json"},
+                        body: JSON.stringify({
+                            customer_name: customerName.value.trim(),
+                            customer_order: customerOrder.value.trim(),
+                            lines,
+                        }),
+                    });
+                    const payload = await response.json().catch(() => ({}));
+                    if (!response.ok || !payload.ok) {
+                        throw new Error(payload.error || `Errore server (${response.status})`);
+                    }
+                    resetCreateForm();
+                    showAlert("success", payload.message || "Ordine cliente salvato.");
+                    alertBox.dataset.source = "mutation";
+                } catch (error) {
+                    console.error("Errore salvataggio ordine cliente:", error);
+                    showAlert("danger", error.message || "Impossibile salvare l'ordine cliente.");
+                    alertBox.dataset.source = "mutation";
+                } finally {
+                    mutationInFlight = false;
+                    saveOrderButton.disabled = models.length === 0;
+                }
+                if (!formDirty && dirtyAssignments.size === 0) {
+                    await refresh({force: true});
+                } else {
+                    statusBox.textContent = "Aggiornamento sospeso: ci sono modifiche non salvate.";
+                }
+            }
+
+            async function saveAssignment(rowId, button) {
+                if (mutationInFlight) return;
+                const select = customerOrdersBody.querySelector(
+                    `[data-assignment-row-id="${CSS.escape(String(rowId))}"]`
+                );
+                if (!select) return;
+
+                const selected = select.selectedOptions[0];
+                mutationInFlight = true;
+                button.disabled = true;
+                select.disabled = true;
+                try {
+                    const url = page.dataset.assignUrlTemplate.replace(
+                        "/0/",
+                        `/${encodeURIComponent(rowId)}/`
+                    );
+                    const response = await window.avpFetch(url, {
+                        method: "POST",
+                        headers: {"Content-Type": "application/json"},
+                        body: JSON.stringify({
+                            version: Number(select.dataset.version),
+                            id_documento: selected?.dataset.idDocumento || "",
+                            id_riga: selected?.dataset.idRiga || "",
+                        }),
+                    });
+                    const payload = await response.json().catch(() => ({}));
+                    if (!response.ok || !payload.ok) {
+                        const requestError = new Error(
+                            payload.error || `Errore server (${response.status})`
+                        );
+                        requestError.status = response.status;
+                        throw requestError;
+                    }
+                    dirtyAssignments.delete(String(rowId));
+                    select.dataset.originalValue = select.value;
+                    showAlert("success", payload.message || "Assegnazione salvata.");
+                    alertBox.dataset.source = "mutation";
+                } catch (error) {
+                    console.error("Errore salvataggio assegnazione:", error);
+                    if (error.status === 409) dirtyAssignments.delete(String(rowId));
+                    showAlert("danger", error.message || "Impossibile salvare l'assegnazione.");
+                    alertBox.dataset.source = "mutation";
+                } finally {
+                    mutationInFlight = false;
+                    button.disabled = false;
+                    select.disabled = false;
+                }
+                if (!formDirty && dirtyAssignments.size === 0) {
+                    await refresh({force: true});
+                } else {
+                    statusBox.textContent = "Aggiornamento sospeso: ci sono modifiche non salvate.";
+                }
+            }
+
+            addLineButton.addEventListener("click", () => addCreateLine());
+            createLines.addEventListener("click", event => {
+                const button = event.target.closest("[data-remove-customer-line]");
+                if (!button) return;
+                const row = button.closest("tr");
+                if (createLines.rows.length === 1) {
+                    row.querySelector(".vendite-line-model").value = "";
+                    row.querySelector(".vendite-line-quantity").value = 1;
+                    row.querySelector(".vendite-line-note").value = "";
+                    row.querySelector(".vendite-line-delivery").value = "";
+                    row.querySelector("select").focus();
+                } else {
+                    row.remove();
+                    updateCreateLineLabels();
+                }
+                formDirty = true;
+            });
+            createForm.addEventListener("input", () => { formDirty = true; });
+            createForm.addEventListener("change", () => { formDirty = true; });
+            createForm.addEventListener("submit", createCustomerOrder);
+
+            customerOrdersBody.addEventListener("change", event => {
+                const select = event.target.closest("[data-assignment-row-id]");
+                if (!select) return;
+                const rowId = String(select.dataset.assignmentRowId);
+                if (select.value === select.dataset.originalValue) {
+                    dirtyAssignments.delete(rowId);
+                } else {
+                    dirtyAssignments.add(rowId);
+                }
+            });
+            customerOrdersBody.addEventListener("click", event => {
+                const button = event.target.closest("[data-save-assignment]");
+                if (button) saveAssignment(button.dataset.saveAssignment, button);
+            });
+
+            machineFilter.addEventListener("input", applyMachineFilter);
+            demandFilter.addEventListener("input", applyDemandFilter);
+            refreshButton.addEventListener("click", () => refresh());
+            document.addEventListener("visibilitychange", () => {
+                if (!document.hidden) refresh();
+            });
+
+            addCreateLine({}, {focus: false, dirty: false});
+            const pollTimer = window.setInterval(() => {
+                if (!document.hidden) refresh();
+            }, POLL_MS);
+            window.addEventListener("beforeunload", () => window.clearInterval(pollTimer), {
+                once: true,
+            });
+            refresh();
+        })();
+    </script>
+{% endblock %}
