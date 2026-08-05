@@ -23,6 +23,22 @@
         #vendite-page .vendite-summary-table thead tr:first-child th {
             border-bottom-width: 1px;
         }
+
+        #vendite-page .vendite-summary-table .vendite-count {
+            min-width: 72px;
+            font-size: 1.35rem;
+            font-weight: 700;
+        }
+
+        #vendite-page .vendite-summary-table .vendite-count-positive {
+            color: #fff;
+            background-color: #495057 !important;
+            box-shadow: inset 0 0 0 9999px #495057 !important;
+        }
+
+        #vendite-page .vendite-summary-table .vendite-count-empty {
+            color: #adb5bd;
+        }
     </style>
 {% endblock %}
 
@@ -208,6 +224,14 @@
                 return `<span class="badge ${classes[state] || "text-bg-info"}">${esc(state)}</span>`;
             }
 
+            function countCell(value) {
+                const count = Number(value || 0);
+                const positiveClass = count > 0
+                    ? "vendite-count-positive"
+                    : "vendite-count-empty";
+                return `<td class="vendite-count ${positiveClass}">${count || "-"}</td>`;
+            }
+
             function renderSummary(data) {
                 const columns = Array.isArray(data.columns) ? data.columns : [];
                 const models = Array.isArray(data.models) ? data.models : [];
@@ -253,10 +277,8 @@
                 summaryBody.innerHTML = models.map(model => `
                     <tr>
                         <td>${modelLabel(model)}</td>
-                        ${(model.counts || []).map(count => `
-                            <td class="${count ? "fw-semibold" : "text-muted"}">${count || 0}</td>
-                        `).join("")}
-                        <td class="fw-bold">${model.total || 0}</td>
+                        ${(model.counts || []).map(countCell).join("")}
+                        ${countCell(model.total)}
                     </tr>
                 `).join("");
 
@@ -267,8 +289,8 @@
                 summaryFoot.innerHTML = `
                     <tr>
                         <td>Totale produzione</td>
-                        ${columnTotals.map(total => `<td>${total}</td>`).join("")}
-                        <td>${Number(data.total_machines || 0)}</td>
+                        ${columnTotals.map(countCell).join("")}
+                        ${countCell(data.total_machines)}
                     </tr>`;
             }
 
