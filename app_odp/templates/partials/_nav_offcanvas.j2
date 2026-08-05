@@ -59,7 +59,10 @@
             {% set is_tarature = request.endpoint == 'main.tarature_home' %}
             {% set is_priorita = is_priorita_view or is_priorita_edit %}
             {% set is_storico_ordini = request.endpoint == 'main.storico_ordini_page' %}
-            {% set is_logistica = request.endpoint == 'main.logistica_page' %}
+            {% set is_logistica = request.endpoint in [
+                'main.logistica_page',
+                'main.packing_list_page'
+            ] %}
             {% set is_rifiuti = request.endpoint in [
                 'main.rifiuti_page',
                 'main.rifiuti_codici_cer'
