@@ -118,4 +118,5 @@ from app_odp.routes_modules import (
     manutenzioni,
     rifiuti,
     tarature,
+    vendite,
 )

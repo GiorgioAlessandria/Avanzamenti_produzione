@@ -20,6 +20,7 @@ def _get_post_login_redirect(user):
 
     has_acquisti = policy.can("home_acquisti")
     has_produzione = policy.can("home")
+    has_vendite = policy.can("vendite")
     has_rifiuti = (
         policy.can("rifiuti_carica")
         or policy.can("rifiuti_elimina")
@@ -60,6 +61,9 @@ def _get_post_login_redirect(user):
         token = create_operator_session(user)
         return url_for("main.tarature_home", tab_session=token)
 
+    if has_vendite:
+        return url_for("main.vendite_page")
+
     return None
 
 
@@ -96,6 +100,7 @@ def login():
         # Login normale: acquisti / amministrazione
         has_acquisti = policy.can("home_acquisti")
         has_produzione = policy.can("home")
+        has_vendite = policy.can("vendite")
         has_rifiuti = (
             policy.can("rifiuti_carica")
             or policy.can("rifiuti_elimina")
@@ -142,6 +147,10 @@ def login():
             login_user(user)
             token = create_operator_session(user)
             return redirect(url_for("main.tarature_home", tab_session=token))
+
+        if has_vendite:
+            login_user(user)
+            return redirect(url_for("main.vendite_page"))
 
         return render_template(
             "login.j2",

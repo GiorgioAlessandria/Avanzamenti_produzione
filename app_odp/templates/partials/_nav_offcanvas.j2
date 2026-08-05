@@ -46,6 +46,7 @@
             {% set is_impostazioni = request.endpoint == 'main.impostazioni' %}
             {% set is_dash_reparto = request.endpoint == 'main.dash_reparto' %}
             {% set is_home_acquisti = request.endpoint == 'main.home_acquisti' %}
+            {% set is_vendite = request.endpoint == 'main.vendite_page' %}
             {% set is_priorita_view = request.endpoint == 'main.priorita_view' %}
             {% set is_manutenzioni = (
                 request.endpoint
@@ -162,6 +163,37 @@
                             <a href="{{ operator_url_for('main.home_acquisti') }}"
                                style="color: rgb(0,0,0);font-size: 25px;">
                                 <span style="color: rgb(33, 37, 41);">Acquisti</span>
+                            </a>
+                        </div>
+                    </div>
+                {% endif %}
+            {% endif %}
+            {% if nav_policy and nav_policy.can('vendite') %}
+                {% if is_vendite %}
+                    {% if can_return_produzione %}
+                        {{ torna_produzione() }}
+                    {% endif %}
+                {% else %}
+                    <div class="row d-flex w-100 h-100 justify-content-start align-items-center ms-0 me-0 mb-0"
+                         style="width: auto;height: auto;font-size: 25px;">
+                        <div class="col-md-12 text-start d-flex justify-content-start align-items-center ps-0 pe-0"
+                             style="width: auto;height: auto;font-size: 25px;">
+                            <svg xmlns="http://www.w3.org/2000/svg"
+                                 width="1em"
+                                 height="1em"
+                                 viewBox="0 0 24 24"
+                                 fill="none"
+                                 stroke="currentColor"
+                                 stroke-width="1.7"
+                                 stroke-linecap="round"
+                                 stroke-linejoin="round"
+                                 aria-hidden="true">
+                                <path d="M3 20h18"></path>
+                                <path d="M5 17V9h4v8M10 17V5h4v12M15 17v-6h4v6"></path>
+                            </svg>
+                            <a href="{{ operator_url_for('main.vendite_page') }}"
+                               style="color: rgb(0,0,0);font-size: 25px;">
+                                <span style="color: rgb(33, 37, 41);">Vendite</span>
                             </a>
                         </div>
                     </div>
