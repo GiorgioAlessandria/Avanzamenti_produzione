@@ -254,6 +254,7 @@ def test_packing_list_is_saved_and_can_be_printed(app, monkeypatch):
             ("total_pallets", "2"),
             ("total_net_weight", "125.5"),
             ("total_gross_weight", "140.75"),
+            ("dimensions", "120 x 80 x 95 cm"),
             ("comments", "Maneggiare con cura"),
             ("delivery_nome", "Magazzino Cliente"),
             ("delivery_indirizzo", "Via Torino 10"),
@@ -284,6 +285,7 @@ def test_packing_list_is_saved_and_can_be_printed(app, monkeypatch):
         packing_id = packing.id
         assert packing.cliente.nome == "Cliente S.p.A."
         assert packing.delivery.nome == "Magazzino Cliente"
+        assert packing.dimensions == "120 x 80 x 95 cm"
         assert packing.creato_da_nome == "operatore"
         assert RigaPackingList.query.one().numero_seriale == "SN-001"
 

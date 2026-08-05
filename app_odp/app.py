@@ -134,6 +134,7 @@ def _ensure_logistica_schema() -> None:
             ("delivery_indirizzo", "VARCHAR(300)"),
             ("delivery_provincia", "VARCHAR(100)"),
             ("delivery_paese", "VARCHAR(100)"),
+            ("dimensions", "VARCHAR(500)"),
         ):
             if name not in columns:
                 additions.append(

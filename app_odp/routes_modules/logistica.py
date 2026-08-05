@@ -262,6 +262,7 @@ def _packing_list_from_form() -> PackingList:
         ),
         total_net_weight=net_weight,
         total_gross_weight=gross_weight,
+        dimensions=_optional_text("dimensions", 500, "Dimensions"),
         comments=_optional_text("comments", 2000, "Comments"),
         delivery_nome=_required_text(
             "delivery_nome",

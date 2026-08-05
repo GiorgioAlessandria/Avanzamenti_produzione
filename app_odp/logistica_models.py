@@ -124,6 +124,7 @@ class PackingList(db.Model):
     total_pallets = db.Column(db.Integer, nullable=False)
     total_net_weight = db.Column(db.Numeric(12, 3), nullable=False)
     total_gross_weight = db.Column(db.Numeric(12, 3), nullable=False)
+    dimensions = db.Column(db.String(500), nullable=True)
     comments = db.Column(db.String(2000), nullable=True)
     delivery_nome = db.Column(db.String(160), nullable=True)
     delivery_indirizzo = db.Column(db.String(300), nullable=True)
