@@ -310,24 +310,26 @@ def test_login_post_produzione_only_redirects_to_home_with_session(
     assert session_calls == [user]
 
 
-def test_login_post_vendite_only_redirects_without_operator_session(
+def test_login_post_vendite_only_redirects_with_operator_session(
     client, install_fake_user_model, mod, monkeypatch
 ):
     user = FakeUserRow(5, permissions={"vendite"})
     install_fake_user_model([user])
     login_calls = []
+    session_calls = []
     monkeypatch.setattr(mod, "login_user", lambda current_user: login_calls.append(current_user))
     monkeypatch.setattr(
         mod,
         "create_operator_session",
-        lambda current_user: pytest.fail("sessione operatore non attesa"),
+        lambda current_user: session_calls.append(current_user) or "tok-5",
     )
 
     response = client.post("/login", data={"login_code": "ABC123"})
 
     assert response.status_code == 302
-    assert response.headers["Location"].endswith("/vendite")
-    assert login_calls == [user]
+    assert response.headers["Location"].endswith("/vendite?tab_session=tok-5")
+    assert login_calls == []
+    assert session_calls == [user]
 
 
 def test_login_post_carica_uses_logistica_as_main_page(

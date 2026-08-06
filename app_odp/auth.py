@@ -62,7 +62,8 @@ def _get_post_login_redirect(user):
         return url_for("main.tarature_home", tab_session=token)
 
     if has_vendite:
-        return url_for("main.vendite_page")
+        token = create_operator_session(user)
+        return url_for("main.vendite_page", tab_session=token)
 
     return None
 
@@ -149,8 +150,8 @@ def login():
             return redirect(url_for("main.tarature_home", tab_session=token))
 
         if has_vendite:
-            login_user(user)
-            return redirect(url_for("main.vendite_page"))
+            token = create_operator_session(user)
+            return redirect(url_for("main.vendite_page", tab_session=token))
 
         return render_template(
             "login.j2",
