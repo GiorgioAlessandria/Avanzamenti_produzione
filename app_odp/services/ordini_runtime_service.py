@@ -21,6 +21,14 @@ ORDER_ACTIVE_OTHER_OPERATOR_MESSAGE = (
 )
 
 
+def _auto_assign_customer_order(ordine, phase) -> None:
+    from app_odp.services.vendite_assegnazioni_service import (
+        auto_assign_activated_machine,
+    )
+
+    auto_assign_activated_machine(ordine, phase=phase)
+
+
 def _runtime_order_key(id_documento: str, id_riga: str) -> tuple[str, str]:
     return _norm_text(id_documento), _norm_text(id_riga)
 
@@ -140,6 +148,7 @@ def _ensure_stato_attivo(
             VarianteArt=_norm_text(getattr(ordine, "VarianteArt", "")),
         )
         db.session.add(stato)
+        _auto_assign_customer_order(ordine, fase_corrente)
         return stato
 
     stato.Stato_odp = "Attivo"
@@ -166,6 +175,7 @@ def _ensure_stato_attivo(
 
     stato.VarianteArt = _norm_text(getattr(ordine, "VarianteArt", ""))
     stato.data_ultima_attivazione = now_iso
+    _auto_assign_customer_order(ordine, fase_corrente)
     return stato
 
 

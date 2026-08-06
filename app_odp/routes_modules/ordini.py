@@ -32,6 +32,7 @@ from app_odp.services.order_helpers import (
     ROME_TZ,
     _decimal_to_text,
     _component_udm,
+    _fase_to_int,
     _norm_text,
     _now_rome_dt,
     _parse_bool_flag,
@@ -2769,18 +2770,35 @@ def _chiudi_ordine_montaggio_macchina_da_payload(
         when_iso=now_iso,
     )
 
-    tempo_finale = "0"
-    if stato is not None:
-        if _norm_text(stato.Stato_odp).lower().startswith("attiv"):
-            elapsed_seconds = _accumulate_runtime_until(stato, now_dt)
-        tempo_finale = _norm_text(stato.Tempo_funzionamento) or "0"
-
     fase_corrente = _fase_corrente_for_export(ordine, stato=stato, fase_override=fase)
     phase_export_flags = _phase_export_flags(
         ordine,
         fase_corrente,
         chiusura_parziale=False,
     )
+    stock_required = False
+    if _fase_to_int(fase_corrente) == 2 and phase_export_flags["is_last_phase"]:
+        from app_odp.services.vendite_assegnazioni_service import (
+            VenditeAssegnazioniConflictError,
+            VenditeAssegnazioniError,
+            validate_closed_machine_stock,
+        )
+
+        try:
+            stock_required = validate_closed_machine_stock(ordine)
+        except VenditeAssegnazioniConflictError as exc:
+            db.session.rollback()
+            return jsonify({"ok": False, "error": str(exc)}), 409
+        except VenditeAssegnazioniError as exc:
+            db.session.rollback()
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    tempo_finale = "0"
+    if stato is not None:
+        if _norm_text(stato.Stato_odp).lower().startswith("attiv"):
+            elapsed_seconds = _accumulate_runtime_until(stato, now_dt)
+        tempo_finale = _norm_text(stato.Tempo_funzionamento) or "0"
+
     q_lavorata = q_ok + q_nok
 
     distinta_base_export = _build_export_distinta_base(
@@ -2926,6 +2944,25 @@ def _chiudi_ordine_montaggio_macchina_da_payload(
     stato_ordine_response = ordine.StatoOrdine
     qty_da_lavorare_response = _norm_text(ordine.QtyDaLavorare)
     if transition["tipo"] == "finale":
+        if stock_required:
+            from app_odp.services.vendite_assegnazioni_service import (
+                VenditeAssegnazioniConflictError,
+                VenditeAssegnazioniError,
+                register_closed_machine_stock,
+            )
+
+            try:
+                register_closed_machine_stock(
+                    ordine,
+                    closed_at=now_iso,
+                    closed_by=_current_username(),
+                )
+            except VenditeAssegnazioniConflictError as exc:
+                db.session.rollback()
+                return jsonify({"ok": False, "error": str(exc)}), 409
+            except VenditeAssegnazioniError as exc:
+                db.session.rollback()
+                return jsonify({"ok": False, "error": str(exc)}), 400
         _delete_closed_order_from_runtime_db(ordine=ordine, stato=stato)
         stato_ordine_response = "Chiusa"
         qty_da_lavorare_response = "0"

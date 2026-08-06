@@ -16,8 +16,10 @@ import tomllib
 from flask_login import current_user
 from app_odp.policy.policy import RbacPolicy
 from pathlib import Path
+from datetime import datetime
 import logging
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 from sqlalchemy import event, inspect
 from sqlalchemy.engine import Engine
 
@@ -159,6 +161,170 @@ def _ensure_logistica_schema() -> None:
                 connection.exec_driver_sql(statement)
 
 
+def _ensure_vendite_schema() -> None:
+    engine = db.engine
+    tables = set(inspect(engine).get_table_names())
+    additions = []
+    added_confirmation = False
+    added_row_available_date = False
+    order_has_available_date = False
+
+    if "vendite_ordini_cliente" in tables:
+        columns = {
+            column["name"]
+            for column in inspect(engine).get_columns("vendite_ordini_cliente")
+        }
+        if "confermato_il" not in columns:
+            additions.append(
+                "ALTER TABLE vendite_ordini_cliente ADD COLUMN confermato_il TEXT"
+            )
+            added_confirmation = True
+        if "confermato_da_nome" not in columns:
+            additions.append(
+                "ALTER TABLE vendite_ordini_cliente "
+                "ADD COLUMN confermato_da_nome VARCHAR(120)"
+            )
+        if "riferimento_interno" not in columns:
+            additions.append(
+                "ALTER TABLE vendite_ordini_cliente "
+                "ADD COLUMN riferimento_interno VARCHAR(20) "
+                "NOT NULL DEFAULT 'ITALIA'"
+            )
+        if "data_spedizione" not in columns:
+            additions.append(
+                "ALTER TABLE vendite_ordini_cliente "
+                "ADD COLUMN data_spedizione DATE"
+            )
+        order_has_available_date = "data_disponibile" in columns
+
+    if "vendite_ordini_cliente_righe" in tables:
+        columns = {
+            column["name"]
+            for column in inspect(engine).get_columns(
+                "vendite_ordini_cliente_righe"
+            )
+        }
+        if "assegnazione_automatica" not in columns:
+            additions.append(
+                "ALTER TABLE vendite_ordini_cliente_righe "
+                "ADD COLUMN assegnazione_automatica BOOLEAN NOT NULL DEFAULT 0"
+            )
+        if "note_produzione" not in columns:
+            additions.append(
+                "ALTER TABLE vendite_ordini_cliente_righe "
+                "ADD COLUMN note_produzione VARCHAR(1000)"
+            )
+        if "note_spedizione" not in columns:
+            additions.append(
+                "ALTER TABLE vendite_ordini_cliente_righe "
+                "ADD COLUMN note_spedizione VARCHAR(1000)"
+            )
+        if "data_disponibile" not in columns:
+            additions.append(
+                "ALTER TABLE vendite_ordini_cliente_righe "
+                "ADD COLUMN data_disponibile DATE"
+            )
+            added_row_available_date = True
+
+    if "vendite_spedizioni_confermate" in tables:
+        columns = {
+            column["name"]
+            for column in inspect(engine).get_columns(
+                "vendite_spedizioni_confermate"
+            )
+        }
+        if "riferimento_interno" not in columns:
+            additions.append(
+                "ALTER TABLE vendite_spedizioni_confermate "
+                "ADD COLUMN riferimento_interno VARCHAR(20) "
+                "NOT NULL DEFAULT 'ITALIA'"
+            )
+        if "data_spedizione" not in columns:
+            additions.append(
+                "ALTER TABLE vendite_spedizioni_confermate "
+                "ADD COLUMN data_spedizione DATE"
+            )
+        if "data_disponibile" not in columns:
+            additions.append(
+                "ALTER TABLE vendite_spedizioni_confermate "
+                "ADD COLUMN data_disponibile DATE"
+            )
+
+    if additions:
+        with engine.begin() as connection:
+            for statement in additions:
+                connection.exec_driver_sql(statement)
+            if added_confirmation:
+                connection.exec_driver_sql(
+                    "UPDATE vendite_ordini_cliente "
+                    "SET confermato_il = creato_il, "
+                    "confermato_da_nome = 'Migrazione iniziale'"
+                )
+            if added_row_available_date:
+                connection.exec_driver_sql(
+                    "UPDATE vendite_ordini_cliente_righe "
+                    "SET data_disponibile = "
+                    + (
+                        "COALESCE((SELECT ordine.data_disponibile "
+                        "FROM vendite_ordini_cliente AS ordine "
+                        "WHERE ordine.id = "
+                        "vendite_ordini_cliente_righe.ordine_cliente_id), "
+                        "data_consegna)"
+                        if order_has_available_date
+                        else "data_consegna"
+                    )
+                )
+            connection.exec_driver_sql(
+                "UPDATE vendite_ordini_cliente "
+                "SET data_spedizione = ("
+                "SELECT MIN(data_consegna) "
+                "FROM vendite_ordini_cliente_righe "
+                "WHERE ordine_cliente_id = vendite_ordini_cliente.id"
+                ") WHERE data_spedizione IS NULL"
+            )
+            if added_row_available_date:
+                connection.exec_driver_sql(
+                    "UPDATE vendite_ordini_cliente_righe "
+                    "SET data_consegna = COALESCE(("
+                    "SELECT ordine.data_spedizione "
+                    "FROM vendite_ordini_cliente AS ordine "
+                    "WHERE ordine.id = "
+                    "vendite_ordini_cliente_righe.ordine_cliente_id"
+                    "), data_consegna)"
+                )
+            if "vendite_spedizioni_confermate" in tables:
+                connection.exec_driver_sql(
+                    "UPDATE vendite_spedizioni_confermate "
+                    "SET data_spedizione = ("
+                    "SELECT ordine.data_spedizione "
+                    "FROM vendite_ordini_cliente_righe AS riga "
+                    "JOIN vendite_ordini_cliente AS ordine "
+                    "ON ordine.id = riga.ordine_cliente_id "
+                    "WHERE riga.id = "
+                    "vendite_spedizioni_confermate.ordine_cliente_riga_id"
+                    ") WHERE data_spedizione IS NULL"
+                )
+                if added_row_available_date:
+                    connection.exec_driver_sql(
+                        "UPDATE vendite_spedizioni_confermate "
+                        "SET data_disponibile = COALESCE(data_disponibile, data_consegna), "
+                        "data_consegna = COALESCE(data_spedizione, data_consegna)"
+                    )
+
+    if "vendite_note_imballaggio" in tables:
+        now = datetime.now(ZoneInfo("Europe/Rome")).isoformat(timespec="seconds")
+        with engine.begin() as connection:
+            for reference, note in (
+                vendite_models.VENDITE_DEFAULT_PACKAGING_NOTES.items()
+            ):
+                connection.exec_driver_sql(
+                    "INSERT OR IGNORE INTO vendite_note_imballaggio "
+                    "(riferimento_interno, note, aggiornato_il, aggiornato_da_nome) "
+                    "VALUES (?, ?, ?, ?)",
+                    (reference, note or None, now, "Configurazione iniziale"),
+                )
+
+
 def load_config(config: Path) -> dict:
     """
     Caricamento e lettura file configurazioni
@@ -207,6 +373,15 @@ def _ensure_builtin_permissions() -> None:
     builtins = {
         "vendite": (
             "Visualizzazione ordini macchina e gestione ordini cliente per le vendite"
+        ),
+        "conferma_lettura_ordine": (
+            "Conferma di lettura dei nuovi ordini cliente"
+        ),
+        "carica_ordini_cliente": (
+            "Inserimento ordini cliente e gestione delle matricole"
+        ),
+        "assegna_matricole": (
+            "Assegnazione e spostamento delle matricole sugli ordini cliente"
         ),
         "storico_ordini": "Storico ordini",
         "scorte_segnalazione_libera": ("Segnalazione scorte con testo libero"),
@@ -389,6 +564,7 @@ def create_app():
         db.create_all(bind_key="manutenzioni")
         db.create_all(bind_key="rifiuti")
         db.create_all(bind_key="logistica")
+        _ensure_vendite_schema()
         _ensure_logistica_schema()
         _ensure_manutenzioni_schema()
         _ensure_builtin_permissions()
