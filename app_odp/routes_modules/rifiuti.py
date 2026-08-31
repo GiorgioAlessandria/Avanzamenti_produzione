@@ -29,10 +29,12 @@ from app_odp.services.rifiuti_service import (
     build_carichi_smaltiti_rows,
     build_carichi_presenti_rows,
     build_rifiuti_export,
+    build_rifiuti_stock_export,
     calculate_totale_presente,
     create_carico_rifiuto,
     create_codice_cer,
     deactivate_codice_cer,
+    delete_carico_rifiuto,
     format_peso_kg,
     list_carichi_presenti,
     list_carichi_tutti,
@@ -172,6 +174,30 @@ def rifiuti_carica():
     return _redirect_rifiuti()
 
 
+@main_bp.post("/rifiuti/elimina")
+@require_active_perm("rifiuti_elimina")
+def rifiuti_elimina():
+    try:
+        delete_carico_rifiuto(
+            request.form.get("carico_id"),
+            commit=False,
+        )
+        db.session.commit()
+    except RifiutiServiceError as exc:
+        db.session.rollback()
+        flash(str(exc), "danger")
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception(
+            "Errore durante la cancellazione del carico rifiuti."
+        )
+        flash("Errore durante la cancellazione del carico.", "danger")
+    else:
+        flash("Riga cancellata correttamente.", "success")
+
+    return _redirect_rifiuti()
+
+
 @main_bp.post("/rifiuti/smaltisci")
 @require_active_perm("rifiuti_elimina")
 def rifiuti_smaltisci():
@@ -200,10 +226,10 @@ def rifiuti_smaltisci():
     return _redirect_rifiuti()
 
 
-def _send_rifiuti_export(carichi, prefix: str):
+def _send_rifiuti_export(carichi, prefix: str, builder=build_rifiuti_export):
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     return send_file(
-        build_rifiuti_export(carichi),
+        builder(carichi),
         as_attachment=True,
         download_name=f"{prefix}_{timestamp}.xlsx",
         mimetype=(
@@ -219,6 +245,7 @@ def rifiuti_export():
     return _send_rifiuti_export(
         list_carichi_presenti(),
         "rifiuti_stock",
+        build_rifiuti_stock_export,
     )
 
 

@@ -34,6 +34,11 @@ EXPORT_HEADERS = (
     "Smaltito da",
     "Note",
 )
+STOCK_EXPORT_HEADERS = (
+    "Codice CER",
+    "Descrizione CER",
+    "Peso totale kg",
+)
 
 
 class RifiutiServiceError(ValueError):
@@ -476,6 +481,30 @@ def smaltisci_carichi(
     return [by_id[carico_id] for carico_id in ids]
 
 
+def delete_carico_rifiuto(
+    carico_id: Any,
+    *,
+    commit: bool = True,
+) -> RifiutiCarico:
+    try:
+        normalized_id = int(carico_id)
+    except (TypeError, ValueError) as exc:
+        raise CaricoRifiutoNonValidoError("Carico non valido.") from exc
+
+    carico = db.session.get(RifiutiCarico, normalized_id)
+    if carico is None:
+        raise CaricoRifiutoNonValidoError("Carico non trovato.")
+    if carico.stato != "PRESENTE":
+        raise CaricoRifiutoNonValidoError(
+            "È possibile cancellare solo materiale ancora presente nello stock."
+        )
+
+    db.session.delete(carico)
+    if commit:
+        db.session.commit()
+    return carico
+
+
 def build_rifiuti_export(carichi: list[RifiutiCarico]) -> BytesIO:
     workbook = Workbook()
     sheet = workbook.active
@@ -511,6 +540,42 @@ def build_rifiuti_export(carichi: list[RifiutiCarico]) -> BytesIO:
     sheet.column_dimensions["H"].width = 20
     sheet.column_dimensions["I"].width = 24
     sheet.column_dimensions["J"].width = 40
+
+    output = BytesIO()
+    workbook.save(output)
+    output.seek(0)
+    return output
+
+
+def build_rifiuti_stock_export(carichi: list[RifiutiCarico]) -> BytesIO:
+    totals: dict[str, tuple[str, Decimal]] = {}
+    for carico in carichi:
+        codice = carico.cer.codice
+        descrizione, totale = totals.get(
+            codice,
+            (carico.cer.descrizione, Decimal("0")),
+        )
+        totals[codice] = (
+            descrizione,
+            totale + Decimal(str(carico.peso_kg)),
+        )
+
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Stock rifiuti"
+    sheet.append(STOCK_EXPORT_HEADERS)
+
+    for cell in sheet[1]:
+        cell.font = Font(bold=True)
+
+    for codice, (descrizione, totale) in sorted(totals.items()):
+        sheet.append((codice, descrizione, float(totale)))
+
+    sheet.freeze_panes = "A2"
+    sheet.auto_filter.ref = sheet.dimensions
+    sheet.column_dimensions["A"].width = 16
+    sheet.column_dimensions["B"].width = 40
+    sheet.column_dimensions["C"].width = 18
 
     output = BytesIO()
     workbook.save(output)

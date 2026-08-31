@@ -303,6 +303,18 @@
                                                 Segna come smaltito
                                             </button>
                                         </form>
+                                        <form method="post"
+                                              class="d-inline-block ms-1"
+                                              action="{{ operator_url_for('main.rifiuti_elimina') }}"
+                                              onsubmit="return confirm('Cancellare definitivamente questa riga inserita per errore?');">
+                                            <input type="hidden"
+                                                   name="carico_id"
+                                                   value="{{ carico.id }}">
+                                            <button type="submit"
+                                                    class="btn btn-sm btn-outline-secondary">
+                                                Cancella
+                                            </button>
+                                        </form>
                                     </td>
                                 {% endif %}
                             </tr>
