@@ -38,6 +38,78 @@ def _apply_sqlite_pragmas(engine: Engine) -> None:
             cursor.close()
 
 
+def _ensure_rifiuti_schema() -> None:
+    engine = db.engines["rifiuti"]
+    connection = engine.raw_connection()
+    cursor = connection.cursor()
+    try:
+        indexes = cursor.execute(
+            "PRAGMA index_list('rifiuti_cer')"
+        ).fetchall()
+        unique_columns = set()
+        for index in indexes:
+            if not index[2]:
+                continue
+            index_name = str(index[1]).replace('"', '""')
+            columns = cursor.execute(
+                f'PRAGMA index_info("{index_name}")'
+            ).fetchall()
+            unique_columns.add(tuple(column[2] for column in columns))
+
+        if ("codice",) not in unique_columns:
+            return
+
+        cursor.execute("PRAGMA foreign_keys=OFF")
+        cursor.execute("BEGIN IMMEDIATE")
+        cursor.execute("DROP TABLE IF EXISTS rifiuti_cer_migration")
+        cursor.execute(
+            """
+            CREATE TABLE rifiuti_cer_migration (
+                id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                codice TEXT NOT NULL,
+                descrizione TEXT NOT NULL,
+                attivo BOOLEAN NOT NULL DEFAULT 1,
+                creato_il TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                aggiornato_il TEXT,
+                CONSTRAINT uq_rifiuti_cer_codice_descrizione
+                    UNIQUE (codice, descrizione)
+            )
+            """
+        )
+        cursor.execute(
+            """
+            INSERT INTO rifiuti_cer_migration (
+                id, codice, descrizione, attivo, creato_il, aggiornato_il
+            )
+            SELECT id, codice, descrizione, attivo, creato_il, aggiornato_il
+            FROM rifiuti_cer
+            """
+        )
+        cursor.execute("DROP TABLE rifiuti_cer")
+        cursor.execute(
+            "ALTER TABLE rifiuti_cer_migration RENAME TO rifiuti_cer"
+        )
+        cursor.execute(
+            "CREATE INDEX ix_rifiuti_cer_codice ON rifiuti_cer (codice)"
+        )
+        cursor.execute(
+            "CREATE INDEX ix_rifiuti_cer_attivo ON rifiuti_cer (attivo)"
+        )
+        violations = cursor.execute("PRAGMA foreign_key_check").fetchall()
+        if violations:
+            raise RuntimeError(
+                "Migrazione CER interrotta: riferimenti non validi."
+            )
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+        connection.close()
+
+
 def _ensure_manutenzioni_schema() -> None:
     engine = db.engines["manutenzioni"]
     columns = {
@@ -563,6 +635,7 @@ def create_app():
         db.create_all(bind_key="acq")
         db.create_all(bind_key="manutenzioni")
         db.create_all(bind_key="rifiuti")
+        _ensure_rifiuti_schema()
         db.create_all(bind_key="logistica")
         _ensure_vendite_schema()
         _ensure_logistica_schema()

@@ -28,7 +28,6 @@ class RifiutiCer(db.Model):
     codice = db.Column(
         db.Text,
         nullable=False,
-        unique=True,
         index=True,
     )
 
@@ -60,6 +59,13 @@ class RifiutiCer(db.Model):
         "RifiutiCarico",
         back_populates="cer",
         lazy="select",
+    )
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "codice", "descrizione",
+            name="uq_rifiuti_cer_codice_descrizione",
+        ),
     )
 
     def __repr__(self) -> str:

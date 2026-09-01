@@ -308,6 +308,12 @@
               action="{{ operator_url_for('main.manutenzioni_home') }}"
               class="card shadow-sm mb-3"
               id="manutenzioni-filter-form">
+            {% if tab_session %}
+                <input type="hidden"
+                       name="tab_session"
+                       value="{{ tab_session }}">
+            {% endif %}
+
 
             <input type="hidden"
                    id="manutenzioni-view-field"

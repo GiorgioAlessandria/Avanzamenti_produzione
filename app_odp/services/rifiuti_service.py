@@ -136,7 +136,8 @@ def list_codici_cer_attivi() -> list[RifiutiCer]:
             RifiutiCer.attivo.is_(True)
         )
         .order_by(
-            RifiutiCer.codice.asc()
+            RifiutiCer.codice.asc(),
+            RifiutiCer.descrizione.asc(),
         )
         .all()
     )
@@ -195,10 +196,15 @@ def create_codice_cer(
 ) -> RifiutiCer:
     normalized_code = _normalize_cer_text(codice, "Codice CER")
     normalized_description = _normalize_cer_text(descrizione, "Descrizione")
-    existing = RifiutiCer.query.filter(RifiutiCer.codice == normalized_code).first()
+    existing = RifiutiCer.query.filter(
+        RifiutiCer.codice == normalized_code,
+        RifiutiCer.descrizione == normalized_description,
+    ).first()
 
     if existing is not None and existing.attivo:
-        raise CodiceCerNonValidoError("Il codice CER è già presente.")
+        raise CodiceCerNonValidoError(
+            "La combinazione codice CER e descrizione è già presente."
+        )
 
     if existing is None:
         existing = RifiutiCer(
@@ -208,7 +214,6 @@ def create_codice_cer(
         )
         db.session.add(existing)
     else:
-        existing.descrizione = normalized_description
         existing.attivo = True
         existing.aggiornato_il = _now_rome_iso()
 
@@ -231,12 +236,15 @@ def update_codice_cer(
         RifiutiCer.query
         .filter(
             RifiutiCer.codice == normalized_code,
+            RifiutiCer.descrizione == normalized_description,
             RifiutiCer.id != cer.id,
         )
         .first()
     )
     if duplicate is not None:
-        raise CodiceCerNonValidoError("Il codice CER è già presente.")
+        raise CodiceCerNonValidoError(
+            "La combinazione codice CER e descrizione è già presente."
+        )
 
     cer.codice = normalized_code
     cer.descrizione = normalized_description
@@ -548,16 +556,12 @@ def build_rifiuti_export(carichi: list[RifiutiCarico]) -> BytesIO:
 
 
 def build_rifiuti_stock_export(carichi: list[RifiutiCarico]) -> BytesIO:
-    totals: dict[str, tuple[str, Decimal]] = {}
+    totals: dict[tuple[str, str], Decimal] = {}
     for carico in carichi:
-        codice = carico.cer.codice
-        descrizione, totale = totals.get(
-            codice,
-            (carico.cer.descrizione, Decimal("0")),
-        )
-        totals[codice] = (
-            descrizione,
-            totale + Decimal(str(carico.peso_kg)),
+        key = (carico.cer.codice, carico.cer.descrizione)
+        totals[key] = (
+            totals.get(key, Decimal("0"))
+            + Decimal(str(carico.peso_kg))
         )
 
     workbook = Workbook()
@@ -568,7 +572,7 @@ def build_rifiuti_stock_export(carichi: list[RifiutiCarico]) -> BytesIO:
     for cell in sheet[1]:
         cell.font = Font(bold=True)
 
-    for codice, (descrizione, totale) in sorted(totals.items()):
+    for (codice, descrizione), totale in sorted(totals.items()):
         sheet.append((codice, descrizione, float(totale)))
 
     sheet.freeze_panes = "A2"
