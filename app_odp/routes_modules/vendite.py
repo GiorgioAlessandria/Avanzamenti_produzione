@@ -246,7 +246,7 @@ def api_vendite_riga_conferma_spedizione(row_id: int):
             active_user(),
             can_edit_production=can_edit_production,
         ),
-        "Spedizione confermata.",
+        "Riga evasa.",
     )
 
 
@@ -265,7 +265,7 @@ def api_vendite_ordine_cliente_conferma_spedizione(order_id: int):
             active_user(),
             can_edit_production=can_edit_production,
         ),
-        "Spedizione dell'ordine confermata.",
+        "Ordine evaso.",
     )
 
 

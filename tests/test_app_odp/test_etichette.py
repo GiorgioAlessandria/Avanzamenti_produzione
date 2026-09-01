@@ -192,18 +192,19 @@ def test_gen_etichette_builds_layout_pastes_qr_and_shows_image(mod, monkeypatch)
         descrizione="descrizione molto lunga di prova",
         lotto=456,
         qty=7,
-        label_dimensions=[50, 80],
+        label_dimensions=[80, 30],
         dpi=300,
         font_path="fake-font.ttf",
     )
 
-    w_px = mod.mm_to_px(50, 300)
-    h_px = mod.mm_to_px(80, 300)
-    x = w_px - 3
-    y = h_px - 3
-    sesti_x = int((x / 5) + 5)
-    terzo_y = int((y / 4))
-    expected_paste_position = (sesti_x * 3, terzo_y)
+    w_px = mod.mm_to_px(80, 300)
+    h_px = mod.mm_to_px(30, 300)
+    padding = max(4, mod.mm_to_px(1, 300))
+    gap = max(4, mod.mm_to_px(1.5, 300))
+    qr_size = h_px - (padding * 2)
+    text_x = padding + qr_size + gap
+    text_width = w_px - text_x - padding
+    expected_paste_position = (padding, padding)
 
     assert result is fake_canvas
     assert fake_canvas.mode == "L"
@@ -213,32 +214,30 @@ def test_gen_etichette_builds_layout_pastes_qr_and_shows_image(mod, monkeypatch)
     assert fake_canvas.pasted == [(fake_qr, expected_paste_position)]
 
     assert fake_draw.rectangles == [
-        {"coords": [(1, 1), (x, y)], "outline": 0, "width": 1}
+        {"coords": [(1, 1), (w_px - 3, h_px - 3)], "outline": 0, "width": 1}
     ]
 
     assert [call[0] for call in load_font_calls] == ["fake-font.ttf", "fake-font.ttf"]
     assert len(load_font_calls) == 2
-    assert load_font_calls[0][1] == max(20, int(h_px * 0.055))
-    assert load_font_calls[1][1] == max(15, int(h_px * 0.043))
+    assert load_font_calls[0][1] == max(20, int(h_px * 0.075))
+    assert load_font_calls[1][1] == max(18, int(h_px * 0.068))
 
     assert [call["text"] for call in fake_draw.text_calls] == [
-        "Codice del componente",
-        "Descrizione",
-        "Lotto",
-        "Quantità",
+        "Codice: 123",
+        "Descrizione:",
+        "Lotto: 456",
+        "Quantità: 7",
     ]
 
     assert [call["text"] for call in fake_draw.multiline_text_calls] == [
-        "123",
         "descrizione\nspezzata",
-        "456",
-        7,
     ]
 
     assert len(invio_calls) == 1
     assert invio_calls[0]["draw"] is fake_draw
     assert invio_calls[0]["text"] == "descrizione molto lunga di prova"
-    assert invio_calls[0]["font"] == f"font-{max(15, int(h_px * 0.043))}"
+    assert invio_calls[0]["font"] == f"font-{max(18, int(h_px * 0.068))}"
+    assert invio_calls[0]["max_width"] == text_width
 
 
 def test_load_font_returns_default_when_preferred_is_none_or_empty(mod, monkeypatch):
@@ -286,7 +285,7 @@ def test_invio_automatico_does_not_split_single_long_word(mod):
     assert result == "lunghissimaparola"
 
 
-def test_gen_etichette_calls_make_qr_with_str_lotto_and_size_250(mod, monkeypatch):
+def test_gen_etichette_sizes_qr_from_label_height(mod, monkeypatch):
     fake_canvas = FakeCanvas()
     fake_draw = FakeDraw()
     fake_qr = SimpleNamespace(name="fake-qr")
@@ -310,13 +309,15 @@ def test_gen_etichette_calls_make_qr_with_str_lotto_and_size_250(mod, monkeypatc
         descrizione="descrizione",
         lotto=456,
         qty="7",
-        label_dimensions=[50, 80],
+        label_dimensions=[80, 30],
         dpi=300,
         font_path="fake-font.ttf",
     )
 
+    h_px = mod.mm_to_px(30, 300)
+    padding = max(4, mod.mm_to_px(1, 300))
     assert result is fake_canvas
-    assert qr_calls == [("456", 250)]
+    assert qr_calls == [("456", h_px - (padding * 2))]
     assert fake_canvas.pasted and fake_canvas.pasted[0][0] is fake_qr
 
 
@@ -339,15 +340,15 @@ def test_gen_etichette_writes_expected_static_labels(mod, monkeypatch):
         descrizione="descrizione",
         lotto="LOT-01",
         qty="7",
-        label_dimensions=[50, 80],
+        label_dimensions=[80, 30],
         dpi=300,
         font_path="fake-font.ttf",
     )
 
     assert result is fake_canvas
     assert [call["text"] for call in fake_draw.text_calls] == [
-        "Codice del componente",
-        "Descrizione",
-        "Lotto",
-        "Quantità",
+        "Codice: COD-01",
+        "Descrizione:",
+        "Lotto: LOT-01",
+        "Quantità: 7",
     ]

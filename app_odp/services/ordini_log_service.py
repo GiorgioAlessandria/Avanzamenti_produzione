@@ -261,25 +261,23 @@ def _add_lotto_generato_log(
     lotto_prodotto: dict | None,
     closed_by: str,
     closed_at: str,
-    label_filename: str = "",
 ):
     if lotto_prodotto is None:
-        return
-    db.session.add(
-        LottiGeneratiLog(
-            OperationGroupId=operation_group_id,
-            IdDocumento=ordine.IdDocumento,
-            IdRiga=ordine.IdRiga,
-            RifRegistraz=ordine.RifRegistraz,
-            CodArt=lotto_prodotto["CodArt"],
-            RifLottoAlfa=lotto_prodotto["RifLottoAlfa"],
-            Quantita=lotto_prodotto["Quantita"],
-            Fase=lotto_prodotto["Fase"],
-            ClosedBy=_norm_text(closed_by),
-            ClosedAt=_norm_text(closed_at),
-            LabelFilename=_norm_text(label_filename),
-        ),
+        return None
+    row = LottiGeneratiLog(
+        OperationGroupId=operation_group_id,
+        IdDocumento=ordine.IdDocumento,
+        IdRiga=ordine.IdRiga,
+        RifRegistraz=ordine.RifRegistraz,
+        CodArt=lotto_prodotto["CodArt"],
+        RifLottoAlfa=lotto_prodotto["RifLottoAlfa"],
+        Quantita=lotto_prodotto["Quantita"],
+        Fase=lotto_prodotto["Fase"],
+        ClosedBy=_norm_text(closed_by),
+        ClosedAt=_norm_text(closed_at),
     )
+    db.session.add(row)
+    return row
 
 
 def _append_operazione_log(

@@ -87,10 +87,7 @@ from app_odp.services.priorita_service import (
     _snapshot_priorita_in_runtime,
     _restore_priorita_for_next_phase_from_runtime,
 )
-from app_odp.services.etichette_service import (
-    _genera_e_salva_etichetta_lotto,
-    generazione_lotti,
-)
+from app_odp.services.etichette_service import generazione_lotti
 from app_odp.services.common import _last_log_token
 from app_odp.services.erp_export_service import (
     _build_operation_group_id,
@@ -2211,16 +2208,6 @@ def _chiudi_ordine_da_payload(
             "Fase": fase_corrente,
         }
 
-    label_filename = None
-
-    if lotto_prodotto:
-        label_filename = _genera_e_salva_etichetta_lotto(
-            codice=ordine.CodArt,
-            descrizione=ordine.DesArt,
-            lotto=lotto_prodotto["RifLottoAlfa"],
-            quantita=lotto_prodotto["Quantita"],
-        )
-
     tempo_finale = "0"
     elapsed_seconds = 0
     removed_seconds = 0
@@ -2440,14 +2427,15 @@ def _chiudi_ordine_da_payload(
         closed_at=now_iso,
     )
 
-    _add_lotto_generato_log(
+    lotto_log = _add_lotto_generato_log(
         operation_group_id=operation_group_id,
         ordine=ordine,
         lotto_prodotto=lotto_prodotto,
         closed_by=_current_username(),
         closed_at=now_iso,
-        label_filename=label_filename or "",
     )
+    if lotto_log is not None:
+        db.session.flush()
 
     tab = _tab_from_ordine(ordine)
     stato_ordine_response = _norm_text(ordine.StatoOrdine)
@@ -2477,11 +2465,11 @@ def _chiudi_ordine_da_payload(
         db.session.commit()
     label_url = (
         url_for(
-            "main.etichetta_png",
-            filename=label_filename,
+            "main.etichetta_lotto_png",
+            log_id=lotto_log.log_id,
             tab_session=active_token(),
         )
-        if label_filename
+        if lotto_log is not None
         else None
     )
     if transition["tipo"] == "finale":

@@ -63,7 +63,7 @@ def _get_post_login_redirect(user):
 
     if has_vendite:
         token = create_operator_session(user)
-        return url_for("main.vendite_page", tab_session=token)
+        return url_for("main.vendite_assegnazioni_page", tab_session=token)
 
     return None
 
@@ -151,7 +151,9 @@ def login():
 
         if has_vendite:
             token = create_operator_session(user)
-            return redirect(url_for("main.vendite_page", tab_session=token))
+            return redirect(
+                url_for("main.vendite_assegnazioni_page", tab_session=token)
+            )
 
         return render_template(
             "login.j2",

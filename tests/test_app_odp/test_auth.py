@@ -108,6 +108,10 @@ def _register_main_routes(app):
     def vendite_page():
         return "vendite"
 
+    @main_bp.route("/vendite/assegnazioni", endpoint="vendite_assegnazioni_page")
+    def vendite_assegnazioni_page():
+        return "vendite_assegnazioni"
+
     @main_bp.route("/carichi-scarichi", endpoint="logistica_page")
     def logistica_page():
         return "logistica"
@@ -327,7 +331,9 @@ def test_login_post_vendite_only_redirects_with_operator_session(
     response = client.post("/login", data={"login_code": "ABC123"})
 
     assert response.status_code == 302
-    assert response.headers["Location"].endswith("/vendite?tab_session=tok-5")
+    assert response.headers["Location"].endswith(
+        "/vendite/assegnazioni?tab_session=tok-5"
+    )
     assert login_calls == []
     assert session_calls == [user]
 

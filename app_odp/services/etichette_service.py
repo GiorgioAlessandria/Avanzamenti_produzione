@@ -70,7 +70,7 @@ def _mm_to_printer_px(mm: float, dpi: int) -> int:
 
 
 def _get_label_print_settings() -> dict:
-    dimensioni = current_app.config.get("DIMENSIONI") or [80.0, 50.0]
+    dimensioni = current_app.config.get("DIMENSIONI") or [80.0, 30.0]
 
     return {
         "printer_name": current_app.config.get("LABEL_PRINTER_NAME") or "",
@@ -94,7 +94,7 @@ def _create_label_printer_dc(printer_name: str, width_mm: float, height_mm: floa
 
     Non forza PaperWidth/PaperLength da Python perché alcuni ambienti pywin32
     espongono win32gui.CreateDC con soli 3 argomenti.
-    Il formato 80x50 deve essere configurato nel driver Windows della CAB.
+    Il formato 80x30 deve essere configurato nel driver Windows della CAB.
     """
     printer_dc = win32ui.CreateDC()
     printer_dc.CreatePrinterDC(printer_name)
@@ -132,7 +132,7 @@ def _print_label_png_to_windows_printer(file_path: Path) -> None:
         # PIL ruota in senso antiorario.
         img = img.rotate(rotation, expand=True)
 
-    # Dimensione fisica voluta: 80x50 mm a 300 dpi.
+    # Dimensione fisica voluta: 80x30 mm a 300 dpi.
     target_w_px = _mm_to_printer_px(width_mm * scale, dpi)
     target_h_px = _mm_to_printer_px(height_mm * scale, dpi)
 
@@ -158,7 +158,7 @@ def _print_label_png_to_windows_printer(file_path: Path) -> None:
                 "Formato pagina driver non coerente con etichetta. "
                 f"Atteso circa {expected_w}x{expected_h}px, "
                 f"driver restituisce {printable_w}x{printable_h}px. "
-                "Configura nel driver Windows della cab EOS1/300 un formato 80x50 mm."
+                "Configura nel driver Windows della cab EOS1/300 un formato 80x30 mm."
             )
 
         current_app.logger.info(
@@ -195,7 +195,7 @@ def _print_label_png_to_windows_printer(file_path: Path) -> None:
         printer_dc.StartPage()
         started_page = True
 
-        # Stampa una singola immagine in una singola area 80x50.
+        # Stampa una singola immagine in una singola area 80x30.
         dib.draw(printer_dc.GetHandleOutput(), (x1, y1, x2, y2))
 
         printer_dc.EndPage()
@@ -229,17 +229,14 @@ def _safe_filename(value: str) -> str:
     return value or "etichetta"
 
 
-def _genera_e_salva_etichetta_lotto(
+def _genera_etichetta_lotto(
     *,
     codice: str,
     descrizione: str,
     lotto: str,
     quantita: str,
-) -> str:
-    """
-    Genera il PNG dell'etichetta lotto e restituisce il nome file salvato.
-    """
-    img = gen_etichette(
+) -> Image.Image:
+    return gen_etichette(
         codice=codice,
         descrizione=descrizione,
         lotto=lotto,
@@ -247,6 +244,22 @@ def _genera_e_salva_etichetta_lotto(
         label_dimensions=current_app.config["DIMENSIONI"],
         dpi=current_app.config["DPI"],
         font_path=current_app.config["FONT_PATH"],
+    )
+
+
+def _genera_e_salva_etichetta_lotto(
+    *,
+    codice: str,
+    descrizione: str,
+    lotto: str,
+    quantita: str,
+) -> str:
+    """Compatibilità con i flussi storici che richiedono ancora un file PNG."""
+    img = _genera_etichetta_lotto(
+        codice=codice,
+        descrizione=descrizione,
+        lotto=lotto,
+        quantita=quantita,
     )
 
     output_dir = Path(current_app.config["ETICHETTE_OUTPUT_DIR"])

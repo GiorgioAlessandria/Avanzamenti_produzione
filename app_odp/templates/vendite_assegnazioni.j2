@@ -170,7 +170,6 @@
           data-row-save-url-template="{{ operator_url_for('main.api_vendite_riga_salva', row_id=0) }}"
           data-shipment-url-template="{{ operator_url_for('main.api_vendite_riga_conferma_spedizione', row_id=0) }}"
           data-order-shipment-url-template="{{ operator_url_for('main.api_vendite_ordine_cliente_conferma_spedizione', order_id=0) }}"
-          data-stock-shipment-url="{{ operator_url_for('main.api_vendite_stock_spedisci') }}"
           data-confirm-url-template="{{ operator_url_for('main.api_vendite_ordine_cliente_conferma_lettura', order_id=0) }}"
           data-delete-url-template="{{ operator_url_for('main.api_vendite_ordine_cliente_delete', order_id=0) }}"
           data-order-details-url-template="{{ operator_url_for('main.api_vendite_ordine_cliente_dati', order_id=0) }}"
@@ -426,12 +425,11 @@
                                         <th>Matricola</th>
                                         <th>Ordine</th>
                                         <th>Fase / stato</th>
-                                        <th>Azioni</th>
                                     </tr>
                                     </thead>
                                     <tbody id="vendite-machines-body">
                                     <tr>
-                                        <td colspan="5"
+                                        <td colspan="4"
                                             class="text-center text-muted py-4">
                                             Caricamento...
                                         </td>
@@ -985,11 +983,11 @@
                        </button>`
                     : "";
                 let shipment = row.completed
-                    ? '<span class="badge text-bg-warning">Pronta per la spedizione</span>'
+                    ? '<span class="badge text-bg-warning">Pronta per evasione</span>'
                     : '<span class="small text-muted">In attesa di Fase 2 chiusa</span>';
                 if (row.shipment) {
                     shipment = `
-                        <span class="badge text-bg-success">Spedizione confermata</span>
+                        <span class="badge text-bg-success">Riga evasa</span>
                         <div class="small text-muted mt-1">
                             ${esc(formatDateTime(row.shipment.confirmed_at))}
                             ${row.shipment.confirmed_by_name ? ` · ${esc(row.shipment.confirmed_by_name)}` : ""}
@@ -999,7 +997,7 @@
                         <button class="btn btn-sm btn-success text-nowrap"
                                 type="button"
                                 data-confirm-shipment="${esc(row.id)}">
-                            Conferma spedizione
+                            Evadi riga
                         </button>`;
                 }
                 return `<div class="d-flex flex-column align-items-start gap-2">${save}${shipment}</div>`;
@@ -1079,16 +1077,6 @@
                         machine.phase,
                         machine.state,
                     ].join(" ").toLocaleLowerCase("it");
-                    const shipmentButton = canConfirmShipment && machine.is_stock
-                        ? `<button class="btn btn-sm btn-outline-success text-nowrap"
-                                   type="button"
-                                   data-ship-stock
-                                   data-id-documento="${esc(machine.id_documento)}"
-                                   data-id-riga="${esc(machine.id_riga)}"
-                                   data-serial-number="${esc(machine.serial_number)}">
-                               Spedisci
-                           </button>`
-                        : "";
                     return `
                         <tr data-machine-search="${esc(search)}">
                             <td class="vendite-model-cell">${modelLabel(machine)}</td>
@@ -1098,7 +1086,6 @@
                                 <div>Fase ${esc(machine.phase)}</div>
                                 ${stateBadge(machine.state)}
                             </td>
-                            <td>${shipmentButton}</td>
                         </tr>`;
                 }).join("");
                 applyMachineFilter();
@@ -1134,7 +1121,7 @@
                         ? `<button class="btn btn-sm btn-success text-nowrap"
                                    type="button"
                                    data-confirm-order-shipment="${esc(order.id)}">
-                               Conferma spedizione ordine
+                               Evadi ordine
                            </button>`
                         : "";
                     const deleteButton = canDeleteOrders
@@ -1610,7 +1597,7 @@
                 if (shipmentButton) {
                     shipmentButton.outerHTML = `
                         <div data-shipment-status>
-                            <span class="badge text-bg-success">Spedizione confermata</span>
+                            <span class="badge text-bg-success">Riga evasa</span>
                             ${updated?.shipment?.confirmed_at
                         ? `<div class="small text-muted mt-1">
                                        ${esc(formatDateTime(updated.shipment.confirmed_at))}
@@ -1632,58 +1619,8 @@
                     );
                     if (orderButton) {
                         orderButton.disabled = true;
-                        orderButton.textContent = "Spedizione ordine confermata";
+                        orderButton.textContent = "Ordine evaso";
                     }
-                }
-            }
-
-            async function confirmStockShipment(button) {
-                if (mutationInFlight) return;
-                if (hasUnsavedChanges()) {
-                    showAlert(
-                        "warning",
-                        "Salvare o annullare le modifiche in corso prima di spedire la matricola STOCK."
-                    );
-                    return;
-                }
-                const serialNumber = button.dataset.serialNumber || "";
-                if (!window.confirm(
-                    `Confermare la spedizione della matricola ${serialNumber}?`
-                )) return;
-
-                mutationInFlight = true;
-                button.disabled = true;
-                try {
-                    const response = await window.avpFetch(page.dataset.stockShipmentUrl, {
-                        method: "POST",
-                        headers: {"Content-Type": "application/json"},
-                        body: JSON.stringify({
-                            id_documento: button.dataset.idDocumento,
-                            id_riga: button.dataset.idRiga,
-                        }),
-                    });
-                    const payload = await response.json().catch(() => ({}));
-                    if (!response.ok || !payload.ok) {
-                        throw new Error(
-                            payload.error || `Errore server (${response.status})`
-                        );
-                    }
-                    render(payload.data || {});
-                    showAlert(
-                        "success",
-                        payload.message || "Spedizione della matricola STOCK confermata."
-                    );
-                    alertBox.dataset.source = "mutation";
-                } catch (error) {
-                    console.error("Errore spedizione matricola STOCK:", error);
-                    showAlert(
-                        "danger",
-                        error.message || "Impossibile confermare la spedizione della matricola STOCK."
-                    );
-                    alertBox.dataset.source = "mutation";
-                    button.disabled = false;
-                } finally {
-                    mutationInFlight = false;
                 }
             }
 
@@ -1703,7 +1640,7 @@
                     return;
                 }
                 if (!window.confirm(
-                    "Confermare la spedizione di questa macchina?"
+                    "Evadere questa riga dell'ordine?"
                 )) return;
                 const body = rowShipmentPayload(rowId);
                 if (!body) return;
@@ -1730,11 +1667,11 @@
                     dirtyDates.delete(String(rowId));
                     syncRowVersion(payload.data, rowId);
                     markRowShipmentConfirmed(rowId, payload.data);
-                    showAlert("success", payload.message || "Spedizione confermata.");
+                    showAlert("success", payload.message || "Riga evasa.");
                     alertBox.dataset.source = "mutation";
                 } catch (error) {
                     console.error("Errore conferma spedizione:", error);
-                    showAlert("danger", error.message || "Impossibile confermare la spedizione.");
+                    showAlert("danger", error.message || "Impossibile evadere la riga.");
                     alertBox.dataset.source = "mutation";
                     button.disabled = false;
                 } finally {
@@ -1770,7 +1707,7 @@
                     return;
                 }
                 if (!window.confirm(
-                    "Confermare la spedizione di tutte le macchine dell'ordine?"
+                    "Evadere tutte le righe dell'ordine?"
                 )) return;
 
                 mutationInFlight = true;
@@ -1797,17 +1734,17 @@
                         syncRowVersion(payload.data, row.id);
                         markRowShipmentConfirmed(row.id, payload.data);
                     });
-                    button.textContent = "Spedizione ordine confermata";
+                    button.textContent = "Ordine evaso";
                     showAlert(
                         "success",
-                        payload.message || "Spedizione dell'ordine confermata."
+                        payload.message || "Ordine evaso."
                     );
                     alertBox.dataset.source = "mutation";
                 } catch (error) {
                     console.error("Errore conferma spedizione ordine:", error);
                     showAlert(
                         "danger",
-                        error.message || "Impossibile confermare la spedizione dell'ordine."
+                        error.message || "Impossibile evadere l'ordine."
                     );
                     alertBox.dataset.source = "mutation";
                     button.disabled = false;
@@ -2056,10 +1993,6 @@
                 }
             });
 
-            machinesBody.addEventListener("click", event => {
-                const shipmentButton = event.target.closest("[data-ship-stock]");
-                if (shipmentButton) confirmStockShipment(shipmentButton);
-            });
             machineFilter.addEventListener("input", applyMachineFilter);
             demandFilter.addEventListener("input", applyDemandFilter);
             machinesPanelToggle.addEventListener("click", () => {

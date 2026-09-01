@@ -1719,6 +1719,16 @@
             }
         }
 
+        function logIdFromLabelUrl(labelUrl) {
+            try {
+                const match = new URL(labelUrl, window.location.origin)
+                    .pathname.match(/\/etichette\/log\/(\d+)\.png$/);
+                return match ? match[1] : "";
+            } catch (_) {
+                return "";
+            }
+        }
+
         function setLabelFeedback(element, message, type = "success") {
             if (!element) return;
 
@@ -1732,9 +1742,9 @@
             element.textContent = message;
         }
 
-        async function printLabelFilename(filename, feedbackEl = null, buttonEl = null) {
-            if (!filename) {
-                setLabelFeedback(feedbackEl, "Nome file etichetta mancante.", "warning");
+        async function printLabelFilename(filename, feedbackEl = null, buttonEl = null, logId = null) {
+            if (!filename && !logId) {
+                setLabelFeedback(feedbackEl, "Etichetta mancante.", "warning");
                 return false;
             }
 
@@ -1748,7 +1758,7 @@
                         "X-Requested-With": "XMLHttpRequest"
                     },
                     credentials: "same-origin",
-                    body: JSON.stringify({filename})
+                    body: JSON.stringify(logId ? {log_id: logId} : {filename})
                 });
 
                 const data = await resp.json();
@@ -1807,6 +1817,7 @@
             }
 
             const filename = filenameFromLabelUrl(labelUrl);
+            const logId = logIdFromLabelUrl(labelUrl);
             const separator = labelUrl.includes("?") ? "&" : "?";
             const imgUrl = labelUrl.startsWith("data:")
                 ? labelUrl
@@ -1832,7 +1843,8 @@
             imgEl.src = imgUrl;
             openLinkEl.href = labelUrl;
             printBtnEl.dataset.filename = filename;
-            printBtnEl.disabled = !filename;
+            printBtnEl.dataset.logId = logId;
+            printBtnEl.disabled = !filename && !logId;
             setLabelFeedback(feedbackEl, "");
 
             bootstrap.Modal.getOrCreateInstance(modalEl).show();
@@ -1849,7 +1861,8 @@
                 printLabelFilename(
                     this.dataset.filename || "",
                     generatedFeedbackEl,
-                    this
+                    this,
+                    this.dataset.logId || null
                 );
             });
 
@@ -1858,6 +1871,7 @@
                 if (openLinkEl) openLinkEl.href = "#";
                 if (printBtnEl) {
                     printBtnEl.dataset.filename = "";
+                    printBtnEl.dataset.logId = "";
                     printBtnEl.disabled = true;
                 }
                 setLabelFeedback(generatedFeedbackEl, "");
@@ -1902,9 +1916,10 @@
                 tbodyEl.innerHTML = items.map((row) => {
                     const labelUrl = row.label_url || row.url || row.image_url || row.png_url || "";
                     const filename = row.filename || filenameFromLabelUrl(labelUrl);
+                    const logId = row.log_id || "";
                     const fileExists = row.file_exists !== false;
                     const previewDisabled = (!fileExists || !labelUrl) ? "disabled" : "";
-                    const printDisabled = (!fileExists || !filename) ? "disabled" : "";
+                    const printDisabled = !logId ? "disabled" : "";
 
                     return `
                     <tr>
@@ -1924,6 +1939,7 @@
                         <td class="text-center">
                             <button type="button"
                                     class="btn btn-sm btn-primary js-stampa-etichetta"
+                                    data-log-id="${escapeHtmlLabel(logId)}"
                                     data-filename="${escapeHtmlLabel(filename)}"
                                     ${printDisabled}>
                                 Stampa
@@ -2042,7 +2058,8 @@
                     await printLabelFilename(
                         printBtn.dataset.filename || "",
                         feedbackEl,
-                        printBtn
+                        printBtn,
+                        printBtn.dataset.logId || null
                     );
                 }
             });

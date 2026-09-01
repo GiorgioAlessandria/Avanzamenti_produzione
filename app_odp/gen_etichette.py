@@ -77,54 +77,42 @@ def gen_etichette(
     img = Image.new("L", (w_px, h_px), 255)
     d = ImageDraw.Draw(img)
 
-    font_med = load_font(font_path, size=max(20, int(h_px * 0.055)))
-    font_small = load_font(font_path, size=max(15, int(h_px * 0.043)))
-    font_small_size = max(15, int(h_px * 0.058))
-    x = w_px - 3
-    y = h_px - 3
-    d.rectangle([(1, 1), (x, y)], outline=0, width=1)
+    font_med = load_font(font_path, size=max(20, int(h_px * 0.075)))
+    font_small = load_font(font_path, size=max(18, int(h_px * 0.068)))
+    padding = max(4, mm_to_px(1, dpi))
+    gap = max(4, mm_to_px(1.5, dpi))
+    line_step = max(24, int(h_px * 0.12))
+    qr_size = h_px - (padding * 2)
+    text_x = padding + qr_size + gap
+    text_width = max(1, w_px - text_x - padding)
 
-    margin_x = 5
-    text_margin = 5
-    margin_y = 5
-    middle_x = int((x / 2) + margin_x)
-    sesti_x = int((x / 5) + margin_x)
-    terzo_y = int((y / 4))
-    d.text((margin_x, margin_y), "Codice del componente", font=font_med, fill=0)
-    d.multiline_text(
-        (margin_x + text_margin, margin_y + font_small_size * 2),
-        codice,
-        font=font_small,
-        fill=0,
-    )
-    d.text((margin_x, terzo_y), "Descrizione", font=font_med, fill=0)
-    stringa_invio_automatico = invio_automatico(
+    d.rectangle([(1, 1), (w_px - 3, h_px - 3)], outline=0, width=1)
+
+    qr = make_qr(lotto, qr_size)
+    img.paste(qr, (padding, padding))
+
+    text_y = padding
+    d.text((text_x, text_y), f"Codice: {codice}", font=font_med, fill=0)
+    text_y += line_step
+    d.text((text_x, text_y), "Descrizione:", font=font_med, fill=0)
+    text_y += line_step
+    description_lines = invio_automatico(
         draw=d,
         text=descrizione,
         font=font_small,
-        max_width=(w_px - (terzo_y * 3) + font_small_size * 2),
-    )
+        max_width=text_width,
+    ).splitlines()
+    if len(description_lines) > 3:
+        description_lines = description_lines[:3]
+        description_lines[-1] = description_lines[-1].rstrip(".") + "..."
     d.multiline_text(
-        (margin_x + text_margin, terzo_y + font_small_size * 2),
-        stringa_invio_automatico,
+        (text_x, text_y),
+        "\n".join(description_lines),
         font=font_small,
         fill=0,
     )
-    d.text((middle_x, margin_y), "Lotto", font=font_med, fill=0)
-    d.multiline_text(
-        (middle_x + text_margin, margin_y + font_small_size * 2),
-        lotto,
-        font=font_small,
-        fill=0,
-    )
-    d.text((margin_x, terzo_y * 2), "Quantità", font=font_med, fill=0)
-    d.multiline_text(
-        (margin_x + text_margin, terzo_y * 2 + font_small_size * 2),
-        qty,
-        font=font_small,
-        fill=0,
-    )
-
-    qr = make_qr(lotto, 250)
-    img.paste(qr, (sesti_x * 3, terzo_y))
+    text_y += line_step * max(1, len(description_lines))
+    d.text((text_x, text_y), f"Lotto: {lotto}", font=font_med, fill=0)
+    text_y += line_step
+    d.text((text_x, text_y), f"Quantità: {qty}", font=font_med, fill=0)
     return img
