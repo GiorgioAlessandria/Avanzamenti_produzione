@@ -77,8 +77,10 @@ def gen_etichette(
     img = Image.new("L", (w_px, h_px), 255)
     d = ImageDraw.Draw(img)
 
-    font_med = load_font(font_path, size=max(20, int(h_px * 0.075)))
-    font_small = load_font(font_path, size=max(18, int(h_px * 0.068)))
+    font_med = load_font(font_path, size=max(22, int(h_px * 0.09)))
+    font_small = load_font(font_path, size=max(20, int(h_px * 0.08)))
+    font_lotto_size = max(36, int(h_px * 0.18))
+    font_lotto = load_font(font_path, size=font_lotto_size)
     padding = max(4, mm_to_px(1, dpi))
     gap = max(4, mm_to_px(1.5, dpi))
     line_step = max(24, int(h_px * 0.12))
@@ -102,8 +104,8 @@ def gen_etichette(
         font=font_small,
         max_width=text_width,
     ).splitlines()
-    if len(description_lines) > 3:
-        description_lines = description_lines[:3]
+    if len(description_lines) > 2:
+        description_lines = description_lines[:2]
         description_lines[-1] = description_lines[-1].rstrip(".") + "..."
     d.multiline_text(
         (text_x, text_y),
@@ -112,7 +114,7 @@ def gen_etichette(
         fill=0,
     )
     text_y += line_step * max(1, len(description_lines))
-    d.text((text_x, text_y), f"Lotto: {lotto}", font=font_med, fill=0)
-    text_y += line_step
     d.text((text_x, text_y), f"Quantità: {qty}", font=font_med, fill=0)
+    lotto_y = h_px - padding - font_lotto_size
+    d.text((text_x, lotto_y), f"LOTTO {lotto}", font=font_lotto, fill=0)
     return img

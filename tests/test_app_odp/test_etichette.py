@@ -217,17 +217,27 @@ def test_gen_etichette_builds_layout_pastes_qr_and_shows_image(mod, monkeypatch)
         {"coords": [(1, 1), (w_px - 3, h_px - 3)], "outline": 0, "width": 1}
     ]
 
-    assert [call[0] for call in load_font_calls] == ["fake-font.ttf", "fake-font.ttf"]
-    assert len(load_font_calls) == 2
-    assert load_font_calls[0][1] == max(20, int(h_px * 0.075))
-    assert load_font_calls[1][1] == max(18, int(h_px * 0.068))
+    assert [call[0] for call in load_font_calls] == [
+        "fake-font.ttf",
+        "fake-font.ttf",
+        "fake-font.ttf",
+    ]
+    assert len(load_font_calls) == 3
+    assert load_font_calls[0][1] == max(22, int(h_px * 0.09))
+    assert load_font_calls[1][1] == max(20, int(h_px * 0.08))
+    lotto_font_size = max(36, int(h_px * 0.18))
+    assert load_font_calls[2][1] == lotto_font_size
 
     assert [call["text"] for call in fake_draw.text_calls] == [
         "Codice: 123",
         "Descrizione:",
-        "Lotto: 456",
         "Quantità: 7",
+        "LOTTO 456",
     ]
+    assert fake_draw.text_calls[-1]["position"] == (
+        text_x,
+        h_px - padding - lotto_font_size,
+    )
 
     assert [call["text"] for call in fake_draw.multiline_text_calls] == [
         "descrizione\nspezzata",
@@ -236,7 +246,7 @@ def test_gen_etichette_builds_layout_pastes_qr_and_shows_image(mod, monkeypatch)
     assert len(invio_calls) == 1
     assert invio_calls[0]["draw"] is fake_draw
     assert invio_calls[0]["text"] == "descrizione molto lunga di prova"
-    assert invio_calls[0]["font"] == f"font-{max(18, int(h_px * 0.068))}"
+    assert invio_calls[0]["font"] == f"font-{max(20, int(h_px * 0.08))}"
     assert invio_calls[0]["max_width"] == text_width
 
 
@@ -349,6 +359,6 @@ def test_gen_etichette_writes_expected_static_labels(mod, monkeypatch):
     assert [call["text"] for call in fake_draw.text_calls] == [
         "Codice: COD-01",
         "Descrizione:",
-        "Lotto: LOT-01",
         "Quantità: 7",
+        "LOTTO LOT-01",
     ]
