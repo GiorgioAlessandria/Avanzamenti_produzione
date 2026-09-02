@@ -50,6 +50,7 @@
             <td>{{ singolo_odp.DataFineSched | db_date("%Y-%m-%d %H:%M:%S","%d/%m/%Y") }}</td>
             <td>{{ singolo_odp.FaseAttiva|default('') }}</td>
             <td data-col="stato">{{ singolo_odp.WorkGroupStatus }}</td>
+            <td><span class="text-muted">-</span></td>
             <td>{{ singolo_odp.OperatoreUsername|default('-') or '-' }}</td>
         </tr>
     {% elif singolo_odp.GestioneMatricola == 'si' and singolo_odp.StatoOrdine != "Pianificata" and singolo_odp.StatoOrdine != "Chiusa" %}
@@ -68,6 +69,7 @@
         {% set rev_pdf = rev|string|trim if rev is not none else "" %}
         {% set rev_pdf = "" if rev_pdf == "-" or rev_pdf|upper == "X" else rev_pdf %}
         {% set ordine_display = ordine_ref_display(singolo_odp) %}
+        {% set componenti_mancanti = singolo_odp.DistintaMancante|default([], true) %}
 
         <tr class="{{ stato_class }}"
             data-row-key="{{ singolo_odp.IdDocumento }}|{{ singolo_odp.NumProgrRiga }}"
@@ -85,6 +87,8 @@
             data-datacons="{{ singolo_odp.DataFineSched }}"
             data-fase="{{ singolo_odp.FaseAttiva }}"
             data-stato="{{ singolo_odp.StatoOrdine }}"
+            data-ha-componenti-mancanti="{{ 1 if componenti_mancanti else 0 }}"
+            data-componenti-mancanti="{{ componenti_mancanti|tojson|forceescape }}"
             data-operatore="{{ operatore }}">
             <td class="pr-cell {{ pr_class }} fw-bold text-center">{{ pr or "" }}</td>
             <td>
@@ -124,6 +128,16 @@
             <td>{{ singolo_odp.DataFineSched | db_date("%Y-%m-%d %H:%M:%S","%d/%m/%Y") }}</td>
             <td>{{ singolo_odp.FaseAttiva }}</td>
             <td data-col="stato">{{ singolo_odp.StatoOrdine }}</td>
+            <td data-col="componenti-mancanti" data-sort-value="{{ componenti_mancanti|length }}">
+                {% if componenti_mancanti %}
+                    <span class="badge bg-danger"
+                          title="{{ componenti_mancanti|map(attribute='CodArt')|join(', ') }}">
+                        {{ componenti_mancanti|length }} mancanti
+                    </span>
+                {% else %}
+                    <span class="text-muted">-</span>
+                {% endif %}
+            </td>
             <td>{{ operatore or "-" }}</td>
         </tr>
     {% endif %}

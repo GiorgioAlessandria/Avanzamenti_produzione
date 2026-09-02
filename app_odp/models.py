@@ -1469,6 +1469,29 @@ class InputOdpRuntime(db.Model):
         return f"<InputOdpRuntime {self.__dict__}>"
 
 
+class OdpDistintaMancante(db.Model):
+    __tablename__ = "odp_distinta_mancante"
+
+    IdDocumento = db.Column(db.Text, primary_key=True)
+    IdRiga = db.Column(db.Text, primary_key=True)
+    Fase = db.Column(db.Text, primary_key=True)
+    CodArt = db.Column(db.Text, primary_key=True)
+    VarianteArt = db.Column(db.Text, primary_key=True, nullable=False, default="")
+    DesArt = db.Column(db.Text)
+    Quantita = db.Column(db.Text, nullable=False)
+    GestioneLotto = db.Column(db.Text)
+    TecniciUm = db.Column(db.Text)
+    ProgressivoRiga = db.Column(db.Text)
+
+    __table_args__ = (
+        db.ForeignKeyConstraint(
+            ["IdDocumento", "IdRiga"],
+            ["input_odp.IdDocumento", "input_odp.IdRiga"],
+            ondelete="CASCADE",
+        ),
+    )
+
+
 class AcqArticoli(db.Model):
     __bind_key__ = "acq"
     __tablename__ = "acq_articoli"

@@ -504,7 +504,7 @@
 <div class="toast lh-lg hide"
      role="alert"
      id="toast-6"
-     style="width: max-content;height: max-content;position: fixed; top: 1rem; right: 1rem; z-index: 2000;opacity: 1;filter: blur(0px);">
+     style="width: max-content; max-width: 90vw; height: max-content; position: fixed; top: 1rem; right: 1rem; z-index: 2000; opacity: 1;">
     <div class="toast-header">
         <strong class="me-auto"
                 style="font-size: 25px;">{{ home_ui_texts.toast_riattiva_macchina or "Riattivazione ordine macchina" }}
@@ -517,7 +517,7 @@
     </div>
     <div class="toast-body d-flex flex-column justify-content-center align-items-center"
          role="alert"
-         style="opacity: 1;width: auto;height: auto;">
+         style="opacity: 1; width: auto; max-height: 80vh; overflow-y: auto;">
         <form method="post">
             <input type="hidden"
                    data-bind="iddocumento"
@@ -543,7 +543,31 @@
             <input type="hidden"
                    data-bind="numprogrriga"
                    id="toast-riatt-m-numprogrriga">
+            <input type="hidden"
+                   data-bind="componentiMancanti"
+                   id="toast-riatt-m-componenti-mancanti">
 
+            <div id="toast-riatt-m-mancanti-section" class="d-none mt-2 mb-3">
+                <div class="alert alert-warning mb-2" style="font-size: 18px;">
+                    L'ordine è stato sospeso con componenti mancanti. Alla riattivazione
+                    restano da montare i componenti indicati sotto.
+                </div>
+                <div class="table-responsive" style="max-height: 320px; overflow-y: auto;">
+                    <table class="table table-sm table-bordered table-striped align-middle mb-0">
+                        <thead class="table-light" style="position: sticky; top: 0; z-index: 1;">
+                        <tr>
+                            <th>Codice</th>
+                            <th>Descrizione</th>
+                            <th>Variante</th>
+                            <th class="text-end">Quantità</th>
+                            <th>UdM</th>
+                            <th class="text-center">Lotto</th>
+                        </tr>
+                        </thead>
+                        <tbody id="toast-riatt-m-mancanti-body"></tbody>
+                    </table>
+                </div>
+            </div>
             <input class="btn btn-lg btn-primary"
                    type="submit"
                    id="btn-conferma-riattivazione-m"
@@ -645,6 +669,48 @@
                 {% endif %}
             </div>
         {% endif %}
+        <div class="form-check form-switch mt-3 align-self-start" style="font-size: 20px;">
+            <input class="form-check-input" type="checkbox"
+                   id="toast-chiudi-m-escludi-componenti"
+                   aria-controls="distinta-parziale-section-m"
+                   aria-expanded="false">
+            <label class="form-check-label fw-semibold" for="toast-chiudi-m-escludi-componenti">
+                Sono presenti componenti mancanti
+            </label>
+        </div>
+        <div id="distinta-parziale-section-m" style="display: none; width: 100%;">
+            <div class="card card-body mt-2">
+                <h5 class="text-center mb-2">Componenti da escludere dall'avanzamento</h5>
+                <label class="form-label" for="toast-chiudi-m-cerca-mancanti">
+                    Cerca componente mancante
+                </label>
+                <input type="search" class="form-control mb-2"
+                       id="toast-chiudi-m-cerca-mancanti"
+                       placeholder="Cerca per codice o descrizione..."
+                       autocomplete="off">
+                <p class="text-muted mb-2" style="font-size: 18px;">
+                    Seleziona esclusivamente i componenti ancora mancanti. I componenti
+                    selezionati saranno rimossi anche dalla tabella di assegnazione lotti.
+                </p>
+                <div class="table-responsive" style="max-height: 280px; overflow-y: auto;">
+                    <table class="table table-sm table-bordered align-middle mb-1">
+                        <thead class="table-light" style="position: sticky; top: 0; z-index: 1;">
+                        <tr>
+                            <th style="width: 90px;" class="text-center">Manca</th>
+                            <th style="min-width: 140px;">Codice</th>
+                            <th style="min-width: 220px;">Descrizione</th>
+                            <th style="min-width: 90px;" class="text-end">Quantità</th>
+                            <th style="min-width: 80px;" class="text-center">Lotto</th>
+                        </tr>
+                        </thead>
+                        <tbody id="tbody-distinta-mancante-m"></tbody>
+                    </table>
+                </div>
+                <div class="alert alert-info mt-2 mb-0" style="font-size: 18px;">
+                    Togli il flag se la distinta è completa e deve avanzare alla fase successiva.
+                </div>
+            </div>
+        </div>
         <!-- Sezione Lotti (nascosta di default) -->
         <div id="lotti-section-m"
              style="display: none; width: 100%;">
@@ -1116,6 +1182,7 @@
                         </th>
                         <th data-sort="text">Fase</th>
                         <th data-sort="text">Stato</th>
+                        <th data-sort="num">Componenti mancanti</th>
                         <th data-sort="text">Operatore</th>
                     </tr>
                     </thead>
@@ -1822,17 +1889,75 @@
         }
     });
 </script>
+<script id="toast_riattivazione_mancanti">
+    (() => {
+        const toastEl = document.getElementById("toast-6");
+        const inputEl = document.getElementById("toast-riatt-m-componenti-mancanti");
+        const sectionEl = document.getElementById("toast-riatt-m-mancanti-section");
+        const tbodyEl = document.getElementById("toast-riatt-m-mancanti-body");
+        if (!toastEl || !inputEl || !sectionEl || !tbodyEl) return;
+
+        function escapeMissingHtml(value) {
+            return String(value ?? "")
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        function renderMissingComponents() {
+            let components = [];
+            try {
+                const parsed = JSON.parse(inputEl.value || "[]");
+                components = Array.isArray(parsed) ? parsed : [];
+            } catch (_) {
+                components = [];
+            }
+
+            sectionEl.classList.toggle("d-none", components.length === 0);
+            tbodyEl.innerHTML = components.map(component => `
+                <tr>
+                    <td class="fw-semibold">${escapeMissingHtml(component.CodArt)}</td>
+                    <td>${escapeMissingHtml(component.DesArt)}</td>
+                    <td>${escapeMissingHtml(component.VarianteArt)}</td>
+                    <td class="text-end">${escapeMissingHtml(component.Quantita)}</td>
+                    <td>${escapeMissingHtml(component.TecniciUm)}</td>
+                    <td class="text-center">
+                        ${String(component.GestioneLotto || "").toLowerCase() === "si" ? "Sì" : "No"}
+                    </td>
+                </tr>`).join("");
+        }
+
+        document.addEventListener("click", event => {
+            if (!event.target.closest('[data-bs-target="#toast-6"]')) return;
+            requestAnimationFrame(renderMissingComponents);
+        });
+        toastEl.addEventListener("shown.bs.toast", renderMissingComponents);
+        toastEl.addEventListener("hidden.bs.toast", () => {
+            tbodyEl.innerHTML = "";
+            sectionEl.classList.add("d-none");
+        });
+    })();
+</script>
 <!-- ============================================================ -->
 <!-- IIFE: Lotti + Chiusura MACCHINA (toast_7)                     -->
 <!-- ============================================================ -->
 <script id="toast_7">
     (() => {
         let _lottiData = [];
+        let _lottiAll = [];
+        let _distintaPendente = [];
+        let _forceShowLots = false;
         let _hasRequiredLotti = false;
         let _hasSelectableLotti = false;
         let _rowCounter = 0;
 
         const toastEl = document.getElementById("toast-7");
+        const distintaSection = document.getElementById("distinta-parziale-section-m");
+        const distintaTbody = document.getElementById("tbody-distinta-mancante-m");
+        const chkEscludiComponenti = document.getElementById("toast-chiudi-m-escludi-componenti");
+        const cercaMancanti = document.getElementById("toast-chiudi-m-cerca-mancanti");
         const section = document.getElementById("lotti-section-m");
         const loading = document.getElementById("lotti-loading-m");
         const alertEl = document.getElementById("lotti-alert-m");
@@ -1946,6 +2071,64 @@
 
         }
 
+        function keyForComponent(comp) {
+            return `${String(comp?.CodArt || "")}\u001f${String(comp?.VarianteArt || "")}`;
+        }
+
+        function selectedMissingKeys() {
+            return new Set(
+                Array.from(distintaTbody?.querySelectorAll(".distinta-mancante-m:checked") || [])
+                    .map(input => `${input.dataset.codart || ""}\u001f${input.dataset.variante || ""}`)
+            );
+        }
+
+        function selectedMissingPayload() {
+            return Array.from(
+                distintaTbody?.querySelectorAll(".distinta-mancante-m:checked") || []
+            ).map(input => ({
+                CodArt: input.dataset.codart || "",
+                VarianteArt: input.dataset.variante || ""
+            }));
+        }
+
+        function filterMissingRows() {
+            const query = String(cercaMancanti?.value || "").trim().toLowerCase();
+            distintaTbody?.querySelectorAll("tr").forEach(row => {
+                row.hidden = !!query && !String(row.dataset.search || "").includes(query);
+            });
+        }
+
+        function setMissingSectionVisible(visible) {
+            if (distintaSection) distintaSection.style.display = visible ? "" : "none";
+            chkEscludiComponenti?.setAttribute("aria-expanded", visible ? "true" : "false");
+            if (!visible) {
+                distintaTbody?.querySelectorAll(".distinta-mancante-m:checked")
+                    .forEach(input => { input.checked = false; });
+                if (cercaMancanti) cercaMancanti.value = "";
+            }
+            filterMissingRows();
+            renderLottiForSelection();
+        }
+
+        function renderDistintaPendente() {
+            if (!distintaTbody) return;
+            distintaTbody.innerHTML = _distintaPendente.map(comp => {
+                const searchText = `${comp.CodArt || ""} ${comp.DesArt || ""}`.toLowerCase();
+                return `
+                <tr data-search="${escHtml(searchText)}">
+                    <td class="text-center">
+                        <input class="form-check-input distinta-mancante-m" type="checkbox"
+                               data-codart="${escHtml(comp.CodArt || "")}"
+                               data-variante="${escHtml(comp.VarianteArt || "")}">
+                    </td>
+                    <td class="fw-semibold">${escHtml(comp.CodArt || "")}</td>
+                    <td>${escHtml(comp.DesArt || "")}</td>
+                    <td class="text-end">${escHtml(comp.Quantita ?? "")}</td>
+                    <td class="text-center">${String(comp.GestioneLotto || "").toLowerCase() === "si" ? "Sì" : "No"}</td>
+                </tr>`;
+            }).join("");
+            filterMissingRows();
+        }
 
         function buildLottoSelect(lotti, selectedLotto = "") {
             let html = '<select class="form-select form-select-sm lotto-select-m">';
@@ -2012,6 +2195,45 @@
             return tr;
         }
 
+        function renderLottiForSelection() {
+            const missing = selectedMissingKeys();
+            _lottiData = _lottiAll.filter(comp => !missing.has(keyForComponent(comp)));
+            const componentiConLotti = _lottiData.filter(
+                comp => Array.isArray(comp.lotti) && comp.lotti.length > 0
+            );
+            const componentiSenzaLotti = _lottiData.filter(
+                comp => !Array.isArray(comp.lotti) || comp.lotti.length === 0
+            );
+
+            tbody.innerHTML = "";
+            riepilogo.innerHTML = "";
+            _hasRequiredLotti = _lottiData.length > 0;
+            _hasSelectableLotti = componentiConLotti.length > 0;
+
+            if (!_hasRequiredLotti && !_forceShowLots) {
+                section.style.display = "none";
+                showAlert("");
+                return;
+            }
+
+            section.style.display = "";
+            for (const comp of componentiConLotti) {
+                addLottoRow(comp.CodArt, comp.DesArt, comp.lotti, true);
+            }
+
+            if (componentiSenzaLotti.length > 0) {
+                const elenco = componentiSenzaLotti
+                    .map(comp => `- ${comp.CodArt}${comp.DesArt ? ` (${comp.DesArt})` : ""}`)
+                    .join("\n");
+                showAlert(
+                    `Nessun lotto disponibile per i seguenti componenti montati:\n${elenco}`
+                );
+            } else {
+                showAlert("");
+            }
+            updateRiepilogo();
+        }
+
         function updateRiepilogo() {
             if (!riepilogo) return;
 
@@ -2047,7 +2269,11 @@
             tbody.innerHTML = "";
             showAlert("");
             riepilogo.innerHTML = "";
+            if (distintaTbody) distintaTbody.innerHTML = "";
             _lottiData = [];
+            _lottiAll = [];
+            _distintaPendente = [];
+            _forceShowLots = false;
             _hasRequiredLotti = false;
             _hasSelectableLotti = false;
 
@@ -2075,44 +2301,14 @@
                 }
 
                 const rawComponenti = Array.isArray(data.componenti) ? data.componenti : [];
-                const forceShow = !!data.force_show_section;
-
-                _lottiData = rawComponenti.filter(comp => componenteRichiedeLotto(comp));
-
-                const componentiConLotti = _lottiData.filter(
-                    comp => Array.isArray(comp.lotti) && comp.lotti.length > 0
-                );
-                const componentiSenzaLotti = _lottiData.filter(
-                    comp => !Array.isArray(comp.lotti) || comp.lotti.length === 0
-                );
-
-                _hasRequiredLotti = _lottiData.length > 0;
-                _hasSelectableLotti = componentiConLotti.length > 0;
-
-                if (!_hasRequiredLotti && !forceShow) {
-                    section.style.display = "none";
-                    return;
-                }
-
-                section.style.display = "";
-
-                for (const comp of componentiConLotti) {
-                    addLottoRow(comp.CodArt, comp.DesArt, comp.lotti, true);
-                }
-
-                if (componentiSenzaLotti.length > 0) {
-                    const elenco = componentiSenzaLotti
-                        .map(comp => `- ${comp.CodArt}${comp.DesArt ? ` (${comp.DesArt})` : ""}`)
-                        .join("\n");
-
-                    showAlert(
-                        `Nessun lotto disponibile per i seguenti componenti obbligatori della fase attiva:\n${elenco}`
-                    );
-                } else {
-                    showAlert("");
-                }
-
-                updateRiepilogo();
+                _lottiAll = rawComponenti.filter(comp => componenteRichiedeLotto(comp));
+                _distintaPendente = Array.isArray(data.distintaPendente)
+                    ? data.distintaPendente
+                    : [];
+                _forceShowLots = !!data.force_show_section;
+                renderDistintaPendente();
+                if (chkEscludiComponenti) chkEscludiComponenti.checked = false;
+                setMissingSectionVisible(false);
             } catch (err) {
                 console.error("Errore fetch lotti macchina:", err);
                 showAlert("Errore di comunicazione.");
@@ -2189,6 +2385,26 @@
             showAlert("");
             return {valid: true, lottiPayload};
         }
+
+        chkEscludiComponenti?.addEventListener("change", function () {
+            setMissingSectionVisible(this.checked);
+            if (this.checked) cercaMancanti?.focus();
+        });
+
+        cercaMancanti?.addEventListener("input", filterMissingRows);
+        cercaMancanti?.addEventListener("keydown", function (event) {
+            if (event.key === "Escape") {
+                this.value = "";
+                filterMissingRows();
+            }
+        });
+
+        distintaTbody?.addEventListener("change", function (event) {
+            if (event.target.classList.contains("distinta-mancante-m")) {
+                renderLottiForSelection();
+                validateLotti();
+            }
+        });
 
         tbody.addEventListener("change", function (e) {
             const sel = e.target.closest(".lotto-select-m");
@@ -2285,6 +2501,14 @@
                 return;
             }
 
+            const componentiMancanti = selectedMissingPayload();
+            if (
+                componentiMancanti.length > 0
+                && componentiMancanti.length === _distintaPendente.length
+            ) {
+                alert("Indicare almeno un componente montato prima della chiusura parziale.");
+                return;
+            }
             let lottiPayload = [];
             if (_hasRequiredLotti) {
                 if (!_hasSelectableLotti) {
@@ -2314,6 +2538,7 @@
                         fase: fase,
                         note: note,
                         lotti: lottiPayload,
+                        componenti_mancanti: componentiMancanti,
                         data_registrazione: inpDataRegistrazione?.value || "",
                         tempo_avanzamento_minuti: inpTempoAvanzamento?.value?.trim() || "",
                         num_progr_riga: numProgrRiga
@@ -2355,8 +2580,15 @@
                 tbody.innerHTML = "";
                 riepilogo.innerHTML = "";
                 _lottiData = [];
+                _lottiAll = [];
+                _distintaPendente = [];
+                _forceShowLots = false;
                 _hasRequiredLotti = false;
                 _hasSelectableLotti = false;
+                if (chkEscludiComponenti) chkEscludiComponenti.checked = false;
+                if (cercaMancanti) cercaMancanti.value = "";
+                if (distintaSection) distintaSection.style.display = "none";
+                if (distintaTbody) distintaTbody.innerHTML = "";
             } catch (err) {
                 console.error("Errore fetch chiusura macchina:", err);
                 alert("Errore di comunicazione con il server.");

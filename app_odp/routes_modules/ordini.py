@@ -24,6 +24,13 @@ from app_odp.services.ordini_log_service import (
 )
 from app_odp.routes_blueprint import main_bp
 from app_odp.services.ordini_lotti_service import _componenti_lotto_per_ordine
+from app_odp.services.ordini_distinta_mancante_service import (
+    component_key,
+    distinta_pendente_per_ordine,
+    filter_export_distinta,
+    partition_distinta_step,
+    save_missing_components,
+)
 from app_odp.services.ordini_service import (
     _fase_corrente_for_export,
     _advance_or_finalize_phase,
@@ -2538,6 +2545,7 @@ def _chiudi_ordine_montaggio_macchina_da_payload(
     fase = _norm_text(data.get("fase"))
     note = _norm_text(data.get("note"))
     lotti_input = data.get("lotti") or []
+    missing_payload = data.get("componenti_mancanti") or []
 
     if not id_documento or not id_riga:
         return (
@@ -2588,6 +2596,20 @@ def _chiudi_ordine_montaggio_macchina_da_payload(
         )
 
     fase_corrente = _fase_corrente_for_export(ordine, fase_override=fase)
+    pending_components = distinta_pendente_per_ordine(ordine, fase_corrente)
+    try:
+        mounted_components, missing_components = partition_distinta_step(
+            pending_components,
+            missing_payload,
+        )
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+    if not mounted_components:
+        return jsonify({"ok": False, "error": "La distinta residua è vuota."}), 400
+
+    mounted_keys = {component_key(row) for row in mounted_components}
+    chiusura_parziale = bool(missing_components)
     blocking_outbox = _get_blocking_outbox_for_phase(
         id_documento=ordine.IdDocumento,
         id_riga=ordine.IdRiga,
@@ -2634,6 +2656,10 @@ def _chiudi_ordine_montaggio_macchina_da_payload(
         include_senza_lotti=True,
         ignore_parent_gestione_lotto=True,
     )
+    componenti_richiesti_lotto = [
+        comp for comp in componenti_richiesti_lotto
+        if component_key(comp) in mounted_keys
+    ]
     componenti_lotto_by_cod = {
         _norm_text(comp.get("CodArt")): comp
         for comp in componenti_richiesti_lotto
@@ -2724,10 +2750,9 @@ def _chiudi_ordine_montaggio_macchina_da_payload(
 
     q_ok = q_tot
     q_nok = Decimal("0")
-    qty_residua = Decimal("0")
-    qty_residua_text = "0"
+    qty_residua = q_tot if chiusura_parziale else Decimal("0")
+    qty_residua_text = _decimal_to_text(qty_residua)
     qty_lavorata_text = _decimal_to_text(q_tot)
-    chiusura_parziale = False
 
     now_iso = now_dt.isoformat(timespec="seconds")
 
@@ -2745,7 +2770,11 @@ def _chiudi_ordine_montaggio_macchina_da_payload(
 
     registration_iso = registration_dt.isoformat(timespec="seconds")
     lotto_prodotto = None
-    action_name = "chiusura_macchina"
+    action_name = (
+        "chiusura_parziale_macchina"
+        if chiusura_parziale
+        else "chiusura_macchina"
+    )
     elapsed_seconds = 0
     minuti_non_funzionamento = 0
     removed_seconds = 0
@@ -2754,7 +2783,7 @@ def _chiudi_ordine_montaggio_macchina_da_payload(
     qty_pre = _qty_da_lavorare_text(ordine, stato=stato)
     operation_group_id = _build_operation_group_id(
         ordine=ordine,
-        action="chiusura_macchina",
+        action=action_name,
         when_iso=now_iso,
     )
 
@@ -2762,7 +2791,7 @@ def _chiudi_ordine_montaggio_macchina_da_payload(
     phase_export_flags = _phase_export_flags(
         ordine,
         fase_corrente,
-        chiusura_parziale=False,
+        chiusura_parziale=chiusura_parziale,
     )
     stock_required = False
     if _fase_to_int(fase_corrente) == 2 and phase_export_flags["is_last_phase"]:
@@ -2795,6 +2824,10 @@ def _chiudi_ordine_montaggio_macchina_da_payload(
         q_lavorata=q_lavorata,
         q_tot=q_ordine_totale,
     )
+    distinta_base_export = filter_export_distinta(
+        distinta_base_export,
+        mounted_components,
+    )
     payload = _build_phase_payload(
         ordine=ordine,
         distinta_base=distinta_base_export,
@@ -2806,6 +2839,7 @@ def _chiudi_ordine_montaggio_macchina_da_payload(
         lotto_prodotto=None,
         note=note,
         now_iso=registration_iso,
+        chiusura_parziale=chiusura_parziale,
         registrazione_data=registration_date_text,
         tipo_documento=ordine.CodTipoDoc,
         risorsa=ordine.RisorsaAttiva,
@@ -2822,6 +2856,7 @@ def _chiudi_ordine_montaggio_macchina_da_payload(
         payload=payload,
     )
 
+    save_missing_components(ordine, fase_corrente, missing_components)
     db.session.flush()
 
     transition = _advance_or_finalize_phase(
@@ -2851,8 +2886,11 @@ def _chiudi_ordine_montaggio_macchina_da_payload(
 
     note_chiusura_log = note
     if chiusura_parziale:
+        codici_mancanti = ", ".join(
+            component_key(row)[0] for row in missing_components
+        )
         note_chiusura_log = (
-            f"[PARZIALE] residuo={qty_residua_text}; {note}".strip().rstrip(";")
+            f"[PARZIALE DISTINTA] mancanti={codici_mancanti}; {note}".strip().rstrip(";")
         )
     _append_operazione_log(
         topic="fase_consuntivata_montaggio_macchina",
@@ -2875,6 +2913,8 @@ def _chiudi_ordine_montaggio_macchina_da_payload(
         fase=fase_corrente,
         extra_payload={
             "matricola": matricola,
+            "componenti_montati": len(mounted_components),
+            "componenti_mancanti": len(missing_components),
             "lotti_count": len(lotti_input),
             "outbox_id": outbox.outbox_id if outbox else None,
             "export_status": outbox.status if outbox else None,
@@ -2931,7 +2971,14 @@ def _chiudi_ordine_montaggio_macchina_da_payload(
     tab = _tab_from_ordine(ordine)
     stato_ordine_response = ordine.StatoOrdine
     qty_da_lavorare_response = _norm_text(ordine.QtyDaLavorare)
-    if transition["tipo"] == "finale":
+    if chiusura_parziale:
+        stato_ordine_response = "In Sospeso"
+        qty_da_lavorare_response = qty_residua_text
+        message = (
+            f"Avanzati {len(mounted_components)} componenti. "
+            f"Restano {len(missing_components)} componenti mancanti; ordine macchina sospeso."
+        )
+    elif transition["tipo"] == "finale":
         if stock_required:
             from app_odp.services.vendite_assegnazioni_service import (
                 VenditeAssegnazioniConflictError,
@@ -3028,6 +3075,10 @@ def api_lotti_componenti():
     policy = active_policy()
     ordine = _get_visible_odp_by_key(policy, id_documento, id_riga)
 
+    fase_corrente = _fase_corrente_for_export(ordine)
+    distinta_pendente = distinta_pendente_per_ordine(ordine, fase_corrente)
+    pending_keys = {component_key(row) for row in distinta_pendente}
+
     ordine_gestione_lotto = (
         _norm_text(getattr(ordine, "GestioneLotto", "")).lower() == "si"
     )
@@ -3040,6 +3091,10 @@ def api_lotti_componenti():
         include_senza_lotti=True,
         ignore_parent_gestione_lotto=ordine_gestione_matricola or is_macchina,
     )
+    componenti_lotto = [
+        comp for comp in componenti_lotto
+        if component_key(comp) in pending_keys
+    ]
     ha_componenti_distinta_lotto = bool(componenti_lotto)
     force_show_section = ordine_gestione_lotto or (
         ordine_gestione_matricola and ha_componenti_distinta_lotto
@@ -3054,6 +3109,7 @@ def api_lotti_componenti():
                 "force_show_section": False,
                 "haComponentiLotto": False,
                 "componenti": [],
+                "distintaPendente": distinta_pendente,
             }
         )
 
@@ -3070,5 +3126,6 @@ def api_lotti_componenti():
             "force_show_section": force_show_section,
             "haComponentiLotto": ha_componenti_lotto,
             "componenti": componenti_lotto,
+            "distintaPendente": distinta_pendente,
         }
     )

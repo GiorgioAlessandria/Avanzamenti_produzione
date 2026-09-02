@@ -2,7 +2,12 @@ import re
 import unicodedata
 from sqlalchemy import func, or_
 from sqlalchemy.orm import selectinload
-from app_odp.models import HomeRepartoConfig, InputOdp, HomeVisibilityRule
+from app_odp.models import (
+    HomeRepartoConfig,
+    HomeVisibilityRule,
+    InputOdp,
+    OdpDistintaMancante,
+)
 from app_odp.policy.policy import RbacPolicy
 from app_odp.services.order_helpers import _extract_codes_from_cell, _norm_text
 from app_odp.services.ordini_query_service import _base_odp_query
@@ -434,6 +439,40 @@ def _query_for_home_config(policy: RbacPolicy, config: HomeRepartoConfig):
     )
 
 
+def _attach_missing_components_to_orders(orders: list[InputOdp]) -> None:
+    missing_by_order = {}
+    for row in OdpDistintaMancante.query.order_by(
+        OdpDistintaMancante.IdDocumento,
+        OdpDistintaMancante.IdRiga,
+        OdpDistintaMancante.Fase,
+        OdpDistintaMancante.ProgressivoRiga,
+        OdpDistintaMancante.CodArt,
+    ).all():
+        key = (
+            _norm_text(row.IdDocumento),
+            _norm_text(row.IdRiga),
+            _norm_text(row.Fase),
+        )
+        missing_by_order.setdefault(key, []).append(
+            {
+                "CodArt": _norm_text(row.CodArt),
+                "VarianteArt": _norm_text(row.VarianteArt),
+                "DesArt": _norm_text(row.DesArt),
+                "Quantita": _norm_text(row.Quantita),
+                "GestioneLotto": _norm_text(row.GestioneLotto),
+                "TecniciUm": _norm_text(row.TecniciUm),
+            }
+        )
+
+    for ordine in orders:
+        key = (
+            _norm_text(getattr(ordine, "IdDocumento", "")),
+            _norm_text(getattr(ordine, "IdRiga", "")),
+            _norm_text(getattr(ordine, "FaseAttiva", "")),
+        )
+        ordine.DistintaMancante = missing_by_order.get(key, [])
+
+
 def _home_rows_for_config(
     policy: RbacPolicy,
     config: HomeRepartoConfig,
@@ -446,6 +485,9 @@ def _home_rows_for_config(
     )
 
     odp = list(_query_for_home_config(policy, config).all())
+    if _norm_text(getattr(config, "renderer", "")) == "montaggio":
+        _attach_missing_components_to_orders(odp)
+
 
     if apply_priorita:
         odp = _apply_priorita_to_ordini(
