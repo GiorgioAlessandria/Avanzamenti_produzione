@@ -628,8 +628,8 @@
                 <label for="toast-chiudi-m-note"
                        style="font-size: 20px;">Note:<br>
                     <textarea id="toast-chiudi-m-note"
-                              rows="2"
-                              cols="100"></textarea>
+                              class="form-control"
+                              rows="2"></textarea>
                 </label>
             </div>
         </div>
@@ -767,6 +767,42 @@
     </div>
 </div>
 <style>
+    #toast-7.has-missing-components {
+        width: min(1750px, calc(100vw - 2rem)) !important;
+    }
+
+    #toast-7.has-missing-components .toast-body {
+        display: grid !important;
+        grid-template-columns: minmax(620px, 1fr) minmax(780px, max-content);
+        gap: 1rem;
+        align-items: start !important;
+    }
+
+    #toast-7.has-missing-components .toast-body > :not(#distinta-parziale-section-m) {
+        grid-column: 2;
+        min-width: 0;
+    }
+
+    #toast-7.has-missing-components #distinta-parziale-section-m {
+        grid-column: 1;
+        grid-row: 1 / span 20;
+        margin-top: 0;
+    }
+
+    #toast-7.has-missing-components #distinta-parziale-section-m .table-responsive {
+        max-height: 50vh !important;
+    }
+
+    @media (max-width: 1499.98px) {
+        #toast-7.has-missing-components {
+            width: calc(100vw - 2rem) !important;
+        }
+
+        #toast-7.has-missing-components .toast-body {
+            display: flex !important;
+        }
+    }
+
     .home-montaggio-fill {
         height: calc(100vh - 130px);
         min-height: 0;
@@ -2100,6 +2136,7 @@
 
         function setMissingSectionVisible(visible) {
             if (distintaSection) distintaSection.style.display = visible ? "" : "none";
+            toastEl?.classList.toggle("has-missing-components", visible);
             chkEscludiComponenti?.setAttribute("aria-expanded", visible ? "true" : "false");
             if (!visible) {
                 distintaTbody?.querySelectorAll(".distinta-mancante-m:checked")
@@ -2112,7 +2149,12 @@
 
         function renderDistintaPendente() {
             if (!distintaTbody) return;
-            distintaTbody.innerHTML = _distintaPendente.map(comp => {
+            const componentiOrdinati = [..._distintaPendente].sort((a, b) =>
+                String(a.DesArt || "").localeCompare(
+                    String(b.DesArt || ""), "it", {sensitivity: "base", numeric: true}
+                )
+            );
+            distintaTbody.innerHTML = componentiOrdinati.map(comp => {
                 const searchText = `${comp.CodArt || ""} ${comp.DesArt || ""}`.toLowerCase();
                 return `
                 <tr data-search="${escHtml(searchText)}">
@@ -2587,6 +2629,7 @@
                 _hasSelectableLotti = false;
                 if (chkEscludiComponenti) chkEscludiComponenti.checked = false;
                 if (cercaMancanti) cercaMancanti.value = "";
+                toastEl?.classList.remove("has-missing-components");
                 if (distintaSection) distintaSection.style.display = "none";
                 if (distintaTbody) distintaTbody.innerHTML = "";
             } catch (err) {
