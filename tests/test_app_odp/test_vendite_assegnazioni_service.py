@@ -580,38 +580,28 @@ def test_duplicate_customer_and_order_number_is_rejected(app):
         assert VenditeOrdineCliente.query.count() == 1
 
 
-def test_creation_auto_assigns_available_machine_and_exposes_marker(app):
+def test_creation_leaves_available_machine_unassigned(app):
     with app.app_context():
-        machine = _add_machine()
+        _add_machine()
         customer_order = create_customer_order(
             _payload(model_key=_model_key()),
             ACTOR,
         )
         customer_row = customer_order.righe[0]
-
         dashboard = build_assignment_dashboard()
 
-        assert customer_row.odp_matricola == "MAT-001"
-        assert customer_row.assegnazione_automatica is True
+        assert customer_row.odp_id_documento is None
+        assert customer_row.odp_id_riga is None
+        assert customer_row.odp_matricola is None
+        assert customer_row.assegnazione_automatica is False
         assert dashboard["summary"] == {
-            "open_machines": 0,
+            "open_machines": 1,
             "total_demand": 1,
-            "assigned_demand": 1,
-            "unassigned_demand": 0,
+            "assigned_demand": 0,
+            "unassigned_demand": 1,
         }
-        assert dashboard["machines"] == []
-        assert dashboard["customer_orders"][0]["rows"][0]["assignment"][
-            "present"
-        ] is True
-        assert dashboard["customer_orders"][0]["rows"][0]["assignment"][
-            "open"
-        ] is True
-        assert dashboard["customer_orders"][0]["rows"][0]["assignment"][
-            "automatic"
-        ] is True
-        assert dashboard["customer_orders"][0]["rows"][0]["version"] == (
-            customer_row.versione
-        )
+        assert dashboard["machines"][0]["serial_number"] == "MAT-001"
+        assert dashboard["customer_orders"][0]["rows"][0]["assignment"] is None
 
 
 def test_manual_machine_change_removes_automatic_marker(app):

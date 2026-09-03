@@ -1,8 +1,12 @@
 from collections import defaultdict
 
-from sqlalchemy import func, tuple_
+from sqlalchemy import func, or_, tuple_
 
 from app_odp.models import InputOdp, InputOdpLog
+from app_odp.vendite_models import (
+    VenditeOrdineCliente,
+    VenditeOrdineClienteRiga,
+)
 from app_odp.services.order_helpers import (
     _fase_to_int,
     _norm_text,
@@ -128,13 +132,70 @@ def load_machine_orders(*, include_closed: bool = False) -> list:
     return [order for order in orders if is_open_machine_order(order)]
 
 
+def _customer_assignments(orders) -> dict[tuple, dict[str, str]]:
+    order_keys = {
+        (
+            _norm_text(getattr(order, "IdDocumento", "")),
+            _norm_text(getattr(order, "IdRiga", "")),
+        )
+        for order in orders
+        if _norm_text(getattr(order, "IdDocumento", ""))
+        and _norm_text(getattr(order, "IdRiga", ""))
+    }
+    serial_numbers = {
+        _norm_text(getattr(order, "CodMatricola", ""))
+        for order in orders
+        if _norm_text(getattr(order, "CodMatricola", ""))
+    }
+    conditions = []
+    if order_keys:
+        conditions.append(
+            tuple_(
+                VenditeOrdineClienteRiga.odp_id_documento,
+                VenditeOrdineClienteRiga.odp_id_riga,
+            ).in_(order_keys)
+        )
+    if serial_numbers:
+        conditions.append(
+            VenditeOrdineClienteRiga.odp_matricola.in_(serial_numbers)
+        )
+    if not conditions:
+        return {}
+
+    rows = (
+        VenditeOrdineClienteRiga.query.join(VenditeOrdineCliente)
+        .with_entities(
+            VenditeOrdineClienteRiga.odp_id_documento,
+            VenditeOrdineClienteRiga.odp_id_riga,
+            VenditeOrdineClienteRiga.odp_matricola,
+            VenditeOrdineCliente.numero_ordine.label("customer_order"),
+            VenditeOrdineClienteRiga.note_produzione.label("production_note"),
+        )
+        .filter(or_(*conditions))
+        .all()
+    )
+    assignments = {}
+    for row in rows:
+        data = {
+            "customer_order": row.customer_order or "",
+            "production_note": row.production_note or "",
+        }
+        if row.odp_id_documento and row.odp_id_riga:
+            assignments[("order", row.odp_id_documento, row.odp_id_riga)] = data
+        if row.odp_matricola:
+            assignments[("serial", row.odp_matricola.casefold())] = data
+    return assignments
+
+
 def _build_vendite_payload(
     orders,
     latest_causes=None,
     *,
+    customer_assignments=None,
     generated_at: str | None = None,
 ) -> dict:
     latest_causes = latest_causes or {}
+    customer_assignments = customer_assignments or {}
     machine_rows = []
     model_groups = {}
     phases = set()
@@ -152,6 +213,12 @@ def _build_vendite_payload(
         order_key = (
             _norm_text(getattr(order, "IdDocumento", "")),
             _norm_text(getattr(order, "IdRiga", "")),
+        )
+        serial_number = _norm_text(getattr(order, "CodMatricola", ""))
+        customer_assignment = customer_assignments.get(
+            ("order", *order_key)
+        ) or customer_assignments.get(
+            ("serial", serial_number.casefold())
         )
         model_key = (model_code.casefold(), variant.casefold())
         combination = (phase, state)
@@ -174,16 +241,21 @@ def _build_vendite_payload(
         machine_rows.append(
             {
                 "order": _ordine_ref_label(order),
+                "customer_order": (
+                    customer_assignment["customer_order"]
+                    if customer_assignment else ""
+                ),
                 "model_code": model_code,
                 "variant": variant,
                 "description": description,
-                "serial_number": (
-                    _norm_text(getattr(order, "CodMatricola", ""))
-                    or "Non assegnata"
-                ),
+                "serial_number": serial_number or "Non assegnata",
                 "phase": phase,
                 "state": state,
                 "last_suspension_cause": latest_causes.get(order_key, ""),
+                "production_note": (
+                    customer_assignment["production_note"]
+                    if customer_assignment else ""
+                ),
             }
         )
 
@@ -242,4 +314,5 @@ def build_vendite_payload() -> dict:
     return _build_vendite_payload(
         orders,
         _latest_suspension_causes(order_keys),
+        customer_assignments=_customer_assignments(orders),
     )

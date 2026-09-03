@@ -52,6 +52,12 @@ def test_build_vendite_payload_groups_by_model_phase_and_state():
             ("DOC", "1"): "Manca componente",
             ("DOC", "2"): "Attesa materiale",
         },
+        customer_assignments={
+            ("order", "DOC", "1"): {
+                "customer_order": "OC-123",
+                "production_note": "Configurazione speciale",
+            },
+        },
         generated_at="2026-08-05T12:00:00+02:00",
     )
 
@@ -81,6 +87,9 @@ def test_build_vendite_payload_groups_by_model_phase_and_state():
         },
     ]
     assert payload["machines"][0]["last_suspension_cause"] == "Manca componente"
+    assert payload["machines"][0]["customer_order"] == "OC-123"
+    assert payload["machines"][0]["production_note"] == "Configurazione speciale"
+    assert payload["machines"][1]["customer_order"] == ""
     assert payload["machines"][1]["state"] == "In Sospeso"
     assert payload["machines"][1]["last_suspension_cause"] == "Attesa materiale"
 

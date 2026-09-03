@@ -186,10 +186,6 @@
                 <h1 class="h4 mb-1">Assegnazione ordini cliente</h1>
             </div>
             <div class="d-flex flex-wrap gap-2">
-                <a class="btn btn-outline-primary btn-sm"
-                   href="{{ operator_url_for('main.vendite_page') }}">
-                    Situazione produzione
-                </a>
                 <button class="btn btn-outline-secondary btn-sm"
                         type="button"
                         id="vendite-assignments-refresh">
@@ -206,34 +202,48 @@
             role="tablist">
             <li class="nav-item"
                 role="presentation">
-                <button class="nav-link active"
+                <button class="nav-link{{ ' active' if request.args.get('vista', 'ordini') == 'ordini' else '' }}"
                         id="vendite-orders-tab-button"
                         data-bs-toggle="tab"
                         data-bs-target="#vendite-orders-tab"
                         type="button"
                         role="tab"
                         aria-controls="vendite-orders-tab"
-                        aria-selected="true">
+                        aria-selected="{{ 'true' if request.args.get('vista', 'ordini') == 'ordini' else 'false' }}">
                     Ordini cliente
                 </button>
             </li>
             <li class="nav-item"
                 role="presentation">
-                <button class="nav-link"
+                <button class="nav-link{{ ' active' if request.args.get('vista') == 'imballaggio' else '' }}"
                         id="vendite-packaging-tab-button"
                         data-bs-toggle="tab"
                         data-bs-target="#vendite-packaging-tab"
                         type="button"
                         role="tab"
                         aria-controls="vendite-packaging-tab"
-                        aria-selected="false">
+                        aria-selected="{{ 'true' if request.args.get('vista') == 'imballaggio' else 'false' }}">
                     Note di imballaggio
                 </button>
+            </li>
+            <li class="nav-item"
+                role="presentation">
+                <a class="nav-link"
+                   href="{{ operator_url_for('main.vendite_page', vista='modello') }}">
+                    Situazione produzione per modello
+                </a>
+            </li>
+            <li class="nav-item"
+                role="presentation">
+                <a class="nav-link"
+                   href="{{ operator_url_for('main.vendite_page', vista='matricola') }}">
+                    Situazione produzione per matricola
+                </a>
             </li>
         </ul>
 
         <div class="tab-content">
-            <div class="tab-pane fade show active"
+            <div class="tab-pane fade{{ ' show active' if request.args.get('vista', 'ordini') == 'ordini' else '' }}"
                  id="vendite-orders-tab"
                  role="tabpanel"
                  aria-labelledby="vendite-orders-tab-button">
@@ -475,7 +485,6 @@
                                     <tr>
                                         <th>#</th>
                                         <th>Modello</th>
-                                        <th>Disponibile</th>
                                         <th>Consegna</th>
                                         <th>Note di vendita</th>
                                         <th>Matricola assegnata</th>
@@ -486,7 +495,7 @@
                                     </thead>
                                     <tbody id="vendite-customer-orders-body">
                                     <tr>
-                                        <td colspan="9"
+                                        <td colspan="8"
                                             class="text-center text-muted py-4">
                                             Caricamento...
                                         </td>
@@ -499,7 +508,7 @@
                 </div>
             </div>
 
-            <div class="tab-pane fade"
+            <div class="tab-pane fade{{ ' show active' if request.args.get('vista') == 'imballaggio' else '' }}"
                  id="vendite-packaging-tab"
                  role="tabpanel"
                  aria-labelledby="vendite-packaging-tab-button">
@@ -1095,7 +1104,7 @@
                 if (!customerOrders.length) {
                     customerOrdersBody.innerHTML = `
                         <tr>
-                            <td colspan="9" class="text-center text-muted py-4">
+                            <td colspan="8" class="text-center text-muted py-4">
                                 Nessun ordine cliente inserito.
                             </td>
                         </tr>`;
@@ -1145,7 +1154,7 @@
                             data-demand-search="${esc(orderSearch)}"
                             data-customer-order-id="${esc(order.id)}"
                             data-reference-class="${neutralClass}">
-                            <td colspan="9">
+                            <td colspan="8">
                                 <div class="d-flex flex-wrap justify-content-between gap-2">
                                     <div class="d-flex flex-wrap align-items-center gap-2">
                                         <button class="btn btn-sm btn-outline-secondary"
@@ -1185,7 +1194,6 @@
                             row.sales_note,
                             row.production_note,
                             row.shipping_note,
-                            row.available_date,
                             row.delivery_date,
                             row.assignment?.order,
                             row.assignment?.serial_number,
@@ -1205,7 +1213,6 @@
                                 data-version="${esc(row.version)}">
                                 <td class="fw-semibold">${esc(row.position)}</td>
                                 <td class="vendite-model-cell">${modelLabel(row)}</td>
-                                <td>${dateInput(row, "available_date", "Data disponibile", canEditProductionNotes)}</td>
                                 <td>${dateInput(row, "delivery_date", "Data di consegna", canEditSalesNotes)}</td>
                                 <td class="vendite-note-cell">
                                     ${noteTextarea(row, "sales_note", "Note di vendita", canEditSalesNotes)}
@@ -1448,9 +1455,6 @@
                 if (canEditSalesNotes) {
                     payload.delivery_date = dateValue("delivery_date");
                 }
-                if (canEditProductionNotes) {
-                    payload.available_date = dateValue("available_date");
-                }
                 const select = row.querySelector("[data-assignment-row-id]");
                 if (canAssignMachines && select) {
                     const selected = select.selectedOptions[0];
@@ -1575,9 +1579,6 @@
                 )?.value || "";
                 body.id = Number(rowId);
                 body.delivery_date = dateValue("delivery_date");
-                if (canEditProductionNotes) {
-                    body.available_date = dateValue("available_date");
-                }
                 return body;
             }
 

@@ -618,36 +618,6 @@ def create_customer_order(payload, user, *, commit: bool = False):
     shipping_date = min(item[2] for item in expanded_rows)
     packaging_note = _packaging_notes_by_reference()[internal_reference]
 
-    automatic_machines_by_model = {}
-    for machine in open_machines:
-        machine_key = _machine_key(machine)
-        serial_key = _normalized_key(_machine_serial(machine))
-        if (
-            machine_key in already_assigned_keys
-            or machine_key in selected_machine_keys
-            or serial_key in already_assigned_serials
-            or serial_key in selected_machine_serials
-            or not serial_key
-        ):
-            continue
-        automatic_machines_by_model.setdefault(
-            _model_key(machine.CodArt, machine.VarianteArt),
-            [],
-        ).append(machine)
-    for machine_pool in automatic_machines_by_model.values():
-        machine_pool.sort(
-            key=lambda machine: (
-                0
-                if _is_stock_machine(machine)
-                else 1
-                if _canonical_state(machine.StatoOrdine) == "Attivo"
-                else 2,
-                _fase_to_int(machine.FaseAttiva) or 999,
-                _machine_order_label(machine).casefold(),
-                _machine_key(machine),
-            )
-        )
-
     actor_id, actor_name = _actor(user)
     customer = VenditeOrdineCliente(
         cliente_nome=customer_name,
@@ -690,20 +660,6 @@ def create_customer_order(payload, user, *, commit: bool = False):
                     "id_riga": machine.IdRiga,
                 },
                 user,
-            )
-            continue
-
-        machine_pool = automatic_machines_by_model.get(
-            _model_key(row.modello_codice, row.modello_variante),
-            [],
-        )
-        if machine_pool:
-            _assign_machine_snapshot(
-                row,
-                machine_pool.pop(0),
-                actor_id=None,
-                actor_name="Assegnazione automatica",
-                automatic=True,
             )
     db.session.flush()
     if commit:

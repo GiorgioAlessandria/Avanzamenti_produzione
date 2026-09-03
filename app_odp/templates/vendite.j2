@@ -46,18 +46,14 @@
     <main class="container-fluid py-3"
           id="vendite-page"
           data-api-url="{{ operator_url_for('main.api_vendite_ordini_macchina') }}">
-        <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
-            <div>
-                <h1 class="h4 mb-1">Vendite</h1>
-                <div class="text-muted small">
-                    Situazione in tempo reale degli ordini macchina in produzione
-                </div>
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
+            <div class="small text-muted">
+                <div id="vendite-status"
+                     role="status"
+                     aria-live="polite">Caricamento...</div>
+                <div>Aggiornamento automatico ogni 5 secondi</div>
             </div>
             <div class="d-flex flex-wrap gap-2">
-                <a class="btn btn-primary btn-sm"
-                   href="{{ operator_url_for('main.vendite_assegnazioni_page') }}">
-                    Ordini cliente e assegnazioni
-                </a>
                 <button type="button"
                         class="btn btn-outline-primary btn-sm"
                         id="vendite-refresh">
@@ -70,56 +66,54 @@
              id="vendite-error"
              role="alert"></div>
 
-        <div class="card shadow-sm mb-3">
-            <div class="card-body d-flex flex-wrap justify-content-between align-items-center gap-3">
-                <div>
-                    <div class="text-muted small">Ordini macchina presenti</div>
-                    <div class="display-6 fw-semibold"
-                         id="vendite-total">-</div>
-                </div>
-                <div class="text-end small text-muted">
-                    <div id="vendite-status"
-                         role="status"
-                         aria-live="polite">Caricamento...</div>
-                    <div>Aggiornamento automatico ogni 5 secondi</div>
-                </div>
-            </div>
-        </div>
-
         <ul class="nav nav-tabs"
             id="vendite-tabs"
             role="tablist">
             <li class="nav-item"
                 role="presentation">
-                <button class="nav-link active"
+                <a class="nav-link"
+                   href="{{ operator_url_for('main.vendite_assegnazioni_page', vista='ordini') }}">
+                    Ordini cliente
+                </a>
+            </li>
+            <li class="nav-item"
+                role="presentation">
+                <a class="nav-link"
+                   href="{{ operator_url_for('main.vendite_assegnazioni_page', vista='imballaggio') }}">
+                    Note di imballaggio
+                </a>
+            </li>
+            <li class="nav-item"
+                role="presentation">
+                <button class="nav-link{{ ' active' if request.args.get('vista', 'modello') == 'modello' else '' }}"
                         id="vendite-modelli-tab"
                         data-bs-toggle="tab"
                         data-bs-target="#vendite-modelli-pane"
                         type="button"
                         role="tab"
                         aria-controls="vendite-modelli-pane"
-                        aria-selected="true">
-                    Per modello
+                        aria-selected="{{ 'true' if request.args.get('vista', 'modello') == 'modello' else 'false' }}">
+                    Situazione produzione per modello
                 </button>
             </li>
             <li class="nav-item"
                 role="presentation">
-                <button class="nav-link"
+                <button class="nav-link{{ ' active' if request.args.get('vista') == 'matricola' else '' }}"
                         id="vendite-matricole-tab"
                         data-bs-toggle="tab"
                         data-bs-target="#vendite-matricole-pane"
                         type="button"
                         role="tab"
                         aria-controls="vendite-matricole-pane"
-                        aria-selected="false">
-                    Per matricola
+                        aria-selected="{{ 'true' if request.args.get('vista') == 'matricola' else 'false' }}">
+                    Situazione produzione per matricola
                 </button>
             </li>
         </ul>
 
         <div class="tab-content border border-top-0 rounded-bottom bg-white shadow-sm"
              id="vendite-tab-content">
-            <section class="tab-pane fade show active"
+            <section class="tab-pane fade{{ ' show active' if request.args.get('vista', 'modello') == 'modello' else '' }}"
                      id="vendite-modelli-pane"
                      role="tabpanel"
                      aria-labelledby="vendite-modelli-tab"
@@ -145,7 +139,7 @@
                 </div>
             </section>
 
-            <section class="tab-pane fade"
+            <section class="tab-pane fade{{ ' show active' if request.args.get('vista') == 'matricola' else '' }}"
                      id="vendite-matricole-pane"
                      role="tabpanel"
                      aria-labelledby="vendite-matricole-tab"
@@ -163,16 +157,19 @@
                             <th class="vendite-model-column"
                                 data-sort="text">Modello</th>
                             <th data-sort="text">Matricola</th>
-                            <th data-sort="text">Ordine</th>
+                            <th data-sort="text">Ordine produzione</th>
+                            <th data-sort="text">Ordine cliente</th>
                             <th data-sort="num">Fase</th>
                             <th data-sort="text">Stato</th>
                             <th class="vendite-note-column"
                                 data-sort="text">Note / ultima causale di sospensione</th>
+                            <th class="vendite-note-column"
+                                data-sort="text">Note di produzione</th>
                         </tr>
                         </thead>
                         <tbody id="vendite-machines-body">
                         <tr>
-                            <td colspan="6"
+                            <td colspan="8"
                                 class="text-center text-muted py-4">Caricamento...</td>
                         </tr>
                         </tbody>
@@ -192,7 +189,6 @@
 
             const POLL_MS = 5000;
             const refreshButton = document.getElementById("vendite-refresh");
-            const totalElement = document.getElementById("vendite-total");
             const statusElement = document.getElementById("vendite-status");
             const errorElement = document.getElementById("vendite-error");
             const summaryHead = document.getElementById("vendite-summary-head");
@@ -305,7 +301,7 @@
                 if (!machines.length) {
                     machinesBody.innerHTML = `
                         <tr>
-                            <td colspan="6" class="text-center text-muted py-4">
+                            <td colspan="8" class="text-center text-muted py-4">
                                 Nessun ordine macchina presente.
                             </td>
                         </tr>`;
@@ -317,9 +313,11 @@
                         <td>${modelLabel(machine)}</td>
                         <td class="fw-semibold">${esc(machine.serial_number)}</td>
                         <td>${esc(machine.order)}</td>
+                        <td>${esc(machine.customer_order || "—")}</td>
                         <td>${esc(machine.phase)}</td>
                         <td data-col="stato">${stateBadge(machine.state)}</td>
                         <td class="vendite-note-column">${esc(machine.last_suspension_cause || "—")}</td>
+                        <td class="vendite-note-column">${esc(machine.production_note || "—")}</td>
                     </tr>
                 `).join("");
 
@@ -338,7 +336,6 @@
             }
 
             function render(data) {
-                totalElement.textContent = Number(data.total_machines || 0);
                 renderSummary(data);
                 renderMachines(data);
                 statusElement.textContent = `Ultimo aggiornamento: ${formatUpdateTime(data.generated_at)}`;
