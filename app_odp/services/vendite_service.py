@@ -4,6 +4,7 @@ from sqlalchemy import func, or_, tuple_
 
 from app_odp.models import InputOdp, InputOdpLog
 from app_odp.vendite_models import (
+    VenditeNotaProduzioneMacchina,
     VenditeOrdineCliente,
     VenditeOrdineClienteRiga,
 )
@@ -192,10 +193,12 @@ def _build_vendite_payload(
     latest_causes=None,
     *,
     customer_assignments=None,
+    production_notes=None,
     generated_at: str | None = None,
 ) -> dict:
     latest_causes = latest_causes or {}
     customer_assignments = customer_assignments or {}
+    production_notes = production_notes or {}
     machine_rows = []
     model_groups = {}
     phases = set()
@@ -215,6 +218,7 @@ def _build_vendite_payload(
             _norm_text(getattr(order, "IdRiga", "")),
         )
         serial_number = _norm_text(getattr(order, "CodMatricola", ""))
+        machine_note = production_notes.get(serial_number.casefold())
         customer_assignment = customer_assignments.get(
             ("order", *order_key)
         ) or customer_assignments.get(
@@ -241,6 +245,10 @@ def _build_vendite_payload(
         machine_rows.append(
             {
                 "order": _ordine_ref_label(order),
+                "id_documento": order_key[0],
+                "id_riga": order_key[1],
+                "has_serial": bool(serial_number),
+                "production_note_version": machine_note["version"] if machine_note else 0,
                 "customer_order": (
                     customer_assignment["customer_order"]
                     if customer_assignment else ""
@@ -253,8 +261,8 @@ def _build_vendite_payload(
                 "state": state,
                 "last_suspension_cause": latest_causes.get(order_key, ""),
                 "production_note": (
-                    customer_assignment["production_note"]
-                    if customer_assignment else ""
+                    machine_note["note"] if machine_note is not None
+                    else (customer_assignment or {}).get("production_note", "")
                 ),
             }
         )
@@ -307,6 +315,13 @@ def _build_vendite_payload(
 
 def build_vendite_payload() -> dict:
     orders = load_machine_orders()
+    serials = {_norm_text(order.CodMatricola).casefold() for order in orders}
+    production_notes = {
+        item.matricola: {"note": item.note, "version": item.versione}
+        for item in VenditeNotaProduzioneMacchina.query.filter(
+            VenditeNotaProduzioneMacchina.matricola.in_(serials)
+        ).all()
+    }
     order_keys = [
         (order.IdDocumento, order.IdRiga)
         for order in orders
@@ -315,4 +330,5 @@ def build_vendite_payload() -> dict:
         orders,
         _latest_suspension_causes(order_keys),
         customer_assignments=_customer_assignments(orders),
+        production_notes=production_notes,
     )

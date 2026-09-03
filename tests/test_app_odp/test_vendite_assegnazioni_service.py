@@ -10,6 +10,7 @@ from app_odp.services.order_helpers import _now_rome_dt
 from app_odp.services.vendite_assegnazioni_service import (
     VenditeAssegnazioniConflictError,
     VenditeAssegnazioniError,
+    auto_assign_activated_machine,
     build_assignment_dashboard,
     confirm_customer_order_shipment,
     confirm_customer_order_read,
@@ -24,9 +25,11 @@ from app_odp.services.vendite_assegnazioni_service import (
     update_customer_row_dates,
     update_customer_row_notes,
     update_packaging_notes,
+    update_machine_production_note,
     validate_closed_machine_stock,
 )
 from app_odp.vendite_models import (
+    VenditeNotaProduzioneMacchina,
     VenditeMacchinaStock,
     VenditeOrdineCliente,
     VenditeOrdineClienteRiga,
@@ -35,6 +38,25 @@ from app_odp.vendite_models import (
 
 
 ACTOR = SimpleNamespace(id=None, username="commerciale")
+
+
+def _machine_note_payload(machine, note, version=0):
+    return {
+        "id_documento": machine.IdDocumento,
+        "id_riga": machine.IdRiga,
+        "serial_number": machine.CodMatricola,
+        "production_note": note,
+        "version": version,
+    }
+
+
+def _assign_test_machine(row, machine):
+    return set_machine_assignment(
+        row.id,
+        {"version": row.versione, "id_documento": machine.IdDocumento,
+         "id_riga": machine.IdRiga},
+        ACTOR,
+    )
 
 
 @pytest.fixture()
@@ -50,11 +72,12 @@ def app():
     with app.app_context():
         db.create_all(bind_key=None)
         db.create_all(bind_key="acq")
-        db.create_all(bind_key="log")
+        # Questi test usano solo InputOdpLog, non gli altri log applicativi.
+        InputOdpLog.__table__.create(db.engines["log"])
     yield app
     with app.app_context():
         db.session.remove()
-        db.drop_all(bind_key="log")
+        InputOdpLog.__table__.drop(db.engines["log"])
         db.drop_all(bind_key="acq")
         db.drop_all(bind_key=None)
 
@@ -469,11 +492,12 @@ def test_customer_order_read_confirmation_is_recorded(app):
 
 def test_delete_customer_order_releases_assigned_machines(app):
     with app.app_context():
-        _add_machine()
+        machine = _add_machine()
         customer_order = create_customer_order(
             _payload(model_key=_model_key(), quantity=2),
             ACTOR,
         )
+        _assign_test_machine(customer_order.righe[0], machine)
         assert customer_order.righe[0].odp_matricola == "MAT-001"
         assert build_assignment_dashboard()["machines"] == []
 
@@ -606,7 +630,7 @@ def test_creation_leaves_available_machine_unassigned(app):
 
 def test_manual_machine_change_removes_automatic_marker(app):
     with app.app_context():
-        _add_machine()
+        machine = _add_machine()
         second_machine = _add_machine(
             document="DOC-2",
             row="2",
@@ -616,6 +640,7 @@ def test_manual_machine_change_removes_automatic_marker(app):
             _payload(model_key=_model_key()),
             ACTOR,
         ).righe[0]
+        auto_assign_activated_machine(machine, phase="1")
         assert customer_row.odp_matricola == "MAT-001"
         assert customer_row.assegnazione_automatica is True
 
@@ -646,6 +671,8 @@ def test_manual_save_of_same_machine_removes_automatic_marker(app):
             ACTOR,
         ).righe[0]
 
+        auto_assign_activated_machine(machine, phase="1")
+
         set_machine_assignment(
             customer_row.id,
             {
@@ -667,6 +694,8 @@ def test_phase_two_closed_marks_customer_machine_and_order_completed(app):
             ACTOR,
         ).righe[0]
 
+        _assign_test_machine(customer_row, machine)
+
         machine.FaseAttiva = "2"
         machine.StatoOrdine = "Chiusa"
         db.session.flush()
@@ -686,10 +715,11 @@ def test_phase_two_closed_marks_customer_machine_and_order_completed(app):
 def test_phase_two_closed_remains_completed_after_machine_sync_removal(app):
     with app.app_context():
         machine = _add_machine()
-        create_customer_order(
+        customer = create_customer_order(
             _payload(model_key=_model_key()),
             ACTOR,
         )
+        _assign_test_machine(customer.righe[0], machine)
         db.session.add(
             InputOdpLog(
                 OperationGroupId="CHIUSURA-1",
@@ -759,6 +789,7 @@ def test_shipment_confirmation_saves_timestamped_full_snapshot(app):
             _payload(model_key=_model_key()),
             ACTOR,
         ).righe[0]
+        _assign_test_machine(customer_row, machine)
         update_customer_row_notes(
             customer_row.id,
             {
@@ -818,11 +849,12 @@ def test_shipment_confirmation_saves_timestamped_full_snapshot(app):
 
 def test_shipment_confirmation_requires_phase_two_closed(app):
     with app.app_context():
-        _add_machine()
+        machine = _add_machine()
         customer_row = create_customer_order(
             _payload(model_key=_model_key()),
             ACTOR,
         ).righe[0]
+        _assign_test_machine(customer_row, machine)
 
         with pytest.raises(VenditeAssegnazioniConflictError, match="Fase 2 chiusa"):
             confirm_customer_row_shipment(
@@ -890,7 +922,7 @@ def test_assignment_can_be_moved_but_different_model_is_rejected(app):
             ACTOR,
         )
         first_row, second_row = customer_order.righe
-        assert first_row.assegnazione_automatica is True
+        assert first_row.assegnazione_automatica is False
         set_machine_assignment(
             first_row.id,
             {
@@ -997,6 +1029,7 @@ def test_closed_assigned_machine_stays_hidden_until_unassigned(app):
             ACTOR,
         )
         customer_row = customer.righe[0]
+        _assign_test_machine(customer_row, machine)
         assert customer_row.odp_rif_registraz == machine.RifRegistraz
 
         stock = register_closed_machine_stock(machine, closed_by="produzione")
@@ -1037,7 +1070,8 @@ def test_unassigned_closure_requires_six_digit_serial(app):
 def test_assigned_closure_still_requires_six_digit_serial(app):
     with app.app_context():
         machine = _add_machine(serial="MAT-01")
-        create_customer_order(_payload(model_key=_model_key()), ACTOR)
+        customer = create_customer_order(_payload(model_key=_model_key()), ACTOR)
+        _assign_test_machine(customer.righe[0], machine)
 
         with pytest.raises(VenditeAssegnazioniError, match="esattamente 6 cifre"):
             validate_closed_machine_stock(machine)
@@ -1095,7 +1129,7 @@ def test_unassigned_stock_machine_can_be_shipped_directly(app):
         assert build_assignment_dashboard()["machines"] == []
 
 
-def test_stock_machine_is_auto_assigned_and_removed_on_shipment(app):
+def test_stock_machine_is_manually_assigned_and_removed_on_shipment(app):
     with app.app_context():
         register_closed_machine_stock(_closed_machine(), closed_by="produzione")
         customer = create_customer_order(
@@ -1103,9 +1137,11 @@ def test_stock_machine_is_auto_assigned_and_removed_on_shipment(app):
             ACTOR,
         )
         customer_row = customer.righe[0]
+        assert customer_row.odp_matricola is None
+        _assign_test_machine(customer_row, _closed_machine())
         assigned_dashboard = build_assignment_dashboard()
 
-        assert customer_row.assegnazione_automatica is True
+        assert customer_row.assegnazione_automatica is False
         assert customer_row.odp_rif_registraz == "STOCK"
         assert assigned_dashboard["machines"] == []
         assert (
@@ -1145,6 +1181,8 @@ def test_whole_order_shipment_removes_all_stock_machines(app):
             ACTOR,
         )
         delivery_dates = ["2026-12-20", "2026-09-01"]
+        for index, row in enumerate(customer.righe, start=1):
+            _assign_test_machine(row, _closed_machine(document=f"DOC-STOCK-{index}"))
         rows_payload = [
             {
                 "id": row.id,
@@ -1171,3 +1209,124 @@ def test_whole_order_shipment_removes_all_stock_machines(app):
         } == {date(2026, 9, 1)}
         assert dashboard_order["shipment_ready"] is False
         assert all(row["shipment"] for row in dashboard_order["rows"])
+
+
+def test_machine_production_note_follows_assignment_and_updates_both_views(app):
+    from app_odp.services.vendite_service import build_vendite_payload
+
+    with app.app_context():
+        machine = _add_machine()
+        note = update_machine_production_note(
+            _machine_note_payload(machine, "Cablaggio speciale\\nCollaudo richiesto")
+        )
+        assert note.versione == 1
+        assert build_vendite_payload()["machines"][0]["production_note"] == note.note
+        customer = create_customer_order(_payload(model_key=_model_key()), ACTOR)
+        row = customer.righe[0]
+        assert row.odp_matricola is None
+        update_customer_row(
+            row.id,
+            {"version": row.versione, "assignment_changed": True,
+             "id_documento": machine.IdDocumento, "id_riga": machine.IdRiga,
+             "production_note": "", "sales_note": row.note},
+            ACTOR, can_edit_sales=True, can_edit_production=True, can_assign=True,
+        )
+        assert row.note_produzione == note.note
+        assert build_assignment_dashboard()["customer_orders"][0]["rows"][0]["production_note"] == note.note
+        old_row_version = row.versione
+        update_machine_production_note(_machine_note_payload(machine, "Collaudo concluso", note.versione))
+        assert row.note_produzione == "Collaudo concluso"
+        assert row.versione > old_row_version
+        update_customer_row_notes(
+            row.id, {"version": row.versione, "production_note": "Aggiornata da ordini"},
+            can_edit_sales=False, can_edit_production=True,
+        )
+        assert build_vendite_payload()["machines"][0]["production_note"] == "Aggiornata da ordini"
+        set_machine_assignment(row.id, {"version": row.versione}, ACTOR)
+        assert row.note_produzione is None
+        assert build_vendite_payload()["machines"][0]["production_note"] == "Aggiornata da ordini"
+        other = create_customer_order(_payload(model_key=_model_key(), order="OC-20"), ACTOR).righe[0]
+        set_machine_assignment(
+            other.id, {"version": other.versione, "id_documento": machine.IdDocumento,
+                       "id_riga": machine.IdRiga}, ACTOR,
+        )
+        assert other.note_produzione == "Aggiornata da ordini"
+
+
+def test_machine_production_note_rejects_stale_version_and_wrong_serial(app):
+    with app.app_context():
+        machine = _add_machine()
+        update_machine_production_note(_machine_note_payload(machine, "Prima versione"))
+        with pytest.raises(VenditeAssegnazioniConflictError):
+            update_machine_production_note(_machine_note_payload(machine, "Obsoleta", 0))
+        payload = _machine_note_payload(machine, "Errata", 1)
+        payload["serial_number"] = "ALTRA-MATRICOLA"
+        with pytest.raises(VenditeAssegnazioniConflictError):
+            update_machine_production_note(payload)
+        assert db.session.get(VenditeNotaProduzioneMacchina, "mat-001").note == "Prima versione"
+
+
+@pytest.mark.parametrize("changes", [
+    {"production_note": "x" * 1001}, {"production_note": None},
+    {"version": True}, {"version": -1}, {"version": "1"},
+    {"id_documento": ""}, {"serial_number": ""},
+])
+def test_machine_production_note_validates_input(app, changes):
+    with app.app_context():
+        machine = _add_machine()
+        payload = {**_machine_note_payload(machine, "Valida"), **changes}
+        with pytest.raises(VenditeAssegnazioniError):
+            update_machine_production_note(payload)
+        assert VenditeNotaProduzioneMacchina.query.count() == 0
+
+
+def test_machine_production_note_keeps_explicit_empty_and_legacy_notes(app):
+    from app_odp.services.vendite_service import build_vendite_payload
+
+    with app.app_context():
+        machine = _add_machine()
+        row = create_customer_order(_payload(model_key=_model_key()), ACTOR).righe[0]
+        set_machine_assignment(
+            row.id, {"version": row.versione, "id_documento": machine.IdDocumento,
+                     "id_riga": machine.IdRiga}, ACTOR,
+        )
+        # Simula un'assegnazione già presente prima dell'introduzione dell'archivio note.
+        db.session.delete(db.session.get(VenditeNotaProduzioneMacchina, "mat-001"))
+        row.note_produzione = "Nota precedente"
+        db.session.flush()
+        assert build_vendite_payload()["machines"][0]["production_note"] == "Nota precedente"
+        update_machine_production_note(_machine_note_payload(machine, ""))
+        assert row.note_produzione is None
+        assert build_vendite_payload()["machines"][0]["production_note"] == ""
+
+
+def test_machine_production_note_switch_does_not_copy_old_machine_note(app):
+    with app.app_context():
+        first = _add_machine()
+        second = _add_machine(document="DOC-2", row="2", serial="MAT-002")
+        update_machine_production_note(_machine_note_payload(first, "Nota prima macchina"))
+        update_machine_production_note(_machine_note_payload(second, "Nota seconda macchina"))
+        row = create_customer_order(_payload(model_key=_model_key()), ACTOR).righe[0]
+        for machine in (first, second):
+            update_customer_row(
+                row.id, {"version": row.versione, "assignment_changed": True,
+                         "id_documento": machine.IdDocumento, "id_riga": machine.IdRiga,
+                         "production_note": row.note_produzione or ""},
+                ACTOR, can_edit_sales=False, can_edit_production=True, can_assign=True,
+            )
+        assert row.note_produzione == "Nota seconda macchina"
+        assert db.session.get(VenditeNotaProduzioneMacchina, "mat-001").note == "Nota prima macchina"
+
+
+def test_machine_production_note_survives_stock_transition(app):
+    with app.app_context():
+        machine = _add_machine(serial="123456")
+        update_machine_production_note(_machine_note_payload(machine, "Nota prima dell'ordine"))
+        register_closed_machine_stock(machine, closed_by="produzione")
+        db.session.delete(machine)
+        db.session.flush()
+        row = create_customer_order(_payload(model_key=_model_key()), ACTOR).righe[0]
+        _assign_test_machine(row, machine)
+        assert row.note_produzione == "Nota prima dell'ordine"
+        delete_customer_order(row.ordine_cliente_id)
+        assert db.session.get(VenditeNotaProduzioneMacchina, "123456").note == "Nota prima dell'ordine"

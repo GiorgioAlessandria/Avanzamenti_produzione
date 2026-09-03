@@ -17,6 +17,17 @@ def _rome_iso_now() -> str:
     return datetime.now(ROME_TZ).isoformat(timespec="seconds")
 
 
+class VenditeNotaProduzioneMacchina(db.Model):
+    __tablename__ = "vendite_note_produzione_macchina"
+
+    # Indipendente dagli ODP, che la sincronizzazione può eliminare.
+    matricola = db.Column(db.String(200), primary_key=True)
+    note = db.Column(db.String(1000), nullable=False, default="")
+    versione = db.Column(db.Integer, nullable=False, default=1)
+
+    __mapper_args__ = {"version_id_col": versione}
+
+
 class VenditeOrdineCliente(db.Model):
     __tablename__ = "vendite_ordini_cliente"
 

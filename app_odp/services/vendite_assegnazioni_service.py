@@ -26,6 +26,7 @@ from app_odp.vendite_models import (
     VENDITE_INTERNAL_REFERENCES,
     VenditeMacchinaStock,
     VenditeNotaImballaggio,
+    VenditeNotaProduzioneMacchina,
     VenditeOrdineCliente,
     VenditeOrdineClienteRiga,
     VenditeSpedizioneConfermata,
@@ -685,7 +686,46 @@ def _check_row_version(row: VenditeOrdineClienteRiga, payload) -> None:
         )
 
 
+def _save_machine_production_note(serial_number: str, note: str):
+    key = _norm_text(serial_number).casefold()
+    item = db.session.get(VenditeNotaProduzioneMacchina, key)
+    if item is None:
+        item = VenditeNotaProduzioneMacchina(matricola=key)
+        db.session.add(item)
+    item.note = note or ""
+    return item
+
+
+def update_machine_production_note(payload):
+    if not isinstance(payload, dict) or not isinstance(payload.get("production_note"), str):
+        raise VenditeAssegnazioniError("Note di produzione non valide.")
+    note = _optional_text(payload["production_note"], "Le note di produzione", MAX_NOTE)
+    expected_version = payload.get("version")
+    if type(expected_version) is not int or expected_version < 0:
+        raise VenditeAssegnazioniError("Versione delle note non valida.")
+    id_documento = _required_text(payload.get("id_documento"), "Il documento", 200)
+    id_riga = _required_text(payload.get("id_riga"), "La riga", 200)
+    serial = _required_text(payload.get("serial_number"), "La matricola", 200)
+    machine = _find_assignable_machine(id_documento, id_riga)
+    if machine is None or _machine_serial(machine).casefold() != serial.casefold():
+        raise VenditeAssegnazioniConflictError("La matricola non è più disponibile. Aggiornare la pagina.")
+    item = db.session.get(VenditeNotaProduzioneMacchina, serial.casefold())
+    if (item.versione if item is not None else 0) != expected_version:
+        raise VenditeAssegnazioniConflictError("Le note sono state modificate da un altro operatore. Ricaricare i dati.")
+    assigned_rows = _customer_rows_for_machine(id_documento, id_riga, serial)
+    if any(row.spedizione is not None for row in assigned_rows):
+        raise VenditeAssegnazioniConflictError("La matricola risulta già spedita.")
+    item = _save_machine_production_note(serial, note)
+    for row in assigned_rows:
+        row.note_produzione = note or None
+    db.session.flush()
+    return item
+
+
 def _clear_assignment(row: VenditeOrdineClienteRiga) -> None:
+    if row.odp_matricola:
+        _save_machine_production_note(row.odp_matricola, row.note_produzione or "")
+        row.note_produzione = None
     row.odp_id_documento = None
     row.odp_id_riga = None
     row.odp_rif_registraz = None
@@ -705,6 +745,15 @@ def _assign_machine_snapshot(
     actor_name: str,
     automatic: bool,
 ) -> None:
+    old_serial = _norm_text(row.odp_matricola).casefold()
+    serial = _machine_serial(machine).casefold()
+    if old_serial and old_serial != serial:
+        _save_machine_production_note(old_serial, row.note_produzione or "")
+        row.note_produzione = None
+    machine_note = db.session.get(VenditeNotaProduzioneMacchina, serial)
+    if machine_note is None:
+        machine_note = _save_machine_production_note(serial, row.note_produzione or "")
+    row.note_produzione = machine_note.note or None
     row.odp_id_documento = _norm_text(machine.IdDocumento)
     row.odp_id_riga = _norm_text(machine.IdRiga)
     row.odp_rif_registraz = _norm_text(machine.RifRegistraz) or None
@@ -980,6 +1029,8 @@ def _apply_note_updates(
             "Le note di produzione",
             MAX_NOTE,
         ) or None
+        if row.odp_matricola:
+            _save_machine_production_note(row.odp_matricola, row.note_produzione or "")
         updated = True
     if not updated:
         raise VenditeAssegnazioniError(
@@ -1197,6 +1248,9 @@ def delete_customer_order(
     if customer is None:
         raise VenditeAssegnazioniError("Ordine cliente non trovato.")
 
+    for row in customer.righe:
+        if row.odp_matricola:
+            _save_machine_production_note(row.odp_matricola, row.note_produzione or "")
     db.session.delete(customer)
     db.session.flush()
     if commit:
@@ -1292,6 +1346,15 @@ def update_customer_row(
     _check_row_version(row, work_payload)
     updated = False
 
+    if can_assign and work_payload.get("assignment_changed"):
+        # Il form invia anche la nota precedente: non sovrascrivere quella
+        # della matricola in ingresso se l'operatore non l'ha modificata.
+        if _norm_text(work_payload.get("production_note")) == (row.note_produzione or ""):
+            work_payload.pop("production_note", None)
+        row = set_machine_assignment(row_id, work_payload, user)
+        work_payload["version"] = row.versione
+        updated = True
+
     if (can_edit_sales and "delivery_date" in work_payload) or (
         can_edit_production and "available_date" in work_payload
     ):
@@ -1315,10 +1378,6 @@ def update_customer_row(
             can_edit_production=can_edit_production,
         )
         work_payload["version"] = row.versione
-        updated = True
-
-    if can_assign and work_payload.get("assignment_changed"):
-        row = set_machine_assignment(row_id, work_payload, user)
         updated = True
 
     if not updated:

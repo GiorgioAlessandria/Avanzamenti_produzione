@@ -25,6 +25,7 @@ from app_odp.services.vendite_assegnazioni_service import (
     update_customer_row_dates,
     update_customer_row_notes,
     update_packaging_notes,
+    update_machine_production_note,
 )
 from app_odp.services.vendite_service import build_vendite_payload
 
@@ -32,7 +33,10 @@ from app_odp.services.vendite_service import build_vendite_payload
 @main_bp.get("/vendite")
 @require_active_perm("vendite")
 def vendite_page():
-    return render_template("vendite.j2")
+    return render_template(
+        "vendite.j2",
+        can_edit_production_notes=active_policy().can("assegna_matricole"),
+    )
 
 
 @main_bp.get("/api/vendite/ordini-macchina")
@@ -70,10 +74,13 @@ def api_vendite_assegnazioni():
     return response, 200
 
 
-def _assignment_mutation(action, success_message: str, success_status: int = 200):
+def _assignment_mutation(
+    action, success_message: str, success_status: int = 200,
+    *, dashboard_builder=build_assignment_dashboard,
+):
     try:
         action()
-        data = build_assignment_dashboard()
+        data = dashboard_builder()
         db.session.commit()
     except VenditeAssegnazioniConflictError as exc:
         db.session.rollback()
@@ -125,6 +132,18 @@ def _assignment_mutation(action, success_message: str, success_status: int = 200
     )
     response.headers["Cache-Control"] = "no-store"
     return response, success_status
+
+
+@main_bp.post("/api/vendite/macchine/note-produzione")
+@require_active_perm("vendite")
+@require_active_perm("assegna_matricole")
+def api_vendite_macchina_note_produzione():
+    payload = request.get_json(silent=True)
+    return _assignment_mutation(
+        lambda: update_machine_production_note(payload),
+        "Note di produzione salvate.",
+        dashboard_builder=build_vendite_payload,
+    )
 
 
 @main_bp.post("/api/vendite/ordini-cliente")

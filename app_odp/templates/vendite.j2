@@ -45,14 +45,10 @@
 {% block content %}
     <main class="container-fluid py-3"
           id="vendite-page"
-          data-api-url="{{ operator_url_for('main.api_vendite_ordini_macchina') }}">
-        <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
-            <div class="small text-muted">
-                <div id="vendite-status"
-                     role="status"
-                     aria-live="polite">Caricamento...</div>
-                <div>Aggiornamento automatico ogni 5 secondi</div>
-            </div>
+          data-api-url="{{ operator_url_for('main.api_vendite_ordini_macchina') }}"
+          data-note-url="{{ operator_url_for('main.api_vendite_macchina_note_produzione') }}"
+          data-can-edit-production-notes="{{ 'true' if can_edit_production_notes else 'false' }}">
+        <div class="d-flex flex-wrap justify-content-end align-items-center gap-3 mb-3">
             <div class="d-flex flex-wrap gap-2">
                 <button type="button"
                         class="btn btn-outline-primary btn-sm"
@@ -119,7 +115,13 @@
                      aria-labelledby="vendite-modelli-tab"
                      tabindex="0">
                 <div class="p-3 border-bottom">
-                    <h2 class="h6 mb-1">Riepilogo per modello macchina</h2>
+                    <div class="d-flex flex-wrap justify-content-between align-items-baseline gap-2">
+                        <h2 class="h6 mb-1">Riepilogo per modello macchina</h2>
+                        <div class="d-flex flex-wrap gap-3 small text-muted">
+                            <span data-vendite-status role="status" aria-live="polite">Caricamento...</span>
+                            <span>Aggiornamento automatico ogni 5 secondi</span>
+                        </div>
+                    </div>
                     <div class="small text-muted">
                         Numero di macchine per fase e stato di produzione
                     </div>
@@ -145,7 +147,13 @@
                      aria-labelledby="vendite-matricole-tab"
                      tabindex="0">
                 <div class="p-3 border-bottom">
-                    <h2 class="h6 mb-1">Dettaglio per matricola</h2>
+                    <div class="d-flex flex-wrap justify-content-between align-items-baseline gap-2">
+                        <h2 class="h6 mb-1">Dettaglio per matricola</h2>
+                        <div class="d-flex flex-wrap gap-3 small text-muted">
+                            <span data-vendite-status role="status" aria-live="polite">Caricamento...</span>
+                            <span>Aggiornamento automatico ogni 5 secondi</span>
+                        </div>
+                    </div>
                     <div class="small text-muted">
                         Fase, stato e ultima causale di sospensione per ogni macchina
                     </div>
@@ -189,13 +197,30 @@
 
             const POLL_MS = 5000;
             const refreshButton = document.getElementById("vendite-refresh");
-            const statusElement = document.getElementById("vendite-status");
+            const statusElements = page.querySelectorAll("[data-vendite-status]");
+            const canEditNotes = page.dataset.canEditProductionNotes === "true";
             const errorElement = document.getElementById("vendite-error");
             const summaryHead = document.getElementById("vendite-summary-head");
             const summaryBody = document.getElementById("vendite-summary-body");
             const summaryFoot = document.getElementById("vendite-summary-foot");
             const machinesBody = document.getElementById("vendite-machines-body");
             let inFlight = false;
+            let savingNote = false;
+            let noteRevision = 0;
+
+            function setStatus(message) {
+                statusElements.forEach(element => element.textContent = message);
+            }
+
+            function hasUnsavedNotes() {
+                return Array.from(machinesBody.querySelectorAll("[data-production-note]"))
+                    .some(field => field.value !== field.dataset.originalValue);
+            }
+
+            function editingNotes() {
+                return savingNote || hasUnsavedNotes()
+                    || Boolean(document.activeElement?.matches("[data-production-note]"));
+            }
 
             function esc(value) {
                 return String(value ?? "").replace(/[&<>"']/g, char => ({
@@ -296,6 +321,25 @@
                     </tr>`;
             }
 
+            function productionNoteCell(machine) {
+                const note = machine.production_note || "";
+                if (!canEditNotes || !machine.has_serial) {
+                    return `<div style="white-space: pre-wrap">${esc(note || "—")}</div>`;
+                }
+                return `
+                    <textarea class="form-control form-control-sm" rows="2" maxlength="1000"
+                              data-production-note data-original-value="${esc(note)}"
+                              data-id-documento="${esc(machine.id_documento)}"
+                              data-id-riga="${esc(machine.id_riga)}"
+                              data-serial="${esc(machine.serial_number)}"
+                              data-version="${esc(machine.production_note_version)}"
+                              aria-label="Note di produzione matricola ${esc(machine.serial_number)}">${esc(note)}</textarea>
+                    <div class="d-flex gap-2 mt-1">
+                        <button type="button" class="btn btn-primary btn-sm" data-save-production-note>Salva</button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" data-cancel-production-note>Annulla</button>
+                    </div>`;
+            }
+
             function renderMachines(data) {
                 const machines = Array.isArray(data.machines) ? data.machines : [];
                 if (!machines.length) {
@@ -317,7 +361,7 @@
                         <td>${esc(machine.phase)}</td>
                         <td data-col="stato">${stateBadge(machine.state)}</td>
                         <td class="vendite-note-column">${esc(machine.last_suspension_cause || "—")}</td>
-                        <td class="vendite-note-column">${esc(machine.production_note || "—")}</td>
+                        <td class="vendite-note-column">${productionNoteCell(machine)}</td>
                     </tr>
                 `).join("");
 
@@ -338,14 +382,15 @@
             function render(data) {
                 renderSummary(data);
                 renderMachines(data);
-                statusElement.textContent = `Ultimo aggiornamento: ${formatUpdateTime(data.generated_at)}`;
+                setStatus(`Ultimo aggiornamento: ${formatUpdateTime(data.generated_at)}`);
             }
 
             async function refresh() {
-                if (inFlight) return;
+                if (inFlight || editingNotes()) return;
+                const revision = noteRevision;
                 inFlight = true;
                 refreshButton.disabled = true;
-                statusElement.textContent = "Aggiornamento in corso...";
+                setStatus("Aggiornamento in corso...");
 
                 try {
                     const response = await window.avpFetch(page.dataset.apiUrl);
@@ -354,6 +399,8 @@
                         throw new Error(payload.error || `Errore server (${response.status})`);
                     }
 
+                    // La richiesta può essere partita prima che l'utente inizi a scrivere.
+                    if (editingNotes() || revision !== noteRevision) return;
                     render(payload.data || {});
                     errorElement.classList.add("d-none");
                     errorElement.textContent = "";
@@ -361,21 +408,89 @@
                     console.error("Errore aggiornamento vendite:", error);
                     errorElement.textContent = "Impossibile aggiornare i dati vendite. Riprovo automaticamente.";
                     errorElement.classList.remove("d-none");
-                    statusElement.textContent = "Aggiornamento non riuscito";
+                    setStatus("Aggiornamento non riuscito");
                 } finally {
                     inFlight = false;
                     refreshButton.disabled = false;
                 }
             }
 
-            refreshButton.addEventListener("click", refresh);
+            machinesBody.addEventListener("click", async event => {
+                const save = event.target.closest("[data-save-production-note]");
+                const cancel = event.target.closest("[data-cancel-production-note]");
+                if ((!save && !cancel) || savingNote || !canEditNotes) return;
+                const cell = (save || cancel).closest("td");
+                const field = cell.querySelector("[data-production-note]");
+                if (cancel) {
+                    field.value = field.dataset.originalValue;
+                    await refresh();
+                    return;
+                }
+                savingNote = true;
+                noteRevision += 1;
+                field.disabled = true;
+                save.disabled = true;
+                try {
+                    const response = await window.avpFetch(page.dataset.noteUrl, {
+                        method: "POST",
+                        headers: {"Content-Type": "application/json"},
+                        body: JSON.stringify({
+                            id_documento: field.dataset.idDocumento,
+                            id_riga: field.dataset.idRiga,
+                            serial_number: field.dataset.serial,
+                            version: Number(field.dataset.version),
+                            production_note: field.value,
+                        }),
+                    });
+                    const payload = await response.json().catch(() => ({}));
+                    if (!response.ok || !payload.ok) {
+                        throw new Error(payload.error || `Errore server (${response.status})`);
+                    }
+                    const saved = (payload.data?.machines || []).find(machine =>
+                        machine.serial_number === field.dataset.serial
+                    );
+                    if (!saved) throw new Error("Nota salvata, ma la matricola non è più nella vista. Ricaricare i dati.");
+                    field.value = saved.production_note || "";
+                    field.dataset.originalValue = field.value;
+                    field.dataset.version = saved.production_note_version;
+                    errorElement.classList.add("d-none");
+                    setStatus("Note di produzione salvate.");
+                } catch (error) {
+                    errorElement.textContent = error.message || "Impossibile salvare le note.";
+                    errorElement.classList.remove("d-none");
+                } finally {
+                    savingNote = false;
+                    field.disabled = false;
+                    save.disabled = false;
+                }
+            });
+
+            machinesBody.addEventListener("input", event => {
+                if (event.target.matches("[data-production-note]")) {
+                    setStatus("Modifiche non salvate: salvare o annullare per riprendere l'aggiornamento.");
+                }
+            });
+            window.addEventListener("beforeunload", event => {
+                if (savingNote || hasUnsavedNotes()) {
+                    event.preventDefault();
+                    event.returnValue = "";
+                }
+            });
+
+            refreshButton.addEventListener("click", () => {
+                if (editingNotes()) {
+                    setStatus("Salvare o annullare le note prima di aggiornare.");
+                } else {
+                    refresh();
+                }
+            });
             document.addEventListener("visibilitychange", () => {
                 if (!document.hidden) refresh();
             });
             const pollTimer = window.setInterval(() => {
                 if (!document.hidden) refresh();
             }, POLL_MS);
-            window.addEventListener("beforeunload", () => window.clearInterval(pollTimer), {
+            window.addEventListener("pagehide", () => window.clearInterval(pollTimer), {
                 once: true,
             });
 
