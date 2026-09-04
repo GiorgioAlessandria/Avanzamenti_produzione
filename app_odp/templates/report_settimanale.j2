@@ -275,7 +275,7 @@
                     appendTextCell(tr, row.num_progr_riga);
                     appendArticleCell(tr, row);
                     appendTextCell(tr, row.tipo);
-                    appendTextCell(tr, row.fasi_lavorate);
+                    appendTextCell(tr, window.phaseLabel(row.fasi_lavorate));
                     appendTextCell(tr, row.stato);
                     appendTextCell(tr, row.ultimo_evento);
                     appendTextCell(tr, formatNumber(row.qta_finale, 2), "text-end");

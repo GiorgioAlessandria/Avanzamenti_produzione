@@ -168,16 +168,12 @@
           data-api-url="{{ operator_url_for('main.api_vendite_assegnazioni') }}"
           data-create-url="{{ operator_url_for('main.api_vendite_ordini_cliente_create') }}"
           data-row-save-url-template="{{ operator_url_for('main.api_vendite_riga_salva', row_id=0) }}"
-          data-shipment-url-template="{{ operator_url_for('main.api_vendite_riga_conferma_spedizione', row_id=0) }}"
-          data-order-shipment-url-template="{{ operator_url_for('main.api_vendite_ordine_cliente_conferma_spedizione', order_id=0) }}"
           data-confirm-url-template="{{ operator_url_for('main.api_vendite_ordine_cliente_conferma_lettura', order_id=0) }}"
           data-delete-url-template="{{ operator_url_for('main.api_vendite_ordine_cliente_delete', order_id=0) }}"
           data-order-details-url-template="{{ operator_url_for('main.api_vendite_ordine_cliente_dati', order_id=0) }}"
           data-packaging-notes-url="{{ operator_url_for('main.api_vendite_note_imballaggio') }}"
           data-can-assign-machines="{{ 'true' if can_assign_machines else 'false' }}"
           data-can-edit-sales-notes="{{ 'true' if can_edit_sales_notes else 'false' }}"
-          data-can-edit-production-notes="{{ 'true' if can_edit_production_notes else 'false' }}"
-          data-can-confirm-shipment="{{ 'true' if can_confirm_shipment else 'false' }}"
           data-can-delete-orders="{{ 'true' if can_create_customer_orders else 'false' }}"
           data-can-edit-order-details="{{ 'true' if can_create_customer_orders else 'false' }}"
           data-can-confirm-order-read="{{ 'true' if can_confirm_order_read else 'false' }}">
@@ -212,6 +208,13 @@
             </li>
             <li class="nav-item"
                 role="presentation">
+                <a class="nav-link"
+                   href="{{ operator_url_for('main.vendite_page', vista='matricola') }}">
+                    Situazione produzione per matricola
+                </a>
+            </li>
+            <li class="nav-item"
+                role="presentation">
                 <button class="nav-link{{ ' active' if request.args.get('vista') == 'imballaggio' else '' }}"
                         id="vendite-packaging-tab-button"
                         data-bs-toggle="tab"
@@ -220,7 +223,7 @@
                         role="tab"
                         aria-controls="vendite-packaging-tab"
                         aria-selected="{{ 'true' if request.args.get('vista') == 'imballaggio' else 'false' }}">
-                    Note di imballaggio
+                    Note per imballo
                 </button>
             </li>
             <li class="nav-item"
@@ -230,13 +233,6 @@
                     Situazione produzione per modello
                 </a>
             </li>
-            <li class="nav-item"
-                role="presentation">
-                <a class="nav-link"
-                   href="{{ operator_url_for('main.vendite_page', vista='matricola') }}">
-                    Situazione produzione per matricola
-                </a>
-            </li>
         </ul>
 
         <div class="tab-content">
@@ -244,49 +240,6 @@
                  id="vendite-orders-tab"
                  role="tabpanel"
                  aria-labelledby="vendite-orders-tab-button">
-
-                <div class="row g-3 mb-3">
-                    <div class="col-6 col-xl-3">
-                        <div class="card h-100 shadow-sm">
-                            <div class="card-body">
-                                <div class="small text-muted">Matricole disponibili</div>
-                                <div class="h3 mb-0"
-                                     id="vendite-open-machines">-
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-6 col-xl-3">
-                        <div class="card h-100 shadow-sm">
-                            <div class="card-body">
-                                <div class="small text-muted">Richieste cliente</div>
-                                <div class="h3 mb-0"
-                                     id="vendite-total-demand">-
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-6 col-xl-3">
-                        <div class="card h-100 shadow-sm">
-                            <div class="card-body">
-                                <div class="small text-muted">Assegnate</div>
-                                <div class="h3 mb-0 text-success"
-                                     id="vendite-assigned-demand">-
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-6 col-xl-3">
-                        <div class="card h-100 shadow-sm">
-                            <div class="card-body">
-                                <div class="small text-muted">Da assegnare</div>
-                                <div class="h3 mb-0 text-warning"
-                                     id="vendite-unassigned-demand">-
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
 
                 <div class="position-relative mb-3{% if not can_create_customer_orders %} d-none{% endif %}"
                      id="vendite-create-order-shell">
@@ -366,7 +319,13 @@
                                                 style="min-width: 16rem;">Note di vendita
                                             </th>
                                             <th scope="col"
-                                                style="min-width: 11rem;">Data consegna
+                                                style="min-width: 16rem;">Note commerciali
+                                            </th>
+                                            <th scope="col"
+                                                style="min-width: 16rem;">Note per produzione
+                                            </th>
+                                            <th scope="col"
+                                                style="min-width: 11rem;">Data spedizione
                                             </th>
                                             <th scope="col"
                                                 class="text-end">Azioni
@@ -379,7 +338,7 @@
                             </div>
                             <div class="card-footer d-flex flex-wrap justify-content-between align-items-center gap-2">
                                 <div class="small text-muted">
-                                    Note di vendita e matricola sono facoltative. Se si seleziona una matricola,
+                                    Le note e la matricola sono facoltative. Se si seleziona una matricola,
                                     la quantità viene bloccata a 1.
                                 </div>
                                 <button class="btn btn-primary"
@@ -482,17 +441,19 @@
                                     <tr>
                                         <th>#</th>
                                         <th>Modello</th>
-                                        <th>Consegna</th>
+                                        <th>Spedizione</th>
                                         <th>Note di vendita</th>
+                                        <th>Note commerciali</th>
                                         <th>Matricola assegnata</th>
                                         <th>Note di produzione</th>
-                                        <th>Note di imballaggio</th>
+                                        <th>Note per produzione</th>
+                                        <th>Note per imballo</th>
                                         <th>Azioni</th>
                                     </tr>
                                     </thead>
                                     <tbody id="vendite-customer-orders-body">
                                     <tr>
-                                        <td colspan="8"
+                                        <td colspan="10"
                                             class="text-center text-muted py-4">
                                             Caricamento...
                                         </td>
@@ -521,7 +482,7 @@
                             <thead class="table-light">
                             <tr>
                                 <th style="width: 12rem;">Riferimento</th>
-                                <th>Nota di imballaggio predefinita</th>
+                                <th>Nota per imballo predefinita</th>
                                 <th style="width: 16rem;">Ultima modifica</th>
                             </tr>
                             </thead>
@@ -533,7 +494,7 @@
                             <button class="btn btn-primary"
                                     type="button"
                                     id="vendite-save-packaging-notes">
-                                Salva note di imballaggio
+                                Salva note per imballo
                             </button>
                         </div>
                     {% endif %}
@@ -562,6 +523,16 @@
             </td>
             <td>
                 <textarea class="form-control vendite-line-note"
+                          maxlength="1000"
+                          rows="1"></textarea>
+            </td>
+            <td>
+                <textarea class="form-control vendite-line-commercial-note"
+                          maxlength="1000"
+                          rows="1"></textarea>
+            </td>
+            <td>
+                <textarea class="form-control vendite-line-production-instructions"
                           maxlength="1000"
                           rows="1"></textarea>
             </td>
@@ -621,8 +592,6 @@
             const savePackagingNotesButton = document.getElementById("vendite-save-packaging-notes");
             const canAssignMachines = page.dataset.canAssignMachines === "true";
             const canEditSalesNotes = page.dataset.canEditSalesNotes === "true";
-            const canEditProductionNotes = page.dataset.canEditProductionNotes === "true";
-            const canConfirmShipment = page.dataset.canConfirmShipment === "true";
             const canDeleteOrders = page.dataset.canDeleteOrders === "true";
             const canEditOrderDetails = page.dataset.canEditOrderDetails === "true";
             const canConfirmOrderRead = page.dataset.canConfirmOrderRead === "true";
@@ -652,7 +621,7 @@
 
             function showAlert(type, message) {
                 alertBox.className = `alert alert-${type}`;
-                alertBox.textContent = message;
+                alertBox.textContent = window.phaseText(message);
                 alertBox.classList.remove("d-none");
             }
 
@@ -818,7 +787,9 @@
                     row.querySelector(".vendite-line-machine").setAttribute("aria-label", `Matricola riga ${number}`);
                     row.querySelector(".vendite-line-quantity").setAttribute("aria-label", `Quantità riga ${number}`);
                     row.querySelector(".vendite-line-note").setAttribute("aria-label", `Note di vendita riga ${number}`);
-                    row.querySelector(".vendite-line-delivery").setAttribute("aria-label", `Data consegna riga ${number}`);
+                    row.querySelector(".vendite-line-commercial-note").setAttribute("aria-label", `Note commerciali riga ${number}`);
+                    row.querySelector(".vendite-line-production-instructions").setAttribute("aria-label", `Note per produzione riga ${number}`);
+                    row.querySelector(".vendite-line-delivery").setAttribute("aria-label", `Data spedizione riga ${number}`);
                 });
             }
 
@@ -832,6 +803,8 @@
                 row.querySelector(".vendite-line-model").innerHTML = modelOptions(values.model_key);
                 row.querySelector(".vendite-line-quantity").value = values.quantity || 1;
                 row.querySelector(".vendite-line-note").value = values.note || "";
+                row.querySelector(".vendite-line-commercial-note").value = values.commercial_note || "";
+                row.querySelector(".vendite-line-production-instructions").value = values.production_instructions || "";
                 row.querySelector(".vendite-line-delivery").value = values.delivery_date || "";
                 refreshCreateLineMachineOptions(row, values.machine_identity || "");
                 if (afterRow) {
@@ -950,8 +923,8 @@
                             ${options.join("")}
                         </select>
                     </div>
-                    ${row.completed
-                    ? '<div class="small text-success mt-1">Macchina completata: Fase 2 chiusa.</div>'
+                    ${row.assignment?.completed
+                    ? `<div class="small text-success mt-1">Macchina completata: ${esc(window.phaseLabel(2))} — chiusa.</div>`
                     : row.assignment && row.assignment.open === false
                         ? '<div class="small text-danger mt-1">Matricola non più presente tra quelle disponibili.</div>'
                         : ""}`;
@@ -981,32 +954,20 @@
             }
 
             function rowActions(row) {
-                const save = canAssignMachines || canEditSalesNotes || canEditProductionNotes
+                const save = canAssignMachines || canEditSalesNotes
                     ? `<button class="btn btn-sm btn-outline-primary text-nowrap"
                                type="button"
                                data-save-row="${esc(row.id)}">
                            Salva
                        </button>`
                     : "";
-                let shipment = row.completed
-                    ? '<span class="badge text-bg-warning">Pronta per evasione</span>'
-                    : '<span class="small text-muted">In attesa di Fase 2 chiusa</span>';
-                if (row.shipment) {
-                    shipment = `
-                        <span class="badge text-bg-success">Riga evasa</span>
+                const packaging = row.packaged ? `
+                        <span class="badge text-bg-success">Macchina imballata</span>
                         <div class="small text-muted mt-1">
-                            ${esc(formatDateTime(row.shipment.confirmed_at))}
-                            ${row.shipment.confirmed_by_name ? ` · ${esc(row.shipment.confirmed_by_name)}` : ""}
-                        </div>`;
-                } else if (canConfirmShipment && row.completed) {
-                    shipment = `
-                        <button class="btn btn-sm btn-success text-nowrap"
-                                type="button"
-                                data-confirm-shipment="${esc(row.id)}">
-                            Evadi riga
-                        </button>`;
-                }
-                return `<div class="d-flex flex-column align-items-start gap-2">${save}${shipment}</div>`;
+                            ${esc(formatDateTime(row.packaging?.confirmed_at))}
+                            ${row.packaging?.confirmed_by_name ? ` · ${esc(row.packaging.confirmed_by_name)}` : ""}
+                        </div>` : "";
+                return `<div class="d-flex flex-column align-items-start gap-2">${save}${packaging}</div>`;
             }
 
             function syncRowVersion(data, rowId) {
@@ -1055,13 +1016,6 @@
                 packagingNotesDirty = false;
             }
 
-            function renderSummary(summary = {}) {
-                document.getElementById("vendite-open-machines").textContent = Number(summary.open_machines || 0);
-                document.getElementById("vendite-total-demand").textContent = Number(summary.total_demand || 0);
-                document.getElementById("vendite-assigned-demand").textContent = Number(summary.assigned_demand || 0);
-                document.getElementById("vendite-unassigned-demand").textContent = Number(summary.unassigned_demand || 0);
-            }
-
             function renderMachines() {
                 if (!machines.length) {
                     machinesBody.innerHTML = `
@@ -1081,6 +1035,7 @@
                         machine.serial_number,
                         machine.order,
                         machine.phase,
+                        window.phaseLabel(machine.phase),
                         machine.state,
                     ].join(" ").toLocaleLowerCase("it");
                     return `
@@ -1089,7 +1044,7 @@
                             <td class="fw-semibold">${esc(machine.serial_number || "-")}</td>
                             <td>${esc(machine.order)}</td>
                             <td>
-                                <div>Fase ${esc(machine.phase)}</div>
+                                <div>${esc(window.phaseLabel(machine.phase))}</div>
                                 ${stateBadge(machine.state)}
                             </td>
                         </tr>`;
@@ -1101,7 +1056,7 @@
                 if (!customerOrders.length) {
                     customerOrdersBody.innerHTML = `
                         <tr>
-                            <td colspan="8" class="text-center text-muted py-4">
+                            <td colspan="10" class="text-center text-muted py-4">
                                 Nessun ordine cliente inserito.
                             </td>
                         </tr>`;
@@ -1111,7 +1066,7 @@
                 const html = [];
                 customerOrders.forEach(order => {
                     const neutralClass = referenceClass(order.internal_reference);
-                    const orderClass = order.completed
+                    const orderClass = order.packaged
                         ? "vendite-machine-completed"
                         : !order.read_confirmed
                             ? "vendite-order-unread"
@@ -1121,13 +1076,6 @@
                                    type="button"
                                    data-confirm-order-read="${esc(order.id)}">
                                Conferma lettura
-                           </button>`
-                        : "";
-                    const orderShipmentButton = canConfirmShipment && order.shipment_ready
-                        ? `<button class="btn btn-sm btn-success text-nowrap"
-                                   type="button"
-                                   data-confirm-order-shipment="${esc(order.id)}">
-                               Evadi ordine
                            </button>`
                         : "";
                     const deleteButton = canDeleteOrders
@@ -1151,7 +1099,7 @@
                             data-demand-search="${esc(orderSearch)}"
                             data-customer-order-id="${esc(order.id)}"
                             data-reference-class="${neutralClass}">
-                            <td colspan="8">
+                            <td colspan="10">
                                 <div class="d-flex flex-wrap justify-content-between gap-2">
                                     <div class="d-flex flex-wrap align-items-center gap-2">
                                         <button class="btn btn-sm btn-outline-secondary"
@@ -1168,12 +1116,11 @@
                                     <div class="d-flex flex-wrap align-items-center gap-2">
                                         <div class="small text-muted">
                                             ${Number(order.assigned_rows || 0)}/${Number(order.total_rows || 0)} assegnate
-                                            · ${Number(order.completed_rows || 0)}/${Number(order.total_rows || 0)} finite
+                                            · ${Number(order.packaged_rows || 0)}/${Number(order.total_rows || 0)} imballate
                                             ${order.created_at ? ` · ${esc(formatDateTime(order.created_at))}` : ""}
                                             ${order.created_by_name ? ` · ${esc(order.created_by_name)}` : ""}
                                         </div>
                                         ${confirmButton}
-                                        ${orderShipmentButton}
                                         ${deleteButton}
                                     </div>
                                 </div>
@@ -1189,13 +1136,15 @@
                             row.variant,
                             row.description,
                             row.sales_note,
+                            row.commercial_note,
                             row.production_note,
+                            row.production_instructions,
                             row.shipping_note,
                             row.delivery_date,
                             row.assignment?.order,
                             row.assignment?.serial_number,
                         ].join(" ").toLocaleLowerCase("it");
-                        const rowClass = row.completed
+                        const rowClass = row.packaged
                             ? "vendite-machine-completed"
                             : !order.read_confirmed
                                 ? "vendite-order-unread"
@@ -1206,20 +1155,25 @@
                                 data-customer-order-id="${esc(order.id)}"
                                 data-reference-class="${neutralClass}"
                                 data-customer-row-id="${esc(row.id)}"
-                                data-shipment-confirmed="${row.shipment ? "true" : "false"}"
                                 data-version="${esc(row.version)}">
                                 <td class="fw-semibold">${esc(row.position)}</td>
                                 <td class="vendite-model-cell">${modelLabel(row)}</td>
-                                <td>${dateInput(row, "delivery_date", "Data di consegna", canEditSalesNotes)}</td>
+                                <td>${dateInput(row, "delivery_date", "Data di spedizione", canEditSalesNotes)}</td>
                                 <td class="vendite-note-cell">
                                     ${noteTextarea(row, "sales_note", "Note di vendita", canEditSalesNotes)}
                                 </td>
+                                <td class="vendite-note-cell">
+                                    ${noteTextarea(row, "commercial_note", "Note commerciali", canEditSalesNotes)}
+                                </td>
                                 <td>${assignmentSelect(row)}</td>
                                 <td class="vendite-note-cell">
-                                    ${noteTextarea(row, "production_note", "Note di produzione", canEditProductionNotes)}
+                                    <div style="white-space: pre-wrap">${esc(row.production_note || "—")}</div>
                                 </td>
                                 <td class="vendite-note-cell">
-                                    ${noteTextarea(row, "shipping_note", "Note di imballaggio", canEditSalesNotes)}
+                                    ${noteTextarea(row, "production_instructions", "Note per produzione", canEditSalesNotes)}
+                                </td>
+                                <td class="vendite-note-cell">
+                                    ${noteTextarea(row, "shipping_note", "Note per imballo", canEditSalesNotes)}
                                 </td>
                                 <td>${rowActions(row)}</td>
                             </tr>`);
@@ -1240,7 +1194,6 @@
                 assignmentMachines = Array.isArray(data.assignment_machines)
                     ? data.assignment_machines
                     : machines;
-                renderSummary(data.summary || {});
                 refreshCreateModelOptions();
                 renderMachines();
                 renderCustomerOrders(Array.isArray(data.customer_orders) ? data.customer_orders : []);
@@ -1354,6 +1307,8 @@
                         id_riga: selectedMachine?.dataset.idRiga || "",
                         quantity: Number(row.querySelector(".vendite-line-quantity").value),
                         sales_note: row.querySelector(".vendite-line-note").value.trim(),
+                        commercial_note: row.querySelector(".vendite-line-commercial-note").value.trim(),
+                        production_instructions: row.querySelector(".vendite-line-production-instructions").value.trim(),
                         delivery_date: row.querySelector(".vendite-line-delivery").value,
                     };
                 });
@@ -1533,11 +1488,11 @@
                         throw new Error(payload.error || `Errore server (${response.status})`);
                     }
                     packagingNotesDirty = false;
-                    showAlert("success", payload.message || "Note di imballaggio aggiornate.");
+                    showAlert("success", payload.message || "Note per imballo aggiornate.");
                     alertBox.dataset.source = "mutation";
                 } catch (error) {
-                    console.error("Errore aggiornamento note di imballaggio:", error);
-                    showAlert("danger", error.message || "Impossibile aggiornare le note di imballaggio.");
+                    console.error("Errore aggiornamento note per imballo:", error);
+                    showAlert("danger", error.message || "Impossibile aggiornare le note per imballo.");
                     alertBox.dataset.source = "mutation";
                 } finally {
                     mutationInFlight = false;
@@ -1557,203 +1512,11 @@
                 const payload = {version: Number(row.dataset.version)};
                 if (canEditSalesNotes) {
                     payload.sales_note = value("sales_note");
+                    payload.commercial_note = value("commercial_note");
+                    payload.production_instructions = value("production_instructions");
                     payload.shipping_note = value("shipping_note");
                 }
-                if (canEditProductionNotes) {
-                    payload.production_note = value("production_note");
-                }
                 return payload;
-            }
-
-            function rowShipmentPayload(rowId) {
-                const body = rowNotesPayload(rowId);
-                if (!body) return null;
-                const row = customerOrdersBody.querySelector(
-                    `[data-customer-row-id="${CSS.escape(String(rowId))}"]`
-                );
-                const dateValue = field => row?.querySelector(
-                    `[data-date-field="${CSS.escape(field)}"]`
-                )?.value || "";
-                body.id = Number(rowId);
-                body.delivery_date = dateValue("delivery_date");
-                return body;
-            }
-
-            function markRowShipmentConfirmed(rowId, data) {
-                const row = customerOrdersBody.querySelector(
-                    `[data-customer-row-id="${CSS.escape(String(rowId))}"]`
-                );
-                if (!row) return;
-                row.dataset.shipmentConfirmed = "true";
-                row.querySelectorAll("[data-date-field]").forEach(input => {
-                    input.dataset.originalValue = input.value;
-                });
-                const updated = (data?.customer_orders || [])
-                    .flatMap(order => order.rows || [])
-                    .find(item => String(item.id) === String(rowId));
-                const shipmentButton = row.querySelector("[data-confirm-shipment]");
-                if (shipmentButton) {
-                    shipmentButton.outerHTML = `
-                        <div data-shipment-status>
-                            <span class="badge text-bg-success">Riga evasa</span>
-                            ${updated?.shipment?.confirmed_at
-                        ? `<div class="small text-muted mt-1">
-                                       ${esc(formatDateTime(updated.shipment.confirmed_at))}
-                                       ${updated.shipment.confirmed_by_name
-                            ? ` · ${esc(updated.shipment.confirmed_by_name)}`
-                            : ""}
-                                   </div>`
-                        : ""}
-                        </div>`;
-                }
-                const orderId = String(row.dataset.customerOrderId || "");
-                const pendingRows = customerOrdersBody.querySelectorAll(
-                    `tr[data-customer-order-id="${CSS.escape(orderId)}"]` +
-                    '[data-customer-row-id][data-shipment-confirmed="false"]'
-                );
-                if (!pendingRows.length) {
-                    const orderButton = customerOrdersBody.querySelector(
-                        `[data-confirm-order-shipment="${CSS.escape(orderId)}"]`
-                    );
-                    if (orderButton) {
-                        orderButton.disabled = true;
-                        orderButton.textContent = "Ordine evaso";
-                    }
-                }
-            }
-
-            async function confirmShipment(rowId, button) {
-                if (mutationInFlight) return;
-                const rowElement = customerOrdersBody.querySelector(
-                    `[data-customer-row-id="${CSS.escape(String(rowId))}"]`
-                );
-                if (
-                    dirtyAssignments.has(String(rowId))
-                    || dirtyOrderDetails.has(String(rowElement?.dataset.customerOrderId))
-                ) {
-                    showAlert(
-                        "warning",
-                        "Salvare prima l'assegnazione e i dati dell'ordine."
-                    );
-                    return;
-                }
-                if (!window.confirm(
-                    "Evadere questa riga dell'ordine?"
-                )) return;
-                const body = rowShipmentPayload(rowId);
-                if (!body) return;
-
-                mutationInFlight = true;
-                button.disabled = true;
-                try {
-                    const url = page.dataset.shipmentUrlTemplate.replace(
-                        "/0/",
-                        `/${encodeURIComponent(rowId)}/`
-                    );
-                    const response = await window.avpFetch(url, {
-                        method: "POST",
-                        headers: {"Content-Type": "application/json"},
-                        body: JSON.stringify(body),
-                    });
-                    const payload = await response.json().catch(() => ({}));
-                    if (!response.ok || !payload.ok) {
-                        throw new Error(
-                            payload.error || `Errore server (${response.status})`
-                        );
-                    }
-                    dirtyNotes.delete(String(rowId));
-                    dirtyDates.delete(String(rowId));
-                    syncRowVersion(payload.data, rowId);
-                    markRowShipmentConfirmed(rowId, payload.data);
-                    showAlert("success", payload.message || "Riga evasa.");
-                    alertBox.dataset.source = "mutation";
-                } catch (error) {
-                    console.error("Errore conferma spedizione:", error);
-                    showAlert("danger", error.message || "Impossibile evadere la riga.");
-                    alertBox.dataset.source = "mutation";
-                    button.disabled = false;
-                } finally {
-                    mutationInFlight = false;
-                }
-                if (!hasUnsavedChanges()) {
-                    await refresh({force: true});
-                } else {
-                    statusBox.textContent = "Aggiornamento sospeso: ci sono modifiche non salvate.";
-                }
-            }
-
-            async function confirmOrderShipment(orderId, button) {
-                if (mutationInFlight) return;
-
-                const selector = [
-                    `tr[data-customer-order-id="${CSS.escape(String(orderId))}"]`,
-                    '[data-customer-row-id]',
-                    '[data-shipment-confirmed="false"]',
-                ].join("");
-                const rows = [...customerOrdersBody.querySelectorAll(selector)]
-                    .map(row => rowShipmentPayload(row.dataset.customerRowId))
-                    .filter(Boolean);
-                if (!rows.length) return;
-                if (
-                    dirtyOrderDetails.has(String(orderId))
-                    || rows.some(row => dirtyAssignments.has(String(row.id)))
-                ) {
-                    showAlert(
-                        "warning",
-                        "Salvare prima le assegnazioni e i dati dell'ordine."
-                    );
-                    return;
-                }
-                if (!window.confirm(
-                    "Evadere tutte le righe dell'ordine?"
-                )) return;
-
-                mutationInFlight = true;
-                button.disabled = true;
-                try {
-                    const url = page.dataset.orderShipmentUrlTemplate.replace(
-                        "/0/",
-                        `/${encodeURIComponent(orderId)}/`
-                    );
-                    const response = await window.avpFetch(url, {
-                        method: "POST",
-                        headers: {"Content-Type": "application/json"},
-                        body: JSON.stringify({rows}),
-                    });
-                    const payload = await response.json().catch(() => ({}));
-                    if (!response.ok || !payload.ok) {
-                        throw new Error(
-                            payload.error || `Errore server (${response.status})`
-                        );
-                    }
-                    rows.forEach(row => {
-                        dirtyNotes.delete(String(row.id));
-                        dirtyDates.delete(String(row.id));
-                        syncRowVersion(payload.data, row.id);
-                        markRowShipmentConfirmed(row.id, payload.data);
-                    });
-                    button.textContent = "Ordine evaso";
-                    showAlert(
-                        "success",
-                        payload.message || "Ordine evaso."
-                    );
-                    alertBox.dataset.source = "mutation";
-                } catch (error) {
-                    console.error("Errore conferma spedizione ordine:", error);
-                    showAlert(
-                        "danger",
-                        error.message || "Impossibile evadere l'ordine."
-                    );
-                    alertBox.dataset.source = "mutation";
-                    button.disabled = false;
-                } finally {
-                    mutationInFlight = false;
-                }
-                if (!hasUnsavedChanges()) {
-                    await refresh({force: true});
-                } else {
-                    statusBox.textContent = "Aggiornamento sospeso: ci sono modifiche non salvate.";
-                }
             }
 
             async function deleteCustomerOrder(orderId, button) {
@@ -1861,6 +1624,8 @@
                     refreshCreateLineMachineOptions(row);
                     row.querySelector(".vendite-line-quantity").value = 1;
                     row.querySelector(".vendite-line-note").value = "";
+                    row.querySelector(".vendite-line-commercial-note").value = "";
+                    row.querySelector(".vendite-line-production-instructions").value = "";
                     row.querySelector(".vendite-line-delivery").value = "";
                     row.querySelector("select").focus();
                 } else {
@@ -1955,16 +1720,6 @@
                     );
                     return;
                 }
-                const orderShipmentButton = event.target.closest(
-                    "[data-confirm-order-shipment]"
-                );
-                if (orderShipmentButton) {
-                    confirmOrderShipment(
-                        orderShipmentButton.dataset.confirmOrderShipment,
-                        orderShipmentButton
-                    );
-                    return;
-                }
                 const deleteButton = event.target.closest("[data-delete-customer-order]");
                 if (deleteButton) {
                     deleteCustomerOrder(
@@ -1978,14 +1733,6 @@
                     confirmOrderRead(
                         confirmButton.dataset.confirmOrderRead,
                         confirmButton
-                    );
-                    return;
-                }
-                const shipmentButton = event.target.closest("[data-confirm-shipment]");
-                if (shipmentButton) {
-                    confirmShipment(
-                        shipmentButton.dataset.confirmShipment,
-                        shipmentButton
                     );
                     return;
                 }

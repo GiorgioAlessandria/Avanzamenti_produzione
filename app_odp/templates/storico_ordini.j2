@@ -428,7 +428,7 @@
                             <td>${esc(row.ordine)}</td>
                             <td>${esc(row.num_progr_riga)}</td>
                             <td>${esc(row.articolo)}<div class="small text-muted">${esc(row.descrizione)}</div></td>
-                            <td>${esc(row.fase)}</td>
+                            <td>${esc(window.phaseLabel(row.fase))}</td>
                             <td>${esc(row.risorsa)}</td>
                             <td>${esc(row.q_ok)}</td>
                             <td>${esc(row.q_ko)}</td>
@@ -452,7 +452,7 @@
                             <td>${esc(row.lotto)}</td>
                             <td>${esc(row.quantita)}</td>
                             <td>${esc(row.esito)}</td>
-                            <td>${esc(row.fase)}</td>
+                            <td>${esc(window.phaseLabel(row.fase))}</td>
                             <td>${esc(row.utente)}</td>
                         </tr>
                     `
@@ -468,7 +468,7 @@
                             <td>${esc(row.articolo)}</td>
                             <td>${esc(row.lotto)}</td>
                             <td>${esc(row.quantita)}</td>
-                            <td>${esc(row.fase)}</td>
+                            <td>${esc(window.phaseLabel(row.fase))}</td>
                             <td>${esc(row.utente)}</td>
                             <td>${esc(row.label)}</td>
                         </tr>

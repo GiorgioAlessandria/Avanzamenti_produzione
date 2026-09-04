@@ -669,7 +669,7 @@
 
                 const thead = columns.map(col => `<th>${escHtml(col.label)}</th>`).join("");
                 const tbody = rows.map(row => {
-                    const tds = columns.map(col => `<td>${escHtml(row?.[col.key] ?? "")}</td>`).join("");
+                    const tds = columns.map(col => `<td>${escHtml(col.key === "Fase" ? window.phaseLabel(row?.[col.key]) : row?.[col.key] ?? "")}</td>`).join("");
                     return `<tr>${tds}</tr>`;
                 }).join("");
 

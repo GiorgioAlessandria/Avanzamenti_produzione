@@ -286,6 +286,16 @@ def _ensure_vendite_schema() -> None:
                 "ALTER TABLE vendite_ordini_cliente_righe "
                 "ADD COLUMN note_produzione VARCHAR(1000)"
             )
+        if "note_commerciali" not in columns:
+            additions.append(
+                "ALTER TABLE vendite_ordini_cliente_righe "
+                "ADD COLUMN note_commerciali VARCHAR(1000)"
+            )
+        if "note_per_produzione" not in columns:
+            additions.append(
+                "ALTER TABLE vendite_ordini_cliente_righe "
+                "ADD COLUMN note_per_produzione VARCHAR(1000)"
+            )
         if "note_spedizione" not in columns:
             additions.append(
                 "ALTER TABLE vendite_ordini_cliente_righe "
@@ -443,6 +453,8 @@ def setup_request_logging(app):
 
 def _ensure_builtin_permissions() -> None:
     builtins = {
+        "nomi_fase": "Accesso e modifica dei nomi personali delle fasi",
+        "visualizza_pianificati": "Visualizzazione delle macchine pianificate nelle viste Vendite",
         "vendite": (
             "Visualizzazione ordini macchina e gestione ordini cliente per le vendite"
         ),

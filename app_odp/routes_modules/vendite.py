@@ -13,9 +13,8 @@ from app_odp.services.vendite_assegnazioni_service import (
     VenditeAssegnazioniConflictError,
     VenditeAssegnazioniError,
     build_assignment_dashboard,
-    confirm_customer_order_shipment,
     confirm_customer_order_read,
-    confirm_customer_row_shipment,
+    confirm_machine_packaging,
     create_customer_order,
     delete_customer_order,
     set_machine_assignment,
@@ -28,6 +27,19 @@ from app_odp.services.vendite_assegnazioni_service import (
     update_machine_production_note,
 )
 from app_odp.services.vendite_service import build_vendite_payload
+from app_odp.services.vendite_raggruppamenti_service import (
+    build_machine_grouping,
+    delete_machine_group,
+    save_machine_group,
+)
+
+
+def _visible_assignment_dashboard():
+    return build_assignment_dashboard(include_planned=active_policy().can("visualizza_pianificati"))
+
+
+def _visible_production_dashboard():
+    return build_vendite_payload(include_planned=active_policy().can("visualizza_pianificati"))
 
 
 @main_bp.get("/vendite")
@@ -36,13 +48,17 @@ def vendite_page():
     return render_template(
         "vendite.j2",
         can_edit_production_notes=active_policy().can("assegna_matricole"),
+        can_confirm_packaging=active_policy().can("assegna_matricole"),
+        can_manage_groups=active_policy().can("carica_ordini_cliente"),
     )
 
 
 @main_bp.get("/api/vendite/ordini-macchina")
 @require_active_perm("vendite")
 def api_vendite_ordini_macchina():
-    response = jsonify({"ok": True, "data": build_vendite_payload()})
+    response = jsonify({"ok": True, "data": {
+        **_visible_production_dashboard(), "grouping": build_machine_grouping(),
+    }})
     response.headers["Cache-Control"] = "no-store"
     return response, 200
 
@@ -52,16 +68,13 @@ def api_vendite_ordini_macchina():
 def vendite_assegnazioni_page():
     policy = active_policy()
     can_create_customer_orders = policy.can("carica_ordini_cliente")
-    can_edit_production_notes = policy.can("assegna_matricole")
     return render_template(
         "vendite_assegnazioni.j2",
         can_create_customer_orders=can_create_customer_orders,
         can_assign_machines=(
-            can_create_customer_orders or can_edit_production_notes
+            can_create_customer_orders or policy.can("assegna_matricole")
         ),
         can_edit_sales_notes=can_create_customer_orders,
-        can_edit_production_notes=can_edit_production_notes,
-        can_confirm_shipment=can_create_customer_orders,
         can_confirm_order_read=policy.can("conferma_lettura_ordine"),
     )
 
@@ -69,14 +82,14 @@ def vendite_assegnazioni_page():
 @main_bp.get("/api/vendite/assegnazioni")
 @require_active_perm("vendite")
 def api_vendite_assegnazioni():
-    response = jsonify({"ok": True, "data": build_assignment_dashboard()})
+    response = jsonify({"ok": True, "data": _visible_assignment_dashboard()})
     response.headers["Cache-Control"] = "no-store"
     return response, 200
 
 
 def _assignment_mutation(
     action, success_message: str, success_status: int = 200,
-    *, dashboard_builder=build_assignment_dashboard,
+    *, dashboard_builder=_visible_assignment_dashboard,
 ):
     try:
         action()
@@ -134,6 +147,28 @@ def _assignment_mutation(
     return response, success_status
 
 
+@main_bp.post("/api/vendite/raggruppamenti")
+@require_active_perm("vendite")
+@require_active_perm("carica_ordini_cliente")
+def api_vendite_raggruppamenti_save():
+    return _assignment_mutation(
+        lambda: save_machine_group(request.get_json(silent=True)),
+        "Raggruppamento salvato.",
+        dashboard_builder=build_machine_grouping,
+    )
+
+
+@main_bp.delete("/api/vendite/raggruppamenti/<int:group_id>")
+@require_active_perm("vendite")
+@require_active_perm("carica_ordini_cliente")
+def api_vendite_raggruppamenti_delete(group_id):
+    return _assignment_mutation(
+        lambda: delete_machine_group(group_id, request.get_json(silent=True)),
+        "Raggruppamento eliminato. Le macchine non sono state modificate.",
+        dashboard_builder=build_machine_grouping,
+    )
+
+
 @main_bp.post("/api/vendite/macchine/note-produzione")
 @require_active_perm("vendite")
 @require_active_perm("assegna_matricole")
@@ -142,7 +177,18 @@ def api_vendite_macchina_note_produzione():
     return _assignment_mutation(
         lambda: update_machine_production_note(payload),
         "Note di produzione salvate.",
-        dashboard_builder=build_vendite_payload,
+        dashboard_builder=_visible_production_dashboard,
+    )
+
+
+@main_bp.post("/api/vendite/macchine/conferma-imballo")
+@require_active_perm("vendite")
+@require_active_perm("assegna_matricole")
+def api_vendite_macchina_conferma_imballo():
+    return _assignment_mutation(
+        lambda: confirm_machine_packaging(request.get_json(silent=True), active_user()),
+        "Macchina segnalata come imballata.",
+        dashboard_builder=_visible_production_dashboard,
     )
 
 
@@ -227,7 +273,7 @@ def api_vendite_note_imballaggio():
     payload = request.get_json(silent=True)
     return _assignment_mutation(
         lambda: update_packaging_notes(payload, active_user()),
-        "Note di imballaggio aggiornate.",
+        "Note per imballo aggiornate.",
     )
 
 
@@ -235,7 +281,7 @@ def api_vendite_note_imballaggio():
     "/api/vendite/ordini-cliente/righe/<int:row_id>/note"
 )
 @require_active_perm("vendite")
-@require_active_any_perm("carica_ordini_cliente", "assegna_matricole")
+@require_active_perm("carica_ordini_cliente")
 def api_vendite_riga_note(row_id: int):
     payload = request.get_json(silent=True)
     policy = active_policy()
@@ -244,47 +290,8 @@ def api_vendite_riga_note(row_id: int):
             row_id,
             payload,
             can_edit_sales=policy.can("carica_ordini_cliente"),
-            can_edit_production=policy.can("assegna_matricole"),
         ),
         "Note aggiornate.",
-    )
-
-
-@main_bp.post(
-    "/api/vendite/ordini-cliente/righe/<int:row_id>/conferma-spedizione"
-)
-@require_active_perm("vendite")
-@require_active_perm("carica_ordini_cliente")
-def api_vendite_riga_conferma_spedizione(row_id: int):
-    payload = request.get_json(silent=True)
-    can_edit_production = active_policy().can("assegna_matricole")
-    return _assignment_mutation(
-        lambda: confirm_customer_row_shipment(
-            row_id,
-            payload,
-            active_user(),
-            can_edit_production=can_edit_production,
-        ),
-        "Riga evasa.",
-    )
-
-
-@main_bp.post(
-    "/api/vendite/ordini-cliente/<int:order_id>/conferma-spedizione"
-)
-@require_active_perm("vendite")
-@require_active_perm("carica_ordini_cliente")
-def api_vendite_ordine_cliente_conferma_spedizione(order_id: int):
-    payload = request.get_json(silent=True)
-    can_edit_production = active_policy().can("assegna_matricole")
-    return _assignment_mutation(
-        lambda: confirm_customer_order_shipment(
-            order_id,
-            payload,
-            active_user(),
-            can_edit_production=can_edit_production,
-        ),
-        "Ordine evaso.",
     )
 
 

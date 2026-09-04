@@ -46,8 +46,12 @@
     <main class="container-fluid py-3"
           id="vendite-page"
           data-api-url="{{ operator_url_for('main.api_vendite_ordini_macchina') }}"
+          data-groups-url="{{ operator_url_for('main.api_vendite_raggruppamenti_save') }}"
+          data-group-delete-url="{{ operator_url_for('main.api_vendite_raggruppamenti_delete', group_id=0) }}"
           data-note-url="{{ operator_url_for('main.api_vendite_macchina_note_produzione') }}"
-          data-can-edit-production-notes="{{ 'true' if can_edit_production_notes else 'false' }}">
+          data-packaging-url="{{ operator_url_for('main.api_vendite_macchina_conferma_imballo') }}"
+          data-can-edit-production-notes="{{ 'true' if can_edit_production_notes else 'false' }}"
+          data-can-confirm-packaging="{{ 'true' if can_confirm_packaging else 'false' }}">
         <div class="d-flex flex-wrap justify-content-end align-items-center gap-3 mb-3">
             <div class="d-flex flex-wrap gap-2">
                 <button type="button"
@@ -55,6 +59,30 @@
                         id="vendite-refresh">
                     Aggiorna ora
                 </button>
+                {% if can_manage_groups %}
+                <details id="vendite-group-manager" class="border rounded p-2">
+                    <summary class="small">Gestisci raggruppamenti</summary>
+                    <form id="vendite-group-form" class="mt-2" style="min-width: 280px; max-width: 520px;">
+                        <fieldset id="vendite-group-fields" disabled>
+                            <label class="form-label" for="vendite-group-select">Raggruppamento</label>
+                            <select id="vendite-group-select" class="form-select mb-2">
+                                <option value="">Nuovo raggruppamento</option>
+                            </select>
+                            <label class="form-label" for="vendite-group-name">Nome</label>
+                            <input id="vendite-group-name" class="form-control mb-2" maxlength="80" required>
+                            <fieldset class="mb-2">
+                                <legend class="fs-6">Famiglie delle macchine</legend>
+                                <div id="vendite-group-families" class="border rounded p-2" style="max-height: 260px; overflow: auto;"></div>
+                            </fieldset>
+                            <div class="small text-muted mb-2">Condivisi fra gli utenti. Una famiglia può appartenere a più raggruppamenti.</div>
+                            <button class="btn btn-primary btn-sm" type="submit">Salva raggruppamento</button>
+                            <button id="vendite-group-delete" class="btn btn-outline-danger btn-sm" type="button" disabled>Elimina</button>
+                            <button id="vendite-group-cancel" class="btn btn-outline-secondary btn-sm" type="button">Annulla modifiche</button>
+                        </fieldset>
+                        <div id="vendite-group-message" class="small mt-2" role="status" aria-live="polite"></div>
+                    </form>
+                </details>
+                {% endif %}
             </div>
         </div>
 
@@ -74,9 +102,22 @@
             </li>
             <li class="nav-item"
                 role="presentation">
+                <button class="nav-link{{ ' active' if request.args.get('vista') == 'matricola' else '' }}"
+                        id="vendite-matricole-tab"
+                        data-bs-toggle="tab"
+                        data-bs-target="#vendite-matricole-pane"
+                        type="button"
+                        role="tab"
+                        aria-controls="vendite-matricole-pane"
+                        aria-selected="{{ 'true' if request.args.get('vista') == 'matricola' else 'false' }}">
+                    Situazione produzione per matricola
+                </button>
+            </li>
+            <li class="nav-item"
+                role="presentation">
                 <a class="nav-link"
                    href="{{ operator_url_for('main.vendite_assegnazioni_page', vista='imballaggio') }}">
-                    Note di imballaggio
+                    Note per imballo
                 </a>
             </li>
             <li class="nav-item"
@@ -90,19 +131,6 @@
                         aria-controls="vendite-modelli-pane"
                         aria-selected="{{ 'true' if request.args.get('vista', 'modello') == 'modello' else 'false' }}">
                     Situazione produzione per modello
-                </button>
-            </li>
-            <li class="nav-item"
-                role="presentation">
-                <button class="nav-link{{ ' active' if request.args.get('vista') == 'matricola' else '' }}"
-                        id="vendite-matricole-tab"
-                        data-bs-toggle="tab"
-                        data-bs-target="#vendite-matricole-pane"
-                        type="button"
-                        role="tab"
-                        aria-controls="vendite-matricole-pane"
-                        aria-selected="{{ 'true' if request.args.get('vista') == 'matricola' else 'false' }}">
-                    Situazione produzione per matricola
                 </button>
             </li>
         </ul>
@@ -148,36 +176,44 @@
                      tabindex="0">
                 <div class="p-3 border-bottom">
                     <div class="d-flex flex-wrap justify-content-between align-items-baseline gap-2">
-                        <h2 class="h6 mb-1">Dettaglio per matricola</h2>
+                        <div class="d-flex flex-wrap align-items-center gap-3">
+                            <h2 class="h6 mb-1">Dettaglio per matricola</h2>
+                            <div id="vendite-group-filters" class="d-flex flex-wrap gap-3" role="group" aria-label="Raggruppamenti da visualizzare"></div>
+                        </div>
                         <div class="d-flex flex-wrap gap-3 small text-muted">
                             <span data-vendite-status role="status" aria-live="polite">Caricamento...</span>
                             <span>Aggiornamento automatico ogni 5 secondi</span>
                         </div>
                     </div>
                     <div class="small text-muted">
-                        Fase, stato e ultima causale di sospensione per ogni macchina
+                        Seleziona i raggruppamenti per una tabella unica; senza selezioni sono mostrate tutte le macchine.
                     </div>
                 </div>
                 <div class="table-responsive">
-                    <table class="table table-striped table-hover table-sortable table-state-rowcolor align-middle mb-0">
+                    <table id="vendite-machines-table" class="table table-striped table-hover table-state-rowcolor align-middle mb-0">
                         <thead class="table-light">
                         <tr>
-                            <th class="vendite-model-column"
-                                data-sort="text">Modello</th>
-                            <th data-sort="text">Matricola</th>
-                            <th data-sort="text">Ordine produzione</th>
-                            <th data-sort="text">Ordine cliente</th>
-                            <th data-sort="num">Fase</th>
-                            <th data-sort="text">Stato</th>
-                            <th class="vendite-note-column"
-                                data-sort="text">Note / ultima causale di sospensione</th>
-                            <th class="vendite-note-column"
-                                data-sort="text">Note di produzione</th>
+                            {% for key, label in [
+                                ('model_code', 'Modello'), ('serial_number', 'Matricola'),
+                                ('order', 'Ordine produzione'), ('customer_order', 'Ordine cliente'),
+                                ('shipping_date', 'Data spedizione'), ('phase', 'Fase'), ('state', 'Stato'),
+                                ('last_suspension_cause', 'Note / ultima causale di sospensione'),
+                                ('production_note', 'Note di produzione'), ('production_instructions', 'Note per produzione'),
+                                ('packaging_note', 'Note per imballo'), ('packaged', 'Imballo')
+                            ] %}
+                            <th class="{{ 'vendite-model-column' if key == 'model_code' else 'vendite-note-column' if key in ['last_suspension_cause', 'production_note', 'production_instructions', 'packaging_note'] else '' }}"
+                                aria-sort="none">
+                                <button type="button" class="btn btn-link text-body fw-semibold p-0 text-start"
+                                        data-machine-sort="{{ key }}" aria-label="Ordina per {{ label }}">
+                                    {{ label }} <span data-sort-marker aria-hidden="true"></span>
+                                </button>
+                            </th>
+                            {% endfor %}
                         </tr>
                         </thead>
                         <tbody id="vendite-machines-body">
                         <tr>
-                            <td colspan="8"
+                            <td colspan="12"
                                 class="text-center text-muted py-4">Caricamento...</td>
                         </tr>
                         </tbody>
@@ -199,6 +235,7 @@
             const refreshButton = document.getElementById("vendite-refresh");
             const statusElements = page.querySelectorAll("[data-vendite-status]");
             const canEditNotes = page.dataset.canEditProductionNotes === "true";
+            const canConfirmPackaging = page.dataset.canConfirmPackaging === "true";
             const errorElement = document.getElementById("vendite-error");
             const summaryHead = document.getElementById("vendite-summary-head");
             const summaryBody = document.getElementById("vendite-summary-body");
@@ -206,7 +243,24 @@
             const machinesBody = document.getElementById("vendite-machines-body");
             let inFlight = false;
             let savingNote = false;
+            let packagingInFlight = false;
             let noteRevision = 0;
+            const machinesTable = document.getElementById("vendite-machines-table");
+            const groupFilters = document.getElementById("vendite-group-filters");
+            const groupForm = document.getElementById("vendite-group-form");
+            const groupSelect = document.getElementById("vendite-group-select");
+            const groupFields = document.getElementById("vendite-group-fields");
+            const groupName = document.getElementById("vendite-group-name");
+            const groupFamilies = document.getElementById("vendite-group-families");
+            const groupDelete = document.getElementById("vendite-group-delete");
+            const groupMessage = document.getElementById("vendite-group-message");
+            let groups = [], families = [];
+            const selectedGroups = new Set();
+            const collapsedGroups = new Set();
+            let showAllGroups = false;
+            let currentData = {machines: []};
+            let sortKey = "model_code", sortDirection = 1;
+            let groupFormDirty = false, groupMutation = false;
 
             function setStatus(message) {
                 statusElements.forEach(element => element.textContent = message);
@@ -293,7 +347,7 @@
                     <tr>
                         <th class="vendite-model-column" rowspan="2">Modello</th>
                         ${phaseGroups.map(group => `
-                            <th colspan="${group.count}">Fase ${esc(group.phase)}</th>
+                            <th colspan="${group.count}">${esc(window.phaseLabel(group.phase))}</th>
                         `).join("")}
                         <th rowspan="2">Totale</th>
                     </tr>
@@ -340,30 +394,193 @@
                     </div>`;
             }
 
-            function renderMachines(data) {
-                const machines = Array.isArray(data.machines) ? data.machines : [];
-                if (!machines.length) {
-                    machinesBody.innerHTML = `
-                        <tr>
-                            <td colspan="8" class="text-center text-muted py-4">
-                                Nessun ordine macchina presente.
-                            </td>
-                        </tr>`;
-                    return;
-                }
+            function formatShippingDate(value) {
+                return value ? value.split("-").reverse().join("/") : "—";
+            }
 
-                machinesBody.innerHTML = machines.map(machine => `
+            function packagingCell(machine) {
+                if (machine.packaged) {
+                    return `
+                        <span class="badge text-bg-success">Macchina imballata</span>
+                        <div class="small text-muted mt-1">
+                            ${esc(formatUpdateTime(machine.packaging?.confirmed_at))}
+                            ${machine.packaging?.confirmed_by_name ? ` · ${esc(machine.packaging.confirmed_by_name)}` : ""}
+                        </div>`;
+                }
+                if (!canConfirmPackaging || !machine.has_serial) return "—";
+                return `<button type="button" class="btn btn-success btn-sm text-nowrap"
+                                data-confirm-packaging
+                                data-id-documento="${esc(machine.id_documento)}"
+                                data-id-riga="${esc(machine.id_riga)}"
+                                data-serial="${esc(machine.serial_number)}">
+                            Macchina imballata
+                        </button>`;
+            }
+
+            function machineSections(machines, allGroups, selected, separate) {
+                if (separate) {
+                    const assigned = new Set(allGroups.flatMap(group => group.family_codes));
+                    const sections = allGroups.map(group => ({
+                        key: String(group.id),
+                        name: group.name,
+                        machines: machines.filter(machine => group.family_codes.includes(machine.family_code)),
+                    }));
+                    const remaining = machines.filter(machine => !assigned.has(machine.family_code));
+                    if (remaining.length || !sections.length) {
+                        sections.push({key: "ungrouped", name: "Senza raggruppamento", machines: remaining});
+                    }
+                    return sections;
+                }
+                const codes = new Set(allGroups.filter(group => selected.has(String(group.id)))
+                    .flatMap(group => group.family_codes));
+                return [{name: null, machines: selected.size
+                    ? machines.filter(machine => codes.has(machine.family_code)) : machines}];
+            }
+
+            function sortedMachines(machines, key, direction) {
+                return [...machines].sort((a, b) => {
+                    const left = String(a[key] ?? ""), right = String(b[key] ?? "");
+                    // Le date ISO si ordinano cronologicamente; i valori vuoti restano in fondo.
+                    if (!left || !right) return Number(!left) - Number(!right);
+                    return left.localeCompare(right, "it", {numeric: true, sensitivity: "base"}) * direction;
+                });
+            }
+
+            function renderGroupEditor() {
+                if (!groupForm) return;
+                const selectedId = groupSelect.value;
+                groupSelect.innerHTML = '<option value="">Nuovo raggruppamento</option>' +
+                    groups.map(group => `<option value="${group.id}">${esc(group.name)}</option>`).join("");
+                groupSelect.value = groups.some(group => String(group.id) === selectedId) ? selectedId : "";
+                groupSelect.dataset.previousValue = groupSelect.value;
+                const group = groups.find(item => String(item.id) === groupSelect.value);
+                groupForm.dataset.version = group?.version || "";
+                groupName.value = group?.name || "";
+                groupFamilies.innerHTML = families.map((family, index) => `
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="vendite-family-${index}"
+                               value="${esc(family.code)}" ${group?.family_codes.includes(family.code) ? "checked" : ""}>
+                        <label class="form-check-label" for="vendite-family-${index}">${esc(family.code)}${family.description ? " — " + esc(family.description) : ""}</label>
+                    </div>`).join("") || '<div class="text-muted">Nessuna famiglia disponibile.</div>';
+                groupDelete.disabled = !group;
+            }
+
+            function renderGrouping(config) {
+                groups = config.groups || [];
+                families = config.families || [];
+                const ids = new Set(groups.map(group => String(group.id)));
+                for (const id of selectedGroups) if (!ids.has(id)) selectedGroups.delete(id);
+                for (const id of collapsedGroups) {
+                    if (id !== "ungrouped" && !ids.has(id)) collapsedGroups.delete(id);
+                }
+                groupFilters.innerHTML = `
+                    <label class="form-check mb-0">
+                        <input class="form-check-input" type="checkbox" data-show-all-groups ${showAllGroups ? "checked" : ""}>
+                        <span class="form-check-label">Tutti i raggruppamenti, separati</span>
+                    </label>` + groups.map(group => `
+                    <label class="form-check mb-0">
+                        <input class="form-check-input" type="checkbox" data-group-filter="${group.id}"
+                               ${selectedGroups.has(String(group.id)) ? "checked" : ""} ${showAllGroups ? "disabled" : ""}>
+                        <span class="form-check-label">${esc(group.name)}</span>
+                    </label>`).join("");
+                if (groupForm && !groupFormDirty && !groupMutation) {
+                    groupFields.disabled = false;
+                    renderGroupEditor();
+                }
+            }
+
+            function canChangeMachineView() {
+                if (savingNote || hasUnsavedNotes()) {
+                    errorElement.textContent = "Salvare o annullare le note prima di cambiare vista o raggruppamento.";
+                    errorElement.classList.remove("d-none");
+                    return false;
+                }
+                return true;
+            }
+
+            async function mutateGroup(deleting) {
+                if (groupMutation || !canChangeMachineView()) return;
+                const id = groupSelect.value;
+                if (deleting && (!id || !window.confirm("Eliminare questo raggruppamento? Le macchine non verranno eliminate."))) return;
+                const body = {
+                    id: id ? Number(id) : null,
+                    version: Number(groupForm.dataset.version),
+                    name: groupName.value,
+                    family_codes: Array.from(groupFamilies.querySelectorAll("input:checked"), input => input.value),
+                };
+                groupMutation = true;
+                noteRevision += 1;
+                groupFields.disabled = true;
+                groupMessage.textContent = "";
+                try {
+                    const url = deleting
+                        ? page.dataset.groupDeleteUrl.replace("/0", "/" + encodeURIComponent(id))
+                        : page.dataset.groupsUrl;
+                    const response = await window.avpFetch(url, {
+                        method: deleting ? "DELETE" : "POST",
+                        headers: {"Content-Type": "application/json"},
+                        body: JSON.stringify(body),
+                    });
+                    const payload = await response.json().catch(() => ({}));
+                    if (!response.ok || !payload.ok) throw new Error(payload.error || "Salvataggio non riuscito.");
+                    groupFormDirty = false;
+                    groupMutation = false;
+                    if (deleting) groupSelect.value = "";
+                    renderGrouping(payload.data || {});
+                    if (!editingNotes()) renderMachines(currentData);
+                    groupMessage.textContent = payload.message;
+                } catch (error) {
+                    groupMessage.textContent = error.message;
+                } finally {
+                    groupMutation = false;
+                    groupFields.disabled = false;
+                }
+            }
+
+            function renderMachines(data) {
+                const sections = machineSections(data.machines || [], groups, selectedGroups, showAllGroups);
+                machinesBody.innerHTML = sections.map(section => {
+                    const expanded = section.name === null || !collapsedGroups.has(section.key);
+                    const header = section.name === null ? "" : `
+                        <tr class="table-secondary" data-group-heading>
+                            <th colspan="12" scope="rowgroup">
+                                <button type="button" class="btn text-start fw-semibold w-100 p-0"
+                                        data-toggle-machine-group="${esc(section.key)}"
+                                        aria-expanded="${expanded}"
+                                        aria-label="${expanded ? "Riduci" : "Espandi"} raggruppamento ${esc(section.name)}">
+                                    <span aria-hidden="true">${expanded ? "▾" : "▸"}</span>
+                                    ${esc(section.name)} (${section.machines.length})
+                                </button>
+                            </th>
+                        </tr>`;
+                    if (!expanded) return header;
+                    const rows = sortedMachines(section.machines, sortKey, sortDirection);
+                    return header + (rows.length ? rows.map(machine => `
                     <tr>
                         <td>${modelLabel(machine)}</td>
                         <td class="fw-semibold">${esc(machine.serial_number)}</td>
                         <td>${esc(machine.order)}</td>
                         <td>${esc(machine.customer_order || "—")}</td>
-                        <td>${esc(machine.phase)}</td>
+                        <td class="text-nowrap">${esc(formatShippingDate(machine.shipping_date))}</td>
+                        <td data-phase-code="${esc(machine.phase)}">${esc(window.phaseLabel(machine.phase))}</td>
                         <td data-col="stato">${stateBadge(machine.state)}</td>
-                        <td class="vendite-note-column">${esc(machine.last_suspension_cause || "—")}</td>
+                        <td class="vendite-note-column">
+                            ${(machine.missing_components || []).length ? `
+                                <div class="text-danger mb-1">
+                                    <strong>Materiali mancanti:</strong>
+                                    <ul class="mb-0 ps-3">${machine.missing_components.map(component => `
+                                        <li>${esc([component.code, component.variant, component.description].filter(Boolean).join(" — "))}</li>
+                                    `).join("")}</ul>
+                                </div>` : ""}
+                            ${esc(machine.last_suspension_cause || ((machine.missing_components || []).length ? "" : "—"))}
+                        </td>
                         <td class="vendite-note-column">${productionNoteCell(machine)}</td>
+                        <td class="vendite-note-column" style="white-space: pre-wrap">${esc(machine.production_instructions || "—")}</td>
+                        <td class="vendite-note-column" style="white-space: pre-wrap">${esc(machine.packaging_note || "—")}</td>
+                        <td>${packagingCell(machine)}</td>
                     </tr>
-                `).join("");
+                `).join("") : '<tr><td colspan="12" class="text-center text-muted py-4">Nessuna macchina presente.</td></tr>');
+                }).join("");
 
                 if (typeof window.applyRowColors === "function") {
                     window.applyRowColors();
@@ -380,13 +597,15 @@
             }
 
             function render(data) {
+                currentData = data;
                 renderSummary(data);
+                if (data.grouping) renderGrouping(data.grouping);
                 renderMachines(data);
                 setStatus(`Ultimo aggiornamento: ${formatUpdateTime(data.generated_at)}`);
             }
 
             async function refresh() {
-                if (inFlight || editingNotes()) return;
+                if (inFlight || groupMutation || packagingInFlight || editingNotes()) return;
                 const revision = noteRevision;
                 inFlight = true;
                 refreshButton.disabled = true;
@@ -416,19 +635,64 @@
             }
 
             machinesBody.addEventListener("click", async event => {
+                const packagingButton = event.target.closest("[data-confirm-packaging]");
+                if (packagingButton) {
+                    if (packagingInFlight || !canConfirmPackaging || !canChangeMachineView()) return;
+                    if (!window.confirm(`Confermare che la matricola ${packagingButton.dataset.serial} è imballata?`)) return;
+                    packagingInFlight = true;
+                    packagingButton.disabled = true;
+                    try {
+                        const response = await window.avpFetch(page.dataset.packagingUrl, {
+                            method: "POST",
+                            headers: {"Content-Type": "application/json"},
+                            body: JSON.stringify({
+                                id_documento: packagingButton.dataset.idDocumento,
+                                id_riga: packagingButton.dataset.idRiga,
+                                serial_number: packagingButton.dataset.serial,
+                            }),
+                        });
+                        const payload = await response.json().catch(() => ({}));
+                        if (!response.ok || !payload.ok) throw new Error(payload.error || `Errore server (${response.status})`);
+                        noteRevision += 1;
+                        render(payload.data);
+                        errorElement.classList.add("d-none");
+                        setStatus(payload.message || "Macchina segnalata come imballata.");
+                    } catch (error) {
+                        errorElement.textContent = error.message || "Impossibile confermare l'imballo.";
+                        errorElement.classList.remove("d-none");
+                        packagingButton.disabled = false;
+                    } finally {
+                        packagingInFlight = false;
+                    }
+                    return;
+                }
+                const toggle = event.target.closest("[data-toggle-machine-group]");
+                if (toggle) {
+                    if (!canChangeMachineView()) return;
+                    const key = toggle.dataset.toggleMachineGroup;
+                    if (collapsedGroups.has(key)) collapsedGroups.delete(key);
+                    else collapsedGroups.add(key);
+                    renderMachines(currentData);
+                    machinesBody.querySelector(`[data-toggle-machine-group="${CSS.escape(key)}"]`)?.focus();
+                    return;
+                }
                 const save = event.target.closest("[data-save-production-note]");
                 const cancel = event.target.closest("[data-cancel-production-note]");
                 if ((!save && !cancel) || savingNote || !canEditNotes) return;
                 const cell = (save || cancel).closest("td");
                 const field = cell.querySelector("[data-production-note]");
                 if (cancel) {
-                    field.value = field.dataset.originalValue;
+                    machinesBody.querySelectorAll("[data-production-note]").forEach(copy => {
+                        if (copy.dataset.serial === field.dataset.serial) copy.value = copy.dataset.originalValue;
+                    });
                     await refresh();
                     return;
                 }
                 savingNote = true;
                 noteRevision += 1;
-                field.disabled = true;
+                machinesBody.querySelectorAll("[data-production-note]").forEach(copy => {
+                    if (copy.dataset.serial === field.dataset.serial) copy.disabled = true;
+                });
                 save.disabled = true;
                 try {
                     const response = await window.avpFetch(page.dataset.noteUrl, {
@@ -450,9 +714,14 @@
                         machine.serial_number === field.dataset.serial
                     );
                     if (!saved) throw new Error("Nota salvata, ma la matricola non è più nella vista. Ricaricare i dati.");
-                    field.value = saved.production_note || "";
-                    field.dataset.originalValue = field.value;
-                    field.dataset.version = saved.production_note_version;
+                    currentData.machines = (currentData.machines || []).map(machine =>
+                        machine.serial_number === saved.serial_number ? saved : machine);
+                    machinesBody.querySelectorAll("[data-production-note]").forEach(copy => {
+                        if (copy.dataset.serial !== saved.serial_number) return;
+                        copy.value = saved.production_note || "";
+                        copy.dataset.originalValue = copy.value;
+                        copy.dataset.version = saved.production_note_version;
+                    });
                     errorElement.classList.add("d-none");
                     setStatus("Note di produzione salvate.");
                 } catch (error) {
@@ -460,22 +729,80 @@
                     errorElement.classList.remove("d-none");
                 } finally {
                     savingNote = false;
-                    field.disabled = false;
+                    machinesBody.querySelectorAll("[data-production-note]").forEach(copy => {
+                        if (copy.dataset.serial === field.dataset.serial) copy.disabled = false;
+                    });
                     save.disabled = false;
                 }
             });
 
             machinesBody.addEventListener("input", event => {
                 if (event.target.matches("[data-production-note]")) {
+                    machinesBody.querySelectorAll("[data-production-note]").forEach(copy => {
+                        if (copy !== event.target && copy.dataset.serial === event.target.dataset.serial) {
+                            copy.value = event.target.value;
+                        }
+                    });
                     setStatus("Modifiche non salvate: salvare o annullare per riprendere l'aggiornamento.");
                 }
             });
             window.addEventListener("beforeunload", event => {
-                if (savingNote || hasUnsavedNotes()) {
+                if (savingNote || hasUnsavedNotes() || groupFormDirty || groupMutation) {
                     event.preventDefault();
                     event.returnValue = "";
                 }
             });
+
+            groupFilters.addEventListener("change", event => {
+                const input = event.target;
+                if (!input.matches("[data-show-all-groups], [data-group-filter]")) return;
+                if (canChangeMachineView()) {
+                    if (input.matches("[data-show-all-groups]")) showAllGroups = input.checked;
+                    else if (input.checked) selectedGroups.add(input.dataset.groupFilter);
+                    else selectedGroups.delete(input.dataset.groupFilter);
+                    renderMachines(currentData);
+                }
+                renderGrouping({groups, families});
+            });
+            machinesTable.tHead.addEventListener("click", event => {
+                const button = event.target.closest("[data-machine-sort]");
+                if (!button || !canChangeMachineView()) return;
+                const key = button.dataset.machineSort;
+                sortDirection = sortKey === key ? -sortDirection : 1;
+                sortKey = key;
+                machinesTable.querySelectorAll("[data-machine-sort]").forEach(item => {
+                    item.closest("th").setAttribute("aria-sort", item === button
+                        ? (sortDirection === 1 ? "ascending" : "descending") : "none");
+                    item.querySelector("[data-sort-marker]").textContent = item === button
+                        ? (sortDirection === 1 ? "↑" : "↓") : "";
+                });
+                renderMachines(currentData);
+            });
+            if (groupForm) {
+                groupForm.addEventListener("input", event => {
+                    if (event.target !== groupSelect) groupFormDirty = true;
+                });
+                groupSelect.addEventListener("change", () => {
+                    if (groupFormDirty && !window.confirm("Abbandonare le modifiche al raggruppamento?")) {
+                        groupSelect.value = groupSelect.dataset.previousValue || "";
+                        return;
+                    }
+                    groupFormDirty = false;
+                    groupSelect.dataset.previousValue = groupSelect.value;
+                    renderGroupEditor();
+                    groupMessage.textContent = "";
+                });
+                document.getElementById("vendite-group-cancel").addEventListener("click", () => {
+                    groupFormDirty = false;
+                    renderGroupEditor();
+                    groupMessage.textContent = "";
+                });
+                groupForm.addEventListener("submit", event => {
+                    event.preventDefault();
+                    mutateGroup(false);
+                });
+                groupDelete.addEventListener("click", () => mutateGroup(true));
+            }
 
             refreshButton.addEventListener("click", () => {
                 if (editingNotes()) {

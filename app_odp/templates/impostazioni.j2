@@ -2248,13 +2248,15 @@
                     const scope = row.role_id
                         ? `Ruolo: ${row.role_description || row.role_name}`
                         : `Utente: ${row.username}`;
+                    const phaseValues = document.createElement("span");
+                    phaseValues.textContent = window.phaseLabel(row.phase_values);
                     return `
                 <tr>
                     <td>${row.reparto_codice ?? ""} - ${row.reparto_descrizione ?? ""}</td>
                     <td>${scope}</td>
                     <td>${row.apply_to ?? ""}</td>
                     <td>${row.phase_mode ?? ""}</td>
-                    <td>${row.phase_values ?? ""}</td>
+                    <td>${phaseValues.outerHTML}</td>
                     <td>${row.attivo ? "Sì" : "No"}</td>
                     <td class="d-flex gap-1">
                         <button class="btn btn-sm btn-outline-primary" data-edit-home-rule="${row.id}">

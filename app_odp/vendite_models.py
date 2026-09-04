@@ -17,6 +17,18 @@ def _rome_iso_now() -> str:
     return datetime.now(ROME_TZ).isoformat(timespec="seconds")
 
 
+class VenditeRaggruppamento(db.Model):
+    __tablename__ = "vendite_raggruppamenti"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    nome = db.Column(db.String(80), nullable=False)
+    nome_chiave = db.Column(db.String(160), nullable=False, unique=True)
+    famiglie = db.Column(db.JSON, nullable=False, default=list)
+    versione = db.Column(db.Integer, nullable=False, default=1)
+
+    __mapper_args__ = {"version_id_col": versione}
+
+
 class VenditeNotaProduzioneMacchina(db.Model):
     __tablename__ = "vendite_note_produzione_macchina"
 
@@ -97,7 +109,9 @@ class VenditeOrdineClienteRiga(db.Model):
     modello_variante = db.Column(db.String(120), nullable=False, default="")
     modello_descrizione = db.Column(db.String(500), nullable=True)
     note = db.Column(db.String(1000), nullable=True)
+    note_commerciali = db.Column(db.String(1000), nullable=True)
     note_produzione = db.Column(db.String(1000), nullable=True)
+    note_per_produzione = db.Column(db.String(1000), nullable=True)
     note_spedizione = db.Column(db.String(1000), nullable=True)
     data_disponibile = db.Column(db.Date, nullable=True, index=True)
     data_consegna = db.Column(db.Date, nullable=False, index=True)
@@ -194,6 +208,20 @@ class VenditeMacchinaStock(db.Model):
             name="uq_vendite_macchina_stock_odp",
         ),
     )
+
+
+class VenditeImballoMacchina(db.Model):
+    __tablename__ = "vendite_imballi_macchina"
+
+    # La conferma segue la matricola anche quando passa da STOCK a un ordine cliente.
+    matricola = db.Column(db.String(200), primary_key=True)
+    confermata_il = db.Column(db.Text, nullable=False, default=_rome_iso_now)
+    confermata_da_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    confermata_da_nome = db.Column(db.String(120), nullable=False)
 
 
 class VenditeSpedizioneConfermata(db.Model):

@@ -1,0 +1,55 @@
+{% extends "base.j2" %}
+{% block title %}Nomi delle fasi{% endblock %}
+{% block content %}
+{% autoescape true %}
+<div class="container py-4" style="max-width: 760px;">
+    <h2>Nomi delle fasi</h2>
+    <p>Preferenze personali di <strong>{{ preference_user.username }}</strong>.
+        Questi nomi saranno visibili solo a te. I codici e gli avanzamenti non cambiano.</p>
+    <p class="text-muted">Lascia vuoto il nome per visualizzare solo il numero, ad esempio “1” o “2”.
+        Puoi aggiungere altri numeri di fase oltre a 1 e 2.</p>
+    {% if preference_error %}
+        <div class="alert alert-danger" role="alert">{{ preference_error }}</div>
+    {% elif request.args.get('saved') == '1' %}
+        <div class="alert alert-success" role="status">Nomi delle fasi salvati.</div>
+    {% endif %}
+    <form method="post" action="{{ operator_url_for('main.preferenze_fasi') }}" id="phase-preferences-form">
+        <input type="hidden" name="csrf_token" value="{{ phase_csrf }}">
+        <input type="hidden" name="preference_user_id" value="{{ preference_user.id }}">
+        <div class="table-responsive">
+            <table class="table align-middle">
+                <thead><tr><th scope="col">Numero fase</th><th scope="col">Nome personale</th></tr></thead>
+                <tbody id="phase-preference-rows">
+                {% for code, name in phase_rows %}
+                    <tr>
+                        <td><input class="form-control" type="number" min="0" max="999999" step="1"
+                            name="phase_code" aria-label="Numero fase, riga {{ loop.index }}" value="{{ code }}"></td>
+                        <td><input class="form-control" type="text" maxlength="80" name="phase_name"
+                            aria-label="Nome personale, riga {{ loop.index }}" value="{{ name }}" placeholder="{{ code }}"></td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="d-flex gap-2 flex-wrap">
+            <button type="button" class="btn btn-outline-secondary" id="add-phase-preference">Aggiungi fase</button>
+            <button type="submit" class="btn btn-primary">Salva i miei nomi</button>
+        </div>
+        <p class="small text-muted mt-3">Le altre schede già aperte useranno i nuovi nomi dopo il ricaricamento della pagina.</p>
+    </form>
+</div>
+<script>
+    document.getElementById("add-phase-preference").addEventListener("click", function () {
+        const rows = document.getElementById("phase-preference-rows");
+        if (rows.rows.length >= 100) return;
+        const row = rows.insertRow();
+        row.innerHTML = `<td><input class="form-control" type="number" min="0" max="999999" step="1"
+            name="phase_code" aria-label="Numero fase, riga ${rows.rows.length}"></td>
+            <td><input class="form-control" type="text" maxlength="80" name="phase_name"
+            aria-label="Nome personale, riga ${rows.rows.length}" placeholder="Nome personale"></td>`;
+        row.querySelector("input").focus();
+        this.disabled = rows.rows.length >= 100;
+    });
+</script>
+{% endautoescape %}
+{% endblock %}

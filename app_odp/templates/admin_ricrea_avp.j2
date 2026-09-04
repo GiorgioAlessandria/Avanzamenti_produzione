@@ -125,7 +125,7 @@
                     <td class="fw-semibold">${esc(row.ordine)}</td>
                     <td>${esc(row.id_documento)} / ${esc(row.id_riga)}</td>
                     <td>${esc(row.articolo)}</td>
-                    <td>${esc(row.fase)}</td>
+                    <td>${esc(window.phaseLabel(row.fase))}</td>
                     <td>${esc(row.status)}</td>
                     <td>${esc(row.exported_at || "-")}</td>
                     <td class="text-end">
@@ -146,7 +146,7 @@
     }
 
     async function reprint(button) {
-        const label = `${button.dataset.ordine}, fase ${button.dataset.fase || "-"}`;
+        const label = `${button.dataset.ordine}, ${window.phaseLabel(button.dataset.fase || "-")}`;
         if (!confirm(`Ricreare il file AVP per ${label}?`)) return;
 
         button.disabled = true;
