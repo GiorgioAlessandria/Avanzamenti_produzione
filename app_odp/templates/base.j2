@@ -666,7 +666,10 @@
             return payload.orders || [];
         }
         if (pathname === "/api/ordini/gruppi/misto/apri") {
-            return [...(payload.condivisi || payload.orders || []), payload.mascherato || {}];
+            const masked = Array.isArray(payload.mascherati)
+                ? payload.mascherati
+                : (payload.mascherato ? [payload.mascherato] : []);
+            return [...(payload.condivisi || payload.orders || []), ...masked];
         }
         if (pathname === "/api/ordini/gruppi/mascherato/apri") {
             const masked = Array.isArray(payload.mascherati)
@@ -2502,7 +2505,7 @@
                     body.innerHTML = currentOrders.map((order, index) => `
                     <tr>
                       <td><input class="form-check-input" type="checkbox" data-role="wg-shared" value="${index}"></td>
-                      <td><input class="form-check-input" type="radio" name="wg-mixed-mask" value="${index}"></td>
+                      <td><input class="form-check-input" type="checkbox" data-role="wg-mixed-mask" value="${index}"></td>
                       <td>${esc(order.ordine)}</td>
                       <td>${esc(order.cod_art)}</td>
                       <td class="text-start">${esc(order.descrizione)}</td>
@@ -2558,23 +2561,26 @@
                     const sharedIndexes = Array.from(
                         document.querySelectorAll("#modal-workgroup-body input[data-role='wg-shared']:checked")
                     ).map(input => Number(input.value));
-                    const maskIndex = Number(document.querySelector("input[name='wg-mixed-mask']:checked")?.value);
+                    const maskIndexes = Array.from(
+                        document.querySelectorAll("#modal-workgroup-body input[data-role='wg-mixed-mask']:checked")
+                    ).map(input => Number(input.value));
 
                     if (sharedIndexes.length !== 2) {
                         showFeedback("Seleziona esattamente 2 ordini con tempo condiviso.");
                         return;
                     }
-                    if (!Number.isInteger(maskIndex)) {
-                        showFeedback("Seleziona l'ordine mascherato.");
+                    if (maskIndexes.length < 1 || maskIndexes.length > 2) {
+                        showFeedback("Seleziona da 1 a 2 ordini mascherati.");
                         return;
                     }
-                    if (sharedIndexes.includes(maskIndex)) {
-                        showFeedback("L'ordine mascherato non può essere anche a tempo condiviso.");
+                    if (maskIndexes.some(index => sharedIndexes.includes(index))) {
+                        showFeedback("Un ordine mascherato non può essere anche a tempo condiviso.");
                         return;
                     }
 
                     const shared = sharedIndexes.map(index => currentOrders[index]).filter(Boolean);
-                    if (shared.length !== 2 || !currentOrders[maskIndex]) {
+                    const masked = maskIndexes.map(index => currentOrders[index]).filter(Boolean);
+                    if (shared.length !== 2 || masked.length !== maskIndexes.length) {
                         showFeedback("Selezione gruppo misto non valida.");
                         return;
                     }
@@ -2582,7 +2588,7 @@
                     endpoint = "/api/ordini/gruppi/misto/apri";
                     payload = {
                         condivisi: shared.map(orderKey),
-                        mascherato: orderKey(currentOrders[maskIndex])
+                        mascherati: masked.map(orderKey)
                     };
                 } else {
                     const mainIndex = Number(document.querySelector("input[name='wg-main']:checked")?.value);

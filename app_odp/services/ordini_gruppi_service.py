@@ -477,12 +477,16 @@ def create_multiplo_group(order_keys: list[dict], policy) -> OdpWorkGroup:
 
 
 def create_misto_group(
-    shared_keys: list[dict], masked_key: dict, policy
+    shared_keys: list[dict], masked_keys, policy
 ) -> OdpWorkGroup:
     if not isinstance(shared_keys, list) or len(shared_keys) != 2:
         raise ValueError(
             "Selezionare esattamente 2 ordini con tempo condiviso per il gruppo misto."
         )
+    if isinstance(masked_keys, dict):
+        masked_keys = [masked_keys]
+    if not isinstance(masked_keys, list) or not 1 <= len(masked_keys) <= 2:
+        raise ValueError("Selezionare da 1 a 2 ordini mascherati per il gruppo misto.")
 
     shared_ordini = [
         _get_visible_odp_by_key(
@@ -492,13 +496,19 @@ def create_misto_group(
         )
         for item in shared_keys
     ]
-    masked = _get_visible_odp_by_key(
-        policy,
-        _norm_text(masked_key.get("id_documento")),
-        _norm_text(masked_key.get("id_riga")),
-    )
+    masked_ordini = [
+        _get_visible_odp_by_key(
+            policy,
+            _norm_text(masked_key.get("id_documento")),
+            _norm_text(masked_key.get("id_riga")),
+        )
+        for masked_key in masked_keys
+        if isinstance(masked_key, dict)
+    ]
+    if len(masked_ordini) != len(masked_keys):
+        raise ValueError("Selezione ordini mascherati non valida.")
 
-    ordini = [*shared_ordini, masked]
+    ordini = [*shared_ordini, *masked_ordini]
     seen = set()
     for ordine in ordini:
         key = _order_key(ordine)
@@ -553,16 +563,17 @@ def create_misto_group(
             )
         )
 
-    _activate_order_for_group(masked, group_uid=group_uid, now_dt=now_dt)
-    db.session.add(
-        _create_member(
-            group_uid,
-            masked,
-            role=ROLE_MASKED,
-            share_mode=SHARE_ZERO,
-            now_iso=now_iso,
+    for masked in masked_ordini:
+        _activate_order_for_group(masked, group_uid=group_uid, now_dt=now_dt)
+        db.session.add(
+            _create_member(
+                group_uid,
+                masked,
+                role=ROLE_MASKED,
+                share_mode=SHARE_ZERO,
+                now_iso=now_iso,
+            )
         )
-    )
 
     db.session.flush()
     return group

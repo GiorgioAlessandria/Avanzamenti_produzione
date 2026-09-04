@@ -263,9 +263,13 @@ def api_apri_gruppo_misto():
         return jsonify({"ok": False, "error": "Permesso ordini mascherati mancante."}), 403
 
     try:
+        masked_payload = data.get("mascherati")
+        if masked_payload is None:
+            masked_payload = data.get("mascherato") or {}
+
         group = create_misto_group(
             data.get("condivisi") or data.get("orders") or [],
-            data.get("mascherato") or {},
+            masked_payload,
             policy,
         )
         db.session.commit()
