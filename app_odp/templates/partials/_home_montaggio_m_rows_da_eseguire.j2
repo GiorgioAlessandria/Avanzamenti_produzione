@@ -37,7 +37,7 @@
             <td>{{ singolo_odp.CodArt }}</td>
             <td>{{ singolo_odp.DesArt }}</td>
             <td>{{ singolo_odp.CodMatricola }}</td>
-            <td>{{ singolo_odp.FaseAttiva }}</td>
+            <td data-phase-code="{{ singolo_odp.FaseAttiva|e }}">{{ phase_label(singolo_odp.FaseAttiva)|e }}</td>
             <td>{{ singolo_odp.DataFineSched | db_date("%Y-%m-%d %H:%M:%S","%d/%m/%Y") }}</td>
         </tr>
     {% endif %}

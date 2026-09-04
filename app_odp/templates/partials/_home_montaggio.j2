@@ -1468,7 +1468,7 @@
 
     function setActivationWarning(targetEl, message) {
         if (!targetEl) return;
-        targetEl.textContent = message || "";
+        targetEl.textContent = window.phaseText(message);
         targetEl.classList.toggle("d-none", !message);
     }
 
@@ -2028,7 +2028,7 @@
 
         function showAlert(msg) {
             if (!alertEl) return;
-            alertEl.textContent = msg;
+            alertEl.textContent = window.phaseText(msg);
             alertEl.style.display = msg ? "" : "none";
         }
 
@@ -2694,7 +2694,7 @@
 
         function showAlert(msg) {
             if (!alertEl) return;
-            alertEl.textContent = msg;
+            alertEl.textContent = window.phaseText(msg);
             alertEl.style.display = msg ? "" : "none";
         }
 
@@ -3677,7 +3677,7 @@
         function setGroupLottiAlert(root, message) {
             const alertEl = root?.querySelector("[data-lotti-alert]");
             if (!alertEl) return;
-            alertEl.textContent = message || "";
+            alertEl.textContent = window.phaseText(message);
             alertEl.style.display = message ? "" : "none";
         }
 
@@ -3698,7 +3698,7 @@
         function showGroupCloseFeedback(message) {
             const el = document.getElementById("modal-workgroup-close-feedback");
             if (!el) return;
-            el.textContent = message || "";
+            el.textContent = window.phaseText(message);
             el.classList.toggle("d-none", !message);
         }
 
@@ -3899,7 +3899,7 @@
                     ${escHtml(row.ordine || "")} - ${escHtml(row.cod_art || "")}
                 </div>
                 <div class="small text-muted mb-2">
-                    ${escHtml(row.descrizione || "")} | Fase ${escHtml(row.fase || "")}
+                    ${escHtml(row.descrizione || "")} | ${escHtml(window.phaseLabel(row.fase || ""))}
                     ${row.matricola ? ` | Matricola ${escHtml(row.matricola)}` : ""}
                 </div>
 

@@ -2605,7 +2605,8 @@ def _chiudi_ordine_montaggio_macchina_da_payload(
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
 
-    if not mounted_components:
+    # La fase 2 puo essere solo di controllo, senza componenti da avanzare.
+    if not mounted_components and _fase_to_int(fase_corrente) != 2:
         return jsonify({"ok": False, "error": "La distinta residua è vuota."}), 400
 
     mounted_keys = {component_key(row) for row in mounted_components}

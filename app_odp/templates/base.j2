@@ -67,6 +67,31 @@
 
 
 <body>
+<script id="avp-phase-labels">
+    window.AVP_PHASE_LABELS = {{ phase_labels|default({})|tojson }};
+    /* Solo etichette: non modifica payload, data-* o value dei controlli. */
+    (() => {
+        "use strict";
+        const labels = window.AVP_PHASE_LABELS || {};
+        window.phaseLabel = function (value) {
+            const text = value == null ? "" : String(value);
+            const parts = text.split(/(\s*[+,]\s*)/);
+            if (parts.length > 1 && parts.filter((_, i) => i % 2 === 0)
+                .every(part => /^(?:fase\s+)?[0-9]{1,6}(?:\.0+)?$/i.test(part.trim()))) {
+                return parts.map((part, i) => i % 2 === 0 ? window.phaseLabel(part) : part).join("");
+            }
+            const match = text.trim().match(/^(?:fase\s+)?([0-9]{1,6})(?:\.0+)?$/i);
+            if (!match) return text;
+            const code = String(Number(match[1]));
+            return Object.prototype.hasOwnProperty.call(labels, code) && labels[code]
+                ? labels[code] : code;
+        };
+        // Solo messaggi di sistema esplicitamente passati a questo formatter.
+        window.phaseText = value => String(value ?? "").replace(
+            /\bfase\s+[0-9]{1,6}(?:\.0+)?\b/gi, match => window.phaseLabel(match)
+        );
+    })();
+</script>
 {% macro cambia_pagina_dropdown(area_switch_items, home_switch_items) %}
     {% set has_area_items = area_switch_items|default([], true)|length > 0 %}
     {% set has_home_items = home_switch_items|default([], true)|length > 0 %}
@@ -1199,7 +1224,7 @@
 
             function cellValue(tr, colIndex) {
                 const td = tr.children[colIndex];
-                return td ? td.textContent.trim() : '';
+                return td ? (td.dataset.phaseCode ?? td.textContent).trim() : '';
             }
 
             function compareFactory(type, desc, colIndex) {
@@ -1370,12 +1395,13 @@
                     const key = el.getAttribute('data-bind');
                     const val = tr.dataset[key] ?? '';
                     if (el.matches('input, textarea, select')) el.value = val;
-                    else el.textContent = val;
+                    else el.textContent = key === 'fase' ? window.phaseLabel(val) : val;
                 });
 
                 target.querySelectorAll('[data-bind-text]').forEach(el => {
                     const key = el.getAttribute('data-bind-text');
-                    el.textContent = tr.dataset[key] ?? '';
+                    const value = tr.dataset[key] ?? '';
+                    el.textContent = key === 'fase' ? window.phaseLabel(value) : value;
                 });
             });
         })();
@@ -1434,7 +1460,7 @@
                     if (!materialiFiltrati.length) {
                         modalBody.innerHTML = `
                           <div class="alert alert-warning mb-0">
-                            Nessun materiale trovato per la fase attiva <strong>${escapeHtml(String(faseAttiva))}</strong>.
+                            Nessun materiale trovato per la fase attiva <strong>${escapeHtml(window.phaseLabel(faseAttiva))}</strong>.
                           </div>
                         `;
                         bootstrap.Modal.getInstance(modalEl)?.handleUpdate();
@@ -2482,7 +2508,7 @@
                       <td>${esc(order.ordine)}</td>
                       <td>${esc(order.cod_art)}</td>
                       <td class="text-start">${esc(order.descrizione)}</td>
-                      <td>${esc(order.fase)}</td>
+                      <td>${esc(window.phaseLabel(order.fase))}</td>
                       <td>${esc(order.stato)}</td>
                     </tr>`).join("");
                     return true;
@@ -2506,7 +2532,7 @@
                       <td>${esc(order.ordine)}</td>
                       <td>${esc(order.cod_art)}</td>
                       <td class="text-start">${esc(order.descrizione)}</td>
-                      <td>${esc(order.fase)}</td>
+                      <td>${esc(window.phaseLabel(order.fase))}</td>
                       <td>${esc(order.stato)}</td>
                     </tr>`).join("");
                     return true;
@@ -2525,7 +2551,7 @@
                   <td>${esc(order.ordine)}</td>
                   <td>${esc(order.cod_art)}</td>
                   <td class="text-start">${esc(order.descrizione)}</td>
-                  <td>${esc(order.fase)}</td>
+                  <td>${esc(window.phaseLabel(order.fase))}</td>
                   <td>${esc(order.stato)}</td>
                 </tr>`).join("");
                 return true;
@@ -2781,7 +2807,7 @@
                       <td>${esc(row.variante || row.VarianteArt || "")}</td>
                       <td>${esc(row.revisione || row.IndiceModifica || "")}</td>
                       <td class="text-start">${esc(row.descrizione || row.DesArt || "")}</td>
-                      <td>${esc(row.fase || row.Fase || "")}</td>
+                      <td>${esc(window.phaseLabel(row.fase || row.Fase || ""))}</td>
                       <td>${esc(labelShare(row.time_share_mode || row.TimeShareMode))}</td>
                     </tr>`).join("")
                         : `<tr><td colspan="10" class="text-center text-muted">Nessun dettaglio disponibile.</td></tr>`;

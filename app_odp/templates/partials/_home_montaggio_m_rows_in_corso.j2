@@ -48,7 +48,7 @@
             </td>
             <td><span class="text-muted">Gruppo</span></td>
             <td>{{ singolo_odp.DataFineSched | db_date("%Y-%m-%d %H:%M:%S","%d/%m/%Y") }}</td>
-            <td>{{ singolo_odp.FaseAttiva|default('') }}</td>
+            <td data-phase-code="{{ singolo_odp.FaseAttiva|default('')|e }}">{{ phase_label(singolo_odp.FaseAttiva|default(''))|e }}</td>
             <td data-col="stato">{{ singolo_odp.WorkGroupStatus }}</td>
             <td><span class="text-muted">-</span></td>
             <td>{{ singolo_odp.OperatoreUsername|default('-') or '-' }}</td>
@@ -126,7 +126,7 @@
             <td>{{ singolo_odp.DesArt }}</td>
             <td>{{ singolo_odp.CodMatricola }}</td>
             <td>{{ singolo_odp.DataFineSched | db_date("%Y-%m-%d %H:%M:%S","%d/%m/%Y") }}</td>
-            <td>{{ singolo_odp.FaseAttiva }}</td>
+            <td data-phase-code="{{ singolo_odp.FaseAttiva|e }}">{{ phase_label(singolo_odp.FaseAttiva)|e }}</td>
             <td data-col="stato">{{ singolo_odp.StatoOrdine }}</td>
             <td data-col="componenti-mancanti" data-sort-value="{{ componenti_mancanti|length }}">
                 {% if componenti_mancanti %}

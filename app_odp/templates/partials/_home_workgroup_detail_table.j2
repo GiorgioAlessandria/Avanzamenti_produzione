@@ -43,7 +43,7 @@
                     <td>{{ child.variante }}</td>
                     <td>{{ child.revisione }}</td>
                     <td>{{ child.descrizione }}</td>
-                    <td>{{ child.fase }}</td>
+                    <td>{{ phase_label(child.fase)|e }}</td>
                     <td>
                         {% if child.time_share_mode == 'FULL' %}
                             Tutto sul principale

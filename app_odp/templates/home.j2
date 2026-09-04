@@ -123,7 +123,7 @@
 
             function cellValue(tr, colIndex) {
                 const td = tr.children[colIndex];
-                return td ? td.textContent.trim() : "";
+                return td ? (td.dataset.phaseCode ?? td.textContent).trim() : "";
             }
 
             function compareFactory(type, desc, colIndex) {
