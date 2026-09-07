@@ -372,7 +372,10 @@ def _build_vendite_payload(
                 "shipping_date": (customer_assignment or {}).get("shipping_date", ""),
                 "phase": phase,
                 "state": state,
-                "last_suspension_cause": latest_causes.get(order_key, ""),
+                "last_suspension_cause": (
+                    "" if state.casefold() in _TERMINAL_STATES
+                    else latest_causes.get(order_key, "")
+                ),
                 "missing_components": missing_components.get((*order_key, phase), []),
                 "production_note": (
                     machine_note["note"] if machine_note is not None

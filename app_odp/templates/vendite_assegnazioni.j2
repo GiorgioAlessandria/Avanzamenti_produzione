@@ -212,28 +212,28 @@
                 </a>
             </li>
             {% if can_view_packaging_notes %}
-            <li class="nav-item"
-                role="presentation">
-                <button class="nav-link{{ ' active' if request.args.get('vista') == 'imballaggio' else '' }}"
-                        id="vendite-packaging-tab-button"
-                        data-bs-toggle="tab"
-                        data-bs-target="#vendite-packaging-tab"
-                        type="button"
-                        role="tab"
-                        aria-controls="vendite-packaging-tab"
-                        aria-selected="{{ 'true' if request.args.get('vista') == 'imballaggio' else 'false' }}">
-                    Note per imballo
-                </button>
-            </li>
+                <li class="nav-item"
+                    role="presentation">
+                    <button class="nav-link{{ ' active' if request.args.get('vista') == 'imballaggio' else '' }}"
+                            id="vendite-packaging-tab-button"
+                            data-bs-toggle="tab"
+                            data-bs-target="#vendite-packaging-tab"
+                            type="button"
+                            role="tab"
+                            aria-controls="vendite-packaging-tab"
+                            aria-selected="{{ 'true' if request.args.get('vista') == 'imballaggio' else 'false' }}">
+                        Note per imballo
+                    </button>
+                </li>
             {% endif %}
             {% if can_view_model_summary %}
-            <li class="nav-item"
-                role="presentation">
-                <a class="nav-link"
-                   href="{{ operator_url_for('main.vendite_page', vista='modello') }}">
-                    Situazione produzione per modello
-                </a>
-            </li>
+                <li class="nav-item"
+                    role="presentation">
+                    <a class="nav-link"
+                       href="{{ operator_url_for('main.vendite_page', vista='modello') }}">
+                        Situazione produzione per modello
+                    </a>
+                </li>
             {% endif %}
         </ul>
 
@@ -258,7 +258,7 @@
                              id="vendite-create-order-panel">
                         <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
                             <div>
-                                <div class="fw-semibold">Nuovo ordine cliente</div>
+                                <div class="fw-semibold">Nuovo ordine manuale</div>
                                 <div class="small text-muted">
                                     La quantità viene trasformata in singole righe assegnabili
                                 </div>
@@ -469,40 +469,40 @@
             </div>
 
             {% if can_view_packaging_notes %}
-            <div class="tab-pane fade{{ ' show active' if request.args.get('vista') == 'imballaggio' else '' }}"
-                 id="vendite-packaging-tab"
-                 role="tabpanel"
-                 aria-labelledby="vendite-packaging-tab-button">
-                <section class="card shadow-sm">
-                    <div class="card-header">
-                        <div class="fw-semibold">Note per riferimento interno</div>
-                        <div class="small text-muted">
-                            La nota viene proposta sulle righe degli ordini e resta modificabile.
+                <div class="tab-pane fade{{ ' show active' if request.args.get('vista') == 'imballaggio' else '' }}"
+                     id="vendite-packaging-tab"
+                     role="tabpanel"
+                     aria-labelledby="vendite-packaging-tab-button">
+                    <section class="card shadow-sm">
+                        <div class="card-header">
+                            <div class="fw-semibold">Note per riferimento interno</div>
+                            <div class="small text-muted">
+                                La nota viene proposta sulle righe degli ordini e resta modificabile.
+                            </div>
                         </div>
-                    </div>
-                    <div class="table-responsive">
-                        <table class="table table-bordered align-middle mb-0">
-                            <thead class="table-light">
-                            <tr>
-                                <th style="width: 12rem;">Riferimento</th>
-                                <th>Nota per imballo predefinita</th>
-                                <th style="width: 16rem;">Ultima modifica</th>
-                            </tr>
-                            </thead>
-                            <tbody id="vendite-packaging-notes-body"></tbody>
-                        </table>
-                    </div>
-                    {% if can_create_customer_orders %}
-                        <div class="card-footer text-end">
-                            <button class="btn btn-primary"
-                                    type="button"
-                                    id="vendite-save-packaging-notes">
-                                Salva note per imballo
-                            </button>
+                        <div class="table-responsive">
+                            <table class="table table-bordered align-middle mb-0">
+                                <thead class="table-light">
+                                <tr>
+                                    <th style="width: 12rem;">Riferimento</th>
+                                    <th>Nota per imballo predefinita</th>
+                                    <th style="width: 16rem;">Ultima modifica</th>
+                                </tr>
+                                </thead>
+                                <tbody id="vendite-packaging-notes-body"></tbody>
+                            </table>
                         </div>
-                    {% endif %}
-                </section>
-            </div>
+                        {% if can_create_customer_orders %}
+                            <div class="card-footer text-end">
+                                <button class="btn btn-primary"
+                                        type="button"
+                                        id="vendite-save-packaging-notes">
+                                    Salva note per imballo
+                                </button>
+                            </div>
+                        {% endif %}
+                    </section>
+                </div>
             {% endif %}
         </div>
     </main>

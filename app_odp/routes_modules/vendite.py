@@ -52,21 +52,22 @@ def _visible_production_dashboard():
 @require_active_perm("vendite")
 def vendite_page():
     policy = active_policy()
+    admin = policy.has_direct_admin_role
     return render_template(
         "vendite.j2",
-        can_edit_production_notes=policy.can("utente_produzione"),
+        can_edit_production_notes=admin or policy.can("utente_produzione"),
         can_confirm_packaging=(
-            policy.can("utente_produzione") or policy.can("utente_imballi")
+            admin or policy.can("utente_produzione") or policy.can("utente_imballi")
         ),
-        can_option_machines=policy.can("utente_vendite"),
-        can_view_options=not policy.can("utente_imballi"),
-        can_view_production_instructions=not policy.can("utente_amministrazione"),
-        can_view_packaging_notes=not policy.can("utente_imballi"),
-        can_view_model_summary=not policy.can("utente_imballi"),
+        can_option_machines=admin or policy.can("utente_vendite"),
+        can_view_options=admin or not policy.can("utente_imballi"),
+        can_view_production_instructions=admin or not policy.can("utente_amministrazione"),
+        can_view_packaging_notes=admin or not policy.can("utente_imballi"),
+        can_view_model_summary=admin or not policy.can("utente_imballi"),
         can_manage_groups=(
-            policy.can("utente_vendite") or policy.can("utente_produzione")
+            admin or policy.can("utente_vendite") or policy.can("utente_produzione")
         ),
-        can_manage_sales_priorities=policy.can("utente_produzione"),
+        can_manage_sales_priorities=admin or policy.can("utente_produzione"),
     )
 
 
@@ -84,20 +85,21 @@ def api_vendite_ordini_macchina():
 @require_active_perm("vendite")
 def vendite_assegnazioni_page():
     policy = active_policy()
-    can_create_customer_orders = policy.can("utente_vendite")
+    admin = policy.has_direct_admin_role
+    can_create_customer_orders = admin or policy.can("utente_vendite")
     return render_template(
         "vendite_assegnazioni.j2",
         can_create_customer_orders=can_create_customer_orders,
         can_assign_machines=(
-            can_create_customer_orders or policy.can("utente_produzione")
+            admin or can_create_customer_orders or policy.can("utente_produzione")
         ),
         can_edit_sales_notes=can_create_customer_orders,
         can_edit_production_instructions=(
-            can_create_customer_orders or policy.can("utente_amministrazione")
+            admin or can_create_customer_orders or policy.can("utente_amministrazione")
         ),
-        can_view_packaging_notes=not policy.can("utente_imballi"),
-        can_view_model_summary=not policy.can("utente_imballi"),
-        can_confirm_order_read=policy.can("utente_produzione"),
+        can_view_packaging_notes=admin or not policy.can("utente_imballi"),
+        can_view_model_summary=admin or not policy.can("utente_imballi"),
+        can_confirm_order_read=admin or policy.can("utente_produzione"),
     )
 
 

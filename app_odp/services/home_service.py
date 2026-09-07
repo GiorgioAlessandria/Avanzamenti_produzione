@@ -1,3 +1,4 @@
+import hashlib
 import re
 import unicodedata
 from sqlalchemy import func, or_
@@ -15,6 +16,10 @@ from flask import abort, current_app, render_template
 from app_odp.operator_session import active_policy, active_user
 from app_odp.services.session_helpers import _current_user_id
 from app_odp.services.priorita_service import _apply_priorita_to_ordini
+from app_odp.vendite_models import (
+    VenditeNotaImballoLettura,
+    VenditeOrdineClienteRiga,
+)
 
 
 def filter_input_odp_for_home_config(
@@ -354,6 +359,7 @@ def _render_bridge_montaggio(
     metodo_path_key: str = "MONTAGGIO_PDF_DIR",
     metodo_prefisso: str = "",
 ):
+    can_view_packaging_notes = active_policy().can("utente_imballi")
     from app_odp.services.documenti_service import _build_metodo_lookup
 
     metodo_lookup = _build_metodo_lookup(
@@ -366,6 +372,7 @@ def _render_bridge_montaggio(
         "odp": odp,
         "metodo_lookup": metodo_lookup,
         "metodo_documentale_prefisso": metodo_prefisso,
+        "can_view_packaging_notes": can_view_packaging_notes,
     }
 
     return {
@@ -379,7 +386,7 @@ def _render_bridge_montaggio(
         ),
         "tbody_ordini_da_eseguire_m": render_template(
             "partials/_home_montaggio_m_rows_da_eseguire.j2",
-            odp=odp,
+            **ctx,
         ),
         "tbody_ordini_in_corso_m": render_template(
             "partials/_home_montaggio_m_rows_in_corso.j2",
@@ -473,6 +480,75 @@ def _attach_missing_components_to_orders(orders: list[InputOdp]) -> None:
         ordine.DistintaMancante = missing_by_order.get(key, [])
 
 
+def _packaging_note_signature(note: str) -> str:
+    return hashlib.sha256(_norm_text(note).encode("utf-8")).hexdigest()
+
+
+def _attach_packaging_notes_to_orders(
+    orders: list[InputOdp],
+    operator_id: int | None,
+) -> None:
+    keys = {
+        (
+            _norm_text(getattr(order, "IdDocumento", "")),
+            _norm_text(getattr(order, "IdRiga", "")),
+        )
+        for order in orders
+    }
+    keys.discard(("", ""))
+
+    for order in orders:
+        order.NotaImballoRigaId = None
+        order.NotaImballoDaLeggere = False
+
+    document_ids = {key[0] for key in keys if key[0]}
+    if not document_ids:
+        return
+
+    customer_rows = (
+        VenditeOrdineClienteRiga.query.filter(
+            VenditeOrdineClienteRiga.odp_id_documento.in_(document_ids),
+            VenditeOrdineClienteRiga.note_spedizione.isnot(None),
+        )
+        .all()
+    )
+    customer_rows_by_order = {
+        (
+            _norm_text(row.odp_id_documento),
+            _norm_text(row.odp_id_riga),
+        ): row
+        for row in customer_rows
+        if _norm_text(row.note_spedizione)
+    }
+
+    read_signatures = {}
+    row_ids = [row.id for row in customer_rows_by_order.values()]
+    if operator_id is not None and row_ids:
+        read_signatures = {
+            row.ordine_cliente_riga_id: row.nota_firma
+            for row in VenditeNotaImballoLettura.query.filter(
+                VenditeNotaImballoLettura.operatore_id == operator_id,
+                VenditeNotaImballoLettura.ordine_cliente_riga_id.in_(row_ids),
+            ).all()
+        }
+
+    for order in orders:
+        customer_row = customer_rows_by_order.get(
+            (
+                _norm_text(getattr(order, "IdDocumento", "")),
+                _norm_text(getattr(order, "IdRiga", "")),
+            )
+        )
+        if customer_row is None:
+            continue
+
+        current_signature = _packaging_note_signature(customer_row.note_spedizione)
+        order.NotaImballoRigaId = customer_row.id
+        order.NotaImballoDaLeggere = (
+            read_signatures.get(customer_row.id) != current_signature
+        )
+
+
 def _home_rows_for_config(
     policy: RbacPolicy,
     config: HomeRepartoConfig,
@@ -487,6 +563,8 @@ def _home_rows_for_config(
     odp = list(_query_for_home_config(policy, config).all())
     if _norm_text(getattr(config, "renderer", "")) == "montaggio":
         _attach_missing_components_to_orders(odp)
+        if policy.can("utente_imballi"):
+            _attach_packaging_notes_to_orders(odp, getattr(active_user(), "id", None))
 
 
     if apply_priorita:

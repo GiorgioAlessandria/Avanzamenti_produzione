@@ -21,6 +21,7 @@ from app_odp.services.home_service import (
     _policy_can_access_home_config,
     _render_fragments_for_home_config,
     _home_rows_for_config,
+    _packaging_note_signature,
 )
 from app_odp.services.manutenzioni_eventi_service import (
     build_scadenziario_manutenzioni,
@@ -31,6 +32,11 @@ from app_odp.services.manutenzioni_service import (
     filter_eventi_per_operatore,
 )
 from app_odp.routes_blueprint import main_bp
+from app_odp.vendite_models import (
+    VenditeNotaImballoLettura,
+    VenditeOrdineClienteRiga,
+    _rome_iso_now,
+)
 
 
 @main_bp.get("/api/home/<tab>/bridge")
@@ -48,7 +54,11 @@ def api_home_bridge(tab):
     client_last_event_id = _norm_text(request.args.get("last_event_id"))
     server_last_event_id = _last_log_token()
 
-    if client_last_event_id and client_last_event_id == server_last_event_id:
+    if (
+        client_last_event_id
+        and client_last_event_id == server_last_event_id
+        and not policy.can("utente_imballi")
+    ):
         return jsonify(
             {
                 "ok": True,
@@ -71,6 +81,48 @@ def api_home_bridge(tab):
             "fragments": fragments,
         }
     )
+
+
+@main_bp.post("/api/home/note-imballo/<int:riga_id>/leggi")
+@operator_perm_required("utente_imballi")
+def api_home_nota_imballo_leggi(riga_id):
+    user = active_user()
+    if user is None:
+        abort(403)
+
+    customer_row = db.session.get(VenditeOrdineClienteRiga, riga_id)
+    note = _norm_text(getattr(customer_row, "note_spedizione", ""))
+    if customer_row is None or not note:
+        return jsonify(
+            {"ok": False, "error": "Le note per imballo non sono più disponibili."}
+        ), 404
+
+    signature = _packaging_note_signature(note)
+    reading = db.session.get(VenditeNotaImballoLettura, (user.id, riga_id))
+    if reading is None:
+        reading = VenditeNotaImballoLettura(
+            operatore_id=user.id,
+            ordine_cliente_riga_id=riga_id,
+            nota_firma=signature,
+            letta_il=_rome_iso_now(),
+        )
+        db.session.add(reading)
+    else:
+        reading.nota_firma = signature
+        reading.letta_il = _rome_iso_now()
+
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception(
+            "Errore durante la conferma di lettura delle note per imballo."
+        )
+        return jsonify(
+            {"ok": False, "error": "Impossibile registrare la lettura della nota."}
+        ), 500
+
+    return jsonify({"ok": True, "note": note, "letta_il": reading.letta_il})
 
 
 @main_bp.get("/")
@@ -145,6 +197,7 @@ def home():
         home_ui_texts=home_ui_texts,
         policy=policy,
         odp=odp,
+        can_view_packaging_notes=policy.can("utente_imballi"),
         causali_attivita=causali,
         bridge_url=url_for(
             "main.api_home_bridge",

@@ -478,7 +478,7 @@
                             </button>` : ""}`;
                 }
                 if (!canOptionMachines || !machine.has_serial) return "—";
-                return `<button type="button" class="btn btn-outline-warning btn-sm text-nowrap"
+                return `<button type="button" class="btn btn-dark btn-sm text-nowrap"
                                 data-machine-option="true"
                                 data-id-documento="${esc(machine.id_documento)}"
                                 data-id-riga="${esc(machine.id_riga)}"
@@ -813,7 +813,7 @@
 
             function render(data) {
                 currentData = data;
-                renderSummary(data);
+                if (summaryHead) renderSummary(data);
                 if (data.grouping) renderGrouping(data.grouping);
                 renderMachines(data);
                 setStatus(`Ultimo aggiornamento: ${formatUpdateTime(data.generated_at)}`);

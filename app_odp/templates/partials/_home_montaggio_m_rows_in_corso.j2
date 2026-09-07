@@ -47,6 +47,9 @@
                 <div class="small text-muted">{{ singolo_odp.WorkGroupMembers|default([])|length }} ordini nel gruppo</div>
             </td>
             <td><span class="text-muted">Gruppo</span></td>
+            {% if can_view_packaging_notes|default(false) %}
+                <td></td>
+            {% endif %}
             <td>{{ singolo_odp.DataFineSched | db_date("%Y-%m-%d %H:%M:%S","%d/%m/%Y") }}</td>
             <td data-phase-code="{{ singolo_odp.FaseAttiva|default('')|e }}">{{ phase_label(singolo_odp.FaseAttiva|default(''))|e }}</td>
             <td data-col="stato">{{ singolo_odp.WorkGroupStatus }}</td>
@@ -125,6 +128,19 @@
             </td>
             <td>{{ singolo_odp.DesArt }}</td>
             <td>{{ singolo_odp.CodMatricola }}</td>
+            {% if can_view_packaging_notes|default(false) %}
+                <td>
+                    {% if singolo_odp.NotaImballoRigaId|default(none) %}
+                        <button type="button"
+                                class="btn btn-sm {{ 'btn-danger' if singolo_odp.NotaImballoDaLeggere else 'btn-outline-secondary' }} js-open-note-imballo"
+                                data-note-url="/api/home/note-imballo/{{ singolo_odp.NotaImballoRigaId }}/leggi"
+                                title="{{ 'Nuove note per imballo da leggere' if singolo_odp.NotaImballoDaLeggere else 'Note per imballo già lette' }}"
+                                aria-label="{{ 'Nuove note per imballo da leggere' if singolo_odp.NotaImballoDaLeggere else 'Note per imballo già lette' }}">
+                            <i class="bi bi-box-seam"></i>
+                        </button>
+                    {% endif %}
+                </td>
+            {% endif %}
             <td>{{ singolo_odp.DataFineSched | db_date("%Y-%m-%d %H:%M:%S","%d/%m/%Y") }}</td>
             <td data-phase-code="{{ singolo_odp.FaseAttiva|e }}">{{ phase_label(singolo_odp.FaseAttiva)|e }}</td>
             <td data-col="stato">{{ singolo_odp.StatoOrdine }}</td>

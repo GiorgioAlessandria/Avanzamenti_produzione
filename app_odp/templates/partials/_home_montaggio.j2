@@ -1119,6 +1119,9 @@
                         <th data-sort="text">Codice</th>
                         <th data-sort="text">Descrizione</th>
                         <th data-sort="text">Matricola</th>
+                        {% if can_view_packaging_notes|default(false) %}
+                            <th data-sort="none">Note imballo</th>
+                        {% endif %}
                         <th data-sort="text">Fase</th>
                         <th data-sort="date"
                             data-date-format="dd/mm/yyyy">Consegna
@@ -1215,6 +1218,9 @@
                         <th data-sort="text">Codice</th>
                         <th data-sort="text">Descrizione</th>
                         <th data-sort="text">Matricola</th>
+                        {% if can_view_packaging_notes|default(false) %}
+                            <th data-sort="none">Note imballo</th>
+                        {% endif %}
                         <th data-sort="date"
                             data-date-format="dd/mm/yyyy">Consegna
                         </th>
@@ -1266,6 +1272,80 @@
         </div>
     </div>
 </main>
+{% if can_view_packaging_notes|default(false) %}
+<div class="modal fade"
+     id="modalNoteImballoMontaggio"
+     tabindex="-1"
+     aria-labelledby="modalNoteImballoMontaggioLabel"
+     aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title fs-5" id="modalNoteImballoMontaggioLabel">
+                    Note per imballo
+                </h2>
+                <button type="button"
+                        class="btn-close"
+                        data-bs-dismiss="modal"
+                        aria-label="Chiudi"></button>
+            </div>
+            <div class="modal-body">
+                <div id="note-imballo-montaggio-feedback"
+                     class="alert alert-danger d-none"></div>
+                <div id="note-imballo-montaggio-testo"
+                     class="border rounded p-3 fs-5"
+                     style="white-space: pre-wrap; min-height: 100px;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+    (() => {
+        document.addEventListener("click", async (event) => {
+            const button = event.target.closest(".js-open-note-imballo");
+            if (!button) return;
+
+            event.preventDefault();
+            event.stopPropagation();
+
+            const modalElement = document.getElementById("modalNoteImballoMontaggio");
+            const noteElement = document.getElementById("note-imballo-montaggio-testo");
+            const feedback = document.getElementById("note-imballo-montaggio-feedback");
+            const modal = bootstrap.Modal.getOrCreateInstance(modalElement);
+
+            feedback.classList.add("d-none");
+            feedback.textContent = "";
+            noteElement.textContent = "Caricamento...";
+            modal.show();
+            button.disabled = true;
+
+            try {
+                const response = await window.avpFetch(button.dataset.noteUrl, {
+                    method: "POST",
+                    headers: {"X-Requested-With": "XMLHttpRequest"},
+                    credentials: "same-origin"
+                });
+                const data = await response.json();
+                if (!response.ok || data.ok === false) {
+                    throw new Error(data.error || "Impossibile caricare le note per imballo.");
+                }
+
+                noteElement.textContent = data.note;
+                button.classList.remove("btn-danger");
+                button.classList.add("btn-outline-secondary");
+                button.title = "Note per imballo già lette";
+                button.setAttribute("aria-label", "Note per imballo già lette");
+            } catch (error) {
+                noteElement.textContent = "";
+                feedback.textContent = error.message || "Impossibile caricare le note per imballo.";
+                feedback.classList.remove("d-none");
+            } finally {
+                button.disabled = false;
+            }
+        }, true);
+    })();
+</script>
+{% endif %}
 <div class="modal fade"
      id="modalMaterialiOrdine"
      tabindex="-1"

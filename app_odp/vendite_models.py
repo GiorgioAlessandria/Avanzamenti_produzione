@@ -177,6 +177,27 @@ class VenditeOrdineClienteRiga(db.Model):
     __mapper_args__ = {"version_id_col": versione}
 
 
+class VenditeNotaImballoLettura(db.Model):
+    __tablename__ = "vendite_note_imballo_letture"
+
+    operatore_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    ordine_cliente_riga_id = db.Column(
+        db.Integer,
+        db.ForeignKey("vendite_ordini_cliente_righe.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    nota_firma = db.Column(db.String(64), nullable=False)
+    letta_il = db.Column(
+        db.Text,
+        nullable=False,
+        default=_rome_iso_now,
+    )
+
+
 class VenditeMacchinaStock(db.Model):
     __tablename__ = "vendite_macchine_stock"
 
