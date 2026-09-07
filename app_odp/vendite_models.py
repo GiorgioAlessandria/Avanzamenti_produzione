@@ -224,6 +224,20 @@ class VenditeImballoMacchina(db.Model):
     confermata_da_nome = db.Column(db.String(120), nullable=False)
 
 
+class VenditeOpzioneMacchina(db.Model):
+    __tablename__ = "vendite_opzioni_macchina"
+
+    # L'opzione segue la matricola, non l'eventuale ordine cliente.
+    matricola = db.Column(db.String(200), primary_key=True)
+    opzionata_il = db.Column(db.Text, nullable=False, default=_rome_iso_now)
+    opzionata_da_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    opzionata_da_nome = db.Column(db.String(120), nullable=False)
+
+
 class VenditeSpedizioneConfermata(db.Model):
     __tablename__ = "vendite_spedizioni_confermate"
 

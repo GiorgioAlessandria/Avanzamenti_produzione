@@ -35,8 +35,8 @@
         }
 
         #vendite-assegnazioni-page .vendite-assignment-select {
-            width: 8rem;
-            min-width: 8rem;
+            width: 20rem;
+            min-width: 20rem;
         }
 
         #vendite-assegnazioni-page .vendite-assignment-select option.vendite-machine-assigned {
@@ -87,9 +87,6 @@
         }
 
         #vendite-assegnazioni-page .vendite-customer-heading td {
-            position: sticky;
-            top: 41px;
-            z-index: 1;
             padding-top: .55rem;
             padding-bottom: .55rem;
             outline: 1px solid var(--bs-border-color);
@@ -174,6 +171,7 @@
           data-packaging-notes-url="{{ operator_url_for('main.api_vendite_note_imballaggio') }}"
           data-can-assign-machines="{{ 'true' if can_assign_machines else 'false' }}"
           data-can-edit-sales-notes="{{ 'true' if can_edit_sales_notes else 'false' }}"
+          data-can-edit-production-instructions="{{ 'true' if can_edit_production_instructions else 'false' }}"
           data-can-delete-orders="{{ 'true' if can_create_customer_orders else 'false' }}"
           data-can-edit-order-details="{{ 'true' if can_create_customer_orders else 'false' }}"
           data-can-confirm-order-read="{{ 'true' if can_confirm_order_read else 'false' }}">
@@ -195,7 +193,7 @@
             role="tablist">
             <li class="nav-item"
                 role="presentation">
-                <button class="nav-link{{ ' active' if request.args.get('vista', 'ordini') == 'ordini' else '' }}"
+                <button class="nav-link{{ ' active' if request.args.get('vista', 'ordini') == 'ordini' or not can_view_packaging_notes else '' }}"
                         id="vendite-orders-tab-button"
                         data-bs-toggle="tab"
                         data-bs-target="#vendite-orders-tab"
@@ -213,6 +211,7 @@
                     Situazione produzione per matricola
                 </a>
             </li>
+            {% if can_view_packaging_notes %}
             <li class="nav-item"
                 role="presentation">
                 <button class="nav-link{{ ' active' if request.args.get('vista') == 'imballaggio' else '' }}"
@@ -226,6 +225,8 @@
                     Note per imballo
                 </button>
             </li>
+            {% endif %}
+            {% if can_view_model_summary %}
             <li class="nav-item"
                 role="presentation">
                 <a class="nav-link"
@@ -233,10 +234,11 @@
                     Situazione produzione per modello
                 </a>
             </li>
+            {% endif %}
         </ul>
 
         <div class="tab-content">
-            <div class="tab-pane fade{{ ' show active' if request.args.get('vista', 'ordini') == 'ordini' else '' }}"
+            <div class="tab-pane fade{{ ' show active' if request.args.get('vista', 'ordini') == 'ordini' or not can_view_packaging_notes else '' }}"
                  id="vendite-orders-tab"
                  role="tabpanel"
                  aria-labelledby="vendite-orders-tab-button">
@@ -466,6 +468,7 @@
                 </div>
             </div>
 
+            {% if can_view_packaging_notes %}
             <div class="tab-pane fade{{ ' show active' if request.args.get('vista') == 'imballaggio' else '' }}"
                  id="vendite-packaging-tab"
                  role="tabpanel"
@@ -500,6 +503,7 @@
                     {% endif %}
                 </section>
             </div>
+            {% endif %}
         </div>
     </main>
 
@@ -592,6 +596,7 @@
             const savePackagingNotesButton = document.getElementById("vendite-save-packaging-notes");
             const canAssignMachines = page.dataset.canAssignMachines === "true";
             const canEditSalesNotes = page.dataset.canEditSalesNotes === "true";
+            const canEditProductionInstructions = page.dataset.canEditProductionInstructions === "true";
             const canDeleteOrders = page.dataset.canDeleteOrders === "true";
             const canEditOrderDetails = page.dataset.canEditOrderDetails === "true";
             const canConfirmOrderRead = page.dataset.canConfirmOrderRead === "true";
@@ -851,7 +856,9 @@
             }
 
             function machineOptionLabel(machine) {
-                return machine.serial_number || "Senza matricola";
+                const option = machine.option?.optioned_by_name
+                    ? ` ·${machine.option.optioned_by_name}` : "";
+                return (machine.serial_number || "Senza matricola") + option;
             }
 
             function assignmentSelect(row) {
@@ -888,7 +895,7 @@
                         && String(machine.assigned_row_id) !== String(row.id)
                     );
                     const label = assignedElsewhere
-                        ? `⚠ ${machineOptionLabel(machine)} · Ordine cliente ${machine.assigned_customer_order || "-"}`
+                        ? `⚠ ${machineOptionLabel(machine)} · Ordine: ${machine.assigned_customer_order || "-"}`
                         : machineOptionLabel(machine);
                     options.push(`
                         <option value="${esc(identity)}"
@@ -954,7 +961,7 @@
             }
 
             function rowActions(row) {
-                const save = canAssignMachines || canEditSalesNotes
+                const save = canAssignMachines || canEditSalesNotes || canEditProductionInstructions
                     ? `<button class="btn btn-sm btn-outline-primary text-nowrap"
                                type="button"
                                data-save-row="${esc(row.id)}">
@@ -1066,10 +1073,10 @@
                 const html = [];
                 customerOrders.forEach(order => {
                     const neutralClass = referenceClass(order.internal_reference);
-                    const orderClass = order.packaged
-                        ? "vendite-machine-completed"
-                        : !order.read_confirmed
-                            ? "vendite-order-unread"
+                    const orderClass = !order.read_confirmed
+                        ? "vendite-order-unread"
+                        : order.packaged
+                            ? "vendite-machine-completed"
                             : neutralClass;
                     const confirmButton = canConfirmOrderRead && !order.read_confirmed
                         ? `<button class="btn btn-sm btn-warning text-nowrap"
@@ -1138,16 +1145,19 @@
                             row.sales_note,
                             row.commercial_note,
                             row.production_note,
+                            ...(row.missing_components || []).map(component => [
+                                component.code, component.variant, component.description,
+                            ].filter(Boolean).join(" ")),
                             row.production_instructions,
                             row.shipping_note,
                             row.delivery_date,
                             row.assignment?.order,
                             row.assignment?.serial_number,
                         ].join(" ").toLocaleLowerCase("it");
-                        const rowClass = row.packaged
-                            ? "vendite-machine-completed"
-                            : !order.read_confirmed
-                                ? "vendite-order-unread"
+                        const rowClass = !order.read_confirmed
+                            ? "vendite-order-unread"
+                            : row.packaged
+                                ? "vendite-machine-completed"
                                 : neutralClass;
                         html.push(`
                             <tr class="${rowClass}"
@@ -1167,10 +1177,17 @@
                                 </td>
                                 <td>${assignmentSelect(row)}</td>
                                 <td class="vendite-note-cell">
-                                    <div style="white-space: pre-wrap">${esc(row.production_note || "—")}</div>
+                                    ${(row.missing_components || []).length ? `
+                                        <div class="text-danger mb-1">
+                                            <strong>Materiali mancanti:</strong>
+                                            <ul class="mb-0 ps-3">${row.missing_components.map(component => `
+                                                <li>${esc([component.code, component.variant, component.description].filter(Boolean).join(" — "))}</li>
+                                            `).join("")}</ul>
+                                        </div>` : ""}
+                                    <div style="white-space: pre-wrap">${esc(row.production_note || ((row.missing_components || []).length ? "" : "—"))}</div>
                                 </td>
                                 <td class="vendite-note-cell">
-                                    ${noteTextarea(row, "production_instructions", "Note per produzione", canEditSalesNotes)}
+                                    ${noteTextarea(row, "production_instructions", "Note per produzione", canEditProductionInstructions)}
                                 </td>
                                 <td class="vendite-note-cell">
                                     ${noteTextarea(row, "shipping_note", "Note per imballo", canEditSalesNotes)}
@@ -1513,8 +1530,10 @@
                 if (canEditSalesNotes) {
                     payload.sales_note = value("sales_note");
                     payload.commercial_note = value("commercial_note");
-                    payload.production_instructions = value("production_instructions");
                     payload.shipping_note = value("shipping_note");
+                }
+                if (canEditProductionInstructions) {
+                    payload.production_instructions = value("production_instructions");
                 }
                 return payload;
             }
@@ -1585,10 +1604,20 @@
                     }
                     const selector = `[data-customer-order-id="${CSS.escape(String(orderId))}"]`;
                     const orderRows = [...customerOrdersBody.querySelectorAll(selector)];
+                    const updatedOrder = (payload.data?.customer_orders || []).find(order => (
+                        String(order.id) === String(orderId)
+                    ));
                     orderRows.forEach(row => {
                         if (!row.classList.contains("vendite-order-unread")) return;
                         row.classList.remove("vendite-order-unread");
-                        if (row.dataset.referenceClass) {
+                        const packaged = row.dataset.customerRowId
+                            ? updatedOrder?.rows?.find(item => (
+                                String(item.id) === row.dataset.customerRowId
+                            ))?.packaged
+                            : updatedOrder?.packaged;
+                        if (packaged) {
+                            row.classList.add("vendite-machine-completed");
+                        } else if (row.dataset.referenceClass) {
                             row.classList.add(row.dataset.referenceClass);
                         }
                     });

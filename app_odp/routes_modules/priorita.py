@@ -29,7 +29,7 @@ from app_odp.models import (
     User,
 )
 from app_odp.operator_session import active_policy, active_token, active_user
-from app_odp.policy.decorator import require_active_perm
+from app_odp.policy.decorator import require_active_any_perm, require_active_perm
 from app_odp.routes_blueprint import main_bp
 from app_odp.services.session_helpers import _current_username
 
@@ -81,7 +81,7 @@ def priorita_edit():
 
 
 @main_bp.get("/api/priorita/operatori")
-@require_active_perm("priorita_view")
+@require_active_any_perm("priorita_view", "utente_produzione")
 def api_priorita_operatori():
     visible_ids = _priorita_visible_operator_ids_for_current_user()
 
@@ -91,6 +91,12 @@ def api_priorita_operatori():
         .order_by(func.lower(User.username))
         .all()
     )
+    if request.args.get("montaggio") == "1":
+        operatori = [
+            operatore
+            for operatore in operatori
+            if _ordini_pianificata_visibili_per_operatore(operatore)
+        ]
 
     return jsonify(
         {
@@ -106,7 +112,7 @@ def api_priorita_operatori():
 
 
 @main_bp.get("/api/priorita/operatori/<int:operatore_id>/ordini")
-@require_active_perm("priorita_view")
+@require_active_any_perm("priorita_view", "utente_produzione")
 def api_priorita_ordini_operatore(operatore_id: int):
     operatore = _get_priorita_visible_operatore_or_403(operatore_id)
 
@@ -123,7 +129,7 @@ def api_priorita_ordini_operatore(operatore_id: int):
         "p2": [],
         "p3": [],
         "max_p2": _priorita_2_max(),
-        "can_edit": active_policy().can("priorita_edit"),
+        "can_edit": active_policy().can("priorita_edit") or active_policy().can("utente_produzione"),
     }
 
     for ordine in ordini:
@@ -149,7 +155,7 @@ def api_priorita_ordini_operatore(operatore_id: int):
 
 
 @main_bp.post("/api/priorita/operatori/<int:operatore_id>/salva")
-@require_active_perm("priorita_edit")
+@require_active_any_perm("priorita_edit", "utente_produzione")
 def api_priorita_salva_operatore(operatore_id: int):
     operatore = _get_priorita_visible_operatore_or_403(operatore_id)
     operatore_id = operatore.id

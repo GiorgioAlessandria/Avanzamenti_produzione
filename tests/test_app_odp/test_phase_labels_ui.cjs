@@ -44,11 +44,12 @@ function namedFunction(source, name) {
 }
 const vendite = template("vendite.j2");
 const context = vm.createContext({window: alice, canEditNotes: false, canConfirmPackaging: false,
+    canOptionMachines: false,
     groups: [], selectedGroups: new Set(), collapsedGroups: new Set(), showAllGroups: false,
     sortKey: "model_code", sortDirection: 1,
     machinesBody: {innerHTML: ""}, modelLabel: () => "Modello", stateBadge: () => "Attivo",
     esc: value => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll('"', "&quot;")});
-vm.runInContext(["productionNoteCell", "formatShippingDate", "formatUpdateTime", "packagingCell", "machineSections", "sortedMachines", "renderMachines"]
+vm.runInContext(["productionNoteCell", "formatShippingDate", "formatUpdateTime", "packagingCell", "optionCell", "machineSections", "sortedMachines", "renderMachines"]
     .map(name => namedFunction(vendite, name)).join("\n"), context);
 const machine = {phase: "1", serial_number: "M1", order: "OP1", production_note: "Nota Fase 1"};
 context.machines = {machines: [machine]};
@@ -62,7 +63,16 @@ assert.ok(context.machinesBody.innerHTML.includes("&lt;img"));
 assert.ok(!context.machinesBody.innerHTML.includes("<img"));
 assert.ok(context.machinesBody.innerHTML.includes("Istruzioni Fase 1"));
 assert.ok(context.machinesBody.innerHTML.includes("Imballo Fase 1"));
-assert.equal((context.machinesBody.innerHTML.match(/<td\b/g) || []).length, 12);
+assert.equal((context.machinesBody.innerHTML.match(/<td\b/g) || []).length, 13);
+machine.option = {optioned_by_name: '<img src=x onerror="alert(1)">',
+    optioned_at: "2026-09-04T10:00:00+02:00", can_remove: true};
+context.canOptionMachines = true;
+vm.runInContext("renderMachines(machines)", context);
+assert.ok(context.machinesBody.innerHTML.includes("Opzionata"));
+assert.ok(context.machinesBody.innerHTML.includes("Rimuovi opzione"));
+assert.ok(context.machinesBody.innerHTML.includes("&lt;img"));
+assert.ok(!context.machinesBody.innerHTML.includes("<img"));
+delete machine.option;
 assert.ok(context.machinesBody.innerHTML.indexOf("Nota Fase 1") <
           context.machinesBody.innerHTML.indexOf("Istruzioni Fase 1"));
 assert.equal(machine.phase, "1");
@@ -152,6 +162,9 @@ vm.runInContext("renderMachines(machines)", context);
 assert.ok(context.machinesBody.innerHTML.includes("Senza raggruppamento"));
 assert.ok(context.machinesBody.innerHTML.includes("M-other"));
 const assignments = template("vendite_assegnazioni.j2");
+const labelContext = vm.createContext({machine: {serial_number: "M1", option: {optioned_by_name: "Alice"}}});
+vm.runInContext(namedFunction(assignments, "machineOptionLabel"), labelContext);
+assert.equal(vm.runInContext("machineOptionLabel(machine)", labelContext), "M1 · Opzionata da Alice");
 const noteContext = vm.createContext({
     esc: context.esc, CSS: {escape: String},
     canEditSalesNotes: true, canEditProductionNotes: true,
@@ -258,8 +271,8 @@ async function checkGroupedNoteEditing() {
         errorElement: {textContent: "", classList: {add() {}, remove() {}}},
         currentData: {machines: [{serial_number: "M1", production_note: "Originale"}]},
         collapsedGroups: new Set(), CSS: {escape: String},
-        savingNote: false, packagingInFlight: false, noteRevision: 0,
-        canEditNotes: true, canConfirmPackaging: false,
+        savingNote: false, packagingInFlight: false, optionInFlight: false, noteRevision: 0,
+        canEditNotes: true, canConfirmPackaging: false, canOptionMachines: false,
         setStatus() {}, refresh: async () => {},
     });
     vm.runInContext(namedFunction(vendite, "hasUnsavedNotes") + "\n" +

@@ -43,7 +43,7 @@
              style="width: auto;height: auto;">
             {% set nav_policy = operator_policy if operator_policy else policy %}
             {% set preferences_user = operator_user if operator_user else current_user %}
-            {% if preferences_user and preferences_user.is_authenticated and nav_policy and nav_policy.can('nomi_fase') %}
+            {% if preferences_user and preferences_user.is_authenticated and nav_policy and nav_policy.can('utente_vendite') %}
                 <div class="mb-3">
                     <a href="{{ operator_url_for('main.preferenze_fasi') }}" class="text-dark fs-4">
                         Nomi delle fasi

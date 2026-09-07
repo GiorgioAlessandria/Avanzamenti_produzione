@@ -669,7 +669,9 @@
                 {% endif %}
             </div>
         {% endif %}
-        <div class="form-check form-switch mt-3 align-self-start" style="font-size: 20px;">
+        <div class="form-check form-switch mt-3 align-self-start"
+             id="distinta-parziale-toggle-m" hidden
+             style="font-size: 20px;">
             <input class="form-check-input" type="checkbox"
                    id="toast-chiudi-m-escludi-componenti"
                    aria-controls="distinta-parziale-section-m"
@@ -1991,6 +1993,7 @@
 
         const toastEl = document.getElementById("toast-7");
         const distintaSection = document.getElementById("distinta-parziale-section-m");
+        const distintaToggle = document.getElementById("distinta-parziale-toggle-m");
         const distintaTbody = document.getElementById("tbody-distinta-mancante-m");
         const chkEscludiComponenti = document.getElementById("toast-chiudi-m-escludi-componenti");
         const cercaMancanti = document.getElementById("toast-chiudi-m-cerca-mancanti");
@@ -2149,6 +2152,7 @@
 
         function renderDistintaPendente() {
             if (!distintaTbody) return;
+            if (distintaToggle) distintaToggle.hidden = _distintaPendente.length === 0;
             const componentiOrdinati = [..._distintaPendente].sort((a, b) =>
                 String(a.DesArt || "").localeCompare(
                     String(b.DesArt || ""), "it", {sensitivity: "base", numeric: true}
@@ -2314,6 +2318,7 @@
             if (distintaTbody) distintaTbody.innerHTML = "";
             _lottiData = [];
             _lottiAll = [];
+            if (distintaToggle) distintaToggle.hidden = true;
             _distintaPendente = [];
             _forceShowLots = false;
             _hasRequiredLotti = false;

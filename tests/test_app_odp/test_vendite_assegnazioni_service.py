@@ -4,7 +4,8 @@ from types import SimpleNamespace
 import pytest
 from flask import Flask
 
-from app_odp.models import AcqArticoliLookup, InputOdp, InputOdpLog, db
+from app_odp.models import AcqArticoliLookup, InputOdp, InputOdpLog, OdpDistintaMancante, db
+from app_odp.services.ordini_distinta_mancante_service import save_missing_components
 from app_odp.services.ordini_runtime_service import _ensure_stato_attivo
 from app_odp.services.order_helpers import _now_rome_dt
 from app_odp.services.vendite_assegnazioni_service import (
@@ -25,11 +26,13 @@ from app_odp.services.vendite_assegnazioni_service import (
     update_customer_row_notes,
     update_packaging_notes,
     update_machine_production_note,
+    update_machine_option,
     validate_closed_machine_stock,
 )
 from app_odp.vendite_models import (
     VenditeImballoMacchina,
     VenditeNotaProduzioneMacchina,
+    VenditeOpzioneMacchina,
     VenditeMacchinaStock,
     VenditeOrdineCliente,
     VenditeOrdineClienteRiga,
@@ -97,6 +100,10 @@ def test_vendite_api_filters_planned_and_keeps_customer_production_notes_readonl
         assert "HIDDEN-PLANNED" in client.get("/api/vendite/ordini-macchina").get_data(as_text=True)
         assert "HIDDEN-PLANNED" in client.get("/api/vendite/assegnazioni").get_data(as_text=True)
         permissions.remove("visualizza_pianificati")
+        permissions.add("priorità_vendite")
+        assert "HIDDEN-PLANNED" not in client.get("/api/vendite/ordini-macchina").get_data(as_text=True)
+        assert "HIDDEN-PLANNED" in client.get("/api/vendite/ordini-macchina?priorita=1").get_data(as_text=True)
+        permissions.remove("priorità_vendite")
         response = client.post(f"/api/vendite/ordini-cliente/righe/{row.id}/salva",
                                json={"version": row.versione, "commercial_note": "Aggiornata",
                                      "production_note": "Non autorizzata"})
@@ -122,6 +129,13 @@ def test_vendite_api_filters_planned_and_keeps_customer_production_notes_readonl
         response = client.post("/api/vendite/macchine/conferma-imballo",
                                json=packaging_payload)
         assert response.status_code == 200
+        option_payload = {**packaging_payload, "optioned": True}
+        permissions.remove("carica_ordini_cliente")
+        assert client.post("/api/vendite/macchine/opzione",
+                           json=option_payload).status_code == 403
+        permissions.add("carica_ordini_cliente")
+        assert client.post("/api/vendite/macchine/opzione",
+                           json=option_payload).status_code == 200
         assert build_assignment_dashboard()["customer_orders"][0]["rows"][0]["packaged"] is True
         assert client.post(f"/api/vendite/ordini-cliente/righe/{row.id}/conferma-spedizione",
                            json={}).status_code == 404
@@ -141,6 +155,7 @@ def test_planned_permission_is_registered_without_automatic_grants(app):
         namespace["_ensure_builtin_permissions"]()
         namespace["_ensure_builtin_permissions"]()
         assert Permissions.query.filter_by(Codice="visualizza_pianificati").count() == 1
+        assert Permissions.query.filter_by(Codice="priorità_vendite").count() == 1
         assert db.session.execute(roles_permission.select()).first() is None
 
 
@@ -769,6 +784,49 @@ def test_customer_order_read_confirmation_is_recorded(app):
         assert dashboard["customer_orders"][0]["read_confirmed"] is True
 
 
+def test_customer_changes_require_read_confirmation_again(app):
+    with app.app_context():
+        machine = _add_machine()
+        customer = create_customer_order(_payload(model_key=_model_key()), ACTOR)
+        row = customer.righe[0]
+
+        confirm_customer_order_read(customer.id, ACTOR)
+        update_customer_row_notes(
+            row.id,
+            {"version": row.versione, "production_instructions": "Montare accessorio"},
+            can_edit_sales=True,
+        )
+        assert customer.confermato_il is None
+        assert customer.confermato_da_nome is None
+
+        confirm_customer_order_read(customer.id, ACTOR)
+        update_customer_row_dates(
+            row.id,
+            {"version": row.versione, "delivery_date": "2026-10-20"},
+            can_edit_delivery=True,
+            can_edit_available=False,
+        )
+        assert customer.confermato_il is None
+
+        confirm_customer_order_read(customer.id, ACTOR)
+        set_machine_assignment(
+            row.id,
+            {"version": row.versione, "id_documento": machine.IdDocumento,
+             "id_riga": machine.IdRiga},
+            ACTOR,
+        )
+        assert customer.confermato_il is None
+        assert build_assignment_dashboard()["customer_orders"][0]["read_confirmed"] is False
+
+        confirm_customer_order_read(customer.id, ACTOR)
+        update_customer_row_notes(
+            row.id,
+            {"version": row.versione, "production_instructions": row.note_per_produzione},
+            can_edit_sales=True,
+        )
+        assert customer.confermato_il is not None  # Nessun falso evento senza modifica.
+
+
 def test_delete_customer_order_releases_assigned_machines(app):
     with app.app_context():
         machine = _add_machine()
@@ -1107,6 +1165,32 @@ def test_packaging_confirmation_validates_machine_identity_and_is_idempotent(app
             confirm_machine_packaging({**payload, "serial_number": "ERRATA"}, ACTOR)
 
 
+def test_machine_option_is_visible_and_only_owner_can_remove_it(app):
+    owner = SimpleNamespace(id=None, username="alice")
+    other = SimpleNamespace(id=None, username="bob")
+    with app.app_context():
+        machine = _add_machine()
+        payload = {"id_documento": machine.IdDocumento, "id_riga": machine.IdRiga,
+                   "serial_number": machine.CodMatricola, "optioned": True}
+        option = update_machine_option(payload, owner)
+
+        assert option.opzionata_da_nome == "alice"
+        from app_odp.services.vendite_service import build_vendite_payload
+        production = build_vendite_payload(viewer=owner)["machines"][0]["option"]
+        choice = build_assignment_dashboard()["assignment_machines"][0]["option"]
+        assert production["optioned_by_name"] == "alice"
+        assert production["optioned_at"] == option.opzionata_il
+        assert production["can_remove"] is True
+        assert choice["optioned_by_name"] == "alice"
+        with pytest.raises(VenditeAssegnazioniConflictError, match="già opzionata da alice"):
+            update_machine_option(payload, other)
+        with pytest.raises(VenditeAssegnazioniConflictError, match="solamente dall'utente"):
+            update_machine_option({**payload, "optioned": False}, other)
+
+        update_machine_option({**payload, "optioned": False}, owner)
+        assert VenditeOpzioneMacchina.query.count() == 0
+
+
 def test_stale_assignment_version_is_rejected(app):
     with app.app_context():
         first_machine = _add_machine()
@@ -1424,6 +1508,30 @@ def test_machine_production_note_follows_assignment_and_updates_both_views(app):
                        "id_riga": machine.IdRiga}, ACTOR,
         )
         assert other.note_produzione == "Aggiornata da produzione"
+
+
+def test_customer_production_note_includes_missing_components(app):
+    with app.app_context():
+        OdpDistintaMancante.__table__.create(db.engine)
+        try:
+            machine = _add_machine()
+            customer = create_customer_order(_payload(model_key=_model_key()), ACTOR)
+            _assign_test_machine(customer.righe[0], machine)
+            save_missing_components(machine, "1", [{
+                "CodArt": "COMP-01",
+                "VarianteArt": "V2",
+                "DesArt": "Componente mancante",
+                "Quantita": 1,
+            }])
+            row = build_assignment_dashboard()["customer_orders"][0]["rows"][0]
+            assert row["missing_components"] == [{
+                "code": "COMP-01",
+                "variant": "V2",
+                "description": "Componente mancante",
+            }]
+        finally:
+            db.session.rollback()
+            OdpDistintaMancante.__table__.drop(db.engine)
 
 
 def test_machine_production_note_rejects_stale_version_and_wrong_serial(app):

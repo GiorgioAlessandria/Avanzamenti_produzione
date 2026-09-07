@@ -176,6 +176,19 @@ def _priorita_visible_operator_ids_for_current_user() -> set[int]:
 
     hidden_user_ids = _priorita_hidden_user_ids()
 
+    if policy.can("utente_produzione"):
+        return {
+            int(user_id)
+            for user_id in db.session.execute(
+                select(User.id)
+                .where(User.active.is_(True))
+                .where(func.trim(User.RepartoPrinc) == "10")
+                .where(~User.id.in_(hidden_user_ids))
+            )
+            .scalars()
+            .all()
+        }
+
     if policy.can("priorita_tutti_operatori"):
         return {
             int(user_id)

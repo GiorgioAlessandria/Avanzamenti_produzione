@@ -146,6 +146,7 @@ def test_missing_components_follow_saved_residue_and_current_machine_phase():
              patch("app_odp.services.vendite_service._latest_suspension_causes", return_value={("DOC", "1"): "Attesa materiale"}), \
              patch("app_odp.services.vendite_service._customer_assignments", return_value={}), \
              patch("app_odp.services.vendite_service._packaging_confirmations", return_value={}), \
+             patch("app_odp.services.vendite_service._machine_options", return_value={}), \
              patch("app_odp.services.vendite_service.VenditeNotaProduzioneMacchina"):
             row, other = build_vendite_payload()["machines"]
             assert row["missing_components"] == [

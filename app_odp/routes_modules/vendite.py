@@ -25,6 +25,7 @@ from app_odp.services.vendite_assegnazioni_service import (
     update_customer_row_notes,
     update_packaging_notes,
     update_machine_production_note,
+    update_machine_option,
 )
 from app_odp.services.vendite_service import build_vendite_payload
 from app_odp.services.vendite_raggruppamenti_service import (
@@ -39,17 +40,33 @@ def _visible_assignment_dashboard():
 
 
 def _visible_production_dashboard():
-    return build_vendite_payload(include_planned=active_policy().can("visualizza_pianificati"))
+    policy = active_policy()
+    priority_mode = request.args.get("priorita") == "1" and policy.can("utente_produzione")
+    return build_vendite_payload(
+        include_planned=policy.can("visualizza_pianificati") or priority_mode,
+        viewer=active_user(),
+    )
 
 
 @main_bp.get("/vendite")
 @require_active_perm("vendite")
 def vendite_page():
+    policy = active_policy()
     return render_template(
         "vendite.j2",
-        can_edit_production_notes=active_policy().can("assegna_matricole"),
-        can_confirm_packaging=active_policy().can("assegna_matricole"),
-        can_manage_groups=active_policy().can("carica_ordini_cliente"),
+        can_edit_production_notes=policy.can("utente_produzione"),
+        can_confirm_packaging=(
+            policy.can("utente_produzione") or policy.can("utente_imballi")
+        ),
+        can_option_machines=policy.can("utente_vendite"),
+        can_view_options=not policy.can("utente_imballi"),
+        can_view_production_instructions=not policy.can("utente_amministrazione"),
+        can_view_packaging_notes=not policy.can("utente_imballi"),
+        can_view_model_summary=not policy.can("utente_imballi"),
+        can_manage_groups=(
+            policy.can("utente_vendite") or policy.can("utente_produzione")
+        ),
+        can_manage_sales_priorities=policy.can("utente_produzione"),
     )
 
 
@@ -67,15 +84,20 @@ def api_vendite_ordini_macchina():
 @require_active_perm("vendite")
 def vendite_assegnazioni_page():
     policy = active_policy()
-    can_create_customer_orders = policy.can("carica_ordini_cliente")
+    can_create_customer_orders = policy.can("utente_vendite")
     return render_template(
         "vendite_assegnazioni.j2",
         can_create_customer_orders=can_create_customer_orders,
         can_assign_machines=(
-            can_create_customer_orders or policy.can("assegna_matricole")
+            can_create_customer_orders or policy.can("utente_produzione")
         ),
         can_edit_sales_notes=can_create_customer_orders,
-        can_confirm_order_read=policy.can("conferma_lettura_ordine"),
+        can_edit_production_instructions=(
+            can_create_customer_orders or policy.can("utente_amministrazione")
+        ),
+        can_view_packaging_notes=not policy.can("utente_imballi"),
+        can_view_model_summary=not policy.can("utente_imballi"),
+        can_confirm_order_read=policy.can("utente_produzione"),
     )
 
 
@@ -149,7 +171,7 @@ def _assignment_mutation(
 
 @main_bp.post("/api/vendite/raggruppamenti")
 @require_active_perm("vendite")
-@require_active_perm("carica_ordini_cliente")
+@require_active_any_perm("utente_vendite", "utente_produzione")
 def api_vendite_raggruppamenti_save():
     return _assignment_mutation(
         lambda: save_machine_group(request.get_json(silent=True)),
@@ -160,7 +182,7 @@ def api_vendite_raggruppamenti_save():
 
 @main_bp.delete("/api/vendite/raggruppamenti/<int:group_id>")
 @require_active_perm("vendite")
-@require_active_perm("carica_ordini_cliente")
+@require_active_any_perm("utente_vendite", "utente_produzione")
 def api_vendite_raggruppamenti_delete(group_id):
     return _assignment_mutation(
         lambda: delete_machine_group(group_id, request.get_json(silent=True)),
@@ -171,7 +193,7 @@ def api_vendite_raggruppamenti_delete(group_id):
 
 @main_bp.post("/api/vendite/macchine/note-produzione")
 @require_active_perm("vendite")
-@require_active_perm("assegna_matricole")
+@require_active_perm("utente_produzione")
 def api_vendite_macchina_note_produzione():
     payload = request.get_json(silent=True)
     return _assignment_mutation(
@@ -183,7 +205,7 @@ def api_vendite_macchina_note_produzione():
 
 @main_bp.post("/api/vendite/macchine/conferma-imballo")
 @require_active_perm("vendite")
-@require_active_perm("assegna_matricole")
+@require_active_any_perm("utente_produzione", "utente_imballi")
 def api_vendite_macchina_conferma_imballo():
     return _assignment_mutation(
         lambda: confirm_machine_packaging(request.get_json(silent=True), active_user()),
@@ -192,9 +214,20 @@ def api_vendite_macchina_conferma_imballo():
     )
 
 
+@main_bp.post("/api/vendite/macchine/opzione")
+@require_active_perm("vendite")
+@require_active_perm("utente_vendite")
+def api_vendite_macchina_opzione():
+    return _assignment_mutation(
+        lambda: update_machine_option(request.get_json(silent=True), active_user()),
+        "Opzione macchina aggiornata.",
+        dashboard_builder=_visible_production_dashboard,
+    )
+
+
 @main_bp.post("/api/vendite/ordini-cliente")
 @require_active_perm("vendite")
-@require_active_perm("carica_ordini_cliente")
+@require_active_perm("utente_vendite")
 def api_vendite_ordini_cliente_create():
     payload = request.get_json(silent=True)
     return _assignment_mutation(
@@ -208,7 +241,7 @@ def api_vendite_ordini_cliente_create():
     "/api/vendite/ordini-cliente/righe/<int:row_id>/assegnazione"
 )
 @require_active_perm("vendite")
-@require_active_any_perm("carica_ordini_cliente", "assegna_matricole")
+@require_active_any_perm("utente_vendite", "utente_produzione")
 def api_vendite_riga_assegnazione(row_id: int):
     payload = request.get_json(silent=True)
     return _assignment_mutation(
@@ -219,7 +252,7 @@ def api_vendite_riga_assegnazione(row_id: int):
 
 @main_bp.post("/api/vendite/ordini-cliente/<int:order_id>/dati")
 @require_active_perm("vendite")
-@require_active_perm("carica_ordini_cliente")
+@require_active_perm("utente_vendite")
 def api_vendite_ordine_cliente_dati(order_id: int):
     payload = request.get_json(silent=True)
     return _assignment_mutation(
@@ -230,7 +263,7 @@ def api_vendite_ordine_cliente_dati(order_id: int):
 
 @main_bp.post("/api/vendite/ordini-cliente/righe/<int:row_id>/date")
 @require_active_perm("vendite")
-@require_active_any_perm("carica_ordini_cliente", "assegna_matricole")
+@require_active_perm("utente_vendite")
 def api_vendite_riga_date(row_id: int):
     payload = request.get_json(silent=True)
     policy = active_policy()
@@ -238,8 +271,8 @@ def api_vendite_riga_date(row_id: int):
         lambda: update_customer_row_dates(
             row_id,
             payload,
-            can_edit_delivery=policy.can("carica_ordini_cliente"),
-            can_edit_available=policy.can("assegna_matricole"),
+            can_edit_delivery=policy.can("utente_vendite"),
+            can_edit_available=False,
         ),
         "Date aggiornate.",
     )
@@ -247,20 +280,24 @@ def api_vendite_riga_date(row_id: int):
 
 @main_bp.post("/api/vendite/ordini-cliente/righe/<int:row_id>/salva")
 @require_active_perm("vendite")
-@require_active_any_perm("carica_ordini_cliente", "assegna_matricole")
+@require_active_any_perm("utente_vendite", "utente_produzione", "utente_amministrazione")
 def api_vendite_riga_salva(row_id: int):
     payload = request.get_json(silent=True)
     policy = active_policy()
-    can_edit_sales = policy.can("carica_ordini_cliente")
-    can_edit_production = policy.can("assegna_matricole")
+    can_edit_sales = policy.can("utente_vendite")
+    can_edit_production_instructions = (
+        can_edit_sales or policy.can("utente_amministrazione")
+    )
+    can_assign = can_edit_sales or policy.can("utente_produzione")
     return _assignment_mutation(
         lambda: update_customer_row(
             row_id,
             payload,
             active_user(),
             can_edit_sales=can_edit_sales,
-            can_edit_production=can_edit_production,
-            can_assign=can_edit_sales or can_edit_production,
+            can_edit_production=False,
+            can_edit_production_instructions=can_edit_production_instructions,
+            can_assign=can_assign,
         ),
         "Riga aggiornata.",
     )
@@ -268,7 +305,7 @@ def api_vendite_riga_salva(row_id: int):
 
 @main_bp.post("/api/vendite/note-imballaggio")
 @require_active_perm("vendite")
-@require_active_perm("carica_ordini_cliente")
+@require_active_perm("utente_vendite")
 def api_vendite_note_imballaggio():
     payload = request.get_json(silent=True)
     return _assignment_mutation(
@@ -281,7 +318,7 @@ def api_vendite_note_imballaggio():
     "/api/vendite/ordini-cliente/righe/<int:row_id>/note"
 )
 @require_active_perm("vendite")
-@require_active_perm("carica_ordini_cliente")
+@require_active_any_perm("utente_vendite", "utente_amministrazione")
 def api_vendite_riga_note(row_id: int):
     payload = request.get_json(silent=True)
     policy = active_policy()
@@ -289,7 +326,11 @@ def api_vendite_riga_note(row_id: int):
         lambda: update_customer_row_notes(
             row_id,
             payload,
-            can_edit_sales=policy.can("carica_ordini_cliente"),
+            can_edit_sales=policy.can("utente_vendite"),
+            can_edit_production_instructions=(
+                policy.can("utente_vendite")
+                or policy.can("utente_amministrazione")
+            ),
         ),
         "Note aggiornate.",
     )
@@ -297,7 +338,7 @@ def api_vendite_riga_note(row_id: int):
 
 @main_bp.post("/api/vendite/stock/spedisci")
 @require_active_perm("vendite")
-@require_active_perm("carica_ordini_cliente")
+@require_active_perm("utente_vendite")
 def api_vendite_stock_spedisci():
     payload = request.get_json(silent=True) or {}
     return _assignment_mutation(
@@ -313,7 +354,7 @@ def api_vendite_stock_spedisci():
     "/api/vendite/ordini-cliente/<int:order_id>/conferma-lettura"
 )
 @require_active_perm("vendite")
-@require_active_perm("conferma_lettura_ordine")
+@require_active_perm("utente_produzione")
 def api_vendite_ordine_cliente_conferma_lettura(order_id: int):
     return _assignment_mutation(
         lambda: confirm_customer_order_read(order_id, active_user()),
@@ -325,7 +366,7 @@ def api_vendite_ordine_cliente_conferma_lettura(order_id: int):
     "/api/vendite/ordini-cliente/<int:order_id>/elimina"
 )
 @require_active_perm("vendite")
-@require_active_perm("carica_ordini_cliente")
+@require_active_perm("utente_vendite")
 def api_vendite_ordine_cliente_delete(order_id: int):
     return _assignment_mutation(
         lambda: delete_customer_order(order_id),

@@ -27,8 +27,9 @@ class VenditeTabsTest(unittest.TestCase):
                 if name == "vendite.j2":
                     self.assertIn('aria-label="Ordina per Note per produzione"', html)
                     self.assertIn('aria-label="Ordina per Note per imballo"', html)
+                    self.assertIn('aria-label="Ordina per Opzione"', html)
                     self.assertIn('data-machine-sort="shipping_date"', html)
-                    self.assertIn('colspan="12"', html)
+                    self.assertIn('colspan="13"', html)
                 else:
                     self.assertRegex(html, r'Note di produzione</th>\s*<th[^>]*>Note per produzione</th>')
                     self.assertIn('colspan="10"', html)
@@ -63,6 +64,17 @@ class VenditeTabsTest(unittest.TestCase):
             )
             self.assertEqual('id="vendite-group-manager"' in html, allowed)
             self.assertIn('id="vendite-group-filters"', html)
+
+        html = env.get_template("vendite.j2").render(
+            request=SimpleNamespace(args={"vista": "matricola"}),
+            can_manage_sales_priorities=True,
+        )
+        self.assertIn('id="vendite-priority-mode"', html)
+        self.assertIn('id="vendite-priority-operator"', html)
+        self.assertIn('data-priority-level', html)
+        self.assertNotIn('data-priority-position', html)
+        self.assertNotIn('Priorità / posizione', html)
+        self.assertIn('data-can-manage-sales-priorities="true"', html)
 
 
 if __name__ == "__main__":

@@ -8,6 +8,7 @@ from app_odp.vendite_models import (
     VenditeImballoMacchina,
     VenditeMacchinaStock,
     VenditeNotaProduzioneMacchina,
+    VenditeOpzioneMacchina,
     VenditeOrdineCliente,
     VenditeOrdineClienteRiga,
 )
@@ -202,6 +203,26 @@ def _packaging_confirmations(serials) -> dict[str, dict[str, str]]:
     }
 
 
+def _machine_options(serials, viewer=None) -> dict[str, dict]:
+    keys = {_norm_text(serial).casefold() for serial in serials if _norm_text(serial)}
+    viewer_id = getattr(viewer, "id", None)
+    viewer_name = _norm_text(getattr(viewer, "username", "")).casefold()
+    return {
+        item.matricola: {
+            "optioned_at": item.opzionata_il,
+            "optioned_by_name": item.opzionata_da_nome,
+            "can_remove": (
+                item.opzionata_da_id == viewer_id
+                if item.opzionata_da_id is not None
+                else bool(viewer_name and item.opzionata_da_nome.casefold() == viewer_name)
+            ),
+        }
+        for item in VenditeOpzioneMacchina.query.filter(
+            VenditeOpzioneMacchina.matricola.in_(keys)
+        ).all()
+    }
+
+
 def _customer_assignments(orders) -> dict[tuple, dict[str, str]]:
     order_keys = {
         (
@@ -270,6 +291,7 @@ def _build_vendite_payload(
     customer_assignments=None,
     production_notes=None,
     packaging_confirmations=None,
+    machine_options=None,
     missing_components=None,
     include_planned: bool = True,
     generated_at: str | None = None,
@@ -278,6 +300,7 @@ def _build_vendite_payload(
     customer_assignments = customer_assignments or {}
     production_notes = production_notes or {}
     packaging_confirmations = packaging_confirmations or {}
+    machine_options = machine_options or {}
     missing_components = missing_components or {}
     machine_rows = []
     model_groups = {}
@@ -305,6 +328,7 @@ def _build_vendite_payload(
         serial_number = _norm_text(getattr(order, "CodMatricola", ""))
         machine_note = production_notes.get(serial_number.casefold())
         packaging = packaging_confirmations.get(serial_number.casefold())
+        machine_option = machine_options.get(serial_number.casefold())
         customer_assignment = customer_assignments.get(
             ("order", *order_key)
         ) or customer_assignments.get(
@@ -362,6 +386,8 @@ def _build_vendite_payload(
                 ),
                 "packaged": packaging is not None,
                 "packaging": packaging,
+                "option": machine_option,
+                "optioned_at": (machine_option or {}).get("optioned_at", ""),
             }
         )
 
@@ -411,7 +437,7 @@ def _build_vendite_payload(
     }
 
 
-def build_vendite_payload(*, include_planned: bool = True) -> dict:
+def build_vendite_payload(*, include_planned: bool = True, viewer=None) -> dict:
     orders = load_stock_machine_orders() + load_machine_orders()
     unique_orders = []
     seen_serials = set()
@@ -440,6 +466,7 @@ def build_vendite_payload(*, include_planned: bool = True) -> dict:
         customer_assignments=_customer_assignments(orders),
         production_notes=production_notes,
         packaging_confirmations=_packaging_confirmations(serials),
+        machine_options=_machine_options(serials, viewer),
         missing_components=_missing_components_for_orders(order_keys),
         include_planned=include_planned,
     )

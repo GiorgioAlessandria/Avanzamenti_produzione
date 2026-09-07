@@ -22,7 +22,7 @@ def inject_phase_labels():
 
 
 @main_bp.route("/preferenze/fasi", methods=["GET", "POST"])
-@require_active_perm("nomi_fase")
+@require_active_perm("utente_vendite")
 def preferenze_fasi():
     # Un token operatore scaduto non deve modificare il profilo del login condiviso.
     if get_operator_token() and get_operator_token() != active_token():

@@ -50,8 +50,16 @@
           data-group-delete-url="{{ operator_url_for('main.api_vendite_raggruppamenti_delete', group_id=0) }}"
           data-note-url="{{ operator_url_for('main.api_vendite_macchina_note_produzione') }}"
           data-packaging-url="{{ operator_url_for('main.api_vendite_macchina_conferma_imballo') }}"
+          data-option-url="{{ operator_url_for('main.api_vendite_macchina_opzione') }}"
+          data-priority-operators-url="{{ operator_url_for('main.api_priorita_operatori') }}"
+          data-priority-orders-url="{{ operator_url_for('main.api_priorita_ordini_operatore', operatore_id=0) }}"
+          data-priority-save-url="{{ operator_url_for('main.api_priorita_salva_operatore', operatore_id=0) }}"
           data-can-edit-production-notes="{{ 'true' if can_edit_production_notes else 'false' }}"
-          data-can-confirm-packaging="{{ 'true' if can_confirm_packaging else 'false' }}">
+          data-can-confirm-packaging="{{ 'true' if can_confirm_packaging else 'false' }}"
+          data-can-option-machines="{{ 'true' if can_option_machines else 'false' }}"
+          data-can-view-options="{{ 'true' if can_view_options else 'false' }}"
+          data-can-view-production-instructions="{{ 'true' if can_view_production_instructions else 'false' }}"
+          data-can-manage-sales-priorities="{{ 'true' if can_manage_sales_priorities else 'false' }}">
         <div class="d-flex flex-wrap justify-content-end align-items-center gap-3 mb-3">
             <div class="d-flex flex-wrap gap-2">
                 <button type="button"
@@ -59,6 +67,20 @@
                         id="vendite-refresh">
                     Aggiorna ora
                 </button>
+                {% if can_manage_sales_priorities and request.args.get('vista') == 'matricola' %}
+                <label class="form-check d-flex align-items-center mb-0 ms-1">
+                    <input class="form-check-input mt-0" type="checkbox" id="vendite-priority-mode">
+                    <span class="form-check-label ms-2">Modalità priorità</span>
+                </label>
+                <div id="vendite-priority-controls" class="d-none flex-wrap gap-2">
+                    <select id="vendite-priority-operator" class="form-select form-select-sm" aria-label="Operatore di montaggio">
+                        <option value="">Seleziona operatore di montaggio...</option>
+                    </select>
+                    <button type="button" class="btn btn-primary btn-sm" id="vendite-priority-save" disabled>
+                        Salva priorità
+                    </button>
+                </div>
+                {% endif %}
                 {% if can_manage_groups %}
                 <details id="vendite-group-manager" class="border rounded p-2">
                     <summary class="small">Gestisci raggruppamenti</summary>
@@ -102,7 +124,7 @@
             </li>
             <li class="nav-item"
                 role="presentation">
-                <button class="nav-link{{ ' active' if request.args.get('vista') == 'matricola' else '' }}"
+                <button class="nav-link{{ ' active' if request.args.get('vista') == 'matricola' or not can_view_model_summary else '' }}"
                         id="vendite-matricole-tab"
                         data-bs-toggle="tab"
                         data-bs-target="#vendite-matricole-pane"
@@ -113,6 +135,7 @@
                     Situazione produzione per matricola
                 </button>
             </li>
+            {% if can_view_packaging_notes %}
             <li class="nav-item"
                 role="presentation">
                 <a class="nav-link"
@@ -120,6 +143,8 @@
                     Note per imballo
                 </a>
             </li>
+            {% endif %}
+            {% if can_view_model_summary %}
             <li class="nav-item"
                 role="presentation">
                 <button class="nav-link{{ ' active' if request.args.get('vista', 'modello') == 'modello' else '' }}"
@@ -133,10 +158,12 @@
                     Situazione produzione per modello
                 </button>
             </li>
+            {% endif %}
         </ul>
 
         <div class="tab-content border border-top-0 rounded-bottom bg-white shadow-sm"
              id="vendite-tab-content">
+            {% if can_view_model_summary %}
             <section class="tab-pane fade{{ ' show active' if request.args.get('vista', 'modello') == 'modello' else '' }}"
                      id="vendite-modelli-pane"
                      role="tabpanel"
@@ -168,8 +195,9 @@
                     </table>
                 </div>
             </section>
+            {% endif %}
 
-            <section class="tab-pane fade{{ ' show active' if request.args.get('vista') == 'matricola' else '' }}"
+            <section class="tab-pane fade{{ ' show active' if request.args.get('vista') == 'matricola' or not can_view_model_summary else '' }}"
                      id="vendite-matricole-pane"
                      role="tabpanel"
                      aria-labelledby="vendite-matricole-tab"
@@ -199,21 +227,25 @@
                                 ('shipping_date', 'Data spedizione'), ('phase', 'Fase'), ('state', 'Stato'),
                                 ('last_suspension_cause', 'Note / ultima causale di sospensione'),
                                 ('production_note', 'Note di produzione'), ('production_instructions', 'Note per produzione'),
-                                ('packaging_note', 'Note per imballo'), ('packaged', 'Imballo')
+                                ('packaging_note', 'Note per imballo'), ('packaged', 'Imballo'),
+                                ('optioned_at', 'Opzione')
                             ] %}
-                            <th class="{{ 'vendite-model-column' if key == 'model_code' else 'vendite-note-column' if key in ['last_suspension_cause', 'production_note', 'production_instructions', 'packaging_note'] else '' }}"
+                            {% if (key != 'optioned_at' or can_view_options) and (key != 'production_instructions' or can_view_production_instructions) %}
+                            <th class="{{ 'vendite-model-column' if key == 'model_code' else 'vendite-note-column' if key in ['last_suspension_cause', 'production_note', 'production_instructions', 'packaging_note'] else '' }}{{ ' vendite-normal-only' if key in ['packaged', 'optioned_at'] else '' }}"
                                 aria-sort="none">
                                 <button type="button" class="btn btn-link text-body fw-semibold p-0 text-start"
                                         data-machine-sort="{{ key }}" aria-label="Ordina per {{ label }}">
                                     {{ label }} <span data-sort-marker aria-hidden="true"></span>
                                 </button>
                             </th>
+                            {% endif %}
                             {% endfor %}
+                            <th class="vendite-priority-only d-none">Priorità</th>
                         </tr>
                         </thead>
                         <tbody id="vendite-machines-body">
                         <tr>
-                            <td colspan="12"
+                            <td colspan="13"
                                 class="text-center text-muted py-4">Caricamento...</td>
                         </tr>
                         </tbody>
@@ -236,6 +268,10 @@
             const statusElements = page.querySelectorAll("[data-vendite-status]");
             const canEditNotes = page.dataset.canEditProductionNotes === "true";
             const canConfirmPackaging = page.dataset.canConfirmPackaging === "true";
+            const canOptionMachines = page.dataset.canOptionMachines === "true";
+            const canViewOptions = page.dataset.canViewOptions === "true";
+            const canViewProductionInstructions = page.dataset.canViewProductionInstructions === "true";
+            const canManageSalesPriorities = page.dataset.canManageSalesPriorities === "true";
             const errorElement = document.getElementById("vendite-error");
             const summaryHead = document.getElementById("vendite-summary-head");
             const summaryBody = document.getElementById("vendite-summary-body");
@@ -244,9 +280,14 @@
             let inFlight = false;
             let savingNote = false;
             let packagingInFlight = false;
+            let optionInFlight = false;
             let noteRevision = 0;
             const machinesTable = document.getElementById("vendite-machines-table");
             const groupFilters = document.getElementById("vendite-group-filters");
+            const priorityModeInput = document.getElementById("vendite-priority-mode");
+            const priorityControls = document.getElementById("vendite-priority-controls");
+            const priorityOperator = document.getElementById("vendite-priority-operator");
+            const prioritySave = document.getElementById("vendite-priority-save");
             const groupForm = document.getElementById("vendite-group-form");
             const groupSelect = document.getElementById("vendite-group-select");
             const groupFields = document.getElementById("vendite-group-fields");
@@ -259,6 +300,8 @@
             const collapsedGroups = new Set();
             let showAllGroups = false;
             let currentData = {machines: []};
+            let priorityMode = false, priorityDirty = false;
+            let priorityData = {available: [], p1: [], p2: [], p3: [], max_p2: 5};
             let sortKey = "model_code", sortDirection = 1;
             let groupFormDirty = false, groupMutation = false;
 
@@ -273,6 +316,7 @@
 
             function editingNotes() {
                 return savingNote || hasUnsavedNotes()
+                    || priorityDirty
                     || Boolean(document.activeElement?.matches("[data-production-note]"));
             }
 
@@ -417,6 +461,86 @@
                         </button>`;
             }
 
+            function optionCell(machine) {
+                if (machine.option) {
+                    return `
+                        <span class="badge text-bg-warning">Opzionata</span>
+                        <div class="small text-muted mt-1">
+                            ${esc(machine.option.optioned_by_name)} · ${esc(formatUpdateTime(machine.option.optioned_at))}
+                        </div>
+                        ${canOptionMachines && machine.option.can_remove ? `
+                            <button type="button" class="btn btn-outline-secondary btn-sm text-nowrap mt-1"
+                                    data-machine-option="false"
+                                    data-id-documento="${esc(machine.id_documento)}"
+                                    data-id-riga="${esc(machine.id_riga)}"
+                                    data-serial="${esc(machine.serial_number)}">
+                                Rimuovi opzione
+                            </button>` : ""}`;
+                }
+                if (!canOptionMachines || !machine.has_serial) return "—";
+                return `<button type="button" class="btn btn-outline-warning btn-sm text-nowrap"
+                                data-machine-option="true"
+                                data-id-documento="${esc(machine.id_documento)}"
+                                data-id-riga="${esc(machine.id_riga)}"
+                                data-serial="${esc(machine.serial_number)}">
+                            Opziona
+                        </button>`;
+            }
+
+            function priorityKey(row) {
+                return [row.id_documento, row.id_riga, row.phase ?? row.fase ?? "1"].join("|");
+            }
+
+            function priorityQueue() {
+                return [
+                    ...(priorityData.p1 || []),
+                    ...(priorityData.p2 || []),
+                    ...(priorityData.p3 || []),
+                    ...(priorityData.available || []),
+                ];
+            }
+
+            function priorityCell(machine, item) {
+                const value = item?.priorita || "";
+                return `<select class="form-select form-select-sm" data-priority-level
+                                data-position="${esc(item?.posizione || "")}"
+                                data-id-documento="${esc(machine.id_documento)}"
+                                data-id-riga="${esc(machine.id_riga)}"
+                                data-fase="${esc(machine.phase)}"
+                                aria-label="Priorità ordine ${esc(machine.order)}">
+                        <option value=""${value === "" ? " selected" : ""}>Nessuna</option>
+                        ${[1, 2, 3].map(level => `<option value="${level}"${Number(value) === level ? " selected" : ""}>${level}</option>`).join("")}
+                    </select>`;
+            }
+
+            function machineRow(machine, priorityItem = null) {
+                return `<tr>
+                    <td>${modelLabel(machine)}</td>
+                    <td class="fw-semibold">${esc(machine.serial_number)}</td>
+                    <td>${esc(machine.order)}</td>
+                    <td>${esc(machine.customer_order || "—")}</td>
+                    <td class="text-nowrap">${esc(formatShippingDate(machine.shipping_date))}</td>
+                    <td data-phase-code="${esc(machine.phase)}">${esc(window.phaseLabel(machine.phase))}</td>
+                    <td data-col="stato">${stateBadge(machine.state)}</td>
+                    <td class="vendite-note-column">
+                        ${(machine.missing_components || []).length ? `
+                            <div class="text-danger mb-1">
+                                <strong>Materiali mancanti:</strong>
+                                <ul class="mb-0 ps-3">${machine.missing_components.map(component => `
+                                    <li>${esc([component.code, component.variant, component.description].filter(Boolean).join(" — "))}</li>
+                                `).join("")}</ul>
+                            </div>` : ""}
+                        ${esc(machine.last_suspension_cause || ((machine.missing_components || []).length ? "" : "—"))}
+                    </td>
+                    <td class="vendite-note-column">${productionNoteCell(machine)}</td>
+                    ${canViewProductionInstructions ? `<td class="vendite-note-column" style="white-space: pre-wrap">${esc(machine.production_instructions || "—")}</td>` : ""}
+                    <td class="vendite-note-column" style="white-space: pre-wrap">${esc(machine.packaging_note || "—")}</td>
+                    <td class="vendite-normal-only${priorityMode ? " d-none" : ""}">${packagingCell(machine)}</td>
+                    ${canViewOptions ? `<td class="vendite-normal-only${priorityMode ? " d-none" : ""}">${optionCell(machine)}</td>` : ""}
+                    <td class="vendite-priority-only${priorityMode ? "" : " d-none"}">${priorityCell(machine, priorityItem)}</td>
+                </tr>`;
+            }
+
             function machineSections(machines, allGroups, selected, separate) {
                 if (separate) {
                     const assigned = new Set(allGroups.flatMap(group => group.family_codes));
@@ -495,6 +619,11 @@
                     errorElement.classList.remove("d-none");
                     return false;
                 }
+                if (priorityDirty) {
+                    errorElement.textContent = "Salvare le priorità prima di cambiare vista, operatore o modalità.";
+                    errorElement.classList.remove("d-none");
+                    return false;
+                }
                 return true;
             }
 
@@ -538,12 +667,38 @@
             }
 
             function renderMachines(data) {
+                machinesTable.querySelectorAll(".vendite-normal-only").forEach(cell => {
+                    cell.classList.toggle("d-none", priorityMode);
+                });
+                machinesTable.querySelectorAll(".vendite-priority-only").forEach(cell => {
+                    cell.classList.toggle("d-none", !priorityMode);
+                });
+                groupFilters.classList.toggle("d-none", priorityMode);
+
+                if (priorityMode) {
+                    const machinesByKey = new Map(
+                        (data.machines || [])
+                            .filter(machine => machine.state === "Pianificata")
+                            .map(machine => [priorityKey(machine), machine])
+                    );
+                    const rows = priorityQueue().flatMap(item => {
+                        const machine = machinesByKey.get(priorityKey(item));
+                        return machine ? [machineRow(machine, item)] : [];
+                    });
+                    machinesBody.innerHTML = rows.join("") || `
+                        <tr><td colspan="12" class="text-center text-muted py-4">
+                            ${priorityOperator?.value ? "Nessun ordine Pianificata assegnato al montaggio per questo operatore." : "Seleziona un operatore di montaggio."}
+                        </td></tr>`;
+                    if (typeof window.applyRowColors === "function") window.applyRowColors();
+                    return;
+                }
+
                 const sections = machineSections(data.machines || [], groups, selectedGroups, showAllGroups);
                 machinesBody.innerHTML = sections.map(section => {
                     const expanded = section.name === null || !collapsedGroups.has(section.key);
                     const header = section.name === null ? "" : `
                         <tr class="table-secondary" data-group-heading>
-                            <th colspan="12" scope="rowgroup">
+                            <th colspan="13" scope="rowgroup">
                                 <button type="button" class="btn text-start fw-semibold w-100 p-0"
                                         data-toggle-machine-group="${esc(section.key)}"
                                         aria-expanded="${expanded}"
@@ -555,31 +710,7 @@
                         </tr>`;
                     if (!expanded) return header;
                     const rows = sortedMachines(section.machines, sortKey, sortDirection);
-                    return header + (rows.length ? rows.map(machine => `
-                    <tr>
-                        <td>${modelLabel(machine)}</td>
-                        <td class="fw-semibold">${esc(machine.serial_number)}</td>
-                        <td>${esc(machine.order)}</td>
-                        <td>${esc(machine.customer_order || "—")}</td>
-                        <td class="text-nowrap">${esc(formatShippingDate(machine.shipping_date))}</td>
-                        <td data-phase-code="${esc(machine.phase)}">${esc(window.phaseLabel(machine.phase))}</td>
-                        <td data-col="stato">${stateBadge(machine.state)}</td>
-                        <td class="vendite-note-column">
-                            ${(machine.missing_components || []).length ? `
-                                <div class="text-danger mb-1">
-                                    <strong>Materiali mancanti:</strong>
-                                    <ul class="mb-0 ps-3">${machine.missing_components.map(component => `
-                                        <li>${esc([component.code, component.variant, component.description].filter(Boolean).join(" — "))}</li>
-                                    `).join("")}</ul>
-                                </div>` : ""}
-                            ${esc(machine.last_suspension_cause || ((machine.missing_components || []).length ? "" : "—"))}
-                        </td>
-                        <td class="vendite-note-column">${productionNoteCell(machine)}</td>
-                        <td class="vendite-note-column" style="white-space: pre-wrap">${esc(machine.production_instructions || "—")}</td>
-                        <td class="vendite-note-column" style="white-space: pre-wrap">${esc(machine.packaging_note || "—")}</td>
-                        <td>${packagingCell(machine)}</td>
-                    </tr>
-                `).join("") : '<tr><td colspan="12" class="text-center text-muted py-4">Nessuna macchina presente.</td></tr>');
+                    return header + (rows.length ? rows.map(machine => machineRow(machine)).join("") : '<tr><td colspan="13" class="text-center text-muted py-4">Nessuna macchina presente.</td></tr>');
                 }).join("");
 
                 if (typeof window.applyRowColors === "function") {
@@ -596,6 +727,90 @@
                 }).format(date);
             }
 
+            function priorityUrl(template, operatorId) {
+                return template.replace(/\/0(?=\/|\?|$)/, `/${encodeURIComponent(operatorId)}`);
+            }
+
+            async function loadPriorityOperators() {
+                if (!canManageSalesPriorities || priorityOperator.options.length > 1) return;
+                const url = new URL(page.dataset.priorityOperatorsUrl, window.location.origin);
+                url.searchParams.set("montaggio", "1");
+                const response = await window.avpFetch(url.toString());
+                const payload = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(payload.error || "Errore caricamento operatori di montaggio.");
+                priorityOperator.innerHTML = '<option value="">Seleziona operatore di montaggio...</option>';
+                for (const operator of payload.operatori || []) {
+                    priorityOperator.insertAdjacentHTML(
+                        "beforeend",
+                        `<option value="${esc(operator.id)}">${esc(operator.username)}</option>`
+                    );
+                }
+                if (priorityOperator.options.length > 1) priorityOperator.selectedIndex = 1;
+            }
+
+            async function loadPriorityData() {
+                if (!priorityMode || !priorityOperator?.value) {
+                    priorityData = {available: [], p1: [], p2: [], p3: [], max_p2: 5};
+                    return;
+                }
+                const response = await window.avpFetch(priorityUrl(
+                    page.dataset.priorityOrdersUrl,
+                    priorityOperator.value
+                ));
+                const payload = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(payload.error || "Errore caricamento priorità.");
+                priorityData = payload;
+            }
+
+            async function savePriorities() {
+                if (!priorityMode || !priorityOperator?.value || !priorityDirty) return;
+                const staged = Array.from(machinesBody.querySelectorAll("tr"), (row, rowIndex) => {
+                    const level = row.querySelector("[data-priority-level]");
+                    if (!level?.value) return null;
+                    return {
+                        id_documento: level.dataset.idDocumento,
+                        id_riga: level.dataset.idRiga,
+                        fase: level.dataset.fase,
+                        priorita: Number(level.value),
+                        requested_position: Number(level.dataset.position) || rowIndex + 1,
+                        row_index: rowIndex,
+                    };
+                }).filter(Boolean);
+                if (staged.filter(item => item.priorita === 1).length > 1) {
+                    throw new Error("È consentito un solo ordine con priorità 1.");
+                }
+                const maxP2 = Number(priorityData.max_p2 || 5);
+                if (staged.filter(item => item.priorita === 2).length > maxP2) {
+                    throw new Error(`Sono consentiti al massimo ${maxP2} ordini con priorità 2.`);
+                }
+                const items = staged
+                    .sort((a, b) => a.priorita - b.priorita || a.requested_position - b.requested_position || a.row_index - b.row_index)
+                    .map((item, _, all) => ({
+                        id_documento: item.id_documento,
+                        id_riga: item.id_riga,
+                        fase: item.fase,
+                        priorita: item.priorita,
+                        posizione: all.filter(previous => previous.priorita === item.priorita && (
+                            previous.requested_position < item.requested_position
+                            || (previous.requested_position === item.requested_position && previous.row_index <= item.row_index)
+                        )).length,
+                    }));
+                const response = await window.avpFetch(priorityUrl(
+                    page.dataset.prioritySaveUrl,
+                    priorityOperator.value
+                ), {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({items}),
+                });
+                const payload = await response.json().catch(() => ({}));
+                if (!response.ok || !payload.ok) throw new Error(payload.error || "Errore salvataggio priorità.");
+                priorityDirty = false;
+                prioritySave.disabled = true;
+                await refresh();
+                setStatus("Priorità salvate.");
+            }
+
             function render(data) {
                 currentData = data;
                 renderSummary(data);
@@ -605,14 +820,17 @@
             }
 
             async function refresh() {
-                if (inFlight || groupMutation || packagingInFlight || editingNotes()) return;
+                if (inFlight || groupMutation || packagingInFlight || optionInFlight || editingNotes()) return;
                 const revision = noteRevision;
                 inFlight = true;
                 refreshButton.disabled = true;
                 setStatus("Aggiornamento in corso...");
 
                 try {
-                    const response = await window.avpFetch(page.dataset.apiUrl);
+                    if (priorityMode) await loadPriorityData();
+                    const dataUrl = new URL(page.dataset.apiUrl, window.location.origin);
+                    if (priorityMode) dataUrl.searchParams.set("priorita", "1");
+                    const response = await window.avpFetch(dataUrl.toString());
                     const payload = await response.json().catch(() => ({}));
                     if (!response.ok || !payload.ok) {
                         throw new Error(payload.error || `Errore server (${response.status})`);
@@ -635,6 +853,40 @@
             }
 
             machinesBody.addEventListener("click", async event => {
+                const optionButton = event.target.closest("[data-machine-option]");
+                if (optionButton) {
+                    if (optionInFlight || !canOptionMachines || !canChangeMachineView()) return;
+                    const optioned = optionButton.dataset.machineOption === "true";
+                    const action = optioned ? "opzionare" : "rimuovere l'opzione dalla";
+                    if (!window.confirm(`Confermare di ${action} matricola ${optionButton.dataset.serial}?`)) return;
+                    optionInFlight = true;
+                    optionButton.disabled = true;
+                    try {
+                        const response = await window.avpFetch(page.dataset.optionUrl, {
+                            method: "POST",
+                            headers: {"Content-Type": "application/json"},
+                            body: JSON.stringify({
+                                id_documento: optionButton.dataset.idDocumento,
+                                id_riga: optionButton.dataset.idRiga,
+                                serial_number: optionButton.dataset.serial,
+                                optioned,
+                            }),
+                        });
+                        const payload = await response.json().catch(() => ({}));
+                        if (!response.ok || !payload.ok) throw new Error(payload.error || `Errore server (${response.status})`);
+                        noteRevision += 1;
+                        render(payload.data);
+                        errorElement.classList.add("d-none");
+                        setStatus(payload.message || "Opzione macchina aggiornata.");
+                    } catch (error) {
+                        errorElement.textContent = error.message || "Impossibile aggiornare l'opzione.";
+                        errorElement.classList.remove("d-none");
+                        optionButton.disabled = false;
+                    } finally {
+                        optionInFlight = false;
+                    }
+                    return;
+                }
                 const packagingButton = event.target.closest("[data-confirm-packaging]");
                 if (packagingButton) {
                     if (packagingInFlight || !canConfirmPackaging || !canChangeMachineView()) return;
@@ -746,8 +998,14 @@
                     setStatus("Modifiche non salvate: salvare o annullare per riprendere l'aggiornamento.");
                 }
             });
+            machinesBody.addEventListener("change", event => {
+                if (!event.target.matches("[data-priority-level]")) return;
+                priorityDirty = true;
+                prioritySave.disabled = false;
+                setStatus("Priorità modificate: salvare per riprendere l'aggiornamento.");
+            });
             window.addEventListener("beforeunload", event => {
-                if (savingNote || hasUnsavedNotes() || groupFormDirty || groupMutation) {
+                if (savingNote || hasUnsavedNotes() || priorityDirty || groupFormDirty || groupMutation) {
                     event.preventDefault();
                     event.returnValue = "";
                 }
@@ -766,7 +1024,7 @@
             });
             machinesTable.tHead.addEventListener("click", event => {
                 const button = event.target.closest("[data-machine-sort]");
-                if (!button || !canChangeMachineView()) return;
+                if (!button || priorityMode || !canChangeMachineView()) return;
                 const key = button.dataset.machineSort;
                 sortDirection = sortKey === key ? -sortDirection : 1;
                 sortKey = key;
@@ -806,11 +1064,49 @@
 
             refreshButton.addEventListener("click", () => {
                 if (editingNotes()) {
-                    setStatus("Salvare o annullare le note prima di aggiornare.");
+                    setStatus("Salvare o annullare le modifiche prima di aggiornare.");
                 } else {
                     refresh();
                 }
             });
+            if (priorityModeInput) {
+                priorityModeInput.addEventListener("change", async () => {
+                    if (!canChangeMachineView()) {
+                        priorityModeInput.checked = priorityMode;
+                        return;
+                    }
+                    priorityMode = priorityModeInput.checked;
+                    priorityControls.classList.toggle("d-none", !priorityMode);
+                    priorityControls.classList.toggle("d-flex", priorityMode);
+                    try {
+                        if (priorityMode) await loadPriorityOperators();
+                        priorityOperator.dataset.previousValue = priorityOperator.value;
+                        await refresh();
+                    } catch (error) {
+                        errorElement.textContent = error.message;
+                        errorElement.classList.remove("d-none");
+                    }
+                });
+                priorityOperator.addEventListener("change", async () => {
+                    if (!canChangeMachineView()) {
+                        priorityOperator.value = priorityOperator.dataset.previousValue || "";
+                        return;
+                    }
+                    priorityOperator.dataset.previousValue = priorityOperator.value;
+                    await refresh();
+                });
+                prioritySave.addEventListener("click", async () => {
+                    prioritySave.disabled = true;
+                    try {
+                        await savePriorities();
+                        errorElement.classList.add("d-none");
+                    } catch (error) {
+                        errorElement.textContent = error.message;
+                        errorElement.classList.remove("d-none");
+                        prioritySave.disabled = false;
+                    }
+                });
+            }
             document.addEventListener("visibilitychange", () => {
                 if (!document.hidden) refresh();
             });

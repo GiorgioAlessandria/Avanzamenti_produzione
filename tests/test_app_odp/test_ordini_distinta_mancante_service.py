@@ -1,8 +1,10 @@
 import json
+from types import SimpleNamespace
 
 import pytest
 
 from app_odp.services.ordini_distinta_mancante_service import (
+    distinta_pendente_per_ordine,
     filter_export_distinta,
     partition_distinta_step,
 )
@@ -50,3 +52,20 @@ def test_partial_step_rejects_unknown_or_all_missing_components():
         partition_distinta_step(
             pending,
             [{"CodArt": "A"}, {"CodArt": "B"}],
+        )
+
+
+def test_phase_without_erp_components_has_no_pending_bom():
+    ordine = SimpleNamespace(
+        IdDocumento="100",
+        IdRiga="1",
+        DistintaMateriale=json.dumps(
+            [
+                {"CodArt": "A", "VarianteArt": "", "NumFase": "1"},
+                {"CodArt": "B", "VarianteArt": "", "NumFase": "1"},
+            ]
+        ),
+    )
+
+    # La fase 2 è solo di controllo: non deve recuperare residui di altre fasi.
+    assert distinta_pendente_per_ordine(ordine, "2") == []

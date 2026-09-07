@@ -59,7 +59,9 @@ def _current_phase_components(ordine, fase: str) -> list[dict]:
 def distinta_pendente_per_ordine(ordine, fase: str) -> list[dict]:
     """Confronta la distinta ERP corrente con l'eventuale residuo salvato."""
     current = _current_phase_components(ordine, fase)
-    current_by_key = {component_key(row): row for row in current}
+    if not current:
+        return []
+
     saved = (
         OdpDistintaMancante.query.filter_by(
             IdDocumento=ordine.IdDocumento,
@@ -72,21 +74,10 @@ def distinta_pendente_per_ordine(ordine, fase: str) -> list[dict]:
     if not saved:
         return current
 
-    result = []
-    for row in saved:
-        stored = {
-            "CodArt": row.CodArt,
-            "VarianteArt": row.VarianteArt,
-            "DesArt": row.DesArt,
-            "Quantita": row.Quantita,
-            "GestioneLotto": row.GestioneLotto,
-            "TecniciUm": row.TecniciUm,
-            "ProgressivoRiga": row.ProgressivoRiga,
-            "NumFase": row.Fase,
-        }
-        # La distinta ERP corrente è autorevole anche per GestioneLotto.
-        result.append(current_by_key.get(component_key(stored), stored))
-    return result
+    saved_keys = {
+        (_norm_text(row.CodArt), _norm_text(row.VarianteArt)) for row in saved
+    }
+    return [row for row in current if component_key(row) in saved_keys]
 
 
 def partition_distinta_step(

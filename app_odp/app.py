@@ -453,20 +453,18 @@ def setup_request_logging(app):
 
 def _ensure_builtin_permissions() -> None:
     builtins = {
-        "nomi_fase": "Accesso e modifica dei nomi personali delle fasi",
         "visualizza_pianificati": "Visualizzazione delle macchine pianificate nelle viste Vendite",
         "vendite": (
             "Visualizzazione ordini macchina e gestione ordini cliente per le vendite"
         ),
-        "conferma_lettura_ordine": (
-            "Conferma di lettura dei nuovi ordini cliente"
+        "utente_vendite": (
+            "Gestione commerciale degli ordini cliente e dei nomi personali delle fasi"
         ),
-        "carica_ordini_cliente": (
-            "Inserimento ordini cliente e gestione delle matricole"
+        "utente_produzione": (
+            "Gestione produttiva di matricole, letture, priorità e raggruppamenti"
         ),
-        "assegna_matricole": (
-            "Assegnazione e spostamento delle matricole sugli ordini cliente"
-        ),
+        "utente_imballi": "Consultazione Vendite e conferma imballo macchine",
+        "utente_amministrazione": "Gestione delle note per produzione negli ordini cliente",
         "storico_ordini": "Storico ordini",
         "scorte_segnalazione_libera": ("Segnalazione scorte con testo libero"),
         # Rifiuti
@@ -509,6 +507,29 @@ def _ensure_builtin_permissions() -> None:
     for code, description in builtins.items():
         if code not in existing:
             db.session.add(Permissions(Codice=code, Descrizione=description))
+    db.session.flush()
+
+    # Mantiene i ruoli esistenti senza lasciare attivi i vecchi permessi.
+    # nomi_fase non viene migrato da solo: trasformarlo in utente_vendite
+    # allargherebbe impropriamente i privilegi dei ruoli non commerciali.
+    replacements = {
+        "carica_ordini_cliente": "utente_vendite",
+        "assegna_matricole": "utente_produzione",
+        "conferma_lettura_ordine": "utente_produzione",
+        "priorità_vendite": "utente_produzione",
+        "nomi_fase": None,
+    }
+    for legacy_code, replacement_code in replacements.items():
+        replacement = (
+            Permissions.query.filter_by(Codice=replacement_code).first()
+            if replacement_code else None
+        )
+        for legacy in Permissions.query.filter_by(Codice=legacy_code).all():
+            for role in legacy.roles.all():
+                if replacement and role.permissions.filter_by(id=replacement.id).first() is None:
+                    role.permissions.append(replacement)
+                role.permissions.remove(legacy)
+            db.session.delete(legacy)
     db.session.commit()
 
 
