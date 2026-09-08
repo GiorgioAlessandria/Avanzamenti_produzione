@@ -216,6 +216,15 @@
                     <div class="small text-muted">
                         Seleziona i raggruppamenti per una tabella unica; senza selezioni sono mostrate tutte le macchine.
                     </div>
+                    <div class="mt-2" style="max-width: 36rem;">
+                        <label class="visually-hidden" for="vendite-machine-search">
+                            Cerca per matricola, ordine produzione o ordine cliente
+                        </label>
+                        <input type="search"
+                               class="form-control"
+                               id="vendite-machine-search"
+                               placeholder="Cerca matricola, ordine produzione o ordine cliente...">
+                    </div>
                 </div>
                 <div class="table-responsive">
                     <table id="vendite-machines-table" class="table table-striped table-hover table-state-rowcolor align-middle mb-0">
@@ -283,6 +292,7 @@
             let optionInFlight = false;
             let noteRevision = 0;
             const machinesTable = document.getElementById("vendite-machines-table");
+            const machineSearchInput = document.getElementById("vendite-machine-search");
             const groupFilters = document.getElementById("vendite-group-filters");
             const priorityModeInput = document.getElementById("vendite-priority-mode");
             const priorityControls = document.getElementById("vendite-priority-controls");
@@ -541,6 +551,15 @@
                 </tr>`;
             }
 
+            function filteredMachines(machines, query) {
+                if (!query) return machines;
+                return machines.filter(machine => [
+                    machine.serial_number,
+                    machine.order,
+                    machine.customer_order,
+                ].some(value => String(value || "").toLocaleLowerCase("it").includes(query)));
+            }
+
             function machineSections(machines, allGroups, selected, separate) {
                 if (separate) {
                     const assigned = new Set(allGroups.flatMap(group => group.family_codes));
@@ -675,9 +694,11 @@
                 });
                 groupFilters.classList.toggle("d-none", priorityMode);
 
+                const searchQuery = machineSearchInput.value.trim().toLocaleLowerCase("it");
+                const visibleMachines = filteredMachines(data.machines || [], searchQuery);
                 if (priorityMode) {
                     const machinesByKey = new Map(
-                        (data.machines || [])
+                        visibleMachines
                             .filter(machine => machine.state === "Pianificata")
                             .map(machine => [priorityKey(machine), machine])
                     );
@@ -687,15 +708,18 @@
                     });
                     machinesBody.innerHTML = rows.join("") || `
                         <tr><td colspan="12" class="text-center text-muted py-4">
-                            ${priorityOperator?.value ? "Nessun ordine Pianificata assegnato al montaggio per questo operatore." : "Seleziona un operatore di montaggio."}
+                            ${searchQuery ? "Nessuna macchina corrisponde alla ricerca." : priorityOperator?.value ? "Nessun ordine Pianificata assegnato al montaggio per questo operatore." : "Seleziona un operatore di montaggio."}
                         </td></tr>`;
                     if (typeof window.applyRowColors === "function") window.applyRowColors();
                     return;
                 }
 
-                const sections = machineSections(data.machines || [], groups, selectedGroups, showAllGroups);
-                machinesBody.innerHTML = sections.map(section => {
-                    const expanded = section.name === null || !collapsedGroups.has(section.key);
+                let sections = machineSections(visibleMachines, groups, selectedGroups, showAllGroups);
+                if (searchQuery) {
+                    sections = sections.filter(section => section.machines.length);
+                }
+                const rowsHtml = sections.map(section => {
+                    const expanded = Boolean(searchQuery) || section.name === null || !collapsedGroups.has(section.key);
                     const header = section.name === null ? "" : `
                         <tr class="table-secondary" data-group-heading>
                             <th colspan="13" scope="rowgroup">
@@ -712,6 +736,10 @@
                     const rows = sortedMachines(section.machines, sortKey, sortDirection);
                     return header + (rows.length ? rows.map(machine => machineRow(machine)).join("") : '<tr><td colspan="13" class="text-center text-muted py-4">Nessuna macchina presente.</td></tr>');
                 }).join("");
+                machinesBody.innerHTML = rowsHtml || `
+                    <tr><td colspan="13" class="text-center text-muted py-4">
+                        Nessuna macchina corrisponde alla ricerca.
+                    </td></tr>`;
 
                 if (typeof window.applyRowColors === "function") {
                     window.applyRowColors();
@@ -1009,6 +1037,14 @@
                     event.preventDefault();
                     event.returnValue = "";
                 }
+            });
+
+            machineSearchInput.addEventListener("input", () => {
+                if (hasUnsavedNotes()) {
+                    setStatus("Salvare o annullare le note prima di applicare la ricerca.");
+                    return;
+                }
+                renderMachines(currentData);
             });
 
             groupFilters.addEventListener("change", event => {

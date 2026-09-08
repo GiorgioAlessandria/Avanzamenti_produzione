@@ -1,3 +1,4 @@
+{% from 'partials/_table_text.j2' import wrap_plus %}
 {% for singolo_odp in odp %}
     {% if singolo_odp.IsWorkGroup|default(false) and singolo_odp.StatoOrdine != "Pianificata" and singolo_odp.StatoOrdine != "Chiusa" %}
         {% set group_type_display = singolo_odp.WorkGroupDisplayType|default(singolo_odp.WorkGroupType) %}
@@ -29,7 +30,7 @@
             data-risorsaprod="{{ singolo_odp.CodRisorsaProd }}"
             data-tempoattrezzaggio=""
             data-operatore="{{ singolo_odp.OperatoreUsername|default('') }}">
-            <td class="pr-cell fw-bold text-center">{{ pr or '' }}</td>
+            <td class="pr-cell fw-bold text-center">{{ wrap_plus(pr or '') }}</td>
             <td class="text-start">
                 <button type="button"
                         class="btn btn-sm btn-outline-dark me-1 js-open-workgroup-detail-modal"
@@ -40,23 +41,23 @@
                         title="Apri dettaglio gruppo">
                     Dettaglio
                 </button>
-                <span class="badge {{ group_badge_class }} me-1">{{ group_type_label }}</span>
-                <strong>{{ singolo_odp.OrdineVisuale }}</strong>
-                <div class="small text-muted">{{ singolo_odp.WorkGroupUid }}</div>
+                <span class="badge {{ group_badge_class }} me-1">{{ wrap_plus(group_type_label) }}</span>
+                <strong>{{ wrap_plus(singolo_odp.OrdineVisuale) }}</strong>
+                <div class="small text-muted">{{ wrap_plus(singolo_odp.WorkGroupUid) }}</div>
             </td>
-            <td>{{ singolo_odp.CodiciVisuale }}</td>
+            <td>{{ wrap_plus(singolo_odp.CodiciVisuale) }}</td>
             <td></td>
             <td></td>
             <td class="text-start">
-                <strong>{{ singolo_odp.DesArt }}</strong>
-                <div class="small text-muted">{{ singolo_odp.WorkGroupMembers|default([])|length }} ordini nel gruppo</div>
+                <strong>{{ wrap_plus(singolo_odp.DesArt) }}</strong>
+                <div class="small text-muted">{{ wrap_plus(singolo_odp.WorkGroupMembers|default([])|length) }} ordini nel gruppo</div>
             </td>
-            <td>{{ singolo_odp.Quantita }}</td>
-            <td>{{ singolo_odp.DataFineSched | db_date("%Y-%m-%d %H:%M:%S","%d/%m/%Y") }}</td>
+            <td>{{ wrap_plus(singolo_odp.Quantita) }}</td>
+            <td>{{ wrap_plus(singolo_odp.DataFineSched | db_date("%Y-%m-%d %H:%M:%S","%d/%m/%Y")) }}</td>
             <td></td>
-            <td>{{ singolo_odp.CodRisorsaProd }}</td>
-            <td data-col="stato">{{ singolo_odp.WorkGroupStatus }}</td>
-            <td>{{ singolo_odp.OperatoreUsername|default('-') or '-' }}</td>
+            <td>{{ wrap_plus(singolo_odp.CodRisorsaProd) }}</td>
+            <td data-col="stato">{{ wrap_plus(singolo_odp.WorkGroupStatus) }}</td>
+            <td>{{ wrap_plus(singolo_odp.OperatoreUsername|default('-') or '-') }}</td>
         </tr>
     {% elif singolo_odp.StatoOrdine != "Pianificata" and singolo_odp.StatoOrdine != "Chiusa" %}
         {% set operatore = singolo_odp.runtime_row.Utente_operazione if singolo_odp.runtime_row else "" %}
@@ -98,7 +99,7 @@
             data-tempoattrezzaggio="{{ singolo_odp.AttrezzaggioAttivo }}"
             data-statoordine="{{ singolo_odp.StatoOrdine }}"
             data-operatore="{{ operatore }}">
-            <td class="pr-cell {{ pr_class }} fw-bold text-center">{{ pr or "" }}</td>
+            <td class="pr-cell {{ pr_class }} fw-bold text-center">{{ wrap_plus(pr or "") }}</td>
             <td>
                 <button
                         type="button"
@@ -107,7 +108,7 @@
                         data-variante="{{ singolo_odp.VarianteArt|e }}"
                         data-fase-attiva="{{ singolo_odp.FaseAttiva }}"
                         data-distinta='{{ singolo_odp.DistintaMateriale|tojson }}'>
-                    {{ ordine_display }}
+                    {{ wrap_plus(ordine_display) }}
                 </button>
             </td>
             {% set rev = singolo_odp.IndiceModifica %}
@@ -124,21 +125,21 @@
                             data-bs-target="#modalMetodoMontaggio"
                             data-codart="{{ singolo_odp.CodArt|e }}"
                             data-pdf-url="{{ metodo_doc.url }}">
-                        {{ singolo_odp.CodArt }}
+                        {{ wrap_plus(singolo_odp.CodArt) }}
                     </button>
                 {% else %}
-                    <span class="text-danger">{{ singolo_odp.CodArt }}</span>
+                    <span class="text-danger">{{ wrap_plus(singolo_odp.CodArt) }}</span>
                 {% endif %}
             </td>
-            <td>{{ "-" if rev is none or (rev|string|trim|upper) == "X" else rev }}</td>
-            <td>{{ singolo_odp.VarianteArt }}</td>
-            <td>{{ singolo_odp.DesArt }}</td>
-            <td>{{ singolo_odp.QtyDaLavorare or singolo_odp.Quantita }}</td>
-            <td>{{ singolo_odp.DataFineSched | db_date("%Y-%m-%d %H:%M:%S","%d/%m/%Y") }}</td>
-            <td>{{ singolo_odp.AttrezzaggioAttivo }}</td>
-            <td>{{ singolo_odp.RisorsaAttiva }}</td>
-            <td data-col="stato">{{ singolo_odp.StatoOrdine }}</td>
-            <td>{{ operatore or "-" }}</td>
+            <td>{{ wrap_plus("-" if rev is none or (rev|string|trim|upper) == "X" else rev) }}</td>
+            <td>{{ wrap_plus(singolo_odp.VarianteArt) }}</td>
+            <td>{{ wrap_plus(singolo_odp.DesArt) }}</td>
+            <td>{{ wrap_plus(singolo_odp.QtyDaLavorare or singolo_odp.Quantita) }}</td>
+            <td>{{ wrap_plus(singolo_odp.DataFineSched | db_date("%Y-%m-%d %H:%M:%S","%d/%m/%Y")) }}</td>
+            <td>{{ wrap_plus(singolo_odp.AttrezzaggioAttivo) }}</td>
+            <td>{{ wrap_plus(singolo_odp.RisorsaAttiva) }}</td>
+            <td data-col="stato">{{ wrap_plus(singolo_odp.StatoOrdine) }}</td>
+            <td>{{ wrap_plus(operatore or "-") }}</td>
         </tr>
     {% endif %}
 {% endfor %}

@@ -1,3 +1,4 @@
+{% from 'partials/_table_text.j2' import wrap_plus %}
 {% for singolo_odp in odp %}
     {% if not (singolo_odp.IsWorkGroup|default(false)) and singolo_odp.StatoOrdine == "Pianificata" %}
         {% set pr = singolo_odp.PrioritaNumero if singolo_odp.PrioritaNumero is defined else none %}
@@ -34,26 +35,26 @@
             class="{{ row_class }}"
             data-risorsaprod="{{ singolo_odp.RisorsaAttiva }}">
 
-            <td>{{ pr or '' }}</td>
+            <td>{{ wrap_plus(pr or '') }}</td>
             <td>
                 {% if distinta_missing %}
                     <span class="text-danger fw-bold">
-                        {{ ordine_display }}
+                        {{ wrap_plus(ordine_display) }}
                     </span>
                     <i class="bi bi-exclamation-triangle-fill text-danger ms-1"
                        title="Distinta materiale assente"></i>
                 {% else %}
-                    {{ ordine_display }}
+                    {{ wrap_plus(ordine_display) }}
                 {% endif %}
             </td>
-            <td>{{ singolo_odp.CodArt }}</td>
-            <td>{{ "-" if rev is none or (rev|string|trim|upper) == "X" else rev }}</td>
-            <td>{{ singolo_odp.VarianteArt }}</td>
-            <td>{{ singolo_odp.DesArt }}</td>
-            <td>{{ singolo_odp.QtyDaLavorare or singolo_odp.Quantita }}</td>
-            <td>{{ singolo_odp.DataFineSched | db_date("%Y-%m-%d %H:%M:%S","%d/%m/%Y") }}</td>
-            <td>{{ singolo_odp.AttrezzaggioAttivo }}</td>
-            <td>{{ singolo_odp.RisorsaAttiva }}</td>
+            <td>{{ wrap_plus(singolo_odp.CodArt) }}</td>
+            <td>{{ wrap_plus("-" if rev is none or (rev|string|trim|upper) == "X" else rev) }}</td>
+            <td>{{ wrap_plus(singolo_odp.VarianteArt) }}</td>
+            <td>{{ wrap_plus(singolo_odp.DesArt) }}</td>
+            <td>{{ wrap_plus(singolo_odp.QtyDaLavorare or singolo_odp.Quantita) }}</td>
+            <td>{{ wrap_plus(singolo_odp.DataFineSched | db_date("%Y-%m-%d %H:%M:%S","%d/%m/%Y")) }}</td>
+            <td>{{ wrap_plus(singolo_odp.AttrezzaggioAttivo) }}</td>
+            <td>{{ wrap_plus(singolo_odp.RisorsaAttiva) }}</td>
         </tr>
     {% endif %}
 {% endfor %}

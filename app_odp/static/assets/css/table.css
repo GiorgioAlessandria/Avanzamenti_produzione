@@ -1,3 +1,35 @@
+/* Scorrimento locale per tutte le tabelle dati, anche quelle create nei dialoghi. */
+@media screen {
+    /* Le altezze specifiche delle singole pagine hanno la precedenza. */
+    :where(div:has(> table > thead)) {
+        max-height: 65vh;
+    }
+
+    div:has(> table > thead) {
+        min-height: 0;
+        overflow-x: auto;
+        overflow-y: auto;
+        overscroll-behavior-y: contain;
+        scrollbar-gutter: stable;
+    }
+
+    /* Il contenitore deve essere l'unico riferimento per lo sticky. */
+    table.table-responsive {
+        overflow: visible;
+    }
+
+    table > thead {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+    }
+
+    /* Si blocca l'intera intestazione, comprese eventuali righe multiple. */
+    table > thead > tr > th {
+        position: static !important;
+    }
+}
+
 .table-responsive {
     overflow-y: auto; /* assicurati */
 }

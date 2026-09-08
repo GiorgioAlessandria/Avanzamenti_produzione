@@ -1,0 +1,171 @@
+/* Intestazione adattabile alla larghezza disponibile. */
+.app-header > .container-fluid > .row,
+.app-header .flex-nowrap {
+    flex-wrap: wrap !important;
+}
+.app-header .flex-grow-1 {
+    min-width: 0;
+}
+.app-header h1 {
+    white-space: normal !important;
+    overflow-wrap: anywhere;
+}
+.app-header img {
+    width: clamp(110px, 10vw, 200px);
+    height: auto;
+}
+
+/* Lo spazio delle viste operative segue l'altezza reale di header e avvisi. */
+body:has(> .home-fill-page, > .home-montaggio-fill) {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    height: 100dvh;
+}
+body:has(> .home-fill-page, > .home-montaggio-fill) > .app-header,
+body:has(> .home-fill-page, > .home-montaggio-fill) > .alert {
+    flex: 0 0 auto;
+    margin: 0 !important;
+}
+body > :is(.home-fill-page, .home-montaggio-fill) {
+    flex: 1 0 0;
+    height: auto;
+    min-height: 22rem;
+    margin: .5rem 0 !important;
+    font-size: clamp(.875rem, 1vw, 1rem);
+}
+body > .home-montaggio-fill {
+    min-height: 36rem;
+}
+:is(.home-fill-page, .home-montaggio-fill) :is(.home-fill-row, .montaggio-main-row) {
+    margin-inline: 0;
+}
+:is(.home-fill-page, .home-montaggio-fill) :is(.home-fill-col, .montaggio-col) {
+    min-width: 0;
+    margin-inline: 0 !important;
+    padding-inline: .5rem;
+}
+:is(.home-fill-page, .home-montaggio-fill) h2 {
+    font-size: clamp(1.1rem, 1.5vw, 1.75rem);
+}
+:is(.home-fill-page, .home-montaggio-fill) .overflow-x-auto {
+    flex: 0 0 auto;
+    flex-wrap: wrap !important;
+    overflow: visible !important;
+}
+:is(.home-fill-page, .home-montaggio-fill) label {
+    max-width: 100%;
+}
+:is(.home-actions, .montaggio-actions),
+:is(.home-actions, .montaggio-actions) > section {
+    flex-wrap: wrap;
+    min-width: 0;
+}
+:is(.home-actions, .montaggio-actions) > section,
+:is(.home-actions, .montaggio-actions) .btn {
+    margin: .25rem !important;
+}
+:is(.home-fill-page, .home-montaggio-fill) .btn {
+    font-size: inherit;
+}
+body:has(> .home-fill-page, > .home-montaggio-fill) > .toast {
+    max-width: calc(100vw - 2rem);
+    max-height: calc(100dvh - 2rem);
+    overflow-y: auto;
+}
+
+/* Su schermi stretti, una colonna e scorrimento locale alle tabelle. */
+@media (max-width: 991.98px) {
+    body:has(> .home-fill-page, > .home-montaggio-fill) {
+        height: auto;
+        min-height: 100dvh;
+    }
+    body > :is(.home-fill-page, .home-montaggio-fill),
+    body .home-fill-page .home-fill-container,
+    body .home-fill-page .home-fill-row {
+        height: auto;
+        overflow: visible;
+    }
+    body :is(.home-fill-page, .home-montaggio-fill) :is(.home-fill-row, .montaggio-main-row) {
+        flex-direction: column;
+        gap: 1rem;
+    }
+    body :is(.home-fill-page, .home-montaggio-fill) :is(.home-fill-col, .montaggio-col) {
+        flex: 0 0 auto;
+        width: 100%;
+        height: auto;
+    }
+    body :is(.home-fill-page, .home-montaggio-fill) :is(.home-table-scroll, .montaggio-table-scroll) {
+        flex: 0 0 auto;
+        max-height: 55vh !important;
+    }
+}
+
+
+/* Testo e spaziatura delle sole tabelle operative standard. */
+@media screen {
+    .home-fill-page .home-table-scroll > table {
+        font-size: clamp(.8125rem, calc(.5rem + .35vw), 1rem);
+        line-height: 1.3;
+    }
+
+    .home-fill-page .home-table-scroll > table > :is(thead, tbody) > tr > :is(th, td) {
+        padding: .35em .45em;
+        white-space: normal;
+    }
+
+    .home-fill-page .home-table-scroll :is(.btn, .form-control, .form-select) {
+        font-size: inherit;
+        line-height: inherit;
+    }
+}
+
+/* Profilo delle postazioni desktop Full HD (viewport tipico di un 1920x1080). */
+@media screen and (min-width: 1600px) and (min-height: 800px) {
+    .app-header > .container-fluid > .row,
+    .app-header .flex-nowrap {
+        flex-wrap: nowrap !important;
+    }
+
+    .app-header h1 {
+        font-size: 1.5rem !important;
+    }
+
+    .app-header img {
+        width: 160px;
+    }
+
+    .app-header .btn,
+    :is(.home-fill-page, .home-montaggio-fill) :is(.btn, .form-control, .form-select) {
+        font-size: .8125rem;
+    }
+
+    body > :is(.home-fill-page, .home-montaggio-fill) {
+        min-height: 0;
+    }
+
+    :is(.home-fill-page, .home-montaggio-fill) h2 {
+        font-size: 1.35rem;
+    }
+
+    :is(.home-fill-page, .home-montaggio-fill)
+    :is(.home-table-scroll, .montaggio-table-scroll) > table {
+        font-size: .8125rem;
+        line-height: 1.25;
+    }
+
+    :is(.home-fill-page, .home-montaggio-fill)
+    :is(.home-table-scroll, .montaggio-table-scroll)
+    > table > :is(thead, tbody) > tr {
+        height: auto;
+    }
+
+    :is(.home-fill-page, .home-montaggio-fill)
+    :is(.home-table-scroll, .montaggio-table-scroll)
+    > table > :is(thead, tbody) > tr > :is(th, td) {
+        height: auto;
+        padding: .3rem .35rem;
+        white-space: normal;
+        vertical-align: middle;
+    }
+}
