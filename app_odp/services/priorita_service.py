@@ -5,15 +5,13 @@ from sqlalchemy import func, select
 from app_odp.models import db, Roles, User, user_roles, InputOdp
 from app_odp.policy.policy import RbacPolicy
 from app_odp.operator_session import active_user, active_policy
-from flask import abort, current_app
+from flask import abort
 from app_odp.models import OdpPriorita
-from app_odp.services.order_helpers import _norm_text, _now_rome_dt
+from app_odp.services.order_helpers import _norm_text, _now_rome_dt, _ordine_ref_label
 from app_odp.services.ordini_query_service import _base_odp_query
-from app_odp.services.order_helpers import _norm_text, _ordine_ref_label
-from app_odp.services.session_helpers import _current_username
 
-PRIORITA_2_MAX_DEFAULT = 5
 PRIORITA_HIDDEN_ROLE_NAMES = {"admin"}
+STATI_ORDINE_PRIORITIZZABILI = {"pianificata", "attivo", "in sospeso"}
 
 
 def _make_ordine_fase_key(id_documento, id_riga, fase) -> tuple[str, str, str]:
@@ -26,13 +24,6 @@ def _make_ordine_fase_key(id_documento, id_riga, fase) -> tuple[str, str, str]:
 
 def _priority_now_iso() -> str:
     return _now_rome_dt().isoformat(timespec="seconds")
-
-
-def _priorita_2_max() -> int:
-    try:
-        return int(current_app.config.get("PRIORITA_2_MAX", PRIORITA_2_MAX_DEFAULT))
-    except (TypeError, ValueError):
-        return PRIORITA_2_MAX_DEFAULT
 
 
 def _priorita_rows_for_operatore(operatore_id: int) -> list[OdpPriorita]:
@@ -49,18 +40,19 @@ def _priorita_rows_for_operatore(operatore_id: int) -> list[OdpPriorita]:
 
 def _compact_priorita_operatore(operatore_id: int) -> None:
     rows = _priorita_rows_for_operatore(operatore_id)
-    max_p2 = _priorita_2_max()
 
-    for index, row in enumerate(rows):
-        if index == 0:
-            row.Priorita = 1
-            row.Posizione = 1
-        elif index <= max_p2:
-            row.Priorita = 2
-            row.Posizione = index
-        else:
-            row.Priorita = 3
-            row.Posizione = index - max_p2
+    # Sposta prima le righe fuori dall'intervallo finale: in questo modo il
+    # vincolo UNIQUE (operatore_id, Priorita) non ostacola la rinumerazione.
+    temporary_start = (
+        max((int(row.Priorita) for row in rows), default=0) + len(rows)
+    )
+    for index, row in enumerate(rows, start=1):
+        row.Priorita = temporary_start + index
+    db.session.flush()
+
+    for index, row in enumerate(rows, start=1):
+        row.Priorita = index
+        row.Posizione = index
 
         row.updated_at = _priority_now_iso()
 
@@ -270,6 +262,7 @@ def _cleanup_priorita_operatore(operatore: User) -> None:
         key = _make_ordine_fase_key(row.IdDocumento, row.IdRiga, row.Fase)
         if key not in valid_keys:
             db.session.delete(row)
+    db.session.flush()
 
 
 def _ordine_fase_key(ordine) -> tuple[str, str, str]:
@@ -294,15 +287,20 @@ def _priorita_valid_keys_for_operatore(
 ) -> dict[tuple[str, str, str], InputOdp]:
     return {
         _ordine_fase_key(ordine): ordine
-        for ordine in _ordini_pianificata_visibili_per_operatore(operatore)
+        for ordine in _ordini_prioritizzabili_visibili_per_operatore(operatore)
     }
 
 
-def _is_ordine_pianificata(ordine) -> bool:
-    return _norm_text(getattr(ordine, "StatoOrdine", "")).lower() == "pianificata"
+def _is_ordine_prioritizzabile(ordine) -> bool:
+    return (
+        _norm_text(getattr(ordine, "StatoOrdine", "")).lower()
+        in STATI_ORDINE_PRIORITIZZABILI
+    )
 
 
-def _ordini_pianificata_visibili_per_operatore(operatore: User) -> list[InputOdp]:
+def _ordini_prioritizzabili_visibili_per_operatore(
+    operatore: User,
+) -> list[InputOdp]:
     policy_operatore = RbacPolicy(operatore)
 
     q = _base_odp_query()
@@ -311,7 +309,7 @@ def _ordini_pianificata_visibili_per_operatore(operatore: User) -> list[InputOdp
 
     ordini = policy_operatore.filter_montaggio_macchine_famiglia_rows(ordini)
 
-    return [ordine for ordine in ordini if _is_ordine_pianificata(ordine)]
+    return [ordine for ordine in ordini if _is_ordine_prioritizzabile(ordine)]
 
 
 def _ordine_priorita_payload(ordine, priorita_row: OdpPriorita | None = None) -> dict:
@@ -331,84 +329,18 @@ def _ordine_priorita_payload(ordine, priorita_row: OdpPriorita | None = None) ->
         or _norm_text(ordine.Quantita),
         "risorsa": _norm_text(getattr(ordine, "RisorsaAttiva", "")),
         "lavorazione": _norm_text(getattr(ordine, "LavorazioneAttiva", "")),
+        "stato": _norm_text(getattr(ordine, "StatoOrdine", "")),
         "priorita": priorita_row.Priorita if priorita_row else None,
         "matricola": _norm_text(getattr(ordine, "CodMatricola", "")),
         "posizione": priorita_row.Posizione if priorita_row else None,
     }
 
 
-def _restore_priorita_for_next_phase_from_runtime(
-    stato,
-    ordine,
-    next_phase: str | None,
-) -> None:
-    """
-    Se un ordine prioritizzato avanza alla fase successiva,
-    ricrea la priorità sulla nuova fase per lo stesso operatore.
-
-    Non compatta la coda: mantiene il numero priorità originale.
-    """
-    if stato is None or not next_phase:
-        return
-
-    priorita = getattr(stato, "PrioritaInCarico", None)
-    operatore_id = getattr(stato, "PrioritaOperatoreIdInCarico", None)
-
-    if priorita not in (1, 2, 3) or not operatore_id:
-        return
-
-    key = _make_ordine_fase_key(
-        ordine.IdDocumento,
-        ordine.IdRiga,
-        next_phase,
-    )
-
-    existing = OdpPriorita.query.filter_by(
-        operatore_id=int(operatore_id),
-        IdDocumento=key[0],
-        IdRiga=key[1],
-        Fase=key[2],
-    ).first()
-
-    now_iso = _priority_now_iso()
-
-    max_posizione = (
-        db.session.query(func.max(OdpPriorita.Posizione))
-        .filter_by(
-            operatore_id=int(operatore_id),
-            Priorita=int(priorita),
-        )
-        .scalar()
-        or 0
-    )
-
-    if existing is not None:
-        existing.Priorita = int(priorita)
-        existing.Posizione = int(max_posizione) + 1
-        existing.updated_at = now_iso
-        existing.updated_by = _current_username("priorita_fase_successiva")
-        return
-
-    db.session.add(
-        OdpPriorita(
-            operatore_id=int(operatore_id),
-            IdDocumento=key[0],
-            IdRiga=key[1],
-            Fase=key[2],
-            Priorita=int(priorita),
-            Posizione=int(max_posizione) + 1,
-            created_at=now_iso,
-            updated_at=now_iso,
-            updated_by=_current_username("priorita_fase_successiva"),
-        )
-    )
-
-
 def _priority_sort_key(ordine):
     pr = getattr(ordine, "PrioritaNumero", None)
     pos = getattr(ordine, "PrioritaPosizione", None)
 
-    if pr in (1, 2, 3):
+    if isinstance(pr, int) and pr >= 1:
         return (
             0,
             pr,

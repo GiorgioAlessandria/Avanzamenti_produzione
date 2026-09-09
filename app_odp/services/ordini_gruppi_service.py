@@ -33,7 +33,6 @@ from app_odp.services.session_helpers import (
     _current_username,
 )
 from app_odp.services.priorita_service import (
-    _consume_priorita_ordine,
     _priorita_row_for_operatore_ordine,
     _snapshot_priorita_in_runtime,
 )
@@ -249,12 +248,6 @@ def _activate_order_for_group(ordine, *, group_uid: str, now_dt: datetime) -> No
         when_iso=now_iso,
     )
     ordine.StatoOrdine = GROUP_STATUS_ATTIVO
-
-    _consume_priorita_ordine(
-        ordine.IdDocumento,
-        ordine.IdRiga,
-        ordine.FaseAttiva,
-    )
 
     _append_group_state_log(
         group_uid=group_uid,

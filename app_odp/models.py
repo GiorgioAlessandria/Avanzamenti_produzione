@@ -1770,7 +1770,12 @@ class OdpPriorita(db.Model):
             "Fase",
             name="uq_odp_priorita_operatore_ordine_fase",
         ),
-        db.CheckConstraint("Priorita IN (1, 2, 3)", name="ck_odp_priorita_valore"),
+        db.UniqueConstraint(
+            "operatore_id",
+            "Priorita",
+            name="uq_odp_priorita_operatore_numero",
+        ),
+        db.CheckConstraint("Priorita >= 1", name="ck_odp_priorita_valore"),
         db.CheckConstraint("Posizione >= 0", name="ck_odp_priorita_posizione"),
     )
 

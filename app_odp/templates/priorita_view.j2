@@ -1,218 +1,32 @@
 {% extends "base.j2" %}
-
 {% block title %}Visualizzazione priorità{% endblock %}
-
 {% block content %}
-    <style>
-        #priorita-page .priorita-view-stack {
-            height: calc(100vh - 180px);
-            min-height: 0;
-            display: flex;
-            flex-direction: column;
-            gap: 1rem;
-            overflow: hidden;
-        }
-
-        #priorita-page .priorita-view-card {
-            min-height: 0;
-            display: flex;
-            flex-direction: column;
-        }
-
-        #priorita-page .priorita-view-card-p1 {
-            flex: 0 0 25%;
-        }
-
-        #priorita-page .priorita-view-card-p2 {
-            flex: 0 0 35%;
-        }
-
-        #priorita-page .priorita-view-card-p3 {
-            flex: 1 1 auto;
-        }
-
-        #priorita-page .priorita-view-scroll {
-            flex: 1 1 auto;
-            min-height: 0;
-            overflow: auto;
-        }
-
-        #priorita-page .priorita-view-scroll table {
-            margin-bottom: 0 !important;
-        }
-
-        #priorita-page .priorita-view-scroll thead th {
-            position: sticky;
-            top: 0;
-            z-index: 5;
-            background-color: var(--bs-light);
-        }
-
-    </style>
-    <main class="container-fluid mt-3"
-          id="priorita-page"
-          data-can-edit="0"
-          data-max-p2="{{ priorita_2_max }}"
-          data-operatore-id="{{ current_operator_id }}"
-          data-operatore-username="{{ current_operator_username }}">
-
-        <div id="priorita-alert"
-             class="alert d-none"
-             role="alert"></div>
-        <div class="d-flex flex-column gap-3 w-100"
-             style="height: calc(100vh - 180px); min-height: 0;">
-
-            <div class="card shadow-sm"
-                 style="height: 25%;">
-                <div class="card-header bg-danger-subtle fw-semibold">
-                    Priorità 1
-                </div>
-                <div class="card-body p-0 priorita-view-scroll">
-                    <table class="table table-sm table-hover align-middle mb-0">
-                        <thead class="table-light sticky-top">
-                        <tr>
-                            <th>Ordine</th>
-                            <th>Codice</th>
-                            <th>Descrizione</th>
-                            <th>Matricola</th>
-                            <th>Fase</th>
-                            <th>Risorsa</th>
-                        </tr>
-                        </thead>
-                        <tbody id="priorita-p1-body"></tbody>
-                    </table>
-                </div>
-            </div>
-            <div class="card shadow-sm"
-                 style="height: 35%;">
-                <div class="card-header bg-warning-subtle fw-semibold">
-                    Priorità 2
-                </div>
-                <div class="card-body p-0 priorita-view-scroll">
-                    <table class="table table-sm table-hover align-middle mb-0">
-                        <thead class="table-light sticky-top">
-                        <tr>
-                            <th>Ordine</th>
-                            <th>Codice</th>
-                            <th>Descrizione</th>
-                            <th>Matricola</th>
-                            <th>Fase</th>
-                            <th>Risorsa</th>
-                        </tr>
-                        </thead>
-                        <tbody id="priorita-p2-body"></tbody>
-                    </table>
-                </div>
-            </div>
-
-            <div class="card shadow-sm flex-grow-1"
-                 style="min-height: 0;">
-                <div class="card-header bg-success-subtle fw-semibold">
-                    Priorità 3
-                </div>
-                <div class="card-body p-0 priorita-view-scroll">
-                    <table class="table table-sm table-hover align-middle mb-0">
-                        <thead class="table-light sticky-top">
-                        <tr>
-                            <th>Ordine</th>
-                            <th>Codice</th>
-                            <th>Descrizione</th>
-                            <th>Matricola</th>
-                            <th>Fase</th>
-                            <th>Risorsa</th>
-                        </tr>
-                        </thead>
-                        <tbody id="priorita-p3-body"></tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-    </main>
-
-    <script>
-        const page = document.getElementById("priorita-page");
-        const operatoreId = page.dataset.operatoreId;
-        const alertBox = document.getElementById("priorita-alert");
-
-        const bodies = {
-            p1: document.getElementById("priorita-p1-body"),
-            p2: document.getElementById("priorita-p2-body"),
-            p3: document.getElementById("priorita-p3-body"),
-        };
-
-        function showAlert(type, message) {
-            alertBox.className = `alert alert-${type}`;
-            alertBox.textContent = message;
-            alertBox.classList.remove("d-none");
-        }
-
-        function clearAlert() {
-            alertBox.classList.add("d-none");
-            alertBox.textContent = "";
-        }
-
-        function escapeHtml(value) {
-            return String(value ?? "")
-                .replaceAll("&", "&amp;")
-                .replaceAll("<", "&lt;")
-                .replaceAll(">", "&gt;")
-                .replaceAll('"', "&quot;")
-                .replaceAll("'", "&#039;");
-        }
-
-        function makeRow(item) {
-            const tr = document.createElement("tr");
-
-            tr.innerHTML = `
-                                <td>${escapeHtml(item.ordine)}</td>
-                                <td>${escapeHtml(item.codice)}</td>
-                                <td>${escapeHtml(item.descrizione)}</td>
-                                <td>${escapeHtml(item.matricola)}</td>
-                                <td>${escapeHtml(window.phaseLabel(item.fase))}</td>
-                                <td>${escapeHtml(item.risorsa)}</td>
-                            `;
-            return tr;
-        }
-
-        function renderRows(tbody, rows) {
-            tbody.innerHTML = "";
-
-            for (const item of rows || []) {
-                tbody.appendChild(makeRow(item));
-            }
-        }
-
-        async function loadOrdiniOperatore() {
-            clearAlert();
-
-            renderRows(bodies.p1, []);
-            renderRows(bodies.p2, []);
-            renderRows(bodies.p3, []);
-
-            if (!operatoreId) {
-                showAlert("warning", "Utente corrente non valido.");
-                return;
-            }
-
-            const url = `/api/priorita/operatori/${encodeURIComponent(operatoreId)}/ordini`;
-            const response = await window.avpFetch(url);
-            const data = await response.json();
-
-            if (!response.ok) {
-                showAlert("danger", data.error || "Errore caricamento priorità.");
-                return;
-            }
-
-            renderRows(bodies.p1, data.p1 || []);
-            renderRows(bodies.p2, data.p2 || []);
-            renderRows(bodies.p3, data.p3 || []);
-        }
-
-        loadOrdiniOperatore()
-            .catch(() => showAlert("danger", "Errore caricamento priorità."));
-
-        setInterval(() => {
-            loadOrdiniOperatore();
-        }, 30000);
-    </script>
+<style>
+    #priorita-page .priorita-card { height: calc(100vh - 180px); min-height: 0; display: flex; flex-direction: column; }
+    #priorita-page .priorita-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; }
+    #priorita-page thead th { position: sticky; top: 0; z-index: 5; background: var(--bs-light); }
+    #priorita-page .priorita-numero { width: 5rem; text-align: center; font-weight: 700; }
+</style>
+<main class="container-fluid mt-3" id="priorita-page" data-operatore-id="{{ current_operator_id }}">
+    <div id="priorita-alert" class="alert d-none" role="alert"></div>
+    <div class="card shadow-sm priorita-card">
+        <div class="card-header bg-warning-subtle fw-semibold">Coda priorità 1…N</div>
+        <div class="priorita-scroll"><table class="table table-sm table-hover align-middle mb-0">
+            <thead><tr><th>#</th><th>Ordine</th><th>Codice</th><th>Descrizione</th><th>Matricola</th><th>Stato</th><th>Fase</th><th>Risorsa</th></tr></thead>
+            <tbody id="priorita-body"></tbody>
+        </table></div>
+    </div>
+</main>
+<script>
+    const page = document.getElementById("priorita-page"), alertBox = document.getElementById("priorita-alert"), body = document.getElementById("priorita-body");
+    function escapeHtml(value) { return String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;"); }
+    async function loadOrdiniOperatore() {
+        alertBox.classList.add("d-none"); body.innerHTML = "";
+        const response = await window.avpFetch(`/api/priorita/operatori/${encodeURIComponent(page.dataset.operatoreId)}/ordini`), data = await response.json();
+        if (!response.ok) { alertBox.className = "alert alert-danger"; alertBox.textContent = data.error || "Errore caricamento priorità."; return; }
+        for (const item of data.prioritized || []) { const row = document.createElement("tr"); row.innerHTML = `<td class="priorita-numero">${escapeHtml(item.priorita)}</td><td>${escapeHtml(item.ordine)}</td><td>${escapeHtml(item.codice)}</td><td>${escapeHtml(item.descrizione)}</td><td>${escapeHtml(item.matricola)}</td><td>${escapeHtml(item.stato)}</td><td>${escapeHtml(window.phaseLabel(item.fase))}</td><td>${escapeHtml(item.risorsa)}</td>`; body.appendChild(row); }
+    }
+    loadOrdiniOperatore().catch(() => { alertBox.className = "alert alert-danger"; alertBox.textContent = "Errore caricamento priorità."; });
+    setInterval(loadOrdiniOperatore, 30000);
+</script>
 {% endblock %}

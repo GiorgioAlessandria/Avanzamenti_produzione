@@ -1,596 +1,114 @@
 {% extends "base.j2" %}
-
 {% block title %}Modifica priorità{% endblock %}
-
 {% block content %}
-    <style>
-        #priorita-page .priorita-main-row {
-            height: calc(100vh - 180px);
-            min-height: 0;
-        }
-
-        #priorita-page .priorita-left-col {
-            height: 100%;
-            min-height: 0;
-            display: grid !important;
-            grid-template-rows: auto minmax(0, 1fr);
-            row-gap: 1rem;
-        }
-
-        #priorita-page .priorita-available-card {
-            height: 100%;
-            min-height: 0;
-            overflow: hidden;
-            display: grid !important;
-            grid-template-rows: auto auto minmax(0, 1fr);
-        }
-
-        #priorita-page .priorita-table-scroll {
-            min-height: 0;
-            overflow: auto !important;
-            display: block !important;
-            padding: 0 !important;
-            margin: 0 !important;
-        }
-
-        #priorita-page .priorita-table-scroll > table {
-            display: table !important;
-            width: 100% !important;
-            margin: 0 !important;
-            position: static !important;
-            transform: none !important;
-        }
-
-        #priorita-page .priorita-table thead th {
-            position: sticky;
-            top: 0;
-            z-index: 5;
-            background-color: var(--bs-light);
-            vertical-align: top;
-        }
-
-        #priorita-page .priorita-table tbody td {
-            vertical-align: top;
-        }
-
-        #priorita-page .priorita-right-col {
-            height: 100%;
-            min-height: 0;
-        }
-    </style>
-    <main class="container-fluid mt-3"
-          id="priorita-page"
-          data-can-edit="1"
-          data-max-p2="{{ priorita_2_max }}">
-
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <h2 class="mb-0">Modifica priorità</h2>
-
-            <div class="d-flex gap-2">
-                <button class="btn btn-outline-danger"
-                        type="button"
-                        id="btn-priorita-reset">
-                    Azzera priorità
-                </button>
-
-                <button class="btn btn-primary"
-                        type="button"
-                        id="btn-priorita-salva">
-                    Conferma priorità
-                </button>
+<style>
+    #priorita-page .priorita-main-row { height: calc(100vh - 180px); min-height: 0; }
+    #priorita-page .priorita-column { height: 100%; min-height: 0; display: flex; flex-direction: column; gap: 1rem; }
+    #priorita-page .priorita-card { min-height: 0; overflow: hidden; display: flex; flex: 1 1 auto; flex-direction: column; }
+    #priorita-page .priorita-table-scroll { min-height: 0; overflow: auto; }
+    #priorita-page thead th { position: sticky; top: 0; z-index: 5; background: var(--bs-light); }
+    #priorita-page tbody td { vertical-align: middle; }
+    #priorita-page .priorita-numero { width: 4rem; text-align: center; font-weight: 700; }
+</style>
+<main class="container-fluid mt-3" id="priorita-page">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2 class="mb-0">Modifica priorità</h2>
+        <div class="d-flex gap-2">
+            <button class="btn btn-outline-danger" type="button" id="btn-priorita-reset">Azzera priorità</button>
+            <button class="btn btn-primary" type="button" id="btn-priorita-salva">Conferma priorità</button>
+        </div>
+    </div>
+    <div id="priorita-alert" class="alert d-none" role="alert"></div>
+    <div class="row g-3 priorita-main-row">
+        <div class="col-5 priorita-column">
+            <div class="card shadow-sm"><div class="card-body">
+                <label for="priorita-operatore-select" class="form-label fw-semibold">Operatore</label>
+                <select id="priorita-operatore-select" class="form-select"><option value="">Seleziona operatore...</option></select>
+            </div></div>
+            <div class="card shadow-sm priorita-card">
+                <div class="card-header fw-semibold">Ordini non prioritizzati</div>
+                <div class="card-body py-2"><div class="row g-2">
+                    <div class="col-4"><label for="priorita-filter-ordine" class="form-label mb-1 small fw-semibold">Filtra ordine</label><input id="priorita-filter-ordine" class="form-control form-control-sm" autocomplete="off" placeholder="Ordine..."></div>
+                    <div class="col-4"><label for="priorita-filter-codice" class="form-label mb-1 small fw-semibold">Filtra codice</label><input id="priorita-filter-codice" class="form-control form-control-sm" autocomplete="off" placeholder="Codice..."></div>
+                    <div class="col-4"><label for="priorita-filter-matricola" class="form-label mb-1 small fw-semibold">Filtra matricola</label><input id="priorita-filter-matricola" class="form-control form-control-sm" autocomplete="off" placeholder="Matricola..."></div>
+                </div></div>
+                <div class="priorita-table-scroll"><table class="table table-sm table-hover mb-0">
+                    <thead><tr><th>#</th><th>Ordine</th><th>Codice</th><th>Descrizione</th><th>Matricola</th><th>Stato</th><th>Fase</th><th>Risorsa</th></tr></thead>
+                    <tbody id="priorita-available-body" class="js-priorita-list"></tbody>
+                </table></div>
             </div>
         </div>
-
-        <div id="priorita-alert"
-             class="alert d-none"
-             role="alert"></div>
-        <div class="row g-3 priorita-main-row">
-            <!-- COLONNA SINISTRA -->
-            <div class="col-5 priorita-left-col">
-
-                <div class="card shadow-sm">
-                    <div class="card-body">
-                        <label for="priorita-operatore-select"
-                               class="form-label fw-semibold">
-                            Operatore
-                        </label>
-                        <select id="priorita-operatore-select"
-                                class="form-select">
-                            <option value="">Seleziona operatore...</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div class="card shadow-sm priorita-available-card">
-                    <div class="card-header fw-semibold flex-shrink-0">
-                        Ordini operatore non prioritizzati
-                    </div>
-
-                    <div class="card-body py-2 flex-shrink-0"
-                         style="border-bottom: 0;">
-                        <div class="row g-2">
-                            <div class="col-4">
-                                <label for="priorita-filter-ordine"
-                                       class="form-label mb-1 small fw-semibold">
-                                    Filtra ordine
-                                </label>
-                                <input type="text"
-                                       id="priorita-filter-ordine"
-                                       class="form-control form-control-sm"
-                                       autocomplete="off"
-                                       placeholder="Ordine...">
-                            </div>
-
-                            <div class="col-4">
-                                <label for="priorita-filter-codice"
-                                       class="form-label mb-1 small fw-semibold">
-                                    Filtra codice
-                                </label>
-                                <input type="text"
-                                       id="priorita-filter-codice"
-                                       class="form-control form-control-sm"
-                                       autocomplete="off"
-                                       placeholder="Codice...">
-                            </div>
-
-                            <div class="col-4">
-                                <label for="priorita-filter-matricola"
-                                       class="form-label mb-1 small fw-semibold">
-                                    Filtra matricola
-                                </label>
-                                <input type="text"
-                                       id="priorita-filter-matricola"
-                                       class="form-control form-control-sm"
-                                       autocomplete="off"
-                                       placeholder="Matricola...">
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="card-body priorita-table-scroll">
-                        <table class="table table-sm table-hover priorita-table mb-0">
-                            <thead class="table-light">
-                            <tr>
-                                <th>Ordine</th>
-                                <th>Codice</th>
-                                <th>Descrizione</th>
-                                <th>Matricola</th>
-                                <th>Fase</th>
-                                <th>Risorsa</th>
-                            </tr>
-                            </thead>
-                            <tbody id="priorita-available-body"
-                                   class="js-priorita-list"
-                                   data-priorita=""></tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-
-            <!-- COLONNA DESTRA -->
-            <div class="col-7 d-flex flex-column gap-3">
-                <div class="card shadow-sm d-flex flex-column"
-                     style="height: 22%; min-height: 0;">
-                    <div class="card-header bg-danger-subtle fw-semibold flex-shrink-0">
-                        Priorità 1
-                    </div>
-                    <div class="card-body p-0 flex-grow-1"
-                         style="overflow: auto; min-height: 0;">
-                        <table class="table table-sm table-hover align-middle mb-0">
-                            <thead class="table-light sticky-top">
-                            <tr>
-                                <th>Ordine</th>
-                                <th>Codice</th>
-                                <th>Descrizione</th>
-                                <th>Matricola</th>
-                                <th>Fase</th>
-                                <th>Risorsa</th>
-                            </tr>
-                            </thead>
-                            <tbody id="priorita-p1-body"
-                                   class="js-priorita-list"
-                                   data-priorita="1"></tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <div class="card shadow-sm d-flex flex-column"
-                     style="height: 35%; min-height: 0;">
-                    <div class="card-header bg-warning-subtle fw-semibold flex-shrink-0">
-                        Priorità 2
-                    </div>
-                    <div class="card-body p-0 flex-grow-1"
-                         style="overflow: auto; min-height: 0;">
-                        <table class="table table-sm table-hover align-middle mb-0">
-                            <thead class="table-light sticky-top">
-                            <tr>
-                                <th>Ordine</th>
-                                <th>Codice</th>
-                                <th>Descrizione</th>
-                                <th>Matricola</th>
-                                <th>Fase</th>
-                                <th>Risorsa</th>
-                            </tr>
-                            </thead>
-                            <tbody id="priorita-p2-body"
-                                   class="js-priorita-list"
-                                   data-priorita="2"></tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <div class="card shadow-sm flex-grow-1 d-flex flex-column"
-                     style="min-height: 0;">
-                    <div class="card-header bg-success-subtle fw-semibold flex-shrink-0">
-                        Priorità 3
-                    </div>
-                    <div class="card-body p-0 flex-grow-1"
-                         style="overflow: auto; min-height: 0;">
-                        <table class="table table-sm table-hover align-middle mb-0">
-                            <thead class="table-light sticky-top">
-                            <tr>
-                                <th>Ordine</th>
-                                <th>Codice</th>
-                                <th>Descrizione</th>
-                                <th>Matricola</th>
-                                <th>Fase</th>
-                                <th>Risorsa</th>
-                            </tr>
-                            </thead>
-                            <tbody id="priorita-p3-body"
-                                   class="js-priorita-list"
-                                   data-priorita="3"></tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </main>
-
-    <script src="{{ url_for('static', filename='vendor/Sortable.min.js') }}"></script>
-
-    <script>
-        const page = document.getElementById("priorita-page");
-        const selectOperatore = document.getElementById("priorita-operatore-select");
-        const alertBox = document.getElementById("priorita-alert");
-        const btnSalva = document.getElementById("btn-priorita-salva");
-        const btnReset = document.getElementById("btn-priorita-reset");
-        const filterOrdine = document.getElementById("priorita-filter-ordine");
-        const filterCodice = document.getElementById("priorita-filter-codice");
-        const filterMatricola = document.getElementById("priorita-filter-matricola");
-
-        const canEdit = page.dataset.canEdit === "1";
-        const maxP2 = Number(page.dataset.maxP2 || 5);
-        let dirty = false;
-
-        const bodies = {
-            available: document.getElementById("priorita-available-body"),
-            p1: document.getElementById("priorita-p1-body"),
-            p2: document.getElementById("priorita-p2-body"),
-            p3: document.getElementById("priorita-p3-body"),
-        };
-
-        function showAlert(type, message) {
-            alertBox.className = `alert alert-${type}`;
-            alertBox.textContent = message;
-            alertBox.classList.remove("d-none");
-        }
-
-        function clearAlert() {
-            alertBox.classList.add("d-none");
-            alertBox.textContent = "";
-        }
-
-        function escapeHtml(value) {
-            return String(value ?? "")
-                .replaceAll("&", "&amp;")
-                .replaceAll("<", "&lt;")
-                .replaceAll(">", "&gt;")
-                .replaceAll('"', "&quot;")
-                .replaceAll("'", "&#039;");
-        }
-
-        function makeRow(item) {
-            const tr = document.createElement("tr");
-            tr.dataset.key = item.key;
-            tr.dataset.idDocumento = item.id_documento;
-            tr.dataset.idRiga = item.id_riga;
-            tr.dataset.fase = item.fase;
-            tr.dataset.ordine = item.ordine || "";
-            tr.dataset.codice = item.codice || "";
-            tr.dataset.descrizione = item.descrizione || "";
-            tr.dataset.matricola = item.matricola || "";
-
-            tr.innerHTML = `
-                                <td>${escapeHtml(item.ordine)}</td>
-                                <td>${escapeHtml(item.codice)}</td>
-                                <td>${escapeHtml(item.descrizione)}</td>
-                                <td>${escapeHtml(item.matricola)}</td>
-                                <td>${escapeHtml(window.phaseLabel(item.fase))}</td>
-                                <td>${escapeHtml(item.risorsa)}</td>
-                            `;
-
-            if (!canEdit) {
-                tr.classList.add("user-select-none");
-            } else {
-                tr.style.cursor = "grab";
-            }
-
-            return tr;
-        }
-
-        function renderRows(tbody, rows) {
-            tbody.innerHTML = "";
-            for (const item of rows || []) {
-                tbody.appendChild(makeRow(item));
-            }
-        }
-
-        function applyAvailableFilters() {
-            const ordineFilter = (filterOrdine?.value || "").trim().toLowerCase();
-            const codiceFilter = (filterCodice?.value || "").trim().toLowerCase();
-            const matricolaFilter = (filterMatricola?.value || "").trim().toLowerCase();
-
-            Array.from(bodies.available.children).forEach((tr) => {
-                const ordine = (tr.dataset.ordine || "").toLowerCase();
-                const codice = (tr.dataset.codice || "").toLowerCase();
-                const matricola = (tr.dataset.matricola || "").toLowerCase();
-
-                const matchOrdine = !ordineFilter || ordine.includes(ordineFilter);
-                const matchCodice = !codiceFilter || codice.includes(codiceFilter);
-                const matchMatricola = !matricolaFilter || matricola.includes(matricolaFilter);
-
-                tr.style.display = matchOrdine && matchCodice && matchMatricola ? "" : "none";
-            });
-        }
-
-        function moveExtraRows(evt = null) {
-            const dragged = evt && evt.item ? evt.item : null;
-
-            /*
-             * Priorità 1:
-             * deve contenere sempre massimo 1 riga.
-             *
-             * Se trascino una nuova riga dentro P1 e P1 era già occupata,
-             * la vecchia riga P1 scende in cima a P2.
-             */
-            if (bodies.p1.children.length > 1) {
-                if (dragged && dragged.parentElement === bodies.p1) {
-                    const oldP1 = Array.from(bodies.p1.children).find((row) => row !== dragged);
-
-                    if (oldP1) {
-                        bodies.p2.insertBefore(oldP1, bodies.p2.firstChild);
-                    }
-                }
-
-                while (bodies.p1.children.length > 1) {
-                    const extra = bodies.p1.lastElementChild;
-                    bodies.p2.insertBefore(extra, bodies.p2.firstChild);
-                }
-            }
-
-            /*
-             * Priorità 2:
-             * deve contenere massimo maxP2 righe.
-             * Le righe in eccesso scendono in cima a P3.
-             */
-            while (bodies.p2.children.length > maxP2) {
-                const extra = bodies.p2.lastElementChild;
-                bodies.p3.insertBefore(extra, bodies.p3.firstChild);
-            }
-        }
-
-        async function resetPriorita() {
-            clearAlert();
-
-            const operatoreId = selectOperatore.value;
-
-            if (!operatoreId) {
-                showAlert("warning", "Seleziona un operatore.");
-                return;
-            }
-
-            const conferma = window.confirm(
-                "Confermi l'azzeramento di tutte le priorità dell'operatore selezionato?"
-            );
-
-            if (!conferma) {
-                return;
-            }
-
-            const response = await window.avpFetch(`/api/priorita/operatori/${encodeURIComponent(operatoreId)}/reset`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-            });
-
-            const data = await response.json();
-
-            if (!response.ok || !data.ok) {
-                showAlert("danger", data.error || "Errore azzeramento priorità.");
-                return;
-            }
-
-            dirty = false;
-            showAlert("success", "Priorità azzerate correttamente.");
-            await loadOrdiniOperatore();
-        }
-
-        function setupSortable() {
-            if (!canEdit) {
-                return;
-            }
-
-            if (typeof Sortable === "undefined") {
-                showAlert(
-                    "danger",
-                    "Drag & drop non disponibile: file Sortable.min.js non caricato."
-                );
-                return;
-            }
-
-
-            document.querySelectorAll(".js-priorita-list").forEach((el) => {
-                Sortable.create(el, {
-                    group: "priorita-ordini",
-                    animation: 150,
-                    ghostClass: "table-active",
-
-                    onAdd: (evt) => {
-                        dirty = true;
-                        moveExtraRows(evt);
-                    },
-
-                    onUpdate: (evt) => {
-                        dirty = true;
-                        moveExtraRows(evt);
-                    },
-
-                    onEnd: (evt) => {
-                        dirty = true;
-                        moveExtraRows(evt);
-                    },
-                });
-            });
-        }
-
-        async function loadOperatori() {
-            const response = await window.avpFetch("{{ url_for('main.api_priorita_operatori') }}");
-
-            if (!response.ok) {
-                let message = "Errore caricamento operatori.";
-
-                try {
-                    const data = await response.json();
-                    message = data.error || message;
-                } catch (_) {
-                    message = `Errore caricamento operatori. HTTP ${response.status}`;
-                }
-
-                throw new Error(message);
-            }
-
-            const data = await response.json();
-
-            selectOperatore.innerHTML = `<option value="">Seleziona operatore...</option>`;
-
-            for (const op of data.operatori || []) {
-                const option = document.createElement("option");
-                option.value = op.id;
-                option.textContent = op.username;
-                selectOperatore.appendChild(option);
-            }
-        }
-
-        async function loadOrdiniOperatore() {
-            clearAlert();
-
-            const operatoreId = selectOperatore.value;
-
-            renderRows(bodies.available, []);
-            renderRows(bodies.p1, []);
-            renderRows(bodies.p2, []);
-            renderRows(bodies.p3, []);
-
-            if (!operatoreId) {
-                return;
-            }
-
-            const url = `/api/priorita/operatori/${encodeURIComponent(operatoreId)}/ordini`;
-            const response = await window.avpFetch(url);
-            const data = await response.json();
-
-            if (!response.ok) {
-                showAlert("danger", data.error || "Errore caricamento priorità.");
-                return;
-            }
-
-            renderRows(bodies.available, data.available || []);
-            renderRows(bodies.p1, data.p1 || []);
-            renderRows(bodies.p2, data.p2 || []);
-            renderRows(bodies.p3, data.p3 || []);
-
-            moveExtraRows();
-            applyAvailableFilters();
-        }
-
-        function collectItemsFromBody(tbody, priorita) {
-            return Array.from(tbody.children).map((tr, index) => ({
-                id_documento: tr.dataset.idDocumento,
-                id_riga: tr.dataset.idRiga,
-                fase: tr.dataset.fase,
-                priorita: priorita,
-                posizione: index + 1,
-            }));
-        }
-
-        async function salvaPriorita() {
-            clearAlert();
-
-            const operatoreId = selectOperatore.value;
-
-            if (!operatoreId) {
-                showAlert("warning", "Seleziona un operatore.");
-                return;
-            }
-
-            moveExtraRows();
-
-            const items = [
-                ...collectItemsFromBody(bodies.p1, 1),
-                ...collectItemsFromBody(bodies.p2, 2),
-                ...collectItemsFromBody(bodies.p3, 3),
-            ];
-
-            const response = await window.avpFetch(`/api/priorita/operatori/${encodeURIComponent(operatoreId)}/salva`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({items}),
-            });
-
-            const data = await response.json();
-
-            if (!response.ok || !data.ok) {
-                showAlert("danger", data.error || "Errore salvataggio priorità.");
-                return;
-            }
-            dirty = false;
-            showAlert("success", "Priorità salvata correttamente.");
-            await loadOrdiniOperatore();
-        }
-
-        selectOperatore.addEventListener("change", loadOrdiniOperatore);
-        if (filterOrdine) {
-            filterOrdine.addEventListener("input", applyAvailableFilters);
-        }
-
-        if (filterCodice) {
-            filterCodice.addEventListener("input", applyAvailableFilters);
-        }
-
-        if (btnSalva) {
-            btnSalva.addEventListener("click", salvaPriorita);
-        }
-        if (btnReset) {
-            btnReset.addEventListener("click", resetPriorita);
-        }
-        if (filterMatricola) {
-            filterMatricola.addEventListener("input", applyAvailableFilters);
-        }
-        loadOperatori()
-            .then(() => {
-                if (!selectOperatore.value && selectOperatore.options.length > 1) {
-                    selectOperatore.selectedIndex = 1;
-                    return loadOrdiniOperatore();
-                }
-            })
-            .then(setupSortable)
-            .catch((err) => {
-                console.error(err);
-                showAlert("danger", err.message || "Errore caricamento operatori.");
-            });
-    </script>
+        <div class="col-7 priorita-column"><div class="card shadow-sm priorita-card">
+            <div class="card-header bg-warning-subtle fw-semibold">Coda priorità 1…N</div>
+            <div class="priorita-table-scroll"><table class="table table-sm table-hover mb-0">
+                <thead><tr><th>#</th><th>Ordine</th><th>Codice</th><th>Descrizione</th><th>Matricola</th><th>Stato</th><th>Fase</th><th>Risorsa</th></tr></thead>
+                <tbody id="priorita-queue-body" class="js-priorita-list"></tbody>
+            </table></div>
+        </div></div>
+    </div>
+</main>
+<script src="{{ url_for('static', filename='vendor/Sortable.min.js') }}"></script>
+<script>
+    const selectOperatore = document.getElementById("priorita-operatore-select");
+    const alertBox = document.getElementById("priorita-alert");
+    const filterOrdine = document.getElementById("priorita-filter-ordine");
+    const filterCodice = document.getElementById("priorita-filter-codice");
+    const filterMatricola = document.getElementById("priorita-filter-matricola");
+    const bodies = {available: document.getElementById("priorita-available-body"), prioritized: document.getElementById("priorita-queue-body")};
+
+    function showAlert(type, message) { alertBox.className = `alert alert-${type}`; alertBox.textContent = message; alertBox.classList.remove("d-none"); }
+    function clearAlert() { alertBox.classList.add("d-none"); alertBox.textContent = ""; }
+    function escapeHtml(value) { return String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;"); }
+
+    function makeRow(item) {
+        const row = document.createElement("tr");
+        Object.assign(row.dataset, {idDocumento: item.id_documento, idRiga: item.id_riga, fase: item.fase, ordine: item.ordine || "", codice: item.codice || "", matricola: item.matricola || ""});
+        row.style.cursor = "grab";
+        row.innerHTML = `<td class="priorita-numero"></td><td>${escapeHtml(item.ordine)}</td><td>${escapeHtml(item.codice)}</td><td>${escapeHtml(item.descrizione)}</td><td>${escapeHtml(item.matricola)}</td><td>${escapeHtml(item.stato)}</td><td>${escapeHtml(window.phaseLabel(item.fase))}</td><td>${escapeHtml(item.risorsa)}</td>`;
+        return row;
+    }
+    function renderRows(body, rows) { body.innerHTML = ""; for (const item of rows || []) body.appendChild(makeRow(item)); }
+    function updatePriorityNumbers() {
+        Array.from(bodies.prioritized.children).forEach((row, index) => row.querySelector(".priorita-numero").textContent = index + 1);
+        Array.from(bodies.available.children).forEach((row) => row.querySelector(".priorita-numero").textContent = "–");
+    }
+    function applyAvailableFilters() {
+        const ordine = filterOrdine.value.trim().toLowerCase(), codice = filterCodice.value.trim().toLowerCase(), matricola = filterMatricola.value.trim().toLowerCase();
+        Array.from(bodies.available.children).forEach((row) => row.style.display = ((!ordine || row.dataset.ordine.toLowerCase().includes(ordine)) && (!codice || row.dataset.codice.toLowerCase().includes(codice)) && (!matricola || row.dataset.matricola.toLowerCase().includes(matricola))) ? "" : "none");
+    }
+    function setupSortable() {
+        if (typeof Sortable === "undefined") return showAlert("danger", "Drag & drop non disponibile: Sortable non caricato.");
+        document.querySelectorAll(".js-priorita-list").forEach((element) => Sortable.create(element, {group: "priorita-ordini", animation: 150, ghostClass: "table-active", onEnd: updatePriorityNumbers}));
+    }
+    async function loadOperatori() {
+        const response = await window.avpFetch("{{ url_for('main.api_priorita_operatori') }}"), data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Errore caricamento operatori.");
+        for (const operatore of data.operatori || []) { const option = document.createElement("option"); option.value = operatore.id; option.textContent = operatore.username; selectOperatore.appendChild(option); }
+    }
+    async function loadOrdiniOperatore() {
+        clearAlert(); renderRows(bodies.available, []); renderRows(bodies.prioritized, []);
+        if (!selectOperatore.value) return;
+        const response = await window.avpFetch(`/api/priorita/operatori/${encodeURIComponent(selectOperatore.value)}/ordini`), data = await response.json();
+        if (!response.ok) return showAlert("danger", data.error || "Errore caricamento priorità.");
+        renderRows(bodies.available, data.available || []); renderRows(bodies.prioritized, data.prioritized || []); updatePriorityNumbers(); applyAvailableFilters();
+    }
+    async function salvaPriorita() {
+        clearAlert(); if (!selectOperatore.value) return showAlert("warning", "Seleziona un operatore.");
+        const items = Array.from(bodies.prioritized.children).map((row, index) => ({id_documento: row.dataset.idDocumento, id_riga: row.dataset.idRiga, fase: row.dataset.fase, priorita: index + 1, posizione: index + 1}));
+        const response = await window.avpFetch(`/api/priorita/operatori/${encodeURIComponent(selectOperatore.value)}/salva`, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({items})}), data = await response.json();
+        if (!response.ok || !data.ok) return showAlert("danger", data.error || "Errore salvataggio priorità.");
+        showAlert("success", "Priorità salvata correttamente."); await loadOrdiniOperatore();
+    }
+    async function resetPriorita() {
+        clearAlert(); if (!selectOperatore.value) return showAlert("warning", "Seleziona un operatore.");
+        if (!window.confirm("Confermi l'azzeramento di tutte le priorità dell'operatore selezionato?")) return;
+        const response = await window.avpFetch(`/api/priorita/operatori/${encodeURIComponent(selectOperatore.value)}/reset`, {method: "POST"}), data = await response.json();
+        if (!response.ok || !data.ok) return showAlert("danger", data.error || "Errore azzeramento priorità.");
+        showAlert("success", "Priorità azzerate correttamente."); await loadOrdiniOperatore();
+    }
+    selectOperatore.addEventListener("change", loadOrdiniOperatore);
+    filterOrdine.addEventListener("input", applyAvailableFilters); filterCodice.addEventListener("input", applyAvailableFilters); filterMatricola.addEventListener("input", applyAvailableFilters);
+    document.getElementById("btn-priorita-salva").addEventListener("click", salvaPriorita); document.getElementById("btn-priorita-reset").addEventListener("click", resetPriorita);
+    loadOperatori().then(() => { if (selectOperatore.options.length > 1) { selectOperatore.selectedIndex = 1; return loadOrdiniOperatore(); } }).then(setupSortable).catch((error) => showAlert("danger", error.message || "Errore caricamento priorità."));
+</script>
 {% endblock %}

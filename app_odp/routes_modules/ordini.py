@@ -92,7 +92,6 @@ from app_odp.services.priorita_service import (
     _consume_priorita_ordine,
     _priorita_row_for_operatore_ordine,
     _snapshot_priorita_in_runtime,
-    _restore_priorita_for_next_phase_from_runtime,
 )
 from app_odp.services.etichette_service import generazione_lotti
 from app_odp.services.common import _last_log_token
@@ -1222,12 +1221,6 @@ def api_prendi_ordine():
             note_evento="Presa in carico ordine",
         )
 
-        _consume_priorita_ordine(
-            ordine.IdDocumento,
-            ordine.IdRiga,
-            ordine.FaseAttiva,
-        )
-
         db.session.commit()
         changed = True
         message = "Ordine preso in carico"
@@ -2333,11 +2326,17 @@ def _chiudi_ordine_da_payload(
         chiusura_parziale=chiusura_parziale,
         username=_current_username(),
     )
-    if transition["tipo"] == "avanzata":
-        _restore_priorita_for_next_phase_from_runtime(
+    if not chiusura_parziale:
+        _consume_priorita_ordine(
+            ordine.IdDocumento,
+            ordine.IdRiga,
+            fase_corrente,
+        )
+        _snapshot_priorita_in_runtime(
             stato=stato,
-            ordine=ordine,
-            next_phase=transition["fase_successiva"],
+            priorita_row=None,
+            operatore_id=_current_user_id(),
+            when_iso=now_iso,
         )
     runtime_post = _runtime_snapshot(stato)
 
@@ -2872,11 +2871,17 @@ def _chiudi_ordine_montaggio_macchina_da_payload(
         chiusura_parziale=chiusura_parziale,
         username=_current_username(),
     )
-    if transition["tipo"] == "avanzata":
-        _restore_priorita_for_next_phase_from_runtime(
+    if not chiusura_parziale:
+        _consume_priorita_ordine(
+            ordine.IdDocumento,
+            ordine.IdRiga,
+            fase_corrente,
+        )
+        _snapshot_priorita_in_runtime(
             stato=stato,
-            ordine=ordine,
-            next_phase=transition["fase_successiva"],
+            priorita_row=None,
+            operatore_id=_current_user_id(),
+            when_iso=now_iso,
         )
 
     runtime_post = _runtime_snapshot(stato)

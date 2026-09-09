@@ -65,7 +65,7 @@
         {% set pr_raw = singolo_odp.PrioritaNumero|default(none) %}
         {% set pr_runtime = runtime.PrioritaInCarico if runtime else none %}
         {% set pr_value = pr_raw if pr_raw else pr_runtime %}
-        {% set pr = pr_value|int if pr_value|string in ["1", "2", "3"] else none %}
+        {% set pr = pr_value|int if pr_value else none %}
         {% set pr_class = 'table-danger'
         if pr == 1 else 'table-warning'
                 if pr == 2 else'table-success'

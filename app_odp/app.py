@@ -38,6 +38,97 @@ def _apply_sqlite_pragmas(engine: Engine) -> None:
             cursor.close()
 
 
+def _ensure_priorita_schema() -> None:
+    """Migra la vecchia coda a fasce 1/2/3 nella sequenza univoca 1..N."""
+    connection = db.engine.raw_connection()
+    cursor = connection.cursor()
+    try:
+        table_row = cursor.execute(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'odp_priorita'"
+        ).fetchone()
+        table_sql = table_row[0] if table_row else ""
+        if (
+            "Priorita IN (1, 2, 3)" not in table_sql
+            and "uq_odp_priorita_operatore_numero" in table_sql
+        ):
+            return
+
+        rows = cursor.execute(
+            """
+            SELECT id, operatore_id, IdDocumento, IdRiga, Fase,
+                   Priorita, Posizione, created_at, updated_at, updated_by
+            FROM odp_priorita
+            ORDER BY operatore_id, Priorita, Posizione, id
+            """
+        ).fetchall()
+
+        cursor.execute("PRAGMA foreign_keys=OFF")
+        cursor.execute("BEGIN IMMEDIATE")
+        cursor.execute("DROP TABLE IF EXISTS odp_priorita_migration")
+        cursor.execute(
+            """
+            CREATE TABLE odp_priorita_migration (
+                id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                operatore_id INTEGER NOT NULL,
+                IdDocumento TEXT NOT NULL,
+                IdRiga TEXT NOT NULL,
+                Fase TEXT NOT NULL,
+                Priorita INTEGER NOT NULL,
+                Posizione INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                updated_by TEXT,
+                CONSTRAINT uq_odp_priorita_operatore_ordine_fase
+                    UNIQUE (operatore_id, IdDocumento, IdRiga, Fase),
+                CONSTRAINT uq_odp_priorita_operatore_numero
+                    UNIQUE (operatore_id, Priorita),
+                CONSTRAINT ck_odp_priorita_valore CHECK (Priorita >= 1),
+                CONSTRAINT ck_odp_priorita_posizione CHECK (Posizione >= 0),
+                FOREIGN KEY(operatore_id) REFERENCES users (id) ON DELETE CASCADE
+            )
+            """
+        )
+
+        last_operatore = None
+        posizione = 0
+        for row in rows:
+            if row[1] != last_operatore:
+                last_operatore = row[1]
+                posizione = 0
+            posizione += 1
+            cursor.execute(
+                """
+                INSERT INTO odp_priorita_migration (
+                    id, operatore_id, IdDocumento, IdRiga, Fase,
+                    Priorita, Posizione, created_at, updated_at, updated_by
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (*row[:5], posizione, posizione, *row[7:]),
+            )
+
+        cursor.execute("DROP TABLE odp_priorita")
+        cursor.execute(
+            "ALTER TABLE odp_priorita_migration RENAME TO odp_priorita"
+        )
+        for column in ("operatore_id", "IdDocumento", "IdRiga", "Fase", "Priorita"):
+            cursor.execute(
+                f"CREATE INDEX ix_odp_priorita_{column} ON odp_priorita ({column})"
+            )
+        violations = cursor.execute("PRAGMA foreign_key_check").fetchall()
+        if violations:
+            raise RuntimeError(
+                "Migrazione priorità interrotta: riferimenti operatore non validi."
+            )
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+        connection.close()
+
+
 def _ensure_rifiuti_schema() -> None:
     engine = db.engines["rifiuti"]
     connection = engine.raw_connection()
@@ -664,6 +755,7 @@ def create_app():
             _apply_sqlite_pragmas(eng)
 
         db.create_all()
+        _ensure_priorita_schema()
         db.create_all(bind_key="log")
         db.create_all(bind_key="acq")
         db.create_all(bind_key="manutenzioni")

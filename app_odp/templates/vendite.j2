@@ -273,7 +273,7 @@
             let showAllGroups = false;
             let currentData = {machines: []};
             let priorityMode = false, priorityDirty = false;
-            let priorityData = {available: [], p1: [], p2: [], p3: [], max_p2: 5};
+            let priorityData = {available: [], prioritized: []};
             let sortKey = "model_code", sortDirection = 1;
             let groupFormDirty = false, groupMutation = false;
 
@@ -465,24 +465,21 @@
 
             function priorityQueue() {
                 return [
-                    ...(priorityData.p1 || []),
-                    ...(priorityData.p2 || []),
-                    ...(priorityData.p3 || []),
+                    ...(priorityData.prioritized || []),
                     ...(priorityData.available || []),
                 ];
             }
 
             function priorityCell(machine, item) {
                 const value = item?.priorita || "";
-                return `<select class="form-select form-select-sm" data-priority-level
+                return `<input class="form-control form-control-sm" type="number" min="1" step="1" data-priority-level
                                 data-position="${esc(item?.posizione || "")}"
                                 data-id-documento="${esc(machine.id_documento)}"
                                 data-id-riga="${esc(machine.id_riga)}"
                                 data-fase="${esc(machine.phase)}"
-                                aria-label="Priorità ordine ${esc(machine.order)}">
-                        <option value=""${value === "" ? " selected" : ""}>Nessuna</option>
-                        ${[1, 2, 3].map(level => `<option value="${level}"${Number(value) === level ? " selected" : ""}>${level}</option>`).join("")}
-                    </select>`;
+                                value="${esc(value)}"
+                                placeholder="Nessuna"
+                                aria-label="Priorità ordine ${esc(machine.order)}">`;
             }
 
             function machineRow(machine, priorityItem = null) {
@@ -662,7 +659,7 @@
                 if (priorityMode) {
                     const machinesByKey = new Map(
                         visibleMachines
-                            .filter(machine => machine.state === "Pianificata")
+                            .filter(machine => ["pianificata", "attivo", "in sospeso"].includes(String(machine.state || "").toLowerCase()))
                             .map(machine => [priorityKey(machine), machine])
                     );
                     const rows = priorityQueue().flatMap(item => {
@@ -671,7 +668,7 @@
                     });
                     machinesBody.innerHTML = rows.join("") || `
                         <tr><td colspan="12" class="text-center text-muted py-4">
-                            ${searchQuery ? "Nessuna macchina corrisponde alla ricerca." : priorityOperator?.value ? "Nessun ordine Pianificata assegnato al montaggio per questo operatore." : "Seleziona un operatore di montaggio."}
+                            ${searchQuery ? "Nessuna macchina corrisponde alla ricerca." : priorityOperator?.value ? "Nessun ordine prioritizzabile assegnato al montaggio per questo operatore." : "Seleziona un operatore di montaggio."}
                         </td></tr>`;
                     if (typeof window.applyRowColors === "function") window.applyRowColors();
                     return;
@@ -741,7 +738,7 @@
 
             async function loadPriorityData() {
                 if (!priorityMode || !priorityOperator?.value) {
-                    priorityData = {available: [], p1: [], p2: [], p3: [], max_p2: 5};
+                    priorityData = {available: [], prioritized: []};
                     return;
                 }
                 const response = await window.avpFetch(priorityUrl(
@@ -755,7 +752,7 @@
 
             async function savePriorities() {
                 if (!priorityMode || !priorityOperator?.value || !priorityDirty) return;
-                const staged = Array.from(machinesBody.querySelectorAll("tr"), (row, rowIndex) => {
+                const staged = Array.from(machinesBody.querySelectorAll("tr"), row => {
                     const level = row.querySelector("[data-priority-level]");
                     if (!level?.value) return null;
                     return {
@@ -763,28 +760,20 @@
                         id_riga: level.dataset.idRiga,
                         fase: level.dataset.fase,
                         priorita: Number(level.value),
-                        requested_position: Number(level.dataset.position) || rowIndex + 1,
-                        row_index: rowIndex,
                     };
                 }).filter(Boolean);
-                if (staged.filter(item => item.priorita === 1).length > 1) {
-                    throw new Error("È consentito un solo ordine con priorità 1.");
-                }
-                const maxP2 = Number(priorityData.max_p2 || 5);
-                if (staged.filter(item => item.priorita === 2).length > maxP2) {
-                    throw new Error(`Sono consentiti al massimo ${maxP2} ordini con priorità 2.`);
+                const numeri = staged.map(item => item.priorita).sort((a, b) => a - b);
+                if (numeri.some((numero, index) => !Number.isInteger(numero) || numero !== index + 1)) {
+                    throw new Error("Le priorità devono essere univoche e consecutive da 1.");
                 }
                 const items = staged
-                    .sort((a, b) => a.priorita - b.priorita || a.requested_position - b.requested_position || a.row_index - b.row_index)
-                    .map((item, _, all) => ({
+                    .sort((a, b) => a.priorita - b.priorita)
+                    .map(item => ({
                         id_documento: item.id_documento,
                         id_riga: item.id_riga,
                         fase: item.fase,
                         priorita: item.priorita,
-                        posizione: all.filter(previous => previous.priorita === item.priorita && (
-                            previous.requested_position < item.requested_position
-                            || (previous.requested_position === item.requested_position && previous.row_index <= item.row_index)
-                        )).length,
+                        posizione: item.priorita,
                     }));
                 const response = await window.avpFetch(priorityUrl(
                     page.dataset.prioritySaveUrl,

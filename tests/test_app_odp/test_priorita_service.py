@@ -12,15 +12,20 @@ def test_make_ordine_fase_key_keeps_explicit_phase():
     assert _make_ordine_fase_key("DOC1", "2", " 3 ") == ("DOC1", "2", "3")
 
 
-def test_compact_priorita_operatore_renumbers_each_priority_band(monkeypatch):
-    rows = [SimpleNamespace() for _ in range(5)]
+def test_compact_priorita_operatore_renumbers_queue_from_one(monkeypatch):
+    rows = [SimpleNamespace(Priorita=value) for value in (1, 2, 2, 3, 3)]
 
     monkeypatch.setattr(
         priorita_service,
         "_priorita_rows_for_operatore",
         lambda operatore_id: rows if operatore_id == 42 else [],
     )
-    monkeypatch.setattr(priorita_service, "_priorita_2_max", lambda: 2)
+    flushes = []
+    monkeypatch.setattr(
+        priorita_service,
+        "db",
+        SimpleNamespace(session=SimpleNamespace(flush=lambda: flushes.append(True))),
+    )
     monkeypatch.setattr(
         priorita_service,
         "_priority_now_iso",
@@ -32,7 +37,8 @@ def test_compact_priorita_operatore_renumbers_each_priority_band(monkeypatch):
     assert [
         (row.Priorita, row.Posizione)
         for row in rows
-    ] == [(1, 1), (2, 1), (2, 2), (3, 1), (3, 2)]
+    ] == [(1, 1), (2, 2), (3, 3), (4, 4), (5, 5)]
+    assert flushes == [True]
     assert {row.updated_at for row in rows} == {"2026-07-10T10:00:00+02:00"}
 
 
@@ -122,62 +128,16 @@ def test_snapshot_priorita_in_runtime_clears_fields_without_priority():
     assert stato.PrioritaPresaInCaricoAt is None
 
 
-def test_restore_priorita_for_next_phase_keeps_priority_and_appends(monkeypatch):
-    added = []
+def test_is_ordine_prioritizzabile_accepts_requested_states_only():
+    for stato in ("Pianificata", "Attivo", "In Sospeso", " in sospeso "):
+        assert priorita_service._is_ordine_prioritizzabile(
+            SimpleNamespace(StatoOrdine=stato)
+        )
 
-    def fake_priorita(**values):
-        return SimpleNamespace(**values)
-
-    fake_priorita.Posizione = object()
-    fake_priorita.query = SimpleNamespace(
-        filter_by=lambda **_: SimpleNamespace(first=lambda: None)
-    )
-    max_query = SimpleNamespace(
-        filter_by=lambda **_: SimpleNamespace(scalar=lambda: 4)
-    )
-    session = SimpleNamespace(query=lambda _: max_query, add=added.append)
-
-    monkeypatch.setattr(priorita_service, "OdpPriorita", fake_priorita)
-    monkeypatch.setattr(
-        priorita_service,
-        "func",
-        SimpleNamespace(max=lambda _: None),
-    )
-    monkeypatch.setattr(
-        priorita_service,
-        "db",
-        SimpleNamespace(session=session),
-    )
-    monkeypatch.setattr(
-        priorita_service,
-        "_priority_now_iso",
-        lambda: "2026-07-10T10:00:00+02:00",
-    )
-    monkeypatch.setattr(
-        priorita_service,
-        "_current_username",
-        lambda fallback: fallback,
-    )
-
-    priorita_service._restore_priorita_for_next_phase_from_runtime(
-        stato=SimpleNamespace(
-            PrioritaInCarico=2,
-            PrioritaOperatoreIdInCarico=7,
-        ),
-        ordine=SimpleNamespace(IdDocumento="DOC1", IdRiga="2"),
-        next_phase="3",
-    )
-
-    assert len(added) == 1
-    row = added[0]
-    assert (
-        row.operatore_id,
-        row.IdDocumento,
-        row.IdRiga,
-        row.Fase,
-        row.Priorita,
-        row.Posizione,
-    ) == (7, "DOC1", "2", "3", 2, 5)
+    for stato in ("Chiusa", "Terminata", ""):
+        assert not priorita_service._is_ordine_prioritizzabile(
+            SimpleNamespace(StatoOrdine=stato)
+        )
 
 
 def test_apply_priorita_to_ordini_sorts_by_priority_position_date_and_order(
@@ -203,10 +163,10 @@ def test_apply_priorita_to_ordini_sorts_by_priority_position_date_and_order(
     ]
     priorita_map = {
         ("P1", "1", "1"): SimpleNamespace(Priorita=1, Posizione=1),
-        ("P2-LATE", "1", "1"): SimpleNamespace(Priorita=2, Posizione=1),
-        ("P3", "1", "1"): SimpleNamespace(Priorita=3, Posizione=1),
-        ("P2-EARLY-Z", "1", "1"): SimpleNamespace(Priorita=2, Posizione=1),
-        ("P2-POS2", "1", "1"): SimpleNamespace(Priorita=2, Posizione=2),
+        ("P2-LATE", "1", "1"): SimpleNamespace(Priorita=4, Posizione=4),
+        ("P3", "1", "1"): SimpleNamespace(Priorita=6, Posizione=6),
+        ("P2-EARLY-Z", "1", "1"): SimpleNamespace(Priorita=3, Posizione=3),
+        ("P2-POS2", "1", "1"): SimpleNamespace(Priorita=5, Posizione=5),
         ("P2-EARLY-A", "1", "1"): SimpleNamespace(Priorita=2, Posizione=1),
     }
 

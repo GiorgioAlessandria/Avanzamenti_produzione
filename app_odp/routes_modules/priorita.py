@@ -15,11 +15,10 @@ from app_odp.services.priorita_service import (
     _get_priorita_visible_operatore_or_403,
     _compact_priorita_operatore,
     _make_ordine_fase_key,
-    _priorita_2_max,
     _priority_now_iso,
     _ordine_fase_key,
     _ordine_priorita_payload,
-    _ordini_pianificata_visibili_per_operatore,
+    _ordini_prioritizzabili_visibili_per_operatore,
     _priorita_map_for_operatore,
     _priorita_valid_keys_for_operatore,
 )
@@ -59,7 +58,6 @@ def priorita_view():
     return render_template(
         "priorita_view.j2",
         policy=policy,
-        priorita_2_max=_priorita_2_max(),
         current_operator_id=user.id,
         current_operator_username=user.username or "",
     )
@@ -74,7 +72,6 @@ def priorita_edit():
     return render_template(
         "priorita_edit.j2",
         policy=policy,
-        priorita_2_max=_priorita_2_max(),
         current_operator_id=user.id,
         current_operator_username=user.username or "",
     )
@@ -95,7 +92,7 @@ def api_priorita_operatori():
         operatori = [
             operatore
             for operatore in operatori
-            if _ordini_pianificata_visibili_per_operatore(operatore)
+            if _ordini_prioritizzabili_visibili_per_operatore(operatore)
         ]
 
     return jsonify(
@@ -120,15 +117,12 @@ def api_priorita_ordini_operatore(operatore_id: int):
     _compact_priorita_operatore(operatore.id)
     db.session.commit()
 
-    ordini = _ordini_pianificata_visibili_per_operatore(operatore)
+    ordini = _ordini_prioritizzabili_visibili_per_operatore(operatore)
     priorita_map = _priorita_map_for_operatore(operatore.id)
 
     payload = {
         "available": [],
-        "p1": [],
-        "p2": [],
-        "p3": [],
-        "max_p2": _priorita_2_max(),
+        "prioritized": [],
         "can_edit": active_policy().can("priorita_edit") or active_policy().can("utente_produzione"),
     }
 
@@ -139,17 +133,11 @@ def api_priorita_ordini_operatore(operatore_id: int):
 
         if priorita_row is None:
             payload["available"].append(item)
-        elif priorita_row.Priorita == 1:
-            payload["p1"].append(item)
-        elif priorita_row.Priorita == 2:
-            payload["p2"].append(item)
-        elif priorita_row.Priorita == 3:
-            payload["p3"].append(item)
+        else:
+            payload["prioritized"].append(item)
 
     payload["available"].sort(key=lambda x: (x["ordine"], x["fase"]))
-    payload["p1"].sort(key=lambda x: x["posizione"] or 0)
-    payload["p2"].sort(key=lambda x: x["posizione"] or 0)
-    payload["p3"].sort(key=lambda x: x["posizione"] or 0)
+    payload["prioritized"].sort(key=lambda x: x["priorita"] or 0)
 
     return jsonify(payload)
 
@@ -174,14 +162,13 @@ def api_priorita_salva_operatore(operatore_id: int):
     for item in items:
         try:
             priorita = int(item.get("priorita"))
-            posizione = int(item.get("posizione"))
         except (TypeError, ValueError):
             return jsonify(
-                {"ok": False, "error": "Priorità o posizione non valida."}
+                {"ok": False, "error": "Priorità non valida."}
             ), 400
 
-        if priorita not in (1, 2, 3):
-            return jsonify({"ok": False, "error": "Priorità ammessa: 1, 2, 3."}), 400
+        if priorita < 1:
+            return jsonify({"ok": False, "error": "La priorità deve essere almeno 1."}), 400
 
         key = _make_ordine_fase_key(
             item.get("id_documento"),
@@ -197,7 +184,7 @@ def api_priorita_salva_operatore(operatore_id: int):
                 {
                     "ok": False,
                     "error": (
-                        "Uno degli ordini non è più Pianificata oppure "
+                        "Uno degli ordini non è più prioritizzabile oppure "
                         "non è più visibile per l'operatore selezionato."
                     ),
                 }
@@ -208,9 +195,20 @@ def api_priorita_salva_operatore(operatore_id: int):
             {
                 "key": key,
                 "priorita": priorita,
-                "posizione": posizione,
+                "posizione": priorita,
             }
         )
+
+    expected_priorities = list(range(1, len(staged) + 1))
+    if sorted(row["priorita"] for row in staged) != expected_priorities:
+        return jsonify(
+            {
+                "ok": False,
+                "error": "Le priorità devono essere univoche e consecutive da 1.",
+            }
+        ), 400
+
+    staged.sort(key=lambda row: row["priorita"])
 
     now_iso = _priority_now_iso()
     username = _current_username("sync_priorita")
