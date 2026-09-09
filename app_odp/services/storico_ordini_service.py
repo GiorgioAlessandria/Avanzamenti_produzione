@@ -859,7 +859,7 @@ def build_storico_ordini_detail(params) -> dict:
         title = f"{id_documento}/{id_riga}"
         header = {
             "kind": "order",
-            "title" title,
+            "title": title,
             "id_documento": id_documento,
             "id_riga": id_riga,
             "members": [],

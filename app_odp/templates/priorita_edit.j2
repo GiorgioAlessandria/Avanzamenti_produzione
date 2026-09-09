@@ -69,8 +69,15 @@
     }
     function renderRows(body, rows) { body.innerHTML = ""; for (const item of rows || []) body.appendChild(makeRow(item)); }
     function updatePriorityNumbers() {
-        Array.from(bodies.prioritized.children).forEach((row, index) => row.querySelector(".priorita-numero").textContent = index + 1);
-        Array.from(bodies.available.children).forEach((row) => row.querySelector(".priorita-numero").textContent = "–");
+        const rows = Array.from(bodies.prioritized.children);
+        rows.forEach((row, index) => {
+            row.querySelector(".priorita-numero").textContent = index + 1;
+            row.style.setProperty("--bs-table-bg", window.priorityGradientColor(index + 1, rows.length));
+        });
+        Array.from(bodies.available.children).forEach((row) => {
+            row.querySelector(".priorita-numero").textContent = "–";
+            row.style.removeProperty("--bs-table-bg");
+        });
     }
     function applyAvailableFilters() {
         const ordine = filterOrdine.value.trim().toLowerCase(), codice = filterCodice.value.trim().toLowerCase(), matricola = filterMatricola.value.trim().toLowerCase();

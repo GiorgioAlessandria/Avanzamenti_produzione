@@ -24,7 +24,8 @@
         alertBox.classList.add("d-none"); body.innerHTML = "";
         const response = await window.avpFetch(`/api/priorita/operatori/${encodeURIComponent(page.dataset.operatoreId)}/ordini`), data = await response.json();
         if (!response.ok) { alertBox.className = "alert alert-danger"; alertBox.textContent = data.error || "Errore caricamento priorità."; return; }
-        for (const item of data.prioritized || []) { const row = document.createElement("tr"); row.innerHTML = `<td class="priorita-numero">${escapeHtml(item.priorita)}</td><td>${escapeHtml(item.ordine)}</td><td>${escapeHtml(item.codice)}</td><td>${escapeHtml(item.descrizione)}</td><td>${escapeHtml(item.matricola)}</td><td>${escapeHtml(item.stato)}</td><td>${escapeHtml(window.phaseLabel(item.fase))}</td><td>${escapeHtml(item.risorsa)}</td>`; body.appendChild(row); }
+        const items = data.prioritized || [];
+        for (const item of items) { const row = document.createElement("tr"); row.style.setProperty("--bs-table-bg", window.priorityGradientColor(Number(item.priorita), items.length)); row.innerHTML = `<td class="priorita-numero">${escapeHtml(item.priorita)}</td><td>${escapeHtml(item.ordine)}</td><td>${escapeHtml(item.codice)}</td><td>${escapeHtml(item.descrizione)}</td><td>${escapeHtml(item.matricola)}</td><td>${escapeHtml(item.stato)}</td><td>${escapeHtml(window.phaseLabel(item.fase))}</td><td>${escapeHtml(item.risorsa)}</td>`; body.appendChild(row); }
     }
     loadOrdiniOperatore().catch(() => { alertBox.className = "alert alert-danger"; alertBox.textContent = "Errore caricamento priorità."; });
     setInterval(loadOrdiniOperatore, 30000);
