@@ -66,10 +66,6 @@
         {% set pr_runtime = runtime.PrioritaInCarico if runtime else none %}
         {% set pr_value = pr_raw if pr_raw else pr_runtime %}
         {% set pr = pr_value|int if pr_value else none %}
-        {% set pr_class = 'table-danger'
-        if pr == 1 else 'table-warning'
-                if pr == 2 else'table-success'
-                if pr == 3 else'' %}
         {% set stato_norm = singolo_odp.StatoOrdine|string|lower %}
         {% set stato_class = 'table-success'
                 if 'attiv' in stato_norm else 'table-warning'
@@ -99,7 +95,7 @@
             data-tempoattrezzaggio="{{ singolo_odp.AttrezzaggioAttivo }}"
             data-statoordine="{{ singolo_odp.StatoOrdine }}"
             data-operatore="{{ operatore }}">
-            <td class="pr-cell {{ pr_class }} fw-bold text-center">{{ wrap_plus(pr or "") }}</td>
+            <td class="pr-cell fw-bold text-center">{{ wrap_plus(pr or "") }}</td>
             <td>
                 <button
                         type="button"

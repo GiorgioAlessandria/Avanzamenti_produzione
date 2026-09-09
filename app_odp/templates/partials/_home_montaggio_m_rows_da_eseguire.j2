@@ -1,14 +1,11 @@
 {% for singolo_odp in odp %}
     {% if not (singolo_odp.IsWorkGroup|default(false)) and singolo_odp.GestioneMatricola == 'si' and singolo_odp.StatoOrdine == "Pianificata" %}
         {% set pr = singolo_odp.PrioritaNumero if singolo_odp.PrioritaNumero is defined else none %}
-        {% set pr_class =
-                'table-danger' if pr == 1 else
-                'table-warning' if pr == 2 else'table-success' if pr == 3 else'' %}
         {% set distinta_raw = singolo_odp.DistintaMateriale|string|trim if singolo_odp.DistintaMateriale is not none else "" %}
         {% set distinta_missing = not distinta_raw or distinta_raw|lower in ['[]', 'null', 'none', '""'] %}
         {% set ordine_display = ordine_ref_display(singolo_odp) %}
         <tr data-row-key="{{ singolo_odp.IdDocumento }}|{{ singolo_odp.NumProgrRiga }}"
-            class="{{ pr_class if pr_class else ('table-danger' if distinta_missing else '') }}"
+            class="{{ 'table-danger' if distinta_missing else '' }}"
             data-priorita="{{ pr or '' }}"
             data-tipodocumento="{{ singolo_odp.CodTipoDoc }}"
             data-variante="{{ singolo_odp.VarianteArt }}"
@@ -23,7 +20,7 @@
             data-datacons="{{ singolo_odp.DataFineSched }}"
             data-distinta='{{ singolo_odp.DistintaMateriale|tojson }}'
             data-distinta-missing="{{ '1' if distinta_missing else '0' }}">
-            <td>{{ pr or '' }}</td>
+            <td class="pr-cell fw-bold text-center">{{ pr or '' }}</td>
             <td>
                 {% if distinta_missing %}
                     <span class="text-danger fw-bold">

@@ -1353,7 +1353,6 @@
 
                     priorityRows.forEach(({row, priority}) => {
                         const color = priorityGradientColor(priority, maxPriority);
-                        row.style.setProperty("--bs-table-bg", color);
                         row.style.setProperty("--priority-gradient", color);
                     });
                 });

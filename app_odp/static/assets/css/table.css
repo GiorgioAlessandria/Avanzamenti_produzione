@@ -137,8 +137,11 @@ table.table-sortable thead th[data-sort-dir="desc"]::after {
     background-color: rgba(255, 193, 7, 0.71); /* arancio */
 }
 
-.table-state-rowcolor tbody tr[data-priorita]:not([data-priorita=""]) > td {
+.table-state-rowcolor tbody tr[data-priorita]:not([data-priorita=""]) > td.pr-cell,
+.table-state-rowcolor tbody tr[data-priorita]:not([data-priorita=""]) > td.vendite-priority-only {
     background-color: var(--priority-gradient) !important;
+    box-shadow: none !important;
+    color: #000 !important;
 }
 
 /* Facoltativo: testo un po’ più leggibile */
@@ -490,134 +493,4 @@ table.table-state-rowcolor tbody tr.row-state-sospeso {
 #acquisti_scorte_table tbody tr[data-scorta-overdue="1"]:nth-child(7n) {
     --acq-scorte-row-pulse-duration: 0.76s;
     --acq-scorte-row-pulse-delay: -0.41s;
-}
-
-/* Priorità nelle home: colori pieni, non alternati da table-striped/table-hover */
-#ordini_da_eseguire tbody tr.table-danger > *,
-#ordini_da_eseguire_sl tbody tr.table-danger > *,
-#ordini_da_eseguire_m tbody tr.table-danger > * {
-    --bs-table-bg: #ff0015 !important;
-    --bs-table-striped-bg: #ff0015 !important;
-    --bs-table-hover-bg: #f1b0b7 !important;
-    --bs-table-color: #000 !important;
-    background-color: #ff0015 !important;
-    color: #000 !important;
-}
-
-#ordini_da_eseguire tbody tr.table-warning > *,
-#ordini_da_eseguire_sl tbody tr.table-warning > *,
-#ordini_da_eseguire_m tbody tr.table-warning > * {
-    --bs-table-bg: #fdfd01 !important;
-    --bs-table-striped-bg: #fdfd01 !important;
-    --bs-table-hover-bg: #ffe69c !important;
-    --bs-table-color: #000 !important;
-    background-color: #fdfd01 !important;
-    color: #000 !important;
-}
-
-#ordini_da_eseguire tbody tr.table-success > *,
-#ordini_da_eseguire_sl tbody tr.table-success > *,
-#ordini_da_eseguire_m tbody tr.table-success > * {
-    --bs-table-bg: #00ff3c !important;
-    --bs-table-striped-bg: #00ff3c !important;
-    --bs-table-hover-bg: #a3cfbb !important;
-    --bs-table-color: #000 !important;
-    background-color: #00ff3c !important;
-    color: #000 !important;
-}
-
-#ordini_da_eseguire tbody tr.table-danger,
-#ordini_da_eseguire_sl tbody tr.table-danger,
-#ordini_da_eseguire_m tbody tr.table-danger,
-#ordini_da_eseguire tbody tr.table-warning,
-#ordini_da_eseguire_sl tbody tr.table-warning,
-#ordini_da_eseguire_m tbody tr.table-warning,
-#ordini_da_eseguire tbody tr.table-success,
-#ordini_da_eseguire_sl tbody tr.table-success,
-#ordini_da_eseguire_m tbody tr.table-success {
-    font-weight: 700;
-}
-
-/* Priorità visualizzata negli ordini attivi: solo cella PR */
-#ordini_in_corso td.pr-cell.table-danger,
-#ordini_in_corso_sl td.pr-cell.table-danger,
-#ordini_in_corso_m td.pr-cell.table-danger {
-    background-color: #ff0015 !important;
-    color: #000 !important;
-    font-weight: 700;
-}
-
-#ordini_in_corso td.pr-cell.table-warning,
-#ordini_in_corso_sl td.pr-cell.table-warning,
-#ordini_in_corso_m td.pr-cell.table-warning {
-    background-color: #fdfd01 !important;
-    color: #000 !important;
-    font-weight: 700;
-}
-
-#ordini_in_corso td.pr-cell.table-success,
-#ordini_in_corso_sl td.pr-cell.table-success,
-#ordini_in_corso_m td.pr-cell.table-success {
-    background-color: #00ff3c !important;
-    color: #000 !important;
-    font-weight: 700;
-}
-
-/* Priorità ordini attivi: la cella PR non deve essere sbiadita da righe alternate, hover o selezione */
-#ordini_in_corso td.pr-cell,
-#ordini_in_corso_sl td.pr-cell,
-#ordini_in_corso_m td.pr-cell {
-    box-shadow: none !important;
-    --bs-table-accent-bg: transparent !important;
-}
-
-/* PR 1 - rosso pieno */
-#ordini_in_corso td.pr-cell.table-danger,
-#ordini_in_corso_sl td.pr-cell.table-danger,
-#ordini_in_corso_m td.pr-cell.table-danger,
-#ordini_in_corso tr.row-selected td.pr-cell.table-danger,
-#ordini_in_corso_sl tr.row-selected td.pr-cell.table-danger,
-#ordini_in_corso_m tr.row-selected td.pr-cell.table-danger {
-    --bs-table-bg: #ff0015 !important;
-    --bs-table-striped-bg: #ff0015 !important;
-    --bs-table-hover-bg: #ff0015 !important;
-    --bs-table-accent-bg: transparent !important;
-    background-color: #ff0015 !important;
-    color: #000 !important;
-    box-shadow: none !important;
-    font-weight: 700;
-}
-
-/* PR 2 - giallo pieno */
-#ordini_in_corso td.pr-cell.table-warning,
-#ordini_in_corso_sl td.pr-cell.table-warning,
-#ordini_in_corso_m td.pr-cell.table-warning,
-#ordini_in_corso tr.row-selected td.pr-cell.table-warning,
-#ordini_in_corso_sl tr.row-selected td.pr-cell.table-warning,
-#ordini_in_corso_m tr.row-selected td.pr-cell.table-warning {
-    --bs-table-bg: #fdfd01 !important;
-    --bs-table-striped-bg: #fdfd01 !important;
-    --bs-table-hover-bg: #fdfd01 !important;
-    --bs-table-accent-bg: transparent !important;
-    background-color: #fdfd01 !important;
-    color: #000 !important;
-    box-shadow: none !important;
-    font-weight: 700;
-}
-
-/* PR 3 - verde pieno */
-#ordini_in_corso td.pr-cell.table-success,
-#ordini_in_corso_sl td.pr-cell.table-success,
-#ordini_in_corso_m td.pr-cell.table-success,
-#ordini_in_corso tr.row-selected td.pr-cell.table-success,
-#ordini_in_corso_sl tr.row-selected td.pr-cell.table-success,
-#ordini_in_corso_m tr.row-selected td.pr-cell.table-success {
-    --bs-table-bg: #00ff3c !important;
-    --bs-table-striped-bg: #00ff3c !important;
-    --bs-table-hover-bg: #00ff3c !important;
-    --bs-table-accent-bg: transparent !important;
-    background-color: #00ff3c !important;
-    color: #000 !important;
-    box-shadow: none !important;
-    font-weight: 700;
 }

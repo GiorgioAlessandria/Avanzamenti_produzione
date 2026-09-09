@@ -71,12 +71,14 @@
     function updatePriorityNumbers() {
         const rows = Array.from(bodies.prioritized.children);
         rows.forEach((row, index) => {
-            row.querySelector(".priorita-numero").textContent = index + 1;
-            row.style.setProperty("--bs-table-bg", window.priorityGradientColor(index + 1, rows.length));
+            const priorityCell = row.querySelector(".priorita-numero");
+            priorityCell.textContent = index + 1;
+            priorityCell.style.backgroundColor = window.priorityGradientColor(index + 1, rows.length);
         });
         Array.from(bodies.available.children).forEach((row) => {
-            row.querySelector(".priorita-numero").textContent = "–";
-            row.style.removeProperty("--bs-table-bg");
+            const priorityCell = row.querySelector(".priorita-numero");
+            priorityCell.textContent = "–";
+            priorityCell.style.removeProperty("background-color");
         });
     }
     function applyAvailableFilters() {
