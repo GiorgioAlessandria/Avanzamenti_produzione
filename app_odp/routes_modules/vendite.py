@@ -36,7 +36,11 @@ from app_odp.services.vendite_raggruppamenti_service import (
 
 
 def _can_view_customer_orders(policy) -> bool:
-    return policy.has_direct_admin_role or not policy.can("utente_imballi")
+    return (
+        policy.has_direct_admin_role
+        or policy.can("utente_produzione")
+        or not policy.can("utente_imballi")
+    )
 
 
 def _visible_assignment_dashboard():
@@ -73,7 +77,7 @@ def vendite_page():
         can_view_options=admin or not policy.can("utente_imballi"),
         can_view_production_instructions=admin or not policy.can("utente_amministrazione"),
         can_view_packaging_notes=admin or not policy.can("utente_imballi"),
-        can_view_model_summary=admin or not policy.can("utente_imballi"),
+        can_view_model_summary=_can_view_customer_orders(policy),
         can_manage_groups=(
             admin or policy.can("utente_vendite") or policy.can("utente_produzione")
         ),
@@ -112,11 +116,9 @@ def vendite_assegnazioni_page():
             admin or can_create_customer_orders or policy.can("utente_produzione")
         ),
         can_edit_sales_notes=can_create_customer_orders,
-        can_edit_production_instructions=(
-            admin or can_create_customer_orders or policy.can("utente_amministrazione")
-        ),
+        can_edit_production_instructions=can_create_customer_orders,
         can_view_packaging_notes=admin or not policy.can("utente_imballi"),
-        can_view_model_summary=admin or not policy.can("utente_imballi"),
+        can_view_model_summary=_can_view_customer_orders(policy),
         can_confirm_order_read=admin or policy.can("utente_produzione"),
     )
 
@@ -305,9 +307,7 @@ def api_vendite_riga_salva(row_id: int):
     payload = request.get_json(silent=True)
     policy = active_policy()
     can_edit_sales = policy.can("utente_vendite")
-    can_edit_production_instructions = (
-        can_edit_sales or policy.can("utente_amministrazione")
-    )
+    can_edit_production_instructions = can_edit_sales
     can_assign = can_edit_sales or policy.can("utente_produzione")
     return _assignment_mutation(
         lambda: update_customer_row(
@@ -347,10 +347,7 @@ def api_vendite_riga_note(row_id: int):
             row_id,
             payload,
             can_edit_sales=policy.can("utente_vendite"),
-            can_edit_production_instructions=(
-                policy.can("utente_vendite")
-                or policy.can("utente_amministrazione")
-            ),
+            can_edit_production_instructions=policy.can("utente_vendite"),
         ),
         "Note aggiornate.",
     )
