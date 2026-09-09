@@ -1322,8 +1322,11 @@
 
             function priorityGradientColor(priority, maxPriority) {
                 const ratio = maxPriority > 1 ? (priority - 1) / (maxPriority - 1) : 0;
-                const hue = Math.round(120 * Math.max(0, Math.min(1, ratio)));
-                return `hsl(${hue} 72% 88%)`;
+                const t = Math.max(0, Math.min(1, ratio));
+                const red = Math.round(243 * (1 - t));
+                const green = Math.round(57 + (255 - 57) * t);
+                const blue = Math.round(92 * (1 - t));
+                return `rgb(${red} ${green} ${blue})`;
             }
 
             function applyRowColors(root = document) {
