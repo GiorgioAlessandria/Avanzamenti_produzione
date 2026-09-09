@@ -137,6 +137,10 @@ table.table-sortable thead th[data-sort-dir="desc"]::after {
     background-color: rgba(255, 193, 7, 0.71); /* arancio */
 }
 
+.table-state-rowcolor tbody tr[data-priorita]:not([data-priorita=""]) > td {
+    background-color: var(--priority-gradient) !important;
+}
+
 /* Facoltativo: testo un po’ più leggibile */
 .table-state-rowcolor tbody tr.row-state-attivo,
 table.table-state-rowcolor tbody tr.row-state-sospeso {

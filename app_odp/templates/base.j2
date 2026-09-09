@@ -1328,15 +1328,20 @@
 
             function applyRowColors(root = document) {
                 const tables = root.querySelectorAll("table.table-state-rowcolor");
+                const priorities = Array.from(root.querySelectorAll("tr[data-priorita]"))
+                    .map((row) => Number(row.dataset.priorita))
+                    .filter((priority) => Number.isInteger(priority) && priority > 0);
+                const maxPriority = Math.max(0, ...priorities);
+
                 tables.forEach((table) => {
                     const priorityRows = Array.from(table.querySelectorAll("tbody tr[data-priorita]"))
                         .map((row) => ({row, priority: Number(row.dataset.priorita)}))
                         .filter((item) => Number.isInteger(item.priority) && item.priority > 0);
-                    const maxPriority = Math.max(0, ...priorityRows.map((item) => item.priority));
 
                     table.querySelectorAll("tbody tr").forEach((tr) => {
                         tr.classList.remove("row-state-attivo", "row-state-sospeso");
                         tr.style.removeProperty("--bs-table-bg");
+                        tr.style.removeProperty("--priority-gradient");
 
                         const statoCell = tr.querySelector('td[data-col="stato"]');
                         const stato = normalize(statoCell ? statoCell.textContent : "");
@@ -1347,10 +1352,9 @@
                     });
 
                     priorityRows.forEach(({row, priority}) => {
-                        row.style.setProperty(
-                            "--bs-table-bg",
-                            priorityGradientColor(priority, maxPriority),
-                        );
+                        const color = priorityGradientColor(priority, maxPriority);
+                        row.style.setProperty("--bs-table-bg", color);
+                        row.style.setProperty("--priority-gradient", color);
                     });
                 });
             }

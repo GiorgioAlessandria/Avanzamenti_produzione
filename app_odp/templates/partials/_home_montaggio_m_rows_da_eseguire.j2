@@ -9,6 +9,7 @@
         {% set ordine_display = ordine_ref_display(singolo_odp) %}
         <tr data-row-key="{{ singolo_odp.IdDocumento }}|{{ singolo_odp.NumProgrRiga }}"
             class="{{ pr_class if pr_class else ('table-danger' if distinta_missing else '') }}"
+            data-priorita="{{ pr or '' }}"
             data-tipodocumento="{{ singolo_odp.CodTipoDoc }}"
             data-variante="{{ singolo_odp.VarianteArt }}"
             data-iddocumento="{{ singolo_odp.IdDocumento }}"
