@@ -1,9 +1,9 @@
-from flask import current_app, jsonify, render_template, request
+from flask import abort, current_app, jsonify, redirect, render_template, request, url_for
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.exc import StaleDataError
 
 from app_odp.models import db
-from app_odp.operator_session import active_policy, active_user
+from app_odp.operator_session import active_policy, active_token, active_user
 from app_odp.policy.decorator import (
     require_active_any_perm,
     require_active_perm,
@@ -35,8 +35,17 @@ from app_odp.services.vendite_raggruppamenti_service import (
 )
 
 
+def _can_view_customer_orders(policy) -> bool:
+    return policy.has_direct_admin_role or not policy.can("utente_imballi")
+
+
 def _visible_assignment_dashboard():
-    return build_assignment_dashboard(include_planned=active_policy().can("visualizza_pianificati"))
+    policy = active_policy()
+    if not _can_view_customer_orders(policy):
+        abort(403)
+    return build_assignment_dashboard(
+        include_planned=policy.can("visualizza_pianificati")
+    )
 
 
 def _visible_production_dashboard():
@@ -55,6 +64,7 @@ def vendite_page():
     admin = policy.has_direct_admin_role
     return render_template(
         "vendite.j2",
+        can_view_customer_orders=_can_view_customer_orders(policy),
         can_edit_production_notes=admin or policy.can("utente_produzione"),
         can_confirm_packaging=(
             admin or policy.can("utente_produzione") or policy.can("utente_imballi")
@@ -85,6 +95,14 @@ def api_vendite_ordini_macchina():
 @require_active_perm("vendite")
 def vendite_assegnazioni_page():
     policy = active_policy()
+    if not _can_view_customer_orders(policy):
+        return redirect(
+            url_for(
+                "main.vendite_page",
+                vista="matricola",
+                tab_session=active_token(),
+            )
+        )
     admin = policy.has_direct_admin_role
     can_create_customer_orders = admin or policy.can("utente_vendite")
     return render_template(

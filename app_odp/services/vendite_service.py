@@ -260,6 +260,7 @@ def _customer_assignments(orders) -> dict[tuple, dict[str, str]]:
             VenditeOrdineClienteRiga.odp_id_riga,
             VenditeOrdineClienteRiga.odp_matricola,
             VenditeOrdineCliente.numero_ordine.label("customer_order"),
+            VenditeOrdineCliente.cliente_nome.label("customer_name"),
             VenditeOrdineClienteRiga.data_consegna.label("shipping_date"),
             VenditeOrdineClienteRiga.note_produzione.label("production_note"),
             VenditeOrdineClienteRiga.note_per_produzione.label("production_instructions"),
@@ -272,6 +273,7 @@ def _customer_assignments(orders) -> dict[tuple, dict[str, str]]:
     for row in rows:
         data = {
             "customer_order": row.customer_order or "",
+            "customer_name": row.customer_name or "",
             "shipping_date": row.shipping_date.isoformat() if row.shipping_date else "",
             "production_note": row.production_note or "",
             "production_instructions": row.production_instructions or "",
@@ -363,6 +365,9 @@ def _build_vendite_payload(
                 "customer_order": (
                     customer_assignment["customer_order"]
                     if customer_assignment else ""
+                ),
+                "customer_name": (
+                    customer_assignment["customer_name"] if customer_assignment else ""
                 ),
                 "model_code": model_code,
                 "variant": variant,

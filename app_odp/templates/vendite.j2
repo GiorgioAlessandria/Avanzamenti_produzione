@@ -2,46 +2,6 @@
 
 {% block title %}Vendite{% endblock %}
 
-{% block styles %}
-    {{ super() }}
-    <style>
-        #vendite-page .vendite-model-column {
-            min-width: 220px;
-        }
-
-        #vendite-page .vendite-note-column {
-            min-width: 260px;
-            white-space: normal;
-        }
-
-        #vendite-page .vendite-summary-table th:not(:first-child),
-        #vendite-page .vendite-summary-table td:not(:first-child) {
-            text-align: center;
-            vertical-align: middle;
-        }
-
-        #vendite-page .vendite-summary-table thead tr:first-child th {
-            border-bottom-width: 1px;
-        }
-
-        #vendite-page .vendite-summary-table .vendite-count {
-            min-width: 72px;
-            font-size: 1.35rem;
-            font-weight: 700;
-        }
-
-        #vendite-page .vendite-summary-table .vendite-count-positive {
-            color: #fff;
-            background-color: #495057 !important;
-            box-shadow: inset 0 0 0 9999px #495057 !important;
-        }
-
-        #vendite-page .vendite-summary-table .vendite-count-empty {
-            color: #adb5bd;
-        }
-    </style>
-{% endblock %}
-
 {% block content %}
     <main class="container-fluid py-3"
           id="vendite-page"
@@ -115,6 +75,7 @@
         <ul class="nav nav-tabs"
             id="vendite-tabs"
             role="tablist">
+            {% if can_view_customer_orders|default(true) %}
             <li class="nav-item"
                 role="presentation">
                 <a class="nav-link"
@@ -122,6 +83,7 @@
                     Ordini cliente
                 </a>
             </li>
+            {% endif %}
             <li class="nav-item"
                 role="presentation">
                 <button class="nav-link{{ ' active' if request.args.get('vista') == 'matricola' or not can_view_model_summary else '' }}"
@@ -181,7 +143,7 @@
                         Numero di macchine per fase e stato di produzione
                     </div>
                 </div>
-                <div class="table-responsive">
+                <div class="table-responsive vendite-table-scroll">
                     <table class="table table-striped table-hover align-middle mb-0 vendite-summary-table">
                         <thead class="table-light"
                                id="vendite-summary-head"></thead>
@@ -226,13 +188,13 @@
                                placeholder="Cerca matricola, ordine produzione o ordine cliente...">
                     </div>
                 </div>
-                <div class="table-responsive">
+                <div class="table-responsive vendite-table-scroll">
                     <table id="vendite-machines-table" class="table table-striped table-hover table-state-rowcolor align-middle mb-0">
                         <thead class="table-light">
                         <tr>
                             {% for key, label in [
                                 ('model_code', 'Modello'), ('serial_number', 'Matricola'),
-                                ('order', 'Ordine produzione'), ('customer_order', 'Ordine cliente'),
+                                ('order', 'Ordine produzione'), ('customer_name', 'Cliente'),
                                 ('shipping_date', 'Data spedizione'), ('phase', 'Fase'), ('state', 'Stato'),
                                 ('last_suspension_cause', 'Note / ultima causale di sospensione'),
                                 ('production_note', 'Note di produzione'), ('production_instructions', 'Note per produzione'),
@@ -528,7 +490,7 @@
                     <td>${modelLabel(machine)}</td>
                     <td class="fw-semibold">${esc(machine.serial_number)}</td>
                     <td>${esc(machine.order)}</td>
-                    <td>${esc(machine.customer_order || "—")}</td>
+                    <td>${esc(machine.customer_name || "—")}</td>
                     <td class="text-nowrap">${esc(formatShippingDate(machine.shipping_date))}</td>
                     <td data-phase-code="${esc(machine.phase)}">${esc(window.phaseLabel(machine.phase))}</td>
                     <td data-col="stato">${stateBadge(machine.state)}</td>
@@ -556,6 +518,7 @@
                 return machines.filter(machine => [
                     machine.serial_number,
                     machine.order,
+                    machine.customer_name,
                     machine.customer_order,
                 ].some(value => String(value || "").toLocaleLowerCase("it").includes(query)));
             }

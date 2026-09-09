@@ -1,4 +1,48 @@
 /* Scorrimento locale per tutte le tabelle dati, anche quelle create nei dialoghi. */
+
+/* Tabelle della situazione produzione vendite. */
+#vendite-page .vendite-model-column {
+    min-width: 220px;
+}
+
+#vendite-page .vendite-note-column {
+    min-width: 260px;
+    white-space: normal;
+}
+
+#vendite-page #vendite-machines-table {
+    min-width: max-content;
+}
+
+#vendite-page #vendite-machines-table > :is(thead, tbody) > tr > :is(th, td) {
+    vertical-align: middle;
+}
+
+#vendite-page .vendite-summary-table th:not(:first-child),
+#vendite-page .vendite-summary-table td:not(:first-child) {
+    text-align: center;
+    vertical-align: middle;
+}
+
+#vendite-page .vendite-summary-table thead tr:first-child th {
+    border-bottom-width: 1px;
+}
+
+#vendite-page .vendite-summary-table .vendite-count {
+    min-width: 72px;
+    font-size: 1.35rem;
+    font-weight: 700;
+}
+
+#vendite-page .vendite-summary-table .vendite-count-positive {
+    color: #fff;
+    background-color: #495057 !important;
+    box-shadow: inset 0 0 0 9999px #495057 !important;
+}
+
+#vendite-page .vendite-summary-table .vendite-count-empty {
+    color: #adb5bd;
+}
 @media screen {
     /* Le altezze specifiche delle singole pagine hanno la precedenza. */
     :where(div:has(> table > thead)) {
