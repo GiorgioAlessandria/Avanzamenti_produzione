@@ -998,6 +998,7 @@
             }
 
             function renderPackagingNotes(items) {
+                if (!packagingNotesBody) return;
                 const byReference = Object.fromEntries(
                     (items || []).map(item => [item.reference, item])
                 );
@@ -1780,7 +1781,7 @@
                 );
             });
 
-            packagingNotesBody.addEventListener("input", event => {
+            packagingNotesBody?.addEventListener("input", event => {
                 if (event.target.matches("[data-packaging-reference]")) {
                     packagingNotesDirty = true;
                 }

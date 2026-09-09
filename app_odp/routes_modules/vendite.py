@@ -48,7 +48,9 @@ def _visible_assignment_dashboard():
     if not _can_view_customer_orders(policy):
         abort(403)
     return build_assignment_dashboard(
-        include_planned=policy.can("visualizza_pianificati")
+        include_planned=(
+            policy.can("visualizza_pianificati") or policy.can("utente_produzione")
+        )
     )
 
 
