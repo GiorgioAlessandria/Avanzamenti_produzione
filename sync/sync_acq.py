@@ -118,6 +118,10 @@ def leggi_view(
         "vwESGiacenza",
         "vwESGiacenzaLotti",
         "vwESArticoli",
+        "vwESMatricole",
+        "vwESClientiFornitori",
+        "vwESOrdiniForCLavAperti",
+        "vwESOrdiniClienteAperti",
     ],
     colonna_filtro_esclusi: Optional[str] = "",
     colonna_filtro_stato: Optional[str] = "",
@@ -338,6 +342,123 @@ def ensure_schema():
                                                                synced_at TEXT,
                                                                PRIMARY KEY (IdDocumento, IdRiga, NumFase, CodArt, VarianteArt)
         )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS matricole_macchine (
+                                                     CodMatricola TEXT NOT NULL PRIMARY KEY,
+                                                     CodArt TEXT NOT NULL,
+                                                     CodMag TEXT NOT NULL,
+                                                     CodAreaMag TEXT,
+                                                     synced_at TEXT
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS ix_matricole_macchine_codart
+            ON matricole_macchine (CodArt)
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS ix_matricole_macchine_codmag
+            ON matricole_macchine (CodMag)
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS clienti_fornitori (
+                                                         TipoAnagrafica TEXT NOT NULL,
+                                                         CodCliFor TEXT NOT NULL,
+                                                         RagioneSociale TEXT,
+                                                         Indirizzo TEXT,
+                                                         Cap TEXT,
+                                                         Localita TEXT,
+                                                         Provincia TEXT,
+                                                         CodStato TEXT,
+                                                         synced_at TEXT,
+                                                         PRIMARY KEY (TipoAnagrafica, CodCliFor)
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS ix_clienti_fornitori_codclifor
+            ON clienti_fornitori (CodCliFor)
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS ix_clienti_fornitori_ragionesociale
+            ON clienti_fornitori (RagioneSociale)
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS ordini_for_clav_aperti (
+                                                               IdDocumento TEXT NOT NULL,
+                                                               IdRigaDoc TEXT NOT NULL,
+                                                               GruppoDoc TEXT,
+                                                               CodTipoDoc TEXT,
+                                                               DataRegistrazione TEXT,
+                                                               CodSerie TEXT,
+                                                               NumRegistraz TEXT,
+                                                               NumDocOriginale TEXT,
+                                                               DataOriginale TEXT,
+                                                               TipoAnagrafica TEXT,
+                                                               CodCliFor TEXT,
+                                                               TipoRigaDoc TEXT,
+                                                               CodArt TEXT,
+                                                               DesArt TEXT,
+                                                               DesEstesa TEXT,
+                                                               DataConsegna TEXT,
+                                                               UmDoc TEXT,
+                                                               QTA_ORD REAL,
+                                                               QTA_CONS REAL,
+                                                               QTA_SALDO_DOC REAL,
+                                                               Commento_Riga_Saldata TEXT,
+                                                               NotaInterna TEXT,
+                                                               synced_at TEXT,
+                                                               PRIMARY KEY (IdDocumento, IdRigaDoc)
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS ix_ordini_for_clav_codclifor
+            ON ordini_for_clav_aperti (CodCliFor)
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS ix_ordini_for_clav_codart
+            ON ordini_for_clav_aperti (CodArt)
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS ix_ordini_for_clav_dataconsegna
+            ON ordini_for_clav_aperti (DataConsegna)
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS ordini_cliente_aperti (
+                                                               IdDocumento TEXT NOT NULL,
+                                                               IdRigaDoc TEXT NOT NULL,
+                                                               CodTipoDoc TEXT,
+                                                               DataRegistrazione TEXT,
+                                                               CodSerie TEXT,
+                                                               NumRegistraz TEXT,
+                                                               NumDocOriginale TEXT,
+                                                               DataOriginale TEXT,
+                                                               CodCliFor TEXT,
+                                                               TipoRigaDoc TEXT,
+                                                               CodArt TEXT,
+                                                               DesArt TEXT,
+                                                               DesEstesa TEXT,
+                                                               DataConsegna TEXT,
+                                                               UmDoc TEXT,
+                                                               QTA_ORD REAL,
+                                                               QTA_CONS REAL,
+                                                               QTA_SALDO_DOC REAL,
+                                                               Commento_Riga_Saldata TEXT,
+                                                               NotaInterna TEXT,
+                                                               synced_at TEXT,
+                                                               PRIMARY KEY (IdDocumento, IdRigaDoc)
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS ix_ordini_cliente_codclifor
+            ON ordini_cliente_aperti (CodCliFor)
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS ix_ordini_cliente_codart
+            ON ordini_cliente_aperti (CodArt)
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS ix_ordini_cliente_dataconsegna
+            ON ordini_cliente_aperti (DataConsegna)
         """,
         """
         CREATE TABLE IF NOT EXISTS acq_articoli_lookup (
@@ -592,6 +713,347 @@ def build_acq_giacenze(df_giacenza: pd.DataFrame) -> pd.DataFrame:
     ].copy()
 
 
+def build_matricole_macchine(df_matricole: pd.DataFrame) -> pd.DataFrame:
+    synced_at = datetime.now(ZoneInfo(TIMEZONE or "Europe/Rome")).isoformat(
+        timespec="seconds"
+    )
+
+    needed_cols = ["CodArt", "CodMatricola", "CodMag", "CodAreaMag"]
+    for col in needed_cols:
+        if col not in df_matricole.columns:
+            df_matricole[col] = None
+
+    df = df_matricole[needed_cols].copy()
+
+    # CodArt, CodMatricola e CodMag sono obbligatori nella vista ERP.
+    df = df.dropna(subset=["CodArt", "CodMatricola", "CodMag"], how="any")
+    df["CodArt"] = df["CodArt"].astype(str).str.strip()
+    df["CodMatricola"] = df["CodMatricola"].astype(str).str.strip()
+    df["CodMag"] = df["CodMag"].astype(str).str.strip()
+    df["CodAreaMag"] = df["CodAreaMag"].apply(
+        lambda value: None if not _norm_text(value) else _norm_text(value)
+    )
+
+    df = df[
+        (df["CodArt"] != "")
+        & (df["CodMatricola"] != "")
+        & (df["CodMag"] != "")
+    ]
+
+    # La matricola deve essere univoca: non nascondiamo eventuali anomalie ERP.
+    duplicate_mask = df["CodMatricola"].duplicated(keep=False)
+    if duplicate_mask.any():
+        duplicate_values = sorted(df.loc[duplicate_mask, "CodMatricola"].unique().tolist())
+        raise ValueError(
+            "CodMatricola duplicata in vwESMatricole: "
+            + ", ".join(duplicate_values[:20])
+        )
+
+    df["synced_at"] = synced_at
+
+    return df[
+        [
+            "CodMatricola",
+            "CodArt",
+            "CodMag",
+            "CodAreaMag",
+            "synced_at",
+        ]
+    ].copy()
+
+
+def build_clienti_fornitori(df_clienti_fornitori: pd.DataFrame) -> pd.DataFrame:
+    synced_at = datetime.now(ZoneInfo(TIMEZONE or "Europe/Rome")).isoformat(
+        timespec="seconds"
+    )
+
+    needed_cols = [
+        "TipoAnagrafica",
+        "CodCliFor",
+        "RagioneSociale",
+        "Indirizzo",
+        "Cap",
+        "Localita",
+        "Provincia",
+        "CodStato",
+    ]
+    for col in needed_cols:
+        if col not in df_clienti_fornitori.columns:
+            df_clienti_fornitori[col] = None
+
+    df = df_clienti_fornitori[needed_cols].copy()
+
+    # TipoAnagrafica + CodCliFor identificano in modo sicuro una riga.
+    # La chiave composta evita collisioni nel caso in cui lo stesso codice
+    # venga usato sia per un cliente sia per un fornitore.
+    df = df.dropna(subset=["TipoAnagrafica", "CodCliFor"], how="any")
+    df["TipoAnagrafica"] = df["TipoAnagrafica"].astype(str).str.strip()
+    df["CodCliFor"] = df["CodCliFor"].astype(str).str.strip()
+    df = df[(df["TipoAnagrafica"] != "") & (df["CodCliFor"] != "")]
+
+    nullable_cols = [
+        "RagioneSociale",
+        "Indirizzo",
+        "Cap",
+        "Localita",
+        "Provincia",
+        "CodStato",
+    ]
+    for col in nullable_cols:
+        df[col] = df[col].apply(
+            lambda value: None if not _norm_text(value) else _norm_text(value)
+        )
+
+    duplicate_mask = df.duplicated(
+        subset=["TipoAnagrafica", "CodCliFor"],
+        keep=False,
+    )
+    if duplicate_mask.any():
+        duplicate_values = (
+            df.loc[duplicate_mask, ["TipoAnagrafica", "CodCliFor"]]
+            .drop_duplicates()
+            .head(20)
+            .apply(lambda row: f"{row['TipoAnagrafica']}:{row['CodCliFor']}", axis=1)
+            .tolist()
+        )
+        raise ValueError(
+            "Chiave TipoAnagrafica/CodCliFor duplicata in vwESClientiFornitori: "
+            + ", ".join(duplicate_values)
+        )
+
+    df["synced_at"] = synced_at
+
+    return df[
+        [
+            "TipoAnagrafica",
+            "CodCliFor",
+            "RagioneSociale",
+            "Indirizzo",
+            "Cap",
+            "Localita",
+            "Provincia",
+            "CodStato",
+            "synced_at",
+        ]
+    ].copy()
+
+
+def build_ordini_for_clav_aperti(df_ordini: pd.DataFrame) -> pd.DataFrame:
+    synced_at = datetime.now(ZoneInfo(TIMEZONE or "Europe/Rome")).isoformat(
+        timespec="seconds"
+    )
+
+    needed_cols = [
+        "IdDocumento",
+        "IdRigaDoc",
+        "GruppoDoc",
+        "CodTipoDoc",
+        "DataRegistrazione",
+        "CodSerie",
+        "NumRegistraz",
+        "NumDocOriginale",
+        "DataOriginale",
+        "TipoAnagrafica",
+        "CodCliFor",
+        "TipoRigaDoc",
+        "CodArt",
+        "DesArt",
+        "DesEstesa",
+        "DataConsegna",
+        "UmDoc",
+        "QTA_ORD",
+        "QTA_CONS",
+        "QTA_SALDO_DOC",
+        "Commento_Riga_Saldata",
+        "NotaInterna",
+    ]
+
+    for col in needed_cols:
+        if col not in df_ordini.columns:
+            df_ordini[col] = None
+
+    df = df_ordini[needed_cols].copy()
+
+    # La riga documento viene identificata dalla coppia IdDocumento + IdRigaDoc.
+    df = df.dropna(subset=["IdDocumento", "IdRigaDoc"], how="any")
+    df["IdDocumento"] = df["IdDocumento"].astype(str).str.strip()
+    df["IdRigaDoc"] = df["IdRigaDoc"].astype(str).str.strip()
+    df = df[(df["IdDocumento"] != "") & (df["IdRigaDoc"] != "")]
+
+    text_cols = [
+        "GruppoDoc",
+        "CodTipoDoc",
+        "CodSerie",
+        "NumRegistraz",
+        "NumDocOriginale",
+        "TipoAnagrafica",
+        "CodCliFor",
+        "TipoRigaDoc",
+        "CodArt",
+        "DesArt",
+        "DesEstesa",
+        "UmDoc",
+        "Commento_Riga_Saldata",
+        "NotaInterna",
+    ]
+    for col in text_cols:
+        df[col] = df[col].apply(
+            lambda value: None if not _norm_text(value) else _norm_text(value)
+        )
+
+    # Normalizziamo le date come ISO YYYY-MM-DD[THH:MM:SS] per SQLite.
+    for col in ["DataRegistrazione", "DataOriginale", "DataConsegna"]:
+        def _date_to_iso(value):
+            if value is None:
+                return None
+            try:
+                if pd.isna(value):
+                    return None
+            except (TypeError, ValueError):
+                pass
+            if isinstance(value, pd.Timestamp):
+                return value.isoformat()
+            if isinstance(value, datetime):
+                return value.isoformat()
+            if isinstance(value, date):
+                return value.isoformat()
+            text = str(value).strip()
+            return text or None
+
+        df[col] = df[col].apply(_date_to_iso)
+
+    for col in ["QTA_ORD", "QTA_CONS", "QTA_SALDO_DOC"]:
+        df[col] = df[col].apply(lambda value: None if pd.isna(value) else _safe_float(value))
+
+    duplicate_mask = df.duplicated(
+        subset=["IdDocumento", "IdRigaDoc"],
+        keep=False,
+    )
+    if duplicate_mask.any():
+        duplicate_values = (
+            df.loc[duplicate_mask, ["IdDocumento", "IdRigaDoc"]]
+            .drop_duplicates()
+            .head(20)
+            .apply(lambda row: f"{row['IdDocumento']}:{row['IdRigaDoc']}", axis=1)
+            .tolist()
+        )
+        raise ValueError(
+            "Chiave IdDocumento/IdRigaDoc duplicata in vwESOrdiniForCLavAperti: "
+            + ", ".join(duplicate_values)
+        )
+
+    df["synced_at"] = synced_at
+
+    return df[needed_cols + ["synced_at"]].copy()
+
+
+def build_ordini_cliente_aperti(df_ordini: pd.DataFrame) -> pd.DataFrame:
+    synced_at = datetime.now(ZoneInfo(TIMEZONE or "Europe/Rome")).isoformat(
+        timespec="seconds"
+    )
+
+    needed_cols = [
+        "IdDocumento",
+        "IdRigaDoc",
+        "CodTipoDoc",
+        "DataRegistrazione",
+        "CodSerie",
+        "NumRegistraz",
+        "NumDocOriginale",
+        "DataOriginale",
+        "CodCliFor",
+        "TipoRigaDoc",
+        "CodArt",
+        "DesArt",
+        "DesEstesa",
+        "DataConsegna",
+        "UmDoc",
+        "QTA_ORD",
+        "QTA_CONS",
+        "QTA_SALDO_DOC",
+        "Commento_Riga_Saldata",
+        "NotaInterna",
+    ]
+
+    for col in needed_cols:
+        if col not in df_ordini.columns:
+            df_ordini[col] = None
+
+    df = df_ordini[needed_cols].copy()
+
+    # La riga documento viene identificata dalla coppia IdDocumento + IdRigaDoc.
+    df = df.dropna(subset=["IdDocumento", "IdRigaDoc"], how="any")
+    df["IdDocumento"] = df["IdDocumento"].astype(str).str.strip()
+    df["IdRigaDoc"] = df["IdRigaDoc"].astype(str).str.strip()
+    df = df[(df["IdDocumento"] != "") & (df["IdRigaDoc"] != "")]
+
+    text_cols = [
+        "CodTipoDoc",
+        "CodSerie",
+        "NumRegistraz",
+        "NumDocOriginale",
+        "CodCliFor",
+        "TipoRigaDoc",
+        "CodArt",
+        "DesArt",
+        "DesEstesa",
+        "UmDoc",
+        "Commento_Riga_Saldata",
+        "NotaInterna",
+    ]
+    for col in text_cols:
+        df[col] = df[col].apply(
+            lambda value: None if not _norm_text(value) else _norm_text(value)
+        )
+
+    # Normalizziamo le date come ISO YYYY-MM-DD[THH:MM:SS] per SQLite.
+    for col in ["DataRegistrazione", "DataOriginale", "DataConsegna"]:
+        def _date_to_iso(value):
+            if value is None:
+                return None
+            try:
+                if pd.isna(value):
+                    return None
+            except (TypeError, ValueError):
+                pass
+            if isinstance(value, pd.Timestamp):
+                return value.isoformat()
+            if isinstance(value, datetime):
+                return value.isoformat()
+            if isinstance(value, date):
+                return value.isoformat()
+            text = str(value).strip()
+            return text or None
+
+        df[col] = df[col].apply(_date_to_iso)
+
+    for col in ["QTA_ORD", "QTA_CONS", "QTA_SALDO_DOC"]:
+        df[col] = df[col].apply(
+            lambda value: None if pd.isna(value) else _safe_float(value)
+        )
+
+    duplicate_mask = df.duplicated(
+        subset=["IdDocumento", "IdRigaDoc"],
+        keep=False,
+    )
+    if duplicate_mask.any():
+        duplicate_values = (
+            df.loc[duplicate_mask, ["IdDocumento", "IdRigaDoc"]]
+            .drop_duplicates()
+            .head(20)
+            .apply(lambda row: f"{row['IdDocumento']}:{row['IdRigaDoc']}", axis=1)
+            .tolist()
+        )
+        raise ValueError(
+            "Chiave IdDocumento/IdRigaDoc duplicata in vwESOrdiniClienteAperti: "
+            + ", ".join(duplicate_values)
+        )
+
+    df["synced_at"] = synced_at
+
+    return df[needed_cols + ["synced_at"]].copy()
+
+
 def _parse_distinta_materiale(value) -> list[dict]:
     if value is None:
         return []
@@ -784,6 +1246,10 @@ def elaborazione_dati_acq():
 
     df_articoli = leggi_view("vwESArticoli", colonna_filtro_esclusi="CodArt")
     df_giacenza = leggi_view("vwESGiacenza", colonna_filtro_esclusi="CodArt")
+    df_matricole = leggi_view("vwESMatricole")
+    df_clienti_fornitori = leggi_view("vwESClientiFornitori")
+    df_ordini_for_clav = leggi_view("vwESOrdiniForCLavAperti")
+    df_ordini_cliente = leggi_view("vwESOrdiniClienteAperti")
     df_input_odp_aperti = leggi_input_odp_aperti()
 
     df_acq_articoli = build_acq_articoli(df_articoli)
@@ -792,6 +1258,10 @@ def elaborazione_dati_acq():
         df_giacenza,
     )
     df_acq_giacenze = build_acq_giacenze(df_giacenza)
+    df_matricole_macchine = build_matricole_macchine(df_matricole)
+    df_clienti_fornitori_cache = build_clienti_fornitori(df_clienti_fornitori)
+    df_ordini_for_clav_cache = build_ordini_for_clav_aperti(df_ordini_for_clav)
+    df_ordini_cliente_cache = build_ordini_cliente_aperti(df_ordini_cliente)
     df_acq_fabbisogno_odp = build_acq_fabbisogno_odp(df_input_odp_aperti)
     df_acq_riepilogo = build_acq_riepilogo_materiali(
         df_acq_fabbisogno_odp,
@@ -802,14 +1272,22 @@ def elaborazione_dati_acq():
     _replace_table(sqlite_engine_acq, "acq_articoli", df_acq_articoli)
     _replace_table(sqlite_engine_acq, "acq_articoli_lookup", df_acq_articoli_lookup)
     _replace_table(sqlite_engine_acq, "acq_giacenze", df_acq_giacenze)
+    _replace_table(sqlite_engine_acq, "matricole_macchine", df_matricole_macchine)
+    _replace_table(sqlite_engine_acq, "clienti_fornitori", df_clienti_fornitori_cache)
+    _replace_table(sqlite_engine_acq, "ordini_for_clav_aperti", df_ordini_for_clav_cache)
+    _replace_table(sqlite_engine_acq, "ordini_cliente_aperti", df_ordini_cliente_cache)
     _replace_table(sqlite_engine_acq, "acq_fabbisogno_odp", df_acq_fabbisogno_odp)
     _replace_table(sqlite_engine_acq, "acq_riepilogo_materiali", df_acq_riepilogo)
 
     logging.info(
-        "Sync acquisti completato | articoli=%s | articoli_lookup=%s | giacenze=%s | fabbisogno_odp=%s | riepilogo=%s",
+        "Sync acquisti completato | articoli=%s | articoli_lookup=%s | giacenze=%s | matricole=%s | clienti_fornitori=%s | ordini_for_clav_aperti=%s | ordini_cliente_aperti=%s | fabbisogno_odp=%s | riepilogo=%s",
         len(df_acq_articoli),
         len(df_acq_articoli_lookup),
         len(df_acq_giacenze),
+        len(df_matricole_macchine),
+        len(df_clienti_fornitori_cache),
+        len(df_ordini_for_clav_cache),
+        len(df_ordini_cliente_cache),
         len(df_acq_fabbisogno_odp),
         len(df_acq_riepilogo),
     )
