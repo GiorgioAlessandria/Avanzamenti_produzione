@@ -10,7 +10,7 @@
             <div class="text-muted">Ordini fornitore e conto lavoro aperti dal gestionale</div>
         </div>
         <div class="d-flex gap-2">
-            <a class="btn btn-outline-secondary" href="{{ url_for('main.home_acquisti') }}">Torna agli acquisti</a>
+            <a class="btn btn-outline-secondary" href="{{ operator_url_for('main.home_acquisti') }}">Torna agli acquisti</a>
             <button class="btn btn-primary js-view" type="button" data-view="list">Elenco</button>
             <button class="btn btn-outline-primary js-view" type="button" data-view="calendar">Calendario</button>
         </div>
@@ -94,7 +94,7 @@
                             </td>
                             <td>
                                 <form id="purchase-{{ group_loop.index0 }}-{{ loop.index0 }}" method="post"
-                                      action="{{ url_for('main.acquisti_ordine_fornitore_update') }}">
+                                      action="{{ operator_url_for('main.acquisti_ordine_fornitore_update') }}">
                                     <input type="hidden" name="id_documento" value="{{ row.IdDocumento }}">
                                     <input type="hidden" name="id_riga" value="{{ row.IdRigaDoc }}">
                                     <textarea class="form-control form-control-sm" name="note" maxlength="2000"
@@ -293,7 +293,7 @@
         const body = new FormData(form);
         body.set("action", button.value);
         try {
-            const response = await (window.avpFetch || window.fetch)(form.action, {
+            const response = await (window.avpFetch || window.fetch)(form.getAttribute("action"), {
                 method: "POST",
                 headers: {"X-Requested-With": "XMLHttpRequest", "Accept": "application/json"},
                 credentials: "same-origin",
@@ -338,7 +338,7 @@
             alert(error.message || "Errore durante il salvataggio.");
             button.disabled = false;
         } finally {
-            if (button.value !== "sollecita") button.disabled = false;
+            if (!button.classList.contains("is-driving")) button.disabled = false;
         }
     }));
 })();
