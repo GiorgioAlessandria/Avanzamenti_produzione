@@ -1,15 +1,12 @@
 import json
 import unicodedata
 from datetime import date, datetime
-from types import SimpleNamespace
-
 from sqlalchemy import func, or_, tuple_
 from sqlalchemy.orm import selectinload
 
 from app_odp.models import (
     AcqArticoliLookup,
     AcqClienteFornitore,
-    AcqMatricolaMacchina,
     AcqOrdineClienteAperto,
     InputOdp,
     InputOdpLog,
@@ -29,16 +26,15 @@ from app_odp.services.vendite_service import (
     _packaging_confirmations,
     _machine_options,
     _phase_label,
-    _stock_machine,
+    INVENTORY_DOCUMENT,
     is_open_machine_order,
+    load_inventory_machine_orders,
     load_machine_orders,
-    load_stock_machine_orders,
 )
 from app_odp.vendite_models import (
     VENDITE_DEFAULT_PACKAGING_NOTES,
     VENDITE_INTERNAL_REFERENCES,
     VenditeImballoMacchina,
-    VenditeMacchinaStock,
     VenditeNotaImballaggio,
     VenditeNotaProduzioneMacchina,
     VenditeOpzioneMacchina,
@@ -53,7 +49,6 @@ MAX_NOTE = 1000
 MAX_EXPANDED_ROWS = 500
 LOG_QUERY_BATCH_SIZE = 400
 STOCK_LABEL = "STOCK"
-INVENTORY_DOCUMENT = "MATRICOLA"
 
 
 class VenditeAssegnazioniError(ValueError):
@@ -208,195 +203,22 @@ def _customer_rows_for_machine(
     return query.all()
 
 
-def _matching_stock_record(
-    id_documento: str,
-    id_riga: str,
-    serial_number: str,
-) -> VenditeMacchinaStock | None:
-    by_key = VenditeMacchinaStock.query.filter_by(
-        odp_id_documento=id_documento,
-        odp_id_riga=id_riga,
-    ).one_or_none()
-    by_serial = VenditeMacchinaStock.query.filter_by(
-        matricola=serial_number,
-    ).one_or_none()
-    if by_key is not None and by_key.matricola != serial_number:
-        raise VenditeAssegnazioniConflictError(
-            "L'ordine macchina risulta già memorizzato nello STOCK con una matricola diversa."
-        )
-    if by_serial is not None and (
-        by_serial.odp_id_documento,
-        by_serial.odp_id_riga,
-    ) != (id_documento, id_riga):
-        raise VenditeAssegnazioniConflictError(
-            "La matricola risulta già memorizzata nello STOCK per un altro ordine macchina."
-        )
-    return by_key or by_serial
-
-
-def validate_closed_machine_stock(machine) -> bool:
-    """Valida i dati necessari al registro locale di una chiusura macchina."""
-    id_documento, id_riga = _machine_key(machine)
-    if not id_documento or not id_riga:
-        raise VenditeAssegnazioniError(
-            "Impossibile chiudere la macchina: riferimento dell'ordine incompleto."
-        )
-
-    model_code = _norm_text(getattr(machine, "CodArt", ""))
-    if not model_code:
-        raise VenditeAssegnazioniError(
-            "Impossibile chiudere la macchina: il modello non è valorizzato."
-        )
-    serial_number = _machine_serial(machine)
-    if (
-        len(serial_number) != 6
-        or not serial_number.isascii()
-        or not serial_number.isdigit()
-    ):
-        raise VenditeAssegnazioniError(
-            "Impossibile chiudere la macchina: la matricola deve contenere esattamente 6 cifre."
-        )
-
-    assigned_by_key = VenditeOrdineClienteRiga.query.filter_by(
-        odp_id_documento=id_documento,
-        odp_id_riga=id_riga,
-    ).first()
-    if assigned_by_key is not None and _normalized_key(
-        assigned_by_key.odp_matricola
-    ) != _normalized_key(serial_number):
-        raise VenditeAssegnazioniConflictError(
-            "La matricola dell'ordine macchina non coincide con quella già assegnata "
-            "all'ordine cliente."
-        )
-
-    assigned_serial_query = VenditeOrdineClienteRiga.query.filter_by(
-        odp_matricola=serial_number,
-    )
-    if assigned_by_key is not None:
-        assigned_serial_query = assigned_serial_query.filter(
-            VenditeOrdineClienteRiga.id != assigned_by_key.id,
-        )
-    assigned_by_serial = assigned_serial_query.first()
-    if assigned_by_serial is not None:
-        raise VenditeAssegnazioniConflictError(
-            "La matricola risulta già assegnata a un altro ordine cliente."
-        )
-
-    _matching_stock_record(id_documento, id_riga, serial_number)
-    return True
-
-
-def register_closed_machine_stock(
-    machine,
-    *,
-    closed_at: str | None = None,
-    closed_by: str = "",
-) -> VenditeMacchinaStock:
-    validate_closed_machine_stock(machine)
-
-    id_documento, id_riga = _machine_key(machine)
-    serial_number = _machine_serial(machine)
-    model_code = _norm_text(getattr(machine, "CodArt", ""))
-    existing = _matching_stock_record(id_documento, id_riga, serial_number)
-    if existing is not None:
-        return existing
-
-    stock = VenditeMacchinaStock(
-        odp_id_documento=id_documento,
-        odp_id_riga=id_riga,
-        odp_rif_registraz=(
-            _norm_text(getattr(machine, "RifRegistraz", "")) or None
-        ),
-        odp_num_progr_riga=(
-            _norm_text(getattr(machine, "NumProgrRiga", "")) or None
-        ),
-        modello_codice=model_code,
-        modello_variante=_norm_text(getattr(machine, "VarianteArt", "")),
-        modello_descrizione=(
-            _norm_text(getattr(machine, "DesArt", "")) or None
-        ),
-        matricola=serial_number,
-        inserita_il=closed_at or _now_rome_dt().isoformat(timespec="seconds"),
-        inserita_da_nome=_norm_text(closed_by) or "operatore",
-    )
-    db.session.add(stock)
-    db.session.flush()
-    return stock
-
-
 def load_assignable_machine_orders() -> list:
     return _unique_machines_by_serial(
-        _load_inventory_machines() + load_stock_machine_orders() + load_machine_orders()
+        load_inventory_machine_orders() + load_machine_orders()
     )
-
-
-def _inventory_machine(item: AcqMatricolaMacchina):
-    return SimpleNamespace(
-        IdDocumento=INVENTORY_DOCUMENT,
-        IdRiga=_norm_text(item.CodMatricola),
-        RifRegistraz="MAGAZZINO",
-        NumProgrRiga="",
-        CodArt=_norm_text(item.CodArt),
-        VarianteArt="",
-        DesArt="",
-        CodMatricola=_norm_text(item.CodMatricola),
-        GestioneMatricola="si",
-        FaseAttiva="",
-        StatoOrdine="Disponibile",
-        IsInventory=True,
-    )
-
-
-def _load_inventory_machines() -> list:
-    return [
-        _inventory_machine(item)
-        for item in AcqMatricolaMacchina.query.filter(
-            func.trim(func.coalesce(AcqMatricolaMacchina.CodMag, "")) == "0",
-            func.trim(func.coalesce(AcqMatricolaMacchina.CodMatricola, "")) != "",
-            func.trim(func.coalesce(AcqMatricolaMacchina.CodArt, "")) != "",
-        ).order_by(
-            AcqMatricolaMacchina.CodArt,
-            AcqMatricolaMacchina.CodMatricola,
-        ).all()
-    ]
-
-
-def _stock_record(id_documento: str, id_riga: str):
-    return VenditeMacchinaStock.query.filter_by(
-        odp_id_documento=id_documento,
-        odp_id_riga=id_riga,
-    ).one_or_none()
-
-
-def _ensure_no_production_serial_conflict(stock: VenditeMacchinaStock) -> None:
-    duplicate = (
-        _base_odp_query()
-        .filter(
-            InputOdp.CodMatricola == stock.matricola,
-            or_(
-                InputOdp.IdDocumento != stock.odp_id_documento,
-                InputOdp.IdRiga != stock.odp_id_riga,
-            ),
-        )
-        .first()
-    )
-    if duplicate is not None:
-        raise VenditeAssegnazioniConflictError(
-            "La matricola STOCK risulta presente anche su un altro ordine macchina in produzione. "
-            "Correggere il conflitto prima di confermare la spedizione."
-        )
 
 
 def _find_current_machine(id_documento: str, id_riga: str):
     if id_documento == INVENTORY_DOCUMENT:
-        item = AcqMatricolaMacchina.query.filter(
-            AcqMatricolaMacchina.CodMatricola == id_riga,
-            func.trim(func.coalesce(AcqMatricolaMacchina.CodMag, "")) == "0",
-        ).one_or_none()
-        return _inventory_machine(item) if item is not None else None
-    stock = _stock_record(id_documento, id_riga)
-    if stock is not None:
-        return _stock_machine(stock)
+        return next(
+            (
+                machine
+                for machine in load_inventory_machine_orders()
+                if _machine_key(machine) == (id_documento, id_riga)
+            ),
+            None,
+        )
     return (
         _base_odp_query()
         .filter(
@@ -416,36 +238,6 @@ def _find_assignable_machine(id_documento: str, id_riga: str):
     ):
         return None
     return machine
-
-
-def ship_stock_machine(
-    id_documento,
-    id_riga,
-    *,
-    commit: bool = False,
-) -> VenditeMacchinaStock:
-    id_documento = _required_text(id_documento, "IdDocumento", 500)
-    id_riga = _required_text(id_riga, "IdRiga", 500)
-    stock = _stock_record(id_documento, id_riga)
-    if stock is None:
-        raise VenditeAssegnazioniConflictError(
-            "La matricola STOCK non è più disponibile. Aggiornare la pagina e riprovare."
-        )
-    if _customer_rows_for_machine(
-        id_documento,
-        id_riga,
-        stock.matricola,
-    ):
-        raise VenditeAssegnazioniConflictError(
-            "La matricola è già assegnata a un ordine cliente e deve essere spedita da quell'ordine."
-        )
-
-    _ensure_no_production_serial_conflict(stock)
-    db.session.delete(stock)
-    db.session.flush()
-    if commit:
-        db.session.commit()
-    return stock
 
 
 def _internal_reference(value) -> str:
@@ -819,65 +611,6 @@ def _assign_machine_snapshot(
     row.assegnata_da_id = actor_id
     row.assegnata_da_nome = actor_name
     row.assegnazione_automatica = automatic
-
-
-def auto_assign_activated_machine(machine, *, phase) -> VenditeOrdineClienteRiga | None:
-    if (
-        _fase_to_int(phase) not in {1, 2}
-        or _norm_text(getattr(machine, "GestioneMatricola", "")).casefold()
-        != "si"
-        or not _norm_text(getattr(machine, "CodMatricola", ""))
-    ):
-        return None
-
-    stock = VenditeMacchinaStock.query.filter_by(
-        matricola=_machine_serial(machine),
-    ).first()
-    if stock is not None:
-        machine = _stock_machine(stock)
-
-    machine_key = _machine_key(machine)
-    if not all(machine_key):
-        return None
-    serial_number = _machine_serial(machine)
-    if _customer_rows_for_machine(
-        machine_key[0],
-        machine_key[1],
-        serial_number,
-    ):
-        return None
-
-    model_key = _model_key(machine.CodArt, machine.VarianteArt)
-    today = _now_rome_dt().date()
-    candidates = [
-        row
-        for row in VenditeOrdineClienteRiga.query.filter(
-            VenditeOrdineClienteRiga.odp_id_documento.is_(None),
-            VenditeOrdineClienteRiga.odp_id_riga.is_(None),
-        ).all()
-        if _model_key(row.modello_codice, row.modello_variante) == model_key
-    ]
-    if not candidates:
-        return None
-
-    row = min(
-        candidates,
-        key=lambda item: (
-            abs((item.data_consegna - today).days),
-            item.data_consegna,
-            item.id,
-        ),
-    )
-    _assign_machine_snapshot(
-        row,
-        machine,
-        actor_id=None,
-        actor_name="Assegnazione automatica",
-        automatic=True,
-    )
-    _require_read_confirmation(row.ordine_cliente)
-    db.session.flush()
-    return row
 
 
 def set_machine_assignment(
@@ -1476,7 +1209,10 @@ def _sync_open_customer_orders() -> None:
         if _norm_text(code)
     }
     clients = {
-        _norm_text(item.CodCliFor): _norm_text(item.RagioneSociale)
+        _norm_text(item.CodCliFor): (
+            _norm_text(item.RagioneSociale),
+            _norm_text(item.CodStato).upper(),
+        )
         for item in AcqClienteFornitore.query.filter(
             func.trim(func.coalesce(AcqClienteFornitore.TipoAnagrafica, "")) == "1"
         ).all()
@@ -1512,14 +1248,16 @@ def _sync_open_customer_orders() -> None:
     changed = False
     for client_code, source_rows in source_by_client.items():
         customer = managed_orders.pop(client_code, None)
-        customer_name = clients.get(client_code) or client_code
+        customer_name, country_code = clients.get(client_code, (client_code, ""))
+        customer_name = customer_name or client_code
+        internal_reference = "ITALIA" if country_code == "IT" else "ESTERO"
         if customer is None:
             customer = VenditeOrdineCliente(
                 cliente_nome=customer_name,
                 cliente_chiave=_normalized_key(customer_name),
                 numero_ordine=f"GESTIONALE:{client_code}",
                 numero_ordine_chiave=_normalized_key(f"GESTIONALE:{client_code}"),
-                riferimento_interno="ITALIA",
+                riferimento_interno=internal_reference,
                 creato_da_nome="Sincronizzazione gestionale",
                 confermato_il=_now_rome_dt().isoformat(timespec="seconds"),
                 confermato_da_nome="Sincronizzazione gestionale",
@@ -1530,6 +1268,9 @@ def _sync_open_customer_orders() -> None:
         elif customer.cliente_nome != customer_name:
             customer.cliente_nome = customer_name
             customer.cliente_chiave = _normalized_key(customer_name)
+            changed = True
+        if customer.riferimento_interno != internal_reference:
+            customer.riferimento_interno = internal_reference
             changed = True
 
         existing = {
@@ -1623,10 +1364,9 @@ def _sync_open_customer_orders() -> None:
 def build_assignment_dashboard(*, include_planned: bool = True) -> dict:
     _sync_open_customer_orders()
     production_machines = load_machine_orders(include_closed=True)
-    stock_machines = load_stock_machine_orders()
-    inventory_machines = _load_inventory_machines()
+    inventory_machines = load_inventory_machine_orders()
     all_machines = _unique_machines_by_serial(
-        inventory_machines + stock_machines + production_machines
+        inventory_machines + production_machines
     )
     all_machine_map = {_machine_key(machine): machine for machine in all_machines}
     all_machine_by_serial = {
@@ -1636,7 +1376,6 @@ def build_assignment_dashboard(*, include_planned: bool = True) -> dict:
     }
     open_machines = _unique_machines_by_serial(
         inventory_machines
-        + stock_machines
         + [
             machine
             for machine in production_machines

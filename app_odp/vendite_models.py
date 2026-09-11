@@ -214,39 +214,6 @@ class VenditeNotaImballoLettura(db.Model):
     )
 
 
-class VenditeMacchinaStock(db.Model):
-    __tablename__ = "vendite_macchine_stock"
-
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    odp_id_documento = db.Column(db.Text, nullable=False)
-    odp_id_riga = db.Column(db.Text, nullable=False)
-    odp_rif_registraz = db.Column(db.Text, nullable=True)
-    odp_num_progr_riga = db.Column(db.Text, nullable=True)
-    modello_codice = db.Column(db.String(160), nullable=False, index=True)
-    modello_variante = db.Column(db.String(120), nullable=False, default="")
-    modello_descrizione = db.Column(db.String(500), nullable=True)
-    matricola = db.Column(db.String(6), nullable=False, unique=True, index=True)
-    inserita_il = db.Column(
-        db.Text,
-        nullable=False,
-        default=_rome_iso_now,
-        index=True,
-    )
-    inserita_da_nome = db.Column(db.String(120), nullable=False)
-
-    __table_args__ = (
-        db.CheckConstraint(
-            "length(matricola) = 6 AND matricola NOT GLOB '*[^0-9]*'",
-            name="ck_vendite_macchina_stock_matricola",
-        ),
-        db.UniqueConstraint(
-            "odp_id_documento",
-            "odp_id_riga",
-            name="uq_vendite_macchina_stock_odp",
-        ),
-    )
-
-
 class VenditeImballoMacchina(db.Model):
     __tablename__ = "vendite_imballi_macchina"
 

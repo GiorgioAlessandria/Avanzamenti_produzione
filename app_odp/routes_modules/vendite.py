@@ -18,7 +18,6 @@ from app_odp.services.vendite_assegnazioni_service import (
     create_customer_order,
     delete_customer_order,
     set_machine_assignment,
-    ship_stock_machine,
     update_customer_order_details,
     update_customer_row,
     update_customer_row_dates,
@@ -354,20 +353,6 @@ def api_vendite_riga_note(row_id: int):
             can_edit_production_instructions=policy.can("utente_vendite"),
         ),
         "Note aggiornate.",
-    )
-
-
-@main_bp.post("/api/vendite/stock/spedisci")
-@require_active_perm("vendite")
-@require_active_perm("utente_vendite")
-def api_vendite_stock_spedisci():
-    payload = request.get_json(silent=True) or {}
-    return _assignment_mutation(
-        lambda: ship_stock_machine(
-            payload.get("id_documento"),
-            payload.get("id_riga"),
-        ),
-        "Spedizione della matricola STOCK confermata.",
     )
 
 

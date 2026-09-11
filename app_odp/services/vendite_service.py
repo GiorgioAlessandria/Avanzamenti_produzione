@@ -3,10 +3,15 @@ from types import SimpleNamespace
 
 from sqlalchemy import func, or_, tuple_
 
-from app_odp.models import InputOdp, InputOdpLog, OdpDistintaMancante
+from app_odp.models import (
+    AcqArticoliLookup,
+    AcqMatricolaMacchina,
+    InputOdp,
+    InputOdpLog,
+    OdpDistintaMancante,
+)
 from app_odp.vendite_models import (
     VenditeImballoMacchina,
-    VenditeMacchinaStock,
     VenditeNotaProduzioneMacchina,
     VenditeOpzioneMacchina,
     VenditeOrdineCliente,
@@ -41,6 +46,7 @@ _STATE_ORDER = {
 _STANDARD_STATES = tuple(_STATE_ORDER)
 _TERMINAL_STATES = {"chiusa"}
 _QUERY_BATCH_SIZE = 400
+INVENTORY_DOCUMENT = "MATRICOLA"
 
 
 def _canonical_state(value) -> str:
@@ -162,30 +168,46 @@ def load_machine_orders(*, include_closed: bool = False) -> list:
     return [order for order in orders if is_open_machine_order(order)]
 
 
-def _stock_machine(stock: VenditeMacchinaStock):
+def _inventory_machine(item, article=None):
     return SimpleNamespace(
-        IdDocumento=stock.odp_id_documento,
-        IdRiga=stock.odp_id_riga,
+        IdDocumento=INVENTORY_DOCUMENT,
+        IdRiga=_norm_text(item.CodMatricola),
         RifRegistraz="STOCK",
         NumProgrRiga="",
-        CodArt=stock.modello_codice,
-        VarianteArt=stock.modello_variante or "",
-        DesArt=stock.modello_descrizione or "",
-        CodMatricola=stock.matricola,
+        CodArt=_norm_text(item.CodArt),
+        VarianteArt="",
+        DesArt=_norm_text(getattr(article, "DesArt", "")),
+        CodMatricola=_norm_text(item.CodMatricola),
+        CodFamiglia=_norm_text(getattr(article, "CodFamiglia", "")),
         GestioneMatricola="si",
         FaseAttiva="2",
         StatoOrdine="Chiusa",
         IsStock=True,
-        StockRecord=stock,
+        IsInventory=True,
     )
 
 
-def load_stock_machine_orders() -> list:
+def load_inventory_machine_orders() -> list:
+    articles = {}
+    for article in AcqArticoliLookup.query.order_by(
+        AcqArticoliLookup.CodArt,
+        AcqArticoliLookup.VarianteArt,
+        AcqArticoliLookup.IndiceModifica,
+    ).all():
+        articles.setdefault(_norm_text(article.CodArt).casefold(), article)
+
     return [
-        _stock_machine(stock)
-        for stock in VenditeMacchinaStock.query.order_by(
-            VenditeMacchinaStock.matricola,
-            VenditeMacchinaStock.id,
+        _inventory_machine(
+            item,
+            articles.get(_norm_text(item.CodArt).casefold()),
+        )
+        for item in AcqMatricolaMacchina.query.filter(
+            func.trim(func.coalesce(AcqMatricolaMacchina.CodMag, "")) == "0",
+            func.trim(func.coalesce(AcqMatricolaMacchina.CodMatricola, "")) != "",
+            func.trim(func.coalesce(AcqMatricolaMacchina.CodArt, "")) != "",
+        ).order_by(
+            AcqMatricolaMacchina.CodArt,
+            AcqMatricolaMacchina.CodMatricola,
         ).all()
     ]
 
@@ -446,7 +468,7 @@ def _build_vendite_payload(
 
 
 def build_vendite_payload(*, include_planned: bool = True, viewer=None) -> dict:
-    orders = load_stock_machine_orders() + load_machine_orders()
+    orders = load_inventory_machine_orders() + load_machine_orders()
     unique_orders = []
     seen_serials = set()
     for order in orders:

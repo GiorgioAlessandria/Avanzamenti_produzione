@@ -327,6 +327,11 @@ def _ensure_logistica_schema() -> None:
 def _ensure_vendite_schema() -> None:
     engine = db.engine
     tables = set(inspect(engine).get_table_names())
+    if "vendite_macchine_stock" in tables:
+        with engine.begin() as connection:
+            connection.exec_driver_sql("DROP TABLE vendite_macchine_stock")
+        tables.remove("vendite_macchine_stock")
+
     additions = []
     added_confirmation = False
     added_row_available_date = False

@@ -142,7 +142,7 @@ def test_missing_components_follow_saved_residue_and_current_machine_phase():
                                 [{"CodArt": "ALTRO-ORDINE", "Quantita": 1}])
         db.session.commit()
         with patch("app_odp.services.vendite_service.load_machine_orders", return_value=[machine, other_machine]), \
-             patch("app_odp.services.vendite_service.load_stock_machine_orders", return_value=[]), \
+             patch("app_odp.services.vendite_service.load_inventory_machine_orders", return_value=[]), \
              patch("app_odp.services.vendite_service._latest_suspension_causes", return_value={("DOC", "1"): "Attesa materiale"}), \
              patch("app_odp.services.vendite_service._customer_assignments", return_value={}), \
              patch("app_odp.services.vendite_service._packaging_confirmations", return_value={}), \
