@@ -223,6 +223,8 @@ def test_supplier_order_rows_are_grouped_by_document():
             "CodFornitore": "F1",
             "Fornitore": "Fornitore Test",
             "ConsegnaCritica": False,
+            "DataConsegnaIso": "2026-09-12",
+            "Sollecitato": False,
         },
         {
             "IdDocumento": "10",
@@ -231,6 +233,8 @@ def test_supplier_order_rows_are_grouped_by_document():
             "CodFornitore": "F1",
             "Fornitore": "Fornitore Test",
             "ConsegnaCritica": True,
+            "DataConsegnaIso": "2026-09-10",
+            "Sollecitato": True,
         },
     ]
 
@@ -239,6 +243,8 @@ def test_supplier_order_rows_are_grouped_by_document():
     assert len(groups) == 1
     assert len(groups[0]["Righe"]) == 2
     assert groups[0]["ConsegnaCritica"] is True
+    assert groups[0]["DataConsegnaIso"] == "2026-09-10"
+    assert groups[0]["Sollecitato"] is True
 
 
 def test_parse_scorta_qrcode_accepts_three_parts_and_rejects_invalid_values():

@@ -365,12 +365,20 @@ def _group_acquisti_ordini_fornitore_rows(rows: list[dict]) -> list[dict]:
                 "CodFornitore": row["CodFornitore"],
                 "Fornitore": row["Fornitore"],
                 "ConsegnaCritica": False,
+                "DataConsegnaIso": "",
+                "Sollecitato": False,
                 "Righe": [],
             },
         )
         group["ConsegnaCritica"] = group["ConsegnaCritica"] or row[
             "ConsegnaCritica"
         ]
+        if row["DataConsegnaIso"] and (
+            not group["DataConsegnaIso"]
+            or row["DataConsegnaIso"] < group["DataConsegnaIso"]
+        ):
+            group["DataConsegnaIso"] = row["DataConsegnaIso"]
+        group["Sollecitato"] = group["Sollecitato"] or row["Sollecitato"]
         group["Righe"].append(row)
 
     return list(groups.values())

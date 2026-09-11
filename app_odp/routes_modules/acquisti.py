@@ -65,25 +65,44 @@ def home_acquisti():
 @require_active_perm("home_acquisti")
 def acquisti_ordini_fornitore():
     rows = _build_acquisti_ordini_fornitore_rows()
+    groups = _group_acquisti_ordini_fornitore_rows(rows)
     return render_template(
         "acquisti_ordini_fornitore.j2",
         rows=rows,
-        groups=_group_acquisti_ordini_fornitore_rows(rows),
+        groups=groups,
         calendar_events=[
             {
-                "date": row["DataConsegnaIso"],
+                "date": group["DataConsegnaIso"],
                 "title": " · ".join(
                     filter(
                         None,
-                        (row["CodArt"], row["Fornitore"], row["QtaSaldo"]),
+                        (
+                            group["NumRegistraz"],
+                            group["Fornitore"],
+                        ),
                     )
                 ),
-                "sollecitato": row["Sollecitato"],
-                "gruppo_doc": row["GruppoDoc"],
-                "critico": row["ConsegnaCritica"],
+                "id_documento": group["IdDocumento"],
+                "sollecitato": group["Sollecitato"],
+                "gruppo_doc": group["GruppoDoc"],
+                "critico": group["ConsegnaCritica"],
+                "rows": [
+                    {
+                        "numero_registrazione": row["NumRegistraz"],
+                        "codice_articolo": row["CodArt"],
+                        "descrizione": row["DesArt"],
+                        "data_consegna": row["DataConsegnaText"],
+                        "udm": row["UmDoc"],
+                        "ordinato": row["QtaOrd"],
+                        "consegnata": row["QtaCons"],
+                        "saldo_documento": row["QtaSaldo"],
+                        "commento": row["CommentoRigaSaldata"],
+                    }
+                    for row in group["Righe"]
+                ],
             }
-            for row in rows
-            if row["DataConsegnaIso"]
+            for group in groups
+            if group["DataConsegnaIso"]
         ],
     )
 
@@ -124,8 +143,20 @@ def acquisti_ordine_fornitore_update():
     except Exception:
         db.session.rollback()
         main_bp.logger.exception("Errore aggiornamento ordine fornitore")
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"ok": False, "error": "Errore durante il salvataggio."}), 500
         flash("Errore durante il salvataggio.", "danger")
     else:
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify(
+                {
+                    "ok": True,
+                    "message": message,
+                    "stato": "Sollecitato" if row.Sollecitato else "Aperto",
+                    "sollecitato": bool(row.Sollecitato),
+                    "id_documento": id_documento,
+                }
+            )
         flash(message, "success")
     return redirect(url_for("main.acquisti_ordini_fornitore"))
 

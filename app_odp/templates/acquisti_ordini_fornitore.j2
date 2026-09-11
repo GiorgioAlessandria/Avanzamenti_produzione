@@ -43,15 +43,15 @@
                 <table class="table table-sm table-striped table-hover align-middle mb-0" id="purchase-table">
                     <thead class="sticky-top">
                     <tr>
-                        <th>NumRegistraz</th>
-                        <th>CodArt</th>
-                        <th>DesArt</th>
-                        <th>DataConsegna</th>
-                        <th>UmDoc</th>
-                        <th class="text-end">QTA_ORD</th>
-                        <th class="text-end">QTA_CONS</th>
-                        <th class="text-end">QTA_SALDO_DOC</th>
-                        <th>Commento_Riga_Saldata</th>
+                        <th>Numero Registrazione</th>
+                        <th>Codice Articolo</th>
+                        <th>Descrizione</th>
+                        <th>Data di consegna</th>
+                        <th>UdM</th>
+                        <th class="text-end">Ordinato</th>
+                        <th class="text-end">Consegnata</th>
+                        <th class="text-end">Saldo documento</th>
+                        <th>Commento</th>
                         <th>Stato</th>
                         <th style="min-width: 18rem">Note</th>
                         <th>Azioni</th>
@@ -62,8 +62,7 @@
                     <tbody class="purchase-group">
                         <tr class="purchase-group-header {% if group.ConsegnaCritica %}purchase-overdue{% elif group.GruppoDoc == 'ORL' %}purchase-orl{% elif group.GruppoDoc == 'ORA' %}purchase-ora{% endif %}">
                             <td colspan="12">
-                                <strong>Documento {{ group.IdDocumento }}</strong>
-                                <span class="ms-2">Registrazione {{ group.NumRegistraz }}</span>
+                                <strong>Numero Registrazione {{ group.NumRegistraz }}</strong>
                                 <span class="ms-3">{{ group.Fornitore or 'Fornitore non trovato' }} ({{ group.CodFornitore }})</span>
                                 <span class="badge text-bg-light ms-2">{{ group.Righe|length }} righe</span>
                             </td>
@@ -131,6 +130,17 @@
             </div>
         </div>
     </section>
+
+    <div class="toast-container position-fixed top-0 end-0 p-3">
+        <div id="purchase-calendar-toast" class="toast purchase-calendar-toast" role="status"
+             aria-live="polite" aria-atomic="true" data-bs-autohide="false">
+            <div class="toast-header">
+                <strong class="me-auto" id="purchase-toast-title">Dettaglio ordine</strong>
+                <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Chiudi"></button>
+            </div>
+            <div class="toast-body" id="purchase-toast-body"></div>
+        </div>
+    </div>
 </main>
 
 <style>
@@ -144,11 +154,12 @@
     .calendar-weekdays > div { padding: .5rem; background: var(--bs-info-bg-subtle); }
     .calendar-day { min-height: 8rem; padding: .4rem; border: 1px solid var(--bs-border-color); overflow: hidden; }
     .calendar-day.today { background: var(--bs-danger-bg-subtle); }
-    .calendar-event { margin-top: .3rem; padding: .25rem .35rem; border-radius: .25rem; background: var(--bs-primary-bg-subtle); font-size: .78rem; }
+    .calendar-event { display: block; width: 100%; margin-top: .3rem; padding: .25rem .35rem; border: 0; border-radius: .25rem; background: var(--bs-primary-bg-subtle); font-size: .78rem; text-align: left; }
     .calendar-event.sollecitato { background: var(--bs-warning-bg-subtle); }
     .calendar-event.purchase-orl { background: #ffd39b; }
     .calendar-event.purchase-ora { background: #b9dcff; }
     .calendar-event.purchase-overdue { background: #f5aeb5; }
+    .purchase-calendar-toast { width: min(60rem, calc(100vw - 2rem)); max-width: none; }
     @media (max-width: 767px) { .calendar-day { min-height: 5rem; } .calendar-event { font-size: .68rem; } }
 </style>
 {% endblock %}
@@ -162,6 +173,9 @@
     const calendar = document.getElementById("purchase-calendar");
     const title = document.getElementById("calendar-title");
     const grid = document.getElementById("calendar-grid");
+    const toastElement = document.getElementById("purchase-calendar-toast");
+    const toastTitle = document.getElementById("purchase-toast-title");
+    const toastBody = document.getElementById("purchase-toast-body");
     let shown = new Date();
 
     function escapeHtml(value) {
@@ -183,12 +197,12 @@
         for (let day = 1; day <= days; day += 1) {
             const key = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
             const isToday = today.getFullYear() === year && today.getMonth() === month && today.getDate() === day;
-            const dayEvents = events.filter(event => event.date === key);
-            const html = dayEvents.map(event => {
+            const dayEvents = events.map((event, index) => ({event, index})).filter(item => item.event.date === key);
+            const html = dayEvents.map(({event, index}) => {
                 const typeClass = event.critico
                     ? "purchase-overdue"
                     : event.gruppo_doc === "ORL" ? "purchase-orl" : "purchase-ora";
-                return `<div class="calendar-event ${typeClass} ${event.sollecitato ? "sollecitato" : ""}">${escapeHtml(event.title)}</div>`;
+                return `<button type="button" class="calendar-event ${typeClass} ${event.sollecitato ? "sollecitato" : ""}" data-event-index="${index}">${escapeHtml(event.title)}</button>`;
             }).join("");
             grid.insertAdjacentHTML("beforeend", `<div class="calendar-day ${isToday ? "today" : ""}"><strong>${day}</strong>${html}</div>`);
         }
@@ -207,12 +221,67 @@
     }));
     document.getElementById("calendar-prev").addEventListener("click", () => { shown = new Date(shown.getFullYear(), shown.getMonth() - 1, 1); renderCalendar(); });
     document.getElementById("calendar-next").addEventListener("click", () => { shown = new Date(shown.getFullYear(), shown.getMonth() + 1, 1); renderCalendar(); });
+    grid.addEventListener("click", event => {
+        const button = event.target.closest("[data-event-index]");
+        if (!button) return;
+        const order = events[Number(button.dataset.eventIndex)];
+        if (!order) return;
+        const columns = [
+            ["numero_registrazione", "Numero Registrazione"],
+            ["codice_articolo", "Codice Articolo"],
+            ["descrizione", "Descrizione"],
+            ["data_consegna", "Data di consegna"],
+            ["udm", "UdM"],
+            ["ordinato", "Ordinato"],
+            ["consegnata", "Consegnata"],
+            ["saldo_documento", "Saldo documento"],
+            ["commento", "Commento"],
+        ];
+        toastTitle.textContent = `Numero Registrazione ${order.rows[0]?.numero_registrazione || ""}`;
+        toastBody.innerHTML = `<div class="table-responsive"><table class="table table-sm mb-0"><thead><tr>${columns.map(column => `<th>${column[1]}</th>`).join("")}</tr></thead><tbody>${order.rows.map(row => `<tr>${columns.map(column => `<td>${escapeHtml(row[column[0]])}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+        bootstrap.Toast.getOrCreateInstance(toastElement).show();
+    });
     document.getElementById("purchase-search").addEventListener("input", event => {
         const needle = event.target.value.trim().toLocaleLowerCase("it");
         document.querySelectorAll("#purchase-table tbody.purchase-group").forEach(group => {
             group.classList.toggle("d-none", needle && !group.textContent.toLocaleLowerCase("it").includes(needle));
         });
     });
+    document.querySelectorAll("#purchase-table form").forEach(form => form.addEventListener("submit", async event => {
+        event.preventDefault();
+        const button = event.submitter;
+        if (!button) return;
+        const originalLabel = button.textContent;
+        button.disabled = true;
+        const body = new FormData(form);
+        body.set("action", button.value);
+        try {
+            const response = await (window.avpFetch || window.fetch)(form.action, {
+                method: "POST",
+                headers: {"X-Requested-With": "XMLHttpRequest"},
+                credentials: "same-origin",
+                body,
+            });
+            const data = await response.json();
+            if (!response.ok || data.ok === false) throw new Error(data.error || "Salvataggio non riuscito.");
+            const row = form.closest("tr");
+            if (data.sollecitato) {
+                const badge = row.querySelector(".badge");
+                badge.textContent = data.stato;
+                badge.classList.remove("text-bg-secondary");
+                badge.classList.add("text-bg-warning");
+                row.querySelector('button[value="sollecita"]').disabled = true;
+                events.filter(item => item.id_documento === data.id_documento).forEach(item => { item.sollecitato = true; });
+            }
+            button.textContent = "Salvato";
+            window.setTimeout(() => { button.textContent = originalLabel; }, 1200);
+        } catch (error) {
+            alert(error.message || "Errore durante il salvataggio.");
+            button.disabled = false;
+        } finally {
+            if (button.value !== "sollecita") button.disabled = false;
+        }
+    }));
 })();
 </script>
 {% endblock %}
