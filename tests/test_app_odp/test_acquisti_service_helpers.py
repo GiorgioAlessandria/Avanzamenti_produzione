@@ -247,6 +247,43 @@ def test_supplier_order_rows_are_grouped_by_document():
     assert groups[0]["Sollecitato"] is True
 
 
+def test_calendar_has_one_event_per_order_date_and_highlights_matching_rows():
+    def row(date_iso, code):
+        return {
+            "NumRegistraz": "100",
+            "CodArt": code,
+            "DesArt": f"Articolo {code}",
+            "DataConsegnaIso": date_iso,
+            "DataConsegnaText": date_iso,
+            "UmDoc": "PZ",
+            "QtaOrd": "5",
+            "QtaCons": "0",
+            "QtaSaldo": "5",
+            "CommentoRigaSaldata": "",
+        }
+
+    groups = [
+        {
+            "IdDocumento": "10",
+            "NumRegistraz": "100",
+            "GruppoDoc": "ORA",
+            "Fornitore": "Fornitore Test",
+            "Sollecitato": False,
+            "Righe": [row("2026-09-10", "A"), row("2026-09-12", "B")],
+        }
+    ]
+
+    events = service._build_acquisti_calendar_events(groups)
+
+    assert [event["date"] for event in events] == [
+        "2026-09-10",
+        "2026-09-12",
+    ]
+    assert [item["evidenziata"] for item in events[0]["rows"]] == [True, False]
+    assert [item["evidenziata"] for item in events[1]["rows"]] == [False, True]
+    assert "critico" not in events[0]
+
+
 def test_parse_scorta_qrcode_accepts_three_parts_and_rejects_invalid_values():
     assert service._parse_scorta_qrcode(" ART-1 | VAR | REV \n") == (
         "ART-1",

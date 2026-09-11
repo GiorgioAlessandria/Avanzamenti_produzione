@@ -384,6 +384,52 @@ def _group_acquisti_ordini_fornitore_rows(rows: list[dict]) -> list[dict]:
     return list(groups.values())
 
 
+def _build_acquisti_calendar_events(groups: list[dict]) -> list[dict]:
+    events = []
+    for group in groups:
+        dates = sorted(
+            {
+                row["DataConsegnaIso"]
+                for row in group["Righe"]
+                if row["DataConsegnaIso"]
+            }
+        )
+        for delivery_date in dates:
+            matching_row = next(
+                row
+                for row in group["Righe"]
+                if row["DataConsegnaIso"] == delivery_date
+            )
+            events.append(
+                {
+                    "date": delivery_date,
+                    "date_text": matching_row["DataConsegnaText"],
+                    "title": " · ".join(
+                        filter(None, (group["NumRegistraz"], group["Fornitore"]))
+                    ),
+                    "id_documento": group["IdDocumento"],
+                    "sollecitato": group["Sollecitato"],
+                    "gruppo_doc": group["GruppoDoc"],
+                    "rows": [
+                        {
+                            "numero_registrazione": row["NumRegistraz"],
+                            "codice_articolo": row["CodArt"],
+                            "descrizione": row["DesArt"],
+                            "data_consegna": row["DataConsegnaText"],
+                            "udm": row["UmDoc"],
+                            "ordinato": row["QtaOrd"],
+                            "consegnata": row["QtaCons"],
+                            "saldo_documento": row["QtaSaldo"],
+                            "commento": row["CommentoRigaSaldata"],
+                            "evidenziata": row["DataConsegnaIso"] == delivery_date,
+                        }
+                        for row in group["Righe"]
+                    ],
+                }
+            )
+    return events
+
+
 def _acq_revision_rank(value) -> tuple[int, str]:
     rev = _normalize_indice_articolo_search(value).upper()
     if not rev:

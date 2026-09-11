@@ -18,6 +18,7 @@ from app_odp.services.order_helpers import _norm_text, _now_rome_dt, _parse_bool
 
 from app_odp.services.acquisti_service import (
     _build_acquisti_giacenze_rows,
+    _build_acquisti_calendar_events,
     _build_acquisti_materiale_rows,
     _build_acquisti_ordini_fornitore_rows,
     _build_acquisti_ordini_rows,
@@ -70,40 +71,7 @@ def acquisti_ordini_fornitore():
         "acquisti_ordini_fornitore.j2",
         rows=rows,
         groups=groups,
-        calendar_events=[
-            {
-                "date": group["DataConsegnaIso"],
-                "title": " · ".join(
-                    filter(
-                        None,
-                        (
-                            group["NumRegistraz"],
-                            group["Fornitore"],
-                        ),
-                    )
-                ),
-                "id_documento": group["IdDocumento"],
-                "sollecitato": group["Sollecitato"],
-                "gruppo_doc": group["GruppoDoc"],
-                "critico": group["ConsegnaCritica"],
-                "rows": [
-                    {
-                        "numero_registrazione": row["NumRegistraz"],
-                        "codice_articolo": row["CodArt"],
-                        "descrizione": row["DesArt"],
-                        "data_consegna": row["DataConsegnaText"],
-                        "udm": row["UmDoc"],
-                        "ordinato": row["QtaOrd"],
-                        "consegnata": row["QtaCons"],
-                        "saldo_documento": row["QtaSaldo"],
-                        "commento": row["CommentoRigaSaldata"],
-                    }
-                    for row in group["Righe"]
-                ],
-            }
-            for group in groups
-            if group["DataConsegnaIso"]
-        ],
+        calendar_events=_build_acquisti_calendar_events(groups),
     )
 
 

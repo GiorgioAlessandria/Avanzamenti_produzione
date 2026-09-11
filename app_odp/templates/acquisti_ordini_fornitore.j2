@@ -35,6 +35,11 @@
                         <span><i class="purchase-swatch purchase-ora"></i> Ordini di acquisto</span>
                         <span><i class="purchase-swatch purchase-overdue"></i> Consegna scaduta o odierna</span>
                     </div>
+                    <div class="btn-group mt-2" role="group" aria-label="Filtra tipologia ordine">
+                        <button type="button" class="btn btn-sm btn-primary js-purchase-type-filter" data-type="all">Totale</button>
+                        <button type="button" class="btn btn-sm btn-outline-primary js-purchase-type-filter" data-type="ORL">Conto lavoro</button>
+                        <button type="button" class="btn btn-sm btn-outline-primary js-purchase-type-filter" data-type="ORA">Acquisto</button>
+                    </div>
                 </div>
                 <input id="purchase-search" class="form-control" style="max-width: 28rem"
                        type="search" placeholder="Cerca ordine, fornitore, codice o descrizione">
@@ -59,7 +64,7 @@
                     </thead>
                     {% for group in groups %}
                     {% set group_loop = loop %}
-                    <tbody class="purchase-group">
+                    <tbody class="purchase-group" data-gruppo-doc="{{ group.GruppoDoc }}">
                         <tr class="purchase-group-header {% if group.ConsegnaCritica %}purchase-overdue{% elif group.GruppoDoc == 'ORL' %}purchase-orl{% elif group.GruppoDoc == 'ORA' %}purchase-ora{% endif %}">
                             <td colspan="12">
                                 <strong>Numero Registrazione {{ group.NumRegistraz }}</strong>
@@ -160,6 +165,7 @@
     .calendar-event.purchase-ora { background: #b9dcff; }
     .calendar-event.purchase-overdue { background: #f5aeb5; }
     .purchase-calendar-toast { width: min(60rem, calc(100vw - 2rem)); max-width: none; }
+    .purchase-toast-matching > * { background: #fff3cd !important; font-weight: 600; }
     @media (max-width: 767px) { .calendar-day { min-height: 5rem; } .calendar-event { font-size: .68rem; } }
 </style>
 {% endblock %}
@@ -199,9 +205,7 @@
             const isToday = today.getFullYear() === year && today.getMonth() === month && today.getDate() === day;
             const dayEvents = events.map((event, index) => ({event, index})).filter(item => item.event.date === key);
             const html = dayEvents.map(({event, index}) => {
-                const typeClass = event.critico
-                    ? "purchase-overdue"
-                    : event.gruppo_doc === "ORL" ? "purchase-orl" : "purchase-ora";
+                const typeClass = event.gruppo_doc === "ORL" ? "purchase-orl" : "purchase-ora";
                 return `<button type="button" class="calendar-event ${typeClass} ${event.sollecitato ? "sollecitato" : ""}" data-event-index="${index}">${escapeHtml(event.title)}</button>`;
             }).join("");
             grid.insertAdjacentHTML("beforeend", `<div class="calendar-day ${isToday ? "today" : ""}"><strong>${day}</strong>${html}</div>`);
@@ -237,16 +241,32 @@
             ["saldo_documento", "Saldo documento"],
             ["commento", "Commento"],
         ];
-        toastTitle.textContent = `Numero Registrazione ${order.rows[0]?.numero_registrazione || ""}`;
-        toastBody.innerHTML = `<div class="table-responsive"><table class="table table-sm mb-0"><thead><tr>${columns.map(column => `<th>${column[1]}</th>`).join("")}</tr></thead><tbody>${order.rows.map(row => `<tr>${columns.map(column => `<td>${escapeHtml(row[column[0]])}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+        toastTitle.textContent = `Numero Registrazione ${order.rows[0]?.numero_registrazione || ""} · ${order.date_text}`;
+        toastBody.innerHTML = `<div class="table-responsive"><table class="table table-sm mb-0"><thead><tr>${columns.map(column => `<th>${column[1]}</th>`).join("")}</tr></thead><tbody>${order.rows.map(row => `<tr class="${row.evidenziata ? "purchase-toast-matching" : ""}">${columns.map(column => `<td>${escapeHtml(row[column[0]])}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
         bootstrap.Toast.getOrCreateInstance(toastElement).show();
     });
-    document.getElementById("purchase-search").addEventListener("input", event => {
-        const needle = event.target.value.trim().toLocaleLowerCase("it");
+    let groupFilter = "all";
+    let searchNeedle = "";
+    function applyListFilters() {
         document.querySelectorAll("#purchase-table tbody.purchase-group").forEach(group => {
-            group.classList.toggle("d-none", needle && !group.textContent.toLocaleLowerCase("it").includes(needle));
+            const matchesType = groupFilter === "all" || group.dataset.gruppoDoc === groupFilter;
+            const matchesSearch = !searchNeedle || group.textContent.toLocaleLowerCase("it").includes(searchNeedle);
+            group.classList.toggle("d-none", !matchesType || !matchesSearch);
         });
+    }
+    document.getElementById("purchase-search").addEventListener("input", event => {
+        searchNeedle = event.target.value.trim().toLocaleLowerCase("it");
+        applyListFilters();
     });
+    document.querySelectorAll(".js-purchase-type-filter").forEach(button => button.addEventListener("click", () => {
+        groupFilter = button.dataset.type;
+        document.querySelectorAll(".js-purchase-type-filter").forEach(item => {
+            const active = item === button;
+            item.classList.toggle("btn-primary", active);
+            item.classList.toggle("btn-outline-primary", !active);
+        });
+        applyListFilters();
+    }));
     document.querySelectorAll("#purchase-table form").forEach(form => form.addEventListener("submit", async event => {
         event.preventDefault();
         const button = event.submitter;
