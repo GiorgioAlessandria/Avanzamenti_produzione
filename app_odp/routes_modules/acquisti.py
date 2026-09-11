@@ -4,6 +4,7 @@ from io import BytesIO
 
 from flask import (
     abort,
+    current_app,
     flash,
     jsonify,
     redirect,
@@ -78,14 +79,22 @@ def acquisti_ordini_fornitore():
 @main_bp.post("/acquisti/ordini-fornitore")
 @require_active_perm("home_acquisti")
 def acquisti_ordine_fornitore_update():
+    wants_json = (
+        request.headers.get("X-Requested-With") == "XMLHttpRequest"
+        or request.accept_mimetypes.best == "application/json"
+    )
     id_documento = _norm_text(request.form.get("id_documento"))
     id_riga = _norm_text(request.form.get("id_riga"))
     action = _norm_text(request.form.get("action")).lower()
     note = _norm_text(request.form.get("note"))
 
     if not id_documento or not id_riga or len(note) > 2000:
+        if wants_json:
+            return jsonify({"ok": False, "error": "Dati dell'ordine non validi."}), 400
         abort(400)
     if db.session.get(AcqOrdineFornitoreAperto, (id_documento, id_riga)) is None:
+        if wants_json:
+            return jsonify({"ok": False, "error": "Riga ordine non più disponibile."}), 404
         abort(404)
 
     row = db.session.get(AcqOrdineFornitoreMeta, (id_documento, id_riga))
@@ -118,12 +127,12 @@ def acquisti_ordine_fornitore_update():
         db.session.commit()
     except Exception:
         db.session.rollback()
-        main_bp.logger.exception("Errore aggiornamento ordine fornitore")
-        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        current_app.logger.exception("Errore aggiornamento ordine fornitore")
+        if wants_json:
             return jsonify({"ok": False, "error": "Errore durante il salvataggio."}), 500
         flash("Errore durante il salvataggio.", "danger")
     else:
-        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        if wants_json:
             return jsonify(
                 {
                     "ok": True,

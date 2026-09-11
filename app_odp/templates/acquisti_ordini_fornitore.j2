@@ -295,10 +295,18 @@
         try {
             const response = await (window.avpFetch || window.fetch)(form.action, {
                 method: "POST",
-                headers: {"X-Requested-With": "XMLHttpRequest"},
+                headers: {"X-Requested-With": "XMLHttpRequest", "Accept": "application/json"},
                 credentials: "same-origin",
                 body,
             });
+            if (response.redirected) {
+                window.location.assign(response.url);
+                return;
+            }
+            const contentType = response.headers.get("Content-Type") || "";
+            if (!contentType.includes("application/json")) {
+                throw new Error(`Risposta non valida dal server (${response.status}).`);
+            }
             const data = await response.json();
             if (!response.ok || data.ok === false) throw new Error(data.error || "Salvataggio non riuscito.");
             const row = form.closest("tr");
