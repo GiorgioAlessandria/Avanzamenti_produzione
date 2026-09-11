@@ -26,6 +26,7 @@
             <td>{{ row.MaterialeDaConsumareText }}</td>
             <td>{{ row.MaterialeImpegnatoText }}</td>
             <td>{{ row.MaterialeProdottoText }}</td>
+            <td>{{ row.AcquistiText }}</td>
 
             <td class="{% if row.RimanenzaMaterialeCritica %}fw-bold{% elif row.RimanenzaMaterialeSottoScorta %}fw-semibold{% endif %}">
                 {{ row.RimanenzaMaterialeText }}
@@ -46,7 +47,7 @@
     {% endfor %}
 {% else %}
     <tr>
-        <td colspan="14"
+        <td colspan="15"
             class="text-center text-muted py-4">
             Nessun materiale disponibile.
         </td>

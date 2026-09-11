@@ -35,6 +35,10 @@
                                     data-section="scorte">
                                 Scorte segnalate
                             </button>
+                            <a class="btn btn-outline-primary"
+                               href="{{ url_for('main.acquisti_ordini_fornitore') }}">
+                                Ordini acquisto
+                            </a>
                         </div>
                     </div>
                 </div>
@@ -756,7 +760,19 @@
                     ]
                 );
 
-                bodyEl.innerHTML = headerInfo + distintaHtml + ordineHtml;
+                const acquistiHtml = renderRowsTable(
+                    "Acquisti in arrivo",
+                    payload.in_acquisto || [],
+                    [
+                        {key: "Ordine", label: "Ordine"},
+                        {key: "Fornitore", label: "Fornitore"},
+                        {key: "DataConsegna", label: "Arrivo previsto"},
+                        {key: "Quantita", label: "Quantità"},
+                        {key: "Stato", label: "Stato"},
+                    ]
+                );
+
+                bodyEl.innerHTML = headerInfo + distintaHtml + ordineHtml + acquistiHtml;
 
                 const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
                 modal.show();

@@ -6,11 +6,14 @@ from openpyxl.styles import Font
 from app_odp.models import (
     AcqArticoli,
     AcqArticoliLookup,
+    AcqClienteFornitore,
     AcqGiacenze,
+    AcqOrdineFornitoreAperto,
+    AcqOrdineFornitoreMeta,
     AcqScortaSegnalata,
     db,
 )
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from app_odp.services.ordini_query_service import (
     _base_odp_query,
 )
@@ -238,6 +241,7 @@ def _new_acq_material_row(cod_art: str, variante_art: str) -> dict:
         "MaterialeDaConsumare": 0.0,
         "MaterialeImpegnato": 0.0,
         "MaterialeProdotto": 0.0,
+        "Acquisti": 0.0,
         "RimanenzaMateriale": 0.0,
         "PianTempoApprovFisso": 0,
         "LottoRiordino": 0.0,
@@ -245,8 +249,96 @@ def _new_acq_material_row(cod_art: str, variante_art: str) -> dict:
         "Mag0Missing": True,
         "DistintaDettagli": [],
         "OrdineDettagli": [],
+        "AcquistiDettagli": [],
         "MagUM": "",
     }
+
+
+def _parse_acquisti_date(value) -> date | None:
+    text = _norm_text(value)
+    if not text:
+        return None
+    try:
+        return date.fromisoformat(text[:10])
+    except ValueError:
+        return None
+
+
+def _fornitore_names_map() -> dict[tuple[str, str], str]:
+    return {
+        (_norm_text(row.TipoAnagrafica), _norm_text(row.CodCliFor)): _norm_text(
+            row.RagioneSociale
+        )
+        for row in AcqClienteFornitore.query.all()
+    }
+
+
+def _ordine_fornitore_label(row) -> str:
+    label = " ".join(
+        filter(
+            None,
+            (
+                _norm_text(row.CodTipoDoc),
+                _norm_text(row.CodSerie),
+                _norm_text(row.NumRegistraz),
+            ),
+        )
+    )
+    return label or f"{_norm_text(row.IdDocumento)}/{_norm_text(row.IdRigaDoc)}"
+
+
+def _build_acquisti_ordini_fornitore_rows(today: date | None = None) -> list[dict]:
+    today = today or _now_rome_dt().date()
+    fornitori = _fornitore_names_map()
+    meta = {
+        (_norm_text(row.IdDocumento), _norm_text(row.IdRigaDoc)): row
+        for row in AcqOrdineFornitoreMeta.query.all()
+    }
+    rows = []
+
+    for ordine in AcqOrdineFornitoreAperto.query.all():
+        key = (_norm_text(ordine.IdDocumento), _norm_text(ordine.IdRigaDoc))
+        local = meta.get(key)
+        delivery_date = _parse_acquisti_date(ordine.DataConsegna)
+        supplier_key = (
+            _norm_text(ordine.TipoAnagrafica),
+            _norm_text(ordine.CodCliFor),
+        )
+        supplier_name = fornitori.get(supplier_key, "")
+        rows.append(
+            {
+                "IdDocumento": key[0],
+                "IdRigaDoc": key[1],
+                "Ordine": _ordine_fornitore_label(ordine),
+                "CodFornitore": supplier_key[1],
+                "Fornitore": supplier_name,
+                "CodArt": _norm_text(ordine.CodArt),
+                "DesArt": _norm_text(ordine.DesArt or ordine.DesEstesa),
+                "DataConsegnaIso": delivery_date.isoformat() if delivery_date else "",
+                "DataConsegnaText": (
+                    delivery_date.strftime("%d/%m/%Y") if delivery_date else ""
+                ),
+                "ArrivaOggi": delivery_date == today,
+                "Quantita": _decimal_to_text(
+                    Decimal(str(_safe_float(ordine.QTA_SALDO_DOC)))
+                ),
+                "UmDoc": _norm_text(ordine.UmDoc),
+                "NoteErp": _norm_text(ordine.NotaInterna),
+                "Note": _norm_text(local.Note) if local else "",
+                "Sollecitato": bool(local and local.Sollecitato),
+                "SollecitatoAt": _norm_text(local.SollecitatoAt) if local else "",
+                "Stato": "Sollecitato" if local and local.Sollecitato else "Aperto",
+            }
+        )
+
+    return sorted(
+        rows,
+        key=lambda row: (
+            row["DataConsegnaIso"] or "9999-12-31",
+            row["Ordine"].lower(),
+            row["CodArt"].lower(),
+        ),
+    )
 
 
 def _acq_revision_rank(value) -> tuple[int, str]:
@@ -290,6 +382,26 @@ def _build_acquisti_materiale_rows() -> list[dict]:
 
     giacenze_materiale_totali = _build_acquisti_materiale_mag0_map()
     grouped: dict[tuple[str, str], dict] = {}
+
+    for acquisto in _build_acquisti_ordini_fornitore_rows():
+        cod_art = _norm_text(acquisto["CodArt"])
+        qty = _safe_float(acquisto["Quantita"])
+        if not cod_art or qty <= 0:
+            continue
+        key = _material_key(cod_art, "")
+        row = grouped.setdefault(key, _new_acq_material_row(cod_art, ""))
+        row["DesArt"] = row["DesArt"] or acquisto["DesArt"]
+        row["MagUM"] = row["MagUM"] or acquisto["UmDoc"]
+        row["Acquisti"] += qty
+        row["AcquistiDettagli"].append(
+            {
+                "Ordine": acquisto["Ordine"],
+                "Fornitore": acquisto["Fornitore"] or acquisto["CodFornitore"],
+                "DataConsegna": acquisto["DataConsegnaText"],
+                "Quantita": acquisto["Quantita"],
+                "Stato": acquisto["Stato"],
+            }
+        )
 
     for ordine in ordini:
         stato = _ordine_stato_effettivo(ordine)
@@ -447,6 +559,7 @@ def _build_acquisti_materiale_rows() -> list[dict]:
         row["RimanenzaMateriale"] = (
             float(row["QtyMag0"] or 0)
             + float(row["MaterialeProdotto"] or 0)
+            + float(row["Acquisti"] or 0)
             - float(row["MaterialeDaConsumare"] or 0)
             - float(row["MaterialeImpegnato"] or 0)
         )
@@ -461,6 +574,7 @@ def _build_acquisti_materiale_rows() -> list[dict]:
         row["MaterialeProdottoText"] = _decimal_to_text(
             Decimal(str(row["MaterialeProdotto"]))
         )
+        row["AcquistiText"] = _decimal_to_text(Decimal(str(row["Acquisti"])))
         row["LottoRiordinoText"] = _decimal_to_text(Decimal(str(row["LottoRiordino"])))
         row["PuntoRiordinoText"] = _decimal_to_text(Decimal(str(row["PuntoRiordino"])))
 
@@ -488,6 +602,7 @@ def _build_acquisti_materiale_rows() -> list[dict]:
             "mag_um": row["MagUM"],
             "in_distinta": row["DistintaDettagli"],
             "in_ordine": row["OrdineDettagli"],
+            "in_acquisto": row["AcquistiDettagli"],
         }
 
         rows_out.append(row)
@@ -765,6 +880,7 @@ def _build_acquisti_excel_workbook(section: str, rows: list[dict]) -> Workbook:
             "Fabbisogno pianificato",
             "Fabbisogno impegnato",
             "Produzione prevista",
+            "Acquisti",
             "Rimanenza finale",
             "Scorta",
             "Lead time",
@@ -778,11 +894,11 @@ def _build_acquisti_excel_workbook(section: str, rows: list[dict]) -> Workbook:
                 row.get("IndiceModifica", ""),
                 row.get("DesArt", ""),
                 row.get("MagUM", ""),
-                row.get("QtyMag0Text", ""),
                 "Assente" if row.get("Mag0Missing") else row.get("QtyMag0Text", ""),
                 row.get("MaterialeDaConsumareText", ""),
                 row.get("MaterialeImpegnatoText", ""),
                 row.get("MaterialeProdottoText", ""),
+                row.get("AcquistiText", ""),
                 row.get("RimanenzaMaterialeText", ""),
                 row.get("PuntoRiordinoText", ""),
                 row.get("PianTempoApprovFisso", 0),

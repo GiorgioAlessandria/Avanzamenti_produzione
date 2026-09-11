@@ -2,7 +2,16 @@
 
 from io import BytesIO
 
-from flask import abort, jsonify, render_template, request, send_file
+from flask import (
+    abort,
+    flash,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    send_file,
+    url_for,
+)
 
 from app_odp.routes_blueprint import main_bp
 from app_odp.services.order_helpers import _norm_text, _now_rome_dt, _parse_bool_flag
@@ -10,6 +19,7 @@ from app_odp.services.order_helpers import _norm_text, _now_rome_dt, _parse_bool
 from app_odp.services.acquisti_service import (
     _build_acquisti_giacenze_rows,
     _build_acquisti_materiale_rows,
+    _build_acquisti_ordini_fornitore_rows,
     _build_acquisti_ordini_rows,
     _build_acquisti_scorte_rows,
     _filter_acquisti_giacenze_rows,
@@ -20,7 +30,12 @@ from app_odp.services.acquisti_service import (
     _scorta_to_row,
     _delete_scorte_chiuse_oltre_7_giorni,
 )
-from app_odp.models import db, AcqScortaSegnalata
+from app_odp.models import (
+    AcqOrdineFornitoreAperto,
+    AcqOrdineFornitoreMeta,
+    AcqScortaSegnalata,
+    db,
+)
 from app_odp.operator_session import active_policy, active_user
 from app_odp.policy.decorator import require_active_perm
 
@@ -43,6 +58,72 @@ def home_acquisti():
         ordini_rows=ordini_rows,
         scorte_rows=scorte_rows,
     )
+
+
+@main_bp.get("/acquisti/ordini-fornitore")
+@require_active_perm("home_acquisti")
+def acquisti_ordini_fornitore():
+    rows = _build_acquisti_ordini_fornitore_rows()
+    return render_template(
+        "acquisti_ordini_fornitore.j2",
+        rows=rows,
+        calendar_events=[
+            {
+                "date": row["DataConsegnaIso"],
+                "title": " · ".join(
+                    filter(
+                        None,
+                        (row["CodArt"], row["Fornitore"], row["Quantita"]),
+                    )
+                ),
+                "sollecitato": row["Sollecitato"],
+            }
+            for row in rows
+            if row["DataConsegnaIso"]
+        ],
+    )
+
+
+@main_bp.post("/acquisti/ordini-fornitore")
+@require_active_perm("home_acquisti")
+def acquisti_ordine_fornitore_update():
+    id_documento = _norm_text(request.form.get("id_documento"))
+    id_riga = _norm_text(request.form.get("id_riga"))
+    action = _norm_text(request.form.get("action")).lower()
+    note = _norm_text(request.form.get("note"))
+
+    if not id_documento or not id_riga or len(note) > 2000:
+        abort(400)
+    if db.session.get(AcqOrdineFornitoreAperto, (id_documento, id_riga)) is None:
+        abort(404)
+
+    row = db.session.get(AcqOrdineFornitoreMeta, (id_documento, id_riga))
+    if row is None:
+        row = AcqOrdineFornitoreMeta(
+            IdDocumento=id_documento,
+            IdRigaDoc=id_riga,
+        )
+        db.session.add(row)
+    row.Note = note
+
+    if action == "sollecita":
+        row.Sollecitato = True
+        row.SollecitatoAt = _now_rome_dt().isoformat(timespec="seconds")
+        message = "Ordine segnato come sollecitato."
+    elif action == "note":
+        message = "Note salvate."
+    else:
+        abort(400)
+
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        main_bp.logger.exception("Errore aggiornamento ordine fornitore")
+        flash("Errore durante il salvataggio.", "danger")
+    else:
+        flash(message, "success")
+    return redirect(url_for("main.acquisti_ordini_fornitore"))
 
 
 @main_bp.get("/api/acquisti/export/<section>")
