@@ -87,6 +87,10 @@
                                 <span class="badge text-bg-{{ 'warning' if row.Sollecitato else 'secondary' }}">
                                     {{ row.Stato }}
                                 </span>
+                                <small class="js-sollecito-date d-block mt-1{% if not row.SollecitatoAt %} d-none{% endif %}"
+                                       data-sollecitato-at="{{ row.SollecitatoAt }}">
+                                    Sollecitato il <span></span>
+                                </small>
                             </td>
                             <td>
                                 <form id="purchase-{{ group_loop.index0 }}-{{ loop.index0 }}" method="post"
@@ -104,9 +108,9 @@
                                 <div class="d-grid gap-1">
                                     <button class="btn btn-sm btn-outline-primary" type="submit" name="action"
                                             value="note" form="purchase-{{ group_loop.index0 }}-{{ loop.index0 }}">Salva</button>
-                                    <button class="btn btn-sm btn-warning" type="submit" name="action"
+                                    <button class="btn btn-sm btn-warning purchase-reminder-button" type="submit" name="action"
                                             value="sollecita" form="purchase-{{ group_loop.index0 }}-{{ loop.index0 }}"
-                                            {% if row.Sollecitato %}disabled{% endif %}>Sollecita</button>
+                                            >{{ 'Rimuovi sollecito' if row.Sollecitato else 'Sollecita' }}</button>
                                 </div>
                             </td>
                         </tr>
@@ -166,6 +170,10 @@
     .calendar-event.purchase-overdue { background: #f5aeb5; }
     .purchase-calendar-toast { width: min(60rem, calc(100vw - 2rem)); max-width: none; }
     .purchase-toast-matching > * { background: #fff3cd !important; font-weight: 600; }
+    .purchase-reminder-button.is-driving { position: relative; z-index: 10; animation: purchase-van-trip 1.6s ease-in-out; }
+    .purchase-reminder-button.is-driving::before { content: ""; position: absolute; left: -.85rem; bottom: 0; width: 1rem; height: 1.15rem; background: #ffc107; border: 1px solid #212529; border-radius: .5rem 0 0 .2rem; }
+    .purchase-reminder-button.is-driving::after { content: "●    ●"; position: absolute; left: -.55rem; right: .2rem; bottom: -.7rem; color: #212529; font-size: .7rem; letter-spacing: .35rem; white-space: nowrap; }
+    @keyframes purchase-van-trip { 0% { transform: translateX(0); } 42% { transform: translateX(-110vw); } 43% { transform: translateX(110vw); } 100% { transform: translateX(0); } }
     @media (max-width: 767px) { .calendar-day { min-height: 5rem; } .calendar-event { font-size: .68rem; } }
 </style>
 {% endblock %}
@@ -189,6 +197,15 @@
         el.textContent = value ?? "";
         return el.innerHTML;
     }
+
+    function formatReminderDate(value) {
+        const date = new Date(value);
+        return Number.isNaN(date.getTime()) ? value.replace("T", " ") : date.toLocaleString("it-IT", {dateStyle: "short", timeStyle: "short"});
+    }
+
+    document.querySelectorAll(".js-sollecito-date").forEach(element => {
+        element.querySelector("span").textContent = formatReminderDate(element.dataset.sollecitatoAt);
+    });
 
     function renderCalendar() {
         const year = shown.getFullYear();
@@ -285,16 +302,30 @@
             const data = await response.json();
             if (!response.ok || data.ok === false) throw new Error(data.error || "Salvataggio non riuscito.");
             const row = form.closest("tr");
-            if (data.sollecitato) {
+            if (button.value === "sollecita") {
                 const badge = row.querySelector(".badge");
                 badge.textContent = data.stato;
-                badge.classList.remove("text-bg-secondary");
-                badge.classList.add("text-bg-warning");
-                row.querySelector('button[value="sollecita"]').disabled = true;
-                events.filter(item => item.id_documento === data.id_documento).forEach(item => { item.sollecitato = true; });
+                badge.classList.toggle("text-bg-warning", data.sollecitato);
+                badge.classList.toggle("text-bg-secondary", !data.sollecitato);
+                const date = row.querySelector(".js-sollecito-date");
+                date.classList.toggle("d-none", !data.sollecitato);
+                date.querySelector("span").textContent = data.sollecitato ? formatReminderDate(data.sollecitato_at) : "";
+                events.filter(item => item.id_documento === data.id_documento).forEach(item => { item.sollecitato = data.sollecitato; });
+                const finish = () => {
+                    button.classList.remove("is-driving");
+                    button.textContent = data.sollecitato ? "Rimuovi sollecito" : "Sollecita";
+                    button.disabled = false;
+                };
+                if (data.sollecitato && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+                    button.classList.add("is-driving");
+                    button.addEventListener("animationend", finish, {once: true});
+                } else {
+                    finish();
+                }
+            } else {
+                button.textContent = "Salvato";
+                window.setTimeout(() => { button.textContent = originalLabel; }, 1200);
             }
-            button.textContent = "Salvato";
-            window.setTimeout(() => { button.textContent = originalLabel; }, 1200);
         } catch (error) {
             alert(error.message || "Errore durante il salvataggio.");
             button.disabled = false;
