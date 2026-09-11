@@ -381,6 +381,11 @@ def _group_acquisti_ordini_fornitore_rows(rows: list[dict]) -> list[dict]:
         group["Sollecitato"] = group["Sollecitato"] or row["Sollecitato"]
         group["Righe"].append(row)
 
+    for group in groups.values():
+        group["Righe"].sort(
+            key=lambda row: Decimal(row["IdRigaDoc"])
+        )
+
     return list(groups.values())
 
 

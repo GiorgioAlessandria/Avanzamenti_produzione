@@ -218,6 +218,7 @@ def test_supplier_order_rows_are_grouped_by_document():
     rows = [
         {
             "IdDocumento": "10",
+            "IdRigaDoc": "10",
             "NumRegistraz": "100",
             "GruppoDoc": "ORL",
             "CodFornitore": "F1",
@@ -228,6 +229,7 @@ def test_supplier_order_rows_are_grouped_by_document():
         },
         {
             "IdDocumento": "10",
+            "IdRigaDoc": "2",
             "NumRegistraz": "100",
             "GruppoDoc": "ORL",
             "CodFornitore": "F1",
@@ -245,6 +247,7 @@ def test_supplier_order_rows_are_grouped_by_document():
     assert groups[0]["ConsegnaCritica"] is True
     assert groups[0]["DataConsegnaIso"] == "2026-09-10"
     assert groups[0]["Sollecitato"] is True
+    assert [row["IdRigaDoc"] for row in groups[0]["Righe"]] == ["2", "10"]
 
 
 def test_calendar_has_one_event_per_order_date_and_highlights_matching_rows():
