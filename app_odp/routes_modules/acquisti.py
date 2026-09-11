@@ -29,6 +29,7 @@ from app_odp.services.acquisti_service import (
     _create_scorta_from_qrcode,
     _scorta_to_row,
     _delete_scorte_chiuse_oltre_7_giorni,
+    _group_acquisti_ordini_fornitore_rows,
 )
 from app_odp.models import (
     AcqOrdineFornitoreAperto,
@@ -67,16 +68,19 @@ def acquisti_ordini_fornitore():
     return render_template(
         "acquisti_ordini_fornitore.j2",
         rows=rows,
+        groups=_group_acquisti_ordini_fornitore_rows(rows),
         calendar_events=[
             {
                 "date": row["DataConsegnaIso"],
                 "title": " · ".join(
                     filter(
                         None,
-                        (row["CodArt"], row["Fornitore"], row["Quantita"]),
+                        (row["CodArt"], row["Fornitore"], row["QtaSaldo"]),
                     )
                 ),
                 "sollecitato": row["Sollecitato"],
+                "gruppo_doc": row["GruppoDoc"],
+                "critico": row["ConsegnaCritica"],
             }
             for row in rows
             if row["DataConsegnaIso"]

@@ -310,6 +310,8 @@ def _build_acquisti_ordini_fornitore_rows(today: date | None = None) -> list[dic
                 "IdDocumento": key[0],
                 "IdRigaDoc": key[1],
                 "Ordine": _ordine_fornitore_label(ordine),
+                "GruppoDoc": _norm_text(ordine.GruppoDoc).upper(),
+                "NumRegistraz": _norm_text(ordine.NumRegistraz),
                 "CodFornitore": supplier_key[1],
                 "Fornitore": supplier_name,
                 "CodArt": _norm_text(ordine.CodArt),
@@ -319,10 +321,20 @@ def _build_acquisti_ordini_fornitore_rows(today: date | None = None) -> list[dic
                     delivery_date.strftime("%d/%m/%Y") if delivery_date else ""
                 ),
                 "ArrivaOggi": delivery_date == today,
-                "Quantita": _decimal_to_text(
+                "ConsegnaCritica": bool(delivery_date and delivery_date <= today),
+                "QtaOrd": _decimal_to_text(
+                    Decimal(str(_safe_float(ordine.QTA_ORD)))
+                ),
+                "QtaCons": _decimal_to_text(
+                    Decimal(str(_safe_float(ordine.QTA_CONS)))
+                ),
+                "QtaSaldo": _decimal_to_text(
                     Decimal(str(_safe_float(ordine.QTA_SALDO_DOC)))
                 ),
                 "UmDoc": _norm_text(ordine.UmDoc),
+                "CommentoRigaSaldata": _norm_text(
+                    ordine.Commento_Riga_Saldata
+                ),
                 "NoteErp": _norm_text(ordine.NotaInterna),
                 "Note": _norm_text(local.Note) if local else "",
                 "Sollecitato": bool(local and local.Sollecitato),
@@ -339,6 +351,29 @@ def _build_acquisti_ordini_fornitore_rows(today: date | None = None) -> list[dic
             row["CodArt"].lower(),
         ),
     )
+
+
+def _group_acquisti_ordini_fornitore_rows(rows: list[dict]) -> list[dict]:
+    groups = {}
+    for row in rows:
+        group = groups.setdefault(
+            row["IdDocumento"],
+            {
+                "IdDocumento": row["IdDocumento"],
+                "NumRegistraz": row["NumRegistraz"],
+                "GruppoDoc": row["GruppoDoc"],
+                "CodFornitore": row["CodFornitore"],
+                "Fornitore": row["Fornitore"],
+                "ConsegnaCritica": False,
+                "Righe": [],
+            },
+        )
+        group["ConsegnaCritica"] = group["ConsegnaCritica"] or row[
+            "ConsegnaCritica"
+        ]
+        group["Righe"].append(row)
+
+    return list(groups.values())
 
 
 def _acq_revision_rank(value) -> tuple[int, str]:
@@ -385,7 +420,7 @@ def _build_acquisti_materiale_rows() -> list[dict]:
 
     for acquisto in _build_acquisti_ordini_fornitore_rows():
         cod_art = _norm_text(acquisto["CodArt"])
-        qty = _safe_float(acquisto["Quantita"])
+        qty = _safe_float(acquisto["QtaSaldo"])
         if not cod_art or qty <= 0:
             continue
         key = _material_key(cod_art, "")
@@ -398,7 +433,7 @@ def _build_acquisti_materiale_rows() -> list[dict]:
                 "Ordine": acquisto["Ordine"],
                 "Fornitore": acquisto["Fornitore"] or acquisto["CodFornitore"],
                 "DataConsegna": acquisto["DataConsegnaText"],
-                "Quantita": acquisto["Quantita"],
+                "Quantita": acquisto["QtaSaldo"],
                 "Stato": acquisto["Stato"],
             }
         )

@@ -168,14 +168,18 @@ def test_supplier_order_rows_join_registry_and_local_metadata(monkeypatch):
         CodTipoDoc="OF",
         CodSerie="A",
         NumRegistraz="100",
+        GruppoDoc="ORA",
         TipoAnagrafica="2",
         CodCliFor="F1",
         CodArt="ART-1",
         DesArt="Articolo test",
         DesEstesa="",
         DataConsegna="2026-09-10T00:00:00",
+        QTA_ORD=8,
+        QTA_CONS=3,
         QTA_SALDO_DOC=5,
         UmDoc="PZ",
+        Commento_Riga_Saldata="Parziale",
         NotaInterna="Nota ERP",
     )
     meta = SimpleNamespace(
@@ -201,8 +205,40 @@ def test_supplier_order_rows_join_registry_and_local_metadata(monkeypatch):
 
     assert row["Fornitore"] == "Fornitore Test"
     assert row["ArrivaOggi"] is True
+    assert row["ConsegnaCritica"] is True
+    assert row["QtaOrd"] == "8"
+    assert row["QtaCons"] == "3"
+    assert row["QtaSaldo"] == "5"
+    assert row["CommentoRigaSaldata"] == "Parziale"
     assert row["Stato"] == "Sollecitato"
     assert row["Note"] == "Chiamato il fornitore"
+
+
+def test_supplier_order_rows_are_grouped_by_document():
+    rows = [
+        {
+            "IdDocumento": "10",
+            "NumRegistraz": "100",
+            "GruppoDoc": "ORL",
+            "CodFornitore": "F1",
+            "Fornitore": "Fornitore Test",
+            "ConsegnaCritica": False,
+        },
+        {
+            "IdDocumento": "10",
+            "NumRegistraz": "100",
+            "GruppoDoc": "ORL",
+            "CodFornitore": "F1",
+            "Fornitore": "Fornitore Test",
+            "ConsegnaCritica": True,
+        },
+    ]
+
+    groups = service._group_acquisti_ordini_fornitore_rows(rows)
+
+    assert len(groups) == 1
+    assert len(groups[0]["Righe"]) == 2
+    assert groups[0]["ConsegnaCritica"] is True
 
 
 def test_parse_scorta_qrcode_accepts_three_parts_and_rejects_invalid_values():

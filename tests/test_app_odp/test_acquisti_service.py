@@ -103,7 +103,7 @@ def test_purchase_orders_are_added_to_material_balance(monkeypatch):
                 "CodArt": "ART-1",
                 "DesArt": "Articolo test",
                 "UmDoc": "PZ",
-                "Quantita": "5",
+                "QtaSaldo": "5",
                 "Ordine": "OF 10",
                 "Fornitore": "Fornitore Test",
                 "CodFornitore": "F1",

@@ -28,44 +28,64 @@
     <section id="purchase-list">
         <div class="card shadow-sm">
             <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
-                <strong>{{ rows|length }} righe aperte</strong>
+                <div>
+                    <strong>{{ groups|length }} ordini · {{ rows|length }} righe aperte</strong>
+                    <div class="d-flex flex-wrap gap-3 mt-2 small" aria-label="Legenda ordini">
+                        <span><i class="purchase-swatch purchase-orl"></i> Ordini di conto lavoro</span>
+                        <span><i class="purchase-swatch purchase-ora"></i> Ordini di acquisto</span>
+                        <span><i class="purchase-swatch purchase-overdue"></i> Consegna scaduta o odierna</span>
+                    </div>
+                </div>
                 <input id="purchase-search" class="form-control" style="max-width: 28rem"
                        type="search" placeholder="Cerca ordine, fornitore, codice o descrizione">
             </div>
             <div class="table-responsive" style="max-height: calc(100vh - 230px)">
                 <table class="table table-sm table-striped table-hover align-middle mb-0" id="purchase-table">
-                    <thead class="table-info sticky-top">
+                    <thead class="sticky-top">
                     <tr>
-                        <th>Ordine</th>
-                        <th>Fornitore</th>
-                        <th>Codice</th>
-                        <th>Descrizione</th>
-                        <th>Arrivo previsto</th>
-                        <th class="text-end">Quantità</th>
+                        <th>NumRegistraz</th>
+                        <th>CodArt</th>
+                        <th>DesArt</th>
+                        <th>DataConsegna</th>
+                        <th>UmDoc</th>
+                        <th class="text-end">QTA_ORD</th>
+                        <th class="text-end">QTA_CONS</th>
+                        <th class="text-end">QTA_SALDO_DOC</th>
+                        <th>Commento_Riga_Saldata</th>
                         <th>Stato</th>
                         <th style="min-width: 18rem">Note</th>
                         <th>Azioni</th>
                     </tr>
                     </thead>
-                    <tbody>
-                    {% for row in rows %}
-                        <tr class="{% if row.ArrivaOggi %}table-danger{% endif %}">
-                            <td>{{ row.Ordine }}</td>
-                            <td>
-                                <div>{{ row.Fornitore or 'Fornitore non trovato' }}</div>
-                                <small class="text-muted">{{ row.CodFornitore }}</small>
+                    {% for group in groups %}
+                    {% set group_loop = loop %}
+                    <tbody class="purchase-group">
+                        <tr class="purchase-group-header {% if group.ConsegnaCritica %}purchase-overdue{% elif group.GruppoDoc == 'ORL' %}purchase-orl{% elif group.GruppoDoc == 'ORA' %}purchase-ora{% endif %}">
+                            <td colspan="12">
+                                <strong>Documento {{ group.IdDocumento }}</strong>
+                                <span class="ms-2">Registrazione {{ group.NumRegistraz }}</span>
+                                <span class="ms-3">{{ group.Fornitore or 'Fornitore non trovato' }} ({{ group.CodFornitore }})</span>
+                                <span class="badge text-bg-light ms-2">{{ group.Righe|length }} righe</span>
                             </td>
+                        </tr>
+                        {% for row in group.Righe %}
+                        <tr class="purchase-line {% if row.ConsegnaCritica %}purchase-overdue{% elif row.GruppoDoc == 'ORL' %}purchase-orl{% elif row.GruppoDoc == 'ORA' %}purchase-ora{% endif %}">
+                            <td>{{ row.NumRegistraz }}</td>
                             <td>{{ row.CodArt }}</td>
                             <td>{{ row.DesArt }}</td>
                             <td>{{ row.DataConsegnaText or 'Non indicata' }}</td>
-                            <td class="text-end text-nowrap">{{ row.Quantita }} {{ row.UmDoc }}</td>
+                            <td>{{ row.UmDoc }}</td>
+                            <td class="text-end">{{ row.QtaOrd }}</td>
+                            <td class="text-end">{{ row.QtaCons }}</td>
+                            <td class="text-end">{{ row.QtaSaldo }}</td>
+                            <td>{{ row.CommentoRigaSaldata }}</td>
                             <td>
                                 <span class="badge text-bg-{{ 'warning' if row.Sollecitato else 'secondary' }}">
                                     {{ row.Stato }}
                                 </span>
                             </td>
                             <td>
-                                <form id="purchase-{{ loop.index }}" method="post"
+                                <form id="purchase-{{ group_loop.index0 }}-{{ loop.index0 }}" method="post"
                                       action="{{ url_for('main.acquisti_ordine_fornitore_update') }}">
                                     <input type="hidden" name="id_documento" value="{{ row.IdDocumento }}">
                                     <input type="hidden" name="id_riga" value="{{ row.IdRigaDoc }}">
@@ -79,17 +99,18 @@
                             <td>
                                 <div class="d-grid gap-1">
                                     <button class="btn btn-sm btn-outline-primary" type="submit" name="action"
-                                            value="note" form="purchase-{{ loop.index }}">Salva</button>
+                                            value="note" form="purchase-{{ group_loop.index0 }}-{{ loop.index0 }}">Salva</button>
                                     <button class="btn btn-sm btn-warning" type="submit" name="action"
-                                            value="sollecita" form="purchase-{{ loop.index }}"
+                                            value="sollecita" form="purchase-{{ group_loop.index0 }}-{{ loop.index0 }}"
                                             {% if row.Sollecitato %}disabled{% endif %}>Sollecita</button>
                                 </div>
                             </td>
                         </tr>
-                    {% else %}
-                        <tr><td colspan="9" class="text-center text-muted py-4">Nessun ordine aperto.</td></tr>
-                    {% endfor %}
+                        {% endfor %}
                     </tbody>
+                    {% else %}
+                    <tbody><tr><td colspan="12" class="text-center text-muted py-4">Nessun ordine aperto.</td></tr></tbody>
+                    {% endfor %}
                 </table>
             </div>
         </div>
@@ -113,12 +134,21 @@
 </main>
 
 <style>
+    #purchase-table thead th { background: #f8f9fa !important; color: #212529 !important; }
+    #purchase-table .purchase-group-header > * { font-weight: 500; border-top: 2px solid #495057; }
+    #purchase-table tr.purchase-orl > *, .purchase-swatch.purchase-orl { background: #ffd39b !important; color: #212529 !important; }
+    #purchase-table tr.purchase-ora > *, .purchase-swatch.purchase-ora { background: #b9dcff !important; color: #212529 !important; }
+    #purchase-table tr.purchase-overdue > *, .purchase-swatch.purchase-overdue { background: #f5aeb5 !important; color: #212529 !important; }
+    .purchase-swatch { display: inline-block; width: 1rem; height: 1rem; border: 1px solid #495057; border-radius: .2rem; vertical-align: -.15rem; }
     .calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
     .calendar-weekdays > div { padding: .5rem; background: var(--bs-info-bg-subtle); }
     .calendar-day { min-height: 8rem; padding: .4rem; border: 1px solid var(--bs-border-color); overflow: hidden; }
     .calendar-day.today { background: var(--bs-danger-bg-subtle); }
     .calendar-event { margin-top: .3rem; padding: .25rem .35rem; border-radius: .25rem; background: var(--bs-primary-bg-subtle); font-size: .78rem; }
     .calendar-event.sollecitato { background: var(--bs-warning-bg-subtle); }
+    .calendar-event.purchase-orl { background: #ffd39b; }
+    .calendar-event.purchase-ora { background: #b9dcff; }
+    .calendar-event.purchase-overdue { background: #f5aeb5; }
     @media (max-width: 767px) { .calendar-day { min-height: 5rem; } .calendar-event { font-size: .68rem; } }
 </style>
 {% endblock %}
@@ -154,9 +184,12 @@
             const key = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
             const isToday = today.getFullYear() === year && today.getMonth() === month && today.getDate() === day;
             const dayEvents = events.filter(event => event.date === key);
-            const html = dayEvents.map(event =>
-                `<div class="calendar-event ${event.sollecitato ? "sollecitato" : ""}">${escapeHtml(event.title)}</div>`
-            ).join("");
+            const html = dayEvents.map(event => {
+                const typeClass = event.critico
+                    ? "purchase-overdue"
+                    : event.gruppo_doc === "ORL" ? "purchase-orl" : "purchase-ora";
+                return `<div class="calendar-event ${typeClass} ${event.sollecitato ? "sollecitato" : ""}">${escapeHtml(event.title)}</div>`;
+            }).join("");
             grid.insertAdjacentHTML("beforeend", `<div class="calendar-day ${isToday ? "today" : ""}"><strong>${day}</strong>${html}</div>`);
         }
     }
@@ -176,8 +209,8 @@
     document.getElementById("calendar-next").addEventListener("click", () => { shown = new Date(shown.getFullYear(), shown.getMonth() + 1, 1); renderCalendar(); });
     document.getElementById("purchase-search").addEventListener("input", event => {
         const needle = event.target.value.trim().toLocaleLowerCase("it");
-        document.querySelectorAll("#purchase-table tbody tr").forEach(row => {
-            row.classList.toggle("d-none", needle && !row.textContent.toLocaleLowerCase("it").includes(needle));
+        document.querySelectorAll("#purchase-table tbody.purchase-group").forEach(group => {
+            group.classList.toggle("d-none", needle && !group.textContent.toLocaleLowerCase("it").includes(needle));
         });
     });
 })();
