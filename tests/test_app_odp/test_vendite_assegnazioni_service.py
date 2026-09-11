@@ -4,7 +4,16 @@ from types import SimpleNamespace
 import pytest
 from flask import Flask
 
-from app_odp.models import AcqArticoliLookup, InputOdp, InputOdpLog, OdpDistintaMancante, db
+from app_odp.models import (
+    AcqArticoliLookup,
+    AcqClienteFornitore,
+    AcqMatricolaMacchina,
+    AcqOrdineClienteAperto,
+    InputOdp,
+    InputOdpLog,
+    OdpDistintaMancante,
+    db,
+)
 from app_odp.services.ordini_distinta_mancante_service import save_missing_components
 from app_odp.services.ordini_runtime_service import _ensure_stato_attivo
 from app_odp.services.order_helpers import _now_rome_dt
@@ -40,6 +49,62 @@ from app_odp.vendite_models import (
 
 
 ACTOR = SimpleNamespace(id=None, username="commerciale")
+
+
+def test_synced_customer_orders_are_grouped_expanded_and_assignable(app):
+    with app.app_context():
+        db.session.add_all([
+            AcqClienteFornitore(
+                TipoAnagrafica="1", CodCliFor="CLI-1", RagioneSociale="Cliente Uno"
+            ),
+            AcqClienteFornitore(
+                TipoAnagrafica="2", CodCliFor="CLI-1", RagioneSociale="Fornitore Uno"
+            ),
+            AcqOrdineClienteAperto(
+                IdDocumento="DOC-ERP-1", IdRigaDoc="20", CodCliFor="CLI-1",
+                CodArt="MODELLO-ERP", DesArt="Macchina ERP",
+                DataConsegna="2026-09-20", QTA_ORD=2,
+            ),
+            AcqOrdineClienteAperto(
+                IdDocumento="DOC-ERP-2", IdRigaDoc="10", CodCliFor="CLI-1",
+                CodArt="MODELLO-ERP", DesArt="Macchina ERP",
+                DataConsegna="2026-09-15", QTA_ORD=1,
+            ),
+            AcqMatricolaMacchina(
+                CodMatricola="123456", CodArt="MODELLO-ERP", CodMag="0"
+            ),
+            AcqMatricolaMacchina(
+                CodMatricola="999999", CodArt="MODELLO-ERP", CodMag="1"
+            ),
+        ])
+        db.session.commit()
+
+        dashboard = build_assignment_dashboard()
+        order = next(item for item in dashboard["customer_orders"] if item["managed"])
+
+        assert order["customer_name"] == "Cliente Uno"
+        assert order["customer_code"] == "CLI-1"
+        assert order["customer_order"] == "Gestionale"
+        assert [row["delivery_date"] for row in order["rows"]] == [
+            "2026-09-15", "2026-09-20", "2026-09-20"
+        ]
+        assert [row["model_code"] for row in order["rows"]] == ["MODELLO-ERP"] * 3
+        assert {item["serial_number"] for item in dashboard["assignment_machines"]} == {
+            "123456"
+        }
+
+        row = db.session.get(VenditeOrdineClienteRiga, order["rows"][0]["id"])
+        set_machine_assignment(
+            row.id,
+            {
+                "version": row.versione,
+                "id_documento": "MATRICOLA",
+                "id_riga": "123456",
+            },
+            ACTOR,
+            commit=True,
+        )
+        assert row.odp_matricola == "123456"
 
 
 def test_planned_visibility_filters_all_customer_lists_and_counts(app):

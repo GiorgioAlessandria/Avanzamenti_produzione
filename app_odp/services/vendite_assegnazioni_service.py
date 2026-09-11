@@ -1,11 +1,20 @@
 import json
 import unicodedata
-from datetime import date
+from datetime import date, datetime
+from types import SimpleNamespace
 
 from sqlalchemy import func, or_, tuple_
 from sqlalchemy.orm import selectinload
 
-from app_odp.models import AcqArticoliLookup, InputOdp, InputOdpLog, db
+from app_odp.models import (
+    AcqArticoliLookup,
+    AcqClienteFornitore,
+    AcqMatricolaMacchina,
+    AcqOrdineClienteAperto,
+    InputOdp,
+    InputOdpLog,
+    db,
+)
 from app_odp.ordine_ref import format_ordine_ref_display
 from app_odp.services.order_helpers import (
     _fase_to_int,
@@ -44,6 +53,7 @@ MAX_NOTE = 1000
 MAX_EXPANDED_ROWS = 500
 LOG_QUERY_BATCH_SIZE = 400
 STOCK_LABEL = "STOCK"
+INVENTORY_DOCUMENT = "MATRICOLA"
 
 
 class VenditeAssegnazioniError(ValueError):
@@ -147,7 +157,13 @@ def _is_stock_machine(machine) -> bool:
     return bool(getattr(machine, "IsStock", False))
 
 
+def _is_inventory_machine(machine) -> bool:
+    return bool(getattr(machine, "IsInventory", False))
+
+
 def _machine_order_label(machine) -> str:
+    if _is_inventory_machine(machine):
+        return "MAGAZZINO"
     return STOCK_LABEL if _is_stock_machine(machine) else _ordine_ref_label(machine)
 
 
@@ -310,8 +326,39 @@ def register_closed_machine_stock(
 
 def load_assignable_machine_orders() -> list:
     return _unique_machines_by_serial(
-        load_stock_machine_orders() + load_machine_orders()
+        _load_inventory_machines() + load_stock_machine_orders() + load_machine_orders()
     )
+
+
+def _inventory_machine(item: AcqMatricolaMacchina):
+    return SimpleNamespace(
+        IdDocumento=INVENTORY_DOCUMENT,
+        IdRiga=_norm_text(item.CodMatricola),
+        RifRegistraz="MAGAZZINO",
+        NumProgrRiga="",
+        CodArt=_norm_text(item.CodArt),
+        VarianteArt="",
+        DesArt="",
+        CodMatricola=_norm_text(item.CodMatricola),
+        GestioneMatricola="si",
+        FaseAttiva="",
+        StatoOrdine="Disponibile",
+        IsInventory=True,
+    )
+
+
+def _load_inventory_machines() -> list:
+    return [
+        _inventory_machine(item)
+        for item in AcqMatricolaMacchina.query.filter(
+            func.trim(func.coalesce(AcqMatricolaMacchina.CodMag, "")) == "0",
+            func.trim(func.coalesce(AcqMatricolaMacchina.CodMatricola, "")) != "",
+            func.trim(func.coalesce(AcqMatricolaMacchina.CodArt, "")) != "",
+        ).order_by(
+            AcqMatricolaMacchina.CodArt,
+            AcqMatricolaMacchina.CodMatricola,
+        ).all()
+    ]
 
 
 def _stock_record(id_documento: str, id_riga: str):
@@ -341,6 +388,12 @@ def _ensure_no_production_serial_conflict(stock: VenditeMacchinaStock) -> None:
 
 
 def _find_current_machine(id_documento: str, id_riga: str):
+    if id_documento == INVENTORY_DOCUMENT:
+        item = AcqMatricolaMacchina.query.filter(
+            AcqMatricolaMacchina.CodMatricola == id_riga,
+            func.trim(func.coalesce(AcqMatricolaMacchina.CodMag, "")) == "0",
+        ).one_or_none()
+        return _inventory_machine(item) if item is not None else None
     stock = _stock_record(id_documento, id_riga)
     if stock is not None:
         return _stock_machine(stock)
@@ -357,7 +410,9 @@ def _find_current_machine(id_documento: str, id_riga: str):
 def _find_assignable_machine(id_documento: str, id_riga: str):
     machine = _find_current_machine(id_documento, id_riga)
     if machine is None or (
-        not _is_stock_machine(machine) and not is_open_machine_order(machine)
+        not _is_stock_machine(machine)
+        and not _is_inventory_machine(machine)
+        and not is_open_machine_order(machine)
     ):
         return None
     return machine
@@ -662,6 +717,20 @@ def _customer_row(row_id: int) -> VenditeOrdineClienteRiga:
     return row
 
 
+def _require_manual_order(customer: VenditeOrdineCliente) -> None:
+    if customer.gestionale_cod_cliente:
+        raise VenditeAssegnazioniError(
+            "Gli ordini gestionali possono essere modificati solo dal gestionale."
+        )
+
+
+def _require_manual_row(row: VenditeOrdineClienteRiga) -> None:
+    if row.gestionale_id_documento:
+        raise VenditeAssegnazioniError(
+            "La riga gestionale consente soltanto l'assegnazione della matricola."
+        )
+
+
 def _check_row_version(row: VenditeOrdineClienteRiga, payload) -> None:
     expected_version = _positive_integer(
         payload.get("version"),
@@ -951,7 +1020,9 @@ def _assignment_payload(
         is_stock and _norm_text(row.odp_rif_registraz) == STOCK_LABEL
     )
     machine_is_open = current_machine is not None and (
-        is_stock or is_open_machine_order(current_machine)
+        is_stock
+        or _is_inventory_machine(current_machine)
+        or is_open_machine_order(current_machine)
     )
     machine_is_completed = is_stock or completed_from_log or bool(
         current_machine is not None
@@ -1061,6 +1132,7 @@ def update_customer_row_notes(
         raise VenditeAssegnazioniError("Dati delle note non validi.")
 
     row = _customer_row(row_id)
+    _require_manual_row(row)
     _check_row_version(row, payload)
     changed = _apply_note_updates(
         row,
@@ -1173,6 +1245,7 @@ def delete_customer_order(
     customer = db.session.get(VenditeOrdineCliente, order_id)
     if customer is None:
         raise VenditeAssegnazioniError("Ordine cliente non trovato.")
+    _require_manual_order(customer)
 
     for row in customer.righe:
         if row.odp_matricola:
@@ -1196,6 +1269,7 @@ def update_customer_order_details(
     customer = db.session.get(VenditeOrdineCliente, order_id)
     if customer is None:
         raise VenditeAssegnazioniError("Ordine cliente non trovato.")
+    _require_manual_order(customer)
 
     new_reference = _internal_reference(payload.get("internal_reference"))
     old_reference = customer.riferimento_interno or "ITALIA"
@@ -1228,6 +1302,7 @@ def update_customer_row_dates(
         raise VenditeAssegnazioniError("Dati delle date non validi.")
 
     row = _customer_row(row_id)
+    _require_manual_row(row)
     _check_row_version(row, payload)
 
     updated = False
@@ -1376,10 +1451,168 @@ def update_packaging_notes(
     return items
 
 
+def _synced_date(value) -> date | None:
+    raw = _norm_text(value)
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00")).date()
+    except ValueError:
+        try:
+            return date.fromisoformat(raw[:10])
+        except ValueError:
+            return None
+
+
+def _sync_open_customer_orders() -> None:
+    clients = {
+        _norm_text(item.CodCliFor): _norm_text(item.RagioneSociale)
+        for item in AcqClienteFornitore.query.filter(
+            func.trim(func.coalesce(AcqClienteFornitore.TipoAnagrafica, "")) == "1"
+        ).all()
+    }
+    source_by_client = {}
+    for item in AcqOrdineClienteAperto.query.all():
+        client_code = _norm_text(item.CodCliFor)
+        model_code = _norm_text(item.CodArt)
+        delivery_date = _synced_date(item.DataConsegna)
+        try:
+            quantity = int(float(item.QTA_ORD or 0))
+        except (TypeError, ValueError):
+            quantity = 0
+        if not client_code or not model_code or delivery_date is None or quantity <= 0:
+            continue
+        source_by_client.setdefault(client_code, []).append(
+            (delivery_date, item, quantity)
+        )
+
+    managed_orders = {
+        item.gestionale_cod_cliente: item
+        for item in VenditeOrdineCliente.query.options(
+            selectinload(VenditeOrdineCliente.righe)
+        ).filter(
+            VenditeOrdineCliente.gestionale_cod_cliente.is_not(None)
+        ).all()
+    }
+    changed = False
+    for client_code, source_rows in source_by_client.items():
+        customer = managed_orders.pop(client_code, None)
+        customer_name = clients.get(client_code) or client_code
+        if customer is None:
+            customer = VenditeOrdineCliente(
+                cliente_nome=customer_name,
+                cliente_chiave=_normalized_key(customer_name),
+                numero_ordine=f"GESTIONALE:{client_code}",
+                numero_ordine_chiave=_normalized_key(f"GESTIONALE:{client_code}"),
+                riferimento_interno="ITALIA",
+                creato_da_nome="Sincronizzazione gestionale",
+                confermato_il=_now_rome_dt().isoformat(timespec="seconds"),
+                confermato_da_nome="Sincronizzazione gestionale",
+                gestionale_cod_cliente=client_code,
+            )
+            db.session.add(customer)
+            changed = True
+        elif customer.cliente_nome != customer_name:
+            customer.cliente_nome = customer_name
+            customer.cliente_chiave = _normalized_key(customer_name)
+            changed = True
+
+        existing = {
+            (
+                _norm_text(row.gestionale_id_documento),
+                _norm_text(row.gestionale_id_riga),
+                row.gestionale_unita,
+            ): row
+            for row in customer.righe
+            if row.gestionale_id_documento
+        }
+        source_rows.sort(
+            key=lambda value: (
+                value[0],
+                _norm_text(value[1].IdDocumento),
+                _norm_text(value[1].IdRigaDoc),
+            )
+        )
+        expanded_rows = [
+            (delivery_date, item, unit)
+            for delivery_date, item, quantity in source_rows
+            for unit in range(1, quantity + 1)
+        ]
+        desired_keys = [
+            (
+                _norm_text(item.IdDocumento),
+                _norm_text(item.IdRigaDoc),
+                unit,
+            )
+            for _delivery_date, item, unit in expanded_rows
+        ]
+        for key in set(existing) - set(desired_keys):
+            db.session.delete(existing.pop(key))
+            changed = True
+        if changed:
+            db.session.flush()
+
+        positions_changed = any(
+            key in existing and existing[key].posizione != position
+            for position, key in enumerate(desired_keys, start=1)
+        )
+        if positions_changed:
+            offset = max(
+                [row.posizione for row in existing.values()] + [len(desired_keys)]
+            )
+            for temporary_position, row in enumerate(existing.values(), start=1):
+                row.posizione = offset + temporary_position
+            db.session.flush()
+            changed = True
+
+        for position, ((delivery_date, item, unit), key) in enumerate(
+            zip(expanded_rows, desired_keys), start=1
+        ):
+            row = existing.get(key)
+            if row is None:
+                row = VenditeOrdineClienteRiga(
+                    ordine_cliente=customer,
+                    gestionale_id_documento=key[0],
+                    gestionale_id_riga=key[1],
+                    gestionale_unita=unit,
+                    modello_codice=_norm_text(item.CodArt),
+                    modello_variante="",
+                    modello_descrizione=_norm_text(item.DesArt) or None,
+                    data_consegna=delivery_date,
+                    posizione=position,
+                )
+                db.session.add(row)
+                changed = True
+            for field, value in {
+                "posizione": position,
+                "modello_codice": _norm_text(item.CodArt),
+                "modello_descrizione": _norm_text(item.DesArt) or None,
+                "data_consegna": delivery_date,
+            }.items():
+                if getattr(row, field) != value:
+                    setattr(row, field, value)
+                    changed = True
+        shipping_date = min(value[0] for value in source_rows)
+        if customer.data_spedizione != shipping_date:
+            customer.data_spedizione = shipping_date
+            changed = True
+
+    for stale_order in managed_orders.values():
+        db.session.delete(stale_order)
+        changed = True
+
+    if changed:
+        db.session.flush()
+
+
 def build_assignment_dashboard(*, include_planned: bool = True) -> dict:
+    _sync_open_customer_orders()
     production_machines = load_machine_orders(include_closed=True)
     stock_machines = load_stock_machine_orders()
-    all_machines = _unique_machines_by_serial(stock_machines + production_machines)
+    inventory_machines = _load_inventory_machines()
+    all_machines = _unique_machines_by_serial(
+        inventory_machines + stock_machines + production_machines
+    )
     all_machine_map = {_machine_key(machine): machine for machine in all_machines}
     all_machine_by_serial = {
         _normalized_key(_machine_serial(machine)): machine
@@ -1387,7 +1620,8 @@ def build_assignment_dashboard(*, include_planned: bool = True) -> dict:
         if _machine_serial(machine)
     }
     open_machines = _unique_machines_by_serial(
-        stock_machines
+        inventory_machines
+        + stock_machines
         + [
             machine
             for machine in production_machines
@@ -1525,7 +1759,13 @@ def build_assignment_dashboard(*, include_planned: bool = True) -> dict:
             {
                 "id": customer.id,
                 "customer_name": customer.cliente_nome,
-                "customer_order": customer.numero_ordine,
+                "customer_order": (
+                    "Gestionale"
+                    if customer.gestionale_cod_cliente
+                    else customer.numero_ordine
+                ),
+                "managed": bool(customer.gestionale_cod_cliente),
+                "customer_code": customer.gestionale_cod_cliente or "",
                 "internal_reference": customer.riferimento_interno or "ITALIA",
                 "created_at": customer.creato_il,
                 "created_by_name": customer.creato_da_nome,
@@ -1542,6 +1782,14 @@ def build_assignment_dashboard(*, include_planned: bool = True) -> dict:
                 "rows": rows_payload,
             }
         )
+
+    customer_payload.sort(
+        key=lambda item: (
+            min(row["delivery_date"] for row in item["rows"]),
+            item["customer_name"].casefold(),
+            item["customer_order"].casefold(),
+        )
+    )
 
     assignment_machines_payload = []
     for machine in open_machines:

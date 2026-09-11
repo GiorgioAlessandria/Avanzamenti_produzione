@@ -1619,6 +1619,44 @@ class AcqClienteFornitore(db.Model):
     synced_at = db.Column(db.Text)
 
 
+class AcqMatricolaMacchina(db.Model):
+    __bind_key__ = "acq"
+    __tablename__ = "matricole_macchine"
+
+    CodMatricola = db.Column(db.Text, primary_key=True)
+    CodArt = db.Column(db.Text, nullable=False)
+    CodMag = db.Column(db.Text, nullable=False)
+    CodAreaMag = db.Column(db.Text)
+    synced_at = db.Column(db.Text)
+
+
+class AcqOrdineClienteAperto(db.Model):
+    __bind_key__ = "acq"
+    __tablename__ = "ordini_cliente_aperti"
+
+    IdDocumento = db.Column(db.Text, primary_key=True)
+    IdRigaDoc = db.Column(db.Text, primary_key=True)
+    CodTipoDoc = db.Column(db.Text)
+    DataRegistrazione = db.Column(db.Text)
+    CodSerie = db.Column(db.Text)
+    NumRegistraz = db.Column(db.Text)
+    NumDocOriginale = db.Column(db.Text)
+    DataOriginale = db.Column(db.Text)
+    CodCliFor = db.Column(db.Text)
+    TipoRigaDoc = db.Column(db.Text)
+    CodArt = db.Column(db.Text)
+    DesArt = db.Column(db.Text)
+    DesEstesa = db.Column(db.Text)
+    DataConsegna = db.Column(db.Text)
+    UmDoc = db.Column(db.Text)
+    QTA_ORD = db.Column(db.Float)
+    QTA_CONS = db.Column(db.Float)
+    QTA_SALDO_DOC = db.Column(db.Float)
+    Commento_Riga_Saldata = db.Column(db.Text)
+    NotaInterna = db.Column(db.Text)
+    synced_at = db.Column(db.Text)
+
+
 class AcqOrdineFornitoreAperto(db.Model):
     __bind_key__ = "acq"
     __tablename__ = "ordini_for_clav_aperti"

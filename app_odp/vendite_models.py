@@ -75,6 +75,9 @@ class VenditeOrdineCliente(db.Model):
     creato_da_nome = db.Column(db.String(120), nullable=False)
     confermato_il = db.Column(db.Text, nullable=True)
     confermato_da_nome = db.Column(db.String(120), nullable=True)
+    gestionale_cod_cliente = db.Column(
+        db.String(120), nullable=True, index=True
+    )
 
     righe = db.relationship(
         "VenditeOrdineClienteRiga",
@@ -90,6 +93,10 @@ class VenditeOrdineCliente(db.Model):
             "cliente_chiave",
             "numero_ordine_chiave",
             name="uq_vendite_ordine_cliente_numero",
+        ),
+        db.UniqueConstraint(
+            "gestionale_cod_cliente",
+            name="uq_vendite_ordine_cliente_gestionale",
         ),
     )
 
@@ -135,6 +142,9 @@ class VenditeOrdineClienteRiga(db.Model):
         nullable=False,
         default=False,
     )
+    gestionale_id_documento = db.Column(db.Text, nullable=True)
+    gestionale_id_riga = db.Column(db.Text, nullable=True)
+    gestionale_unita = db.Column(db.Integer, nullable=True)
 
     ordine_cliente = db.relationship(
         "VenditeOrdineCliente",
@@ -171,6 +181,12 @@ class VenditeOrdineClienteRiga(db.Model):
             "odp_id_documento",
             "odp_id_riga",
             name="uq_vendite_ordine_cliente_riga_odp",
+        ),
+        db.UniqueConstraint(
+            "gestionale_id_documento",
+            "gestionale_id_riga",
+            "gestionale_unita",
+            name="uq_vendite_ordine_cliente_riga_gestionale",
         ),
     )
 

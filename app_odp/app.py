@@ -358,6 +358,11 @@ def _ensure_vendite_schema() -> None:
                 "ALTER TABLE vendite_ordini_cliente "
                 "ADD COLUMN data_spedizione DATE"
             )
+        if "gestionale_cod_cliente" not in columns:
+            additions.append(
+                "ALTER TABLE vendite_ordini_cliente "
+                "ADD COLUMN gestionale_cod_cliente VARCHAR(120)"
+            )
         order_has_available_date = "data_disponibile" in columns
 
     if "vendite_ordini_cliente_righe" in tables:
@@ -398,6 +403,16 @@ def _ensure_vendite_schema() -> None:
                 "ADD COLUMN data_disponibile DATE"
             )
             added_row_available_date = True
+        for name, column_type in (
+            ("gestionale_id_documento", "TEXT"),
+            ("gestionale_id_riga", "TEXT"),
+            ("gestionale_unita", "INTEGER"),
+        ):
+            if name not in columns:
+                additions.append(
+                    "ALTER TABLE vendite_ordini_cliente_righe "
+                    f"ADD COLUMN {name} {column_type}"
+                )
 
     if "vendite_spedizioni_confermate" in tables:
         columns = {
@@ -483,6 +498,21 @@ def _ensure_vendite_schema() -> None:
                         "SET data_disponibile = COALESCE(data_disponibile, data_consegna), "
                         "data_consegna = COALESCE(data_spedizione, data_consegna)"
                     )
+
+    with engine.begin() as connection:
+        connection.exec_driver_sql(
+            "CREATE UNIQUE INDEX IF NOT EXISTS "
+            "uq_vendite_ordine_cliente_gestionale "
+            "ON vendite_ordini_cliente (gestionale_cod_cliente) "
+            "WHERE gestionale_cod_cliente IS NOT NULL"
+        )
+        connection.exec_driver_sql(
+            "CREATE UNIQUE INDEX IF NOT EXISTS "
+            "uq_vendite_ordine_cliente_riga_gestionale "
+            "ON vendite_ordini_cliente_righe "
+            "(gestionale_id_documento, gestionale_id_riga, gestionale_unita) "
+            "WHERE gestionale_id_documento IS NOT NULL"
+        )
 
     if "vendite_note_imballaggio" in tables:
         now = datetime.now(ZoneInfo("Europe/Rome")).isoformat(timespec="seconds")

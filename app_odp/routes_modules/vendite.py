@@ -128,7 +128,9 @@ def vendite_assegnazioni_page():
 @main_bp.get("/api/vendite/assegnazioni")
 @require_active_perm("vendite")
 def api_vendite_assegnazioni():
-    response = jsonify({"ok": True, "data": _visible_assignment_dashboard()})
+    data = _visible_assignment_dashboard()
+    db.session.commit()
+    response = jsonify({"ok": True, "data": data})
     response.headers["Cache-Control"] = "no-store"
     return response, 200
 
