@@ -54,6 +54,14 @@ ACTOR = SimpleNamespace(id=None, username="commerciale")
 def test_synced_customer_orders_are_grouped_expanded_and_assignable(app):
     with app.app_context():
         db.session.add_all([
+            AcqArticoliLookup(
+                CodArt="MODELLO-ERP", VarianteArt="", IndiceModifica="A",
+                GestioneMatricola="si",
+            ),
+            AcqArticoliLookup(
+                CodArt="RICAMBIO", VarianteArt="", IndiceModifica="A",
+                GestioneMatricola="no",
+            ),
             AcqClienteFornitore(
                 TipoAnagrafica="1", CodCliFor="CLI-1", RagioneSociale="Cliente Uno"
             ),
@@ -69,6 +77,11 @@ def test_synced_customer_orders_are_grouped_expanded_and_assignable(app):
                 IdDocumento="DOC-ERP-2", IdRigaDoc="10", CodCliFor="CLI-1",
                 CodArt="MODELLO-ERP", DesArt="Macchina ERP",
                 DataConsegna="2026-09-15", QTA_ORD=1,
+            ),
+            AcqOrdineClienteAperto(
+                IdDocumento="DOC-RICAMBIO", IdRigaDoc="30", CodCliFor="CLI-1",
+                CodArt="RICAMBIO", DesArt="Riga non macchina",
+                DataConsegna="2026-09-10", QTA_ORD=5,
             ),
             AcqMatricolaMacchina(
                 CodMatricola="123456", CodArt="MODELLO-ERP", CodMag="0"

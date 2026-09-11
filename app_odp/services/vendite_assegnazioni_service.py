@@ -1465,6 +1465,16 @@ def _synced_date(value) -> date | None:
 
 
 def _sync_open_customer_orders() -> None:
+    machine_model_codes = {
+        _normalized_key(code)
+        for (code,) in db.session.query(AcqArticoliLookup.CodArt).filter(
+            func.lower(
+                func.trim(func.coalesce(AcqArticoliLookup.GestioneMatricola, ""))
+            )
+            == "si"
+        ).distinct()
+        if _norm_text(code)
+    }
     clients = {
         _norm_text(item.CodCliFor): _norm_text(item.RagioneSociale)
         for item in AcqClienteFornitore.query.filter(
@@ -1480,7 +1490,12 @@ def _sync_open_customer_orders() -> None:
             quantity = int(float(item.QTA_ORD or 0))
         except (TypeError, ValueError):
             quantity = 0
-        if not client_code or not model_code or delivery_date is None or quantity <= 0:
+        if (
+            not client_code
+            or _normalized_key(model_code) not in machine_model_codes
+            or delivery_date is None
+            or quantity <= 0
+        ):
             continue
         source_by_client.setdefault(client_code, []).append(
             (delivery_date, item, quantity)
