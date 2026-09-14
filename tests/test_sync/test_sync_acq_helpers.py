@@ -1,4 +1,5 @@
 from datetime import datetime, time
+from unittest.mock import MagicMock
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -94,3 +95,21 @@ def test_seconds_until_next_allowed_returns_seconds_until_next_probe(
     monkeypatch.setattr(sync_acq, "datetime", FixedDatetime)
 
     assert sync_acq.seconds_until_next_allowed(8, 17, {3}, tz = ZoneInfo("Europe/Rome")) == 60
+
+
+def test_replace_table_deletes_and_inserts_in_the_same_transaction():
+    engine = MagicMock()
+    connection = engine.begin.return_value.__enter__.return_value
+    dataframe = MagicMock()
+    dataframe.empty = False
+
+    sync_acq._replace_table(engine, "ordini_cliente_aperti", dataframe)
+
+    engine.begin.assert_called_once_with()
+    connection.execute.assert_called_once()
+    dataframe.to_sql.assert_called_once_with(
+        name="ordini_cliente_aperti",
+        con=connection,
+        if_exists="append",
+        index=False,
+    )

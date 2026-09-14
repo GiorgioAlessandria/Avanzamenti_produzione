@@ -1236,8 +1236,8 @@ def build_acq_riepilogo_materiali(
 def _replace_table(engine, table_name: str, df: pd.DataFrame):
     with engine.begin() as conn:
         conn.execute(sa.text(f"DELETE FROM {table_name}"))
-    if not df.empty:
-        df.to_sql(name=table_name, con=engine, if_exists="append", index=False)
+        if not df.empty:
+            df.to_sql(name=table_name, con=conn, if_exists="append", index=False)
 
 
 def elaborazione_dati_acq():
