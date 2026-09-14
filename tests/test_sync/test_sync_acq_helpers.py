@@ -21,23 +21,26 @@ def test_sync_acq_text_and_lookup_normalizers_clear_empty_values():
 
 def test_sync_acq_safe_number_helpers_parse_erp_style_values():
     assert sync_acq._safe_float("1.234,5") == 1234.5
-    assert sync_acq._safe_float(None, default=7.0) == 7.0
-    assert sync_acq._safe_float(float("nan"), default=2.0) == 2.0
+    assert sync_acq._safe_float(None, default = 7.0) == 7.0
+    assert sync_acq._safe_float(float("nan"), default = 2.0) == 2.0
     assert sync_acq._safe_int("2,6") == 3
 
 
 @pytest.mark.parametrize(
-    ("value", "expected"),
-    [
-        (None, []),
-        ("", []),
-        ("not-json", []),
-        ('{"CodArt": "A"}', []),
-        ([{"CodArt": "A"}], [{"CodArt": "A"}]),
-        ('[{"CodArt": "A"}]', [{"CodArt": "A"}]),
-    ],
-)
-def test_parse_distinta_materiale_returns_only_lists(value, expected):
+        ("value", "expected"),
+        [
+            (None, []),
+            ("", []),
+            ("not-json", []),
+            ('{"CodArt": "A"}', []),
+            ([{"CodArt": "A"}], [{"CodArt": "A"}]),
+            ('[{"CodArt": "A"}]', [{"CodArt": "A"}]),
+            ],
+        )
+def test_parse_distinta_materiale_returns_only_lists(
+        value,
+        expected
+        ):
     assert sync_acq._parse_distinta_materiale(value) == expected
 
 
@@ -59,23 +62,35 @@ def test_sync_acq_is_allowed_datetime_uses_start_day_for_overnight_windows():
     assert sync_acq._is_allowed_datetime(tuesday_late, time(22, 0), time(6, 0), {0}) is False
 
 
-def test_seconds_until_next_allowed_returns_zero_inside_window(monkeypatch):
+def test_seconds_until_next_allowed_returns_zero_inside_window(
+        monkeypatch
+        ):
     class FixedDatetime(datetime):
         @classmethod
-        def now(cls, tz=None):
-            return cls(2026, 7, 9, 8, 30, tzinfo=tz)
+        def now(
+                cls,
+                tz = None
+                ):
+            return cls(2026, 7, 9, 8, 30, tzinfo = tz)
+
 
     monkeypatch.setattr(sync_acq, "datetime", FixedDatetime)
 
-    assert sync_acq.seconds_until_next_allowed(8, 17, {3}, tz=ZoneInfo("Europe/Rome")) == 0
+    assert sync_acq.seconds_until_next_allowed(8, 17, {3}, tz = ZoneInfo("Europe/Rome")) == 0
 
 
-def test_seconds_until_next_allowed_returns_seconds_until_next_probe(monkeypatch):
+def test_seconds_until_next_allowed_returns_seconds_until_next_probe(
+        monkeypatch
+        ):
     class FixedDatetime(datetime):
         @classmethod
-        def now(cls, tz=None):
-            return cls(2026, 7, 9, 7, 59, tzinfo=tz)
+        def now(
+                cls,
+                tz = None
+                ):
+            return cls(2026, 7, 9, 7, 59, tzinfo = tz)
+
 
     monkeypatch.setattr(sync_acq, "datetime", FixedDatetime)
 
-    assert sync_acq.seconds_until_next_allowed(8, 17, {3}, tz=ZoneInfo("Europe/Rome")) == 60
+    assert sync_acq.seconds_until_next_allowed(8, 17, {3}, tz = ZoneInfo("Europe/Rome")) == 60

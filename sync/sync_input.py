@@ -1965,23 +1965,6 @@ def _is_stato_ordine_terminato(value) -> bool:
     return _norm_text(value).lower() in ERP_TERMINATED_STATES
 
 
-def _pk_set_from_df(
-    df: pd.DataFrame,
-    key_cols: tuple[str, ...] = PK_COLS,
-) -> set[tuple[str, ...]]:
-    if df.empty:
-        return set()
-
-    missing = [col for col in key_cols if col not in df.columns]
-    if missing:
-        raise KeyError(f"Colonne PK mancanti nel dataframe vwESOdP: {missing}")
-
-    return {
-        tuple(_norm_text(row[col]) for col in key_cols)
-        for _, row in df[list(key_cols)].iterrows()
-    }
-
-
 def _filtra_odp_importabili(df_odp_raw: pd.DataFrame) -> pd.DataFrame:
     """
     Applica gli stessi filtri che prima venivano applicati da leggi_view()
