@@ -20,54 +20,6 @@
           data-can-view-options="{{ 'true' if can_view_options else 'false' }}"
           data-can-view-production-instructions="{{ 'true' if can_view_production_instructions else 'false' }}"
           data-can-manage-sales-priorities="{{ 'true' if can_manage_sales_priorities else 'false' }}">
-        <div class="d-flex flex-wrap justify-content-end align-items-center gap-3 mb-3">
-            <div class="d-flex flex-wrap gap-2">
-                <button type="button"
-                        class="btn btn-outline-primary btn-sm"
-                        id="vendite-refresh">
-                    Aggiorna ora
-                </button>
-                {% if can_manage_sales_priorities and request.args.get('vista') == 'matricola' %}
-                <label class="form-check d-flex align-items-center mb-0 ms-1">
-                    <input class="form-check-input mt-0" type="checkbox" id="vendite-priority-mode">
-                    <span class="form-check-label ms-2">Modalità priorità</span>
-                </label>
-                <div id="vendite-priority-controls" class="d-none flex-wrap gap-2">
-                    <select id="vendite-priority-operator" class="form-select form-select-sm" aria-label="Operatore di montaggio">
-                        <option value="">Seleziona operatore di montaggio...</option>
-                    </select>
-                    <button type="button" class="btn btn-primary btn-sm" id="vendite-priority-save" disabled>
-                        Salva priorità
-                    </button>
-                </div>
-                {% endif %}
-                {% if can_manage_groups %}
-                <details id="vendite-group-manager" class="border rounded p-2">
-                    <summary class="small">Gestisci raggruppamenti</summary>
-                    <form id="vendite-group-form" class="mt-2" style="min-width: 280px; max-width: 520px;">
-                        <fieldset id="vendite-group-fields" disabled>
-                            <label class="form-label" for="vendite-group-select">Raggruppamento</label>
-                            <select id="vendite-group-select" class="form-select mb-2">
-                                <option value="">Nuovo raggruppamento</option>
-                            </select>
-                            <label class="form-label" for="vendite-group-name">Nome</label>
-                            <input id="vendite-group-name" class="form-control mb-2" maxlength="80" required>
-                            <fieldset class="mb-2">
-                                <legend class="fs-6">Famiglie delle macchine</legend>
-                                <div id="vendite-group-families" class="border rounded p-2" style="max-height: 260px; overflow: auto;"></div>
-                            </fieldset>
-                            <div class="small text-muted mb-2">Condivisi fra gli utenti. Una famiglia può appartenere a più raggruppamenti.</div>
-                            <button class="btn btn-primary btn-sm" type="submit">Salva raggruppamento</button>
-                            <button id="vendite-group-delete" class="btn btn-outline-danger btn-sm" type="button" disabled>Elimina</button>
-                            <button id="vendite-group-cancel" class="btn btn-outline-secondary btn-sm" type="button">Annulla modifiche</button>
-                        </fieldset>
-                        <div id="vendite-group-message" class="small mt-2" role="status" aria-live="polite"></div>
-                    </form>
-                </details>
-                {% endif %}
-            </div>
-        </div>
-
         <div class="alert alert-danger d-none"
              id="vendite-error"
              role="alert"></div>
@@ -178,14 +130,61 @@
                     <div class="small text-muted">
                         Seleziona i raggruppamenti per una tabella unica; senza selezioni sono mostrate tutte le macchine.
                     </div>
-                    <div class="mt-2" style="max-width: 36rem;">
-                        <label class="visually-hidden" for="vendite-machine-search">
-                            Cerca per matricola, ordine produzione o ordine cliente
-                        </label>
-                        <input type="search"
-                               class="form-control"
-                               id="vendite-machine-search"
-                               placeholder="Cerca matricola, ordine produzione o ordine cliente...">
+                    <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
+                        <div class="flex-grow-1" style="max-width: 36rem;">
+                            <label class="visually-hidden" for="vendite-machine-search">
+                                Cerca per matricola, ordine produzione o ordine cliente
+                            </label>
+                            <input type="search"
+                                   class="form-control"
+                                   id="vendite-machine-search"
+                                   placeholder="Cerca matricola, ordine produzione o ordine cliente...">
+                        </div>
+                        <div class="d-flex flex-wrap justify-content-end align-items-center gap-2 ms-auto">
+                            <button type="button"
+                                    class="btn btn-outline-primary btn-sm"
+                                    id="vendite-refresh">
+                                Aggiorna ora
+                            </button>
+                            {% if can_manage_sales_priorities and request.args.get('vista') == 'matricola' %}
+                            <label class="form-check d-flex align-items-center mb-0 ms-1">
+                                <input class="form-check-input mt-0" type="checkbox" id="vendite-priority-mode">
+                                <span class="form-check-label ms-2">Modalità priorità</span>
+                            </label>
+                            <div id="vendite-priority-controls" class="d-none flex-wrap gap-2">
+                                <select id="vendite-priority-operator" class="form-select form-select-sm" aria-label="Operatore di montaggio">
+                                    <option value="">Seleziona operatore di montaggio...</option>
+                                </select>
+                                <button type="button" class="btn btn-primary btn-sm" id="vendite-priority-save" disabled>
+                                    Salva priorità
+                                </button>
+                            </div>
+                            {% endif %}
+                            {% if can_manage_groups %}
+                            <details id="vendite-group-manager" class="border rounded p-2">
+                                <summary class="small">Gestisci raggruppamenti</summary>
+                                <form id="vendite-group-form" class="mt-2" style="min-width: 280px; max-width: 520px;">
+                                    <fieldset id="vendite-group-fields" disabled>
+                                        <label class="form-label" for="vendite-group-select">Raggruppamento</label>
+                                        <select id="vendite-group-select" class="form-select mb-2">
+                                            <option value="">Nuovo raggruppamento</option>
+                                        </select>
+                                        <label class="form-label" for="vendite-group-name">Nome</label>
+                                        <input id="vendite-group-name" class="form-control mb-2" maxlength="80" required>
+                                        <fieldset class="mb-2">
+                                            <legend class="fs-6">Famiglie delle macchine</legend>
+                                            <div id="vendite-group-families" class="border rounded p-2" style="max-height: 260px; overflow: auto;"></div>
+                                        </fieldset>
+                                        <div class="small text-muted mb-2">Condivisi fra gli utenti. Una famiglia può appartenere a più raggruppamenti.</div>
+                                        <button class="btn btn-primary btn-sm" type="submit">Salva raggruppamento</button>
+                                        <button id="vendite-group-delete" class="btn btn-outline-danger btn-sm" type="button" disabled>Elimina</button>
+                                        <button id="vendite-group-cancel" class="btn btn-outline-secondary btn-sm" type="button">Annulla modifiche</button>
+                                    </fieldset>
+                                    <div id="vendite-group-message" class="small mt-2" role="status" aria-live="polite"></div>
+                                </form>
+                            </details>
+                            {% endif %}
+                        </div>
                     </div>
                 </div>
                 <div class="table-responsive vendite-table-scroll">

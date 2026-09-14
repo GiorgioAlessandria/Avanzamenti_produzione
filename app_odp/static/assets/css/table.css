@@ -126,6 +126,55 @@
     resize: vertical;
 }
 
+/* Le tabelle operative Vendite devono rimanere interamente nella pagina. */
+#vendite-page #vendite-machines-table,
+#vendite-assegnazioni-page :is(
+    #vendite-customer-orders-table,
+    #vendite-available-machines-table,
+    .vendite-fit-table
+) {
+    width: 100%;
+    min-width: 0;
+    table-layout: fixed;
+}
+
+#vendite-page #vendite-machines-table :is(th, td),
+#vendite-assegnazioni-page :is(
+    #vendite-customer-orders-table,
+    #vendite-available-machines-table,
+    .vendite-fit-table
+) :is(th, td) {
+    min-width: 0 !important;
+    max-width: none;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+#vendite-page #vendite-machines-table :is(.vendite-model-column, .vendite-note-column),
+#vendite-assegnazioni-page :is(
+    #vendite-customer-orders-table,
+    #vendite-available-machines-table
+) :is(.vendite-model-cell, .vendite-note-cell) {
+    width: auto;
+    min-width: 0;
+    max-width: none;
+}
+
+#vendite-assegnazioni-page :is(
+    #vendite-customer-orders-table,
+    #vendite-available-machines-table,
+    .vendite-fit-table
+) :is(.vendite-row-note, .vendite-assignment-select, input, select, textarea) {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+}
+
+#vendite-page #vendite-machines-table .btn {
+    max-width: 100%;
+    white-space: normal;
+}
+
 #vendite-page .vendite-summary-table thead tr:first-child th {
     border-bottom-width: 1px;
 }
