@@ -19,24 +19,6 @@
             border-radius: 0 .4rem .4rem 0;
         }
 
-        #vendite-assegnazioni-page .vendite-create-order-panel-toggle {
-            position: absolute;
-            top: 0;
-            left: 0;
-            z-index: 3;
-            width: 1.75rem;
-            height: 3rem;
-            padding: 0;
-            transform: translateX(-50%);
-            font-size: 1.5rem;
-            line-height: 1;
-            border-radius: 0 .4rem .4rem 0;
-        }
-
-        #vendite-assegnazioni-page #vendite-create-order-shell {
-            min-height: 3rem;
-        }
-
         #vendite-assegnazioni-page .vendite-auto-assignment-dot {
             width: .7rem;
             height: .7rem;
@@ -197,18 +179,9 @@
                  role="tabpanel"
                  aria-labelledby="vendite-orders-tab-button">
 
-                <div class="position-relative mb-3{% if not can_create_customer_orders %} d-none{% endif %}"
+                <div{% if not can_create_customer_orders %} class="d-none"{% endif %}
                      id="vendite-create-order-shell">
-                    <button class="btn btn-light border vendite-create-order-panel-toggle"
-                            type="button"
-                            id="vendite-create-order-panel-toggle"
-                            aria-expanded="false"
-                            aria-controls="vendite-create-order-panel"
-                            aria-label="Mostra nuovo ordine cliente"
-                            title="Mostra nuovo ordine cliente">
-                        <span aria-hidden="true">›</span>
-                    </button>
-                    <section class="card shadow-sm d-none"
+                    <section class="card shadow-sm d-none mb-3"
                              id="vendite-create-order-panel">
                         <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
                             <div>
@@ -315,7 +288,21 @@
                          aria-live="polite">
                         Caricamento...
                     </div>
-                    <div class="small text-muted">Aggiornamento automatico ogni 5 secondi</div>
+                    <div class="d-flex flex-wrap align-items-center gap-2">
+                        {% if can_create_customer_orders %}
+                            <button class="btn btn-outline-primary btn-sm d-inline-flex align-items-center gap-1"
+                                    type="button"
+                                    id="vendite-create-order-panel-toggle"
+                                    aria-expanded="false"
+                                    aria-controls="vendite-create-order-panel"
+                                    aria-label="Mostra nuovo ordine cliente"
+                                    title="Mostra nuovo ordine cliente">
+                                <span aria-hidden="true">›</span>
+                                <span>Nuovo ordine manuale</span>
+                            </button>
+                        {% endif %}
+                        <div class="small text-muted">Aggiornamento automatico ogni 5 secondi</div>
+                    </div>
                 </div>
 
                 <div class="row g-3">
@@ -340,13 +327,15 @@
                                        autocomplete="off">
                             </div>
                             <div class="table-responsive vendite-assignment-scroll">
-                                <table class="table table-sm table-hover align-middle small mb-0 vendite-data-table">
+                                <table class="table table-sm table-hover align-middle small mb-0 vendite-data-table"
+                                       id="vendite-available-machines-table">
                                     <thead class="table-light">
                                     <tr>
                                         <th>Modello</th>
                                         <th>Matricola</th>
                                         <th>Ordine</th>
                                         <th>Fase / stato</th>
+                                        <th>Note di produzione</th>
                                     </tr>
                                     </thead>
                                     <tbody id="vendite-machines-body">
@@ -1004,6 +993,7 @@
                         machine.phase,
                         window.phaseLabel(machine.phase),
                         machine.state,
+                        machine.production_note,
                     ].join(" ").toLocaleLowerCase("it");
                     return `
                         <tr data-machine-search="${esc(search)}">
@@ -1014,6 +1004,7 @@
                                 <div>${esc(window.phaseLabel(machine.phase))}</div>
                                 ${stateBadge(machine.state)}
                             </td>
+                            <td class="vendite-note-cell" style="white-space: pre-wrap">${esc(machine.production_note || "—")}</td>
                         </tr>`;
                 }).join("");
                 applyMachineFilter();
@@ -1737,7 +1728,7 @@
                     machinesPanelToggle.getAttribute("aria-expanded") !== "true"
                 );
             });
-            createOrderPanelToggle.addEventListener("click", () => {
+            createOrderPanelToggle?.addEventListener("click", () => {
                 setCreateOrderPanelExpanded(
                     createOrderPanelToggle.getAttribute("aria-expanded") !== "true"
                 );

@@ -1419,6 +1419,18 @@ def build_assignment_dashboard(*, include_planned: bool = True) -> dict:
     options_by_serial = _machine_options(
         _machine_serial(machine) for machine in all_machines
     )
+    production_notes_by_serial = {
+        item.matricola: item.note or ""
+        for item in VenditeNotaProduzioneMacchina.query.filter(
+            VenditeNotaProduzioneMacchina.matricola.in_(
+                {
+                    _normalized_key(_machine_serial(machine))
+                    for machine in all_machines
+                    if _machine_serial(machine)
+                }
+            )
+        ).all()
+    }
 
     assigned_by_machine = {}
     assigned_by_serial = {}
@@ -1572,6 +1584,10 @@ def build_assignment_dashboard(*, include_planned: bool = True) -> dict:
                 "has_serial": bool(_norm_text(machine.CodMatricola)),
                 "phase": _phase_label(machine.FaseAttiva),
                 "state": _canonical_state(machine.StatoOrdine),
+                "production_note": production_notes_by_serial.get(
+                    _normalized_key(_machine_serial(machine)),
+                    "",
+                ),
                 "assigned": assigned is not None,
                 "assigned_row_id": assigned_row.id if assigned_row else None,
                 "assigned_customer_name": (

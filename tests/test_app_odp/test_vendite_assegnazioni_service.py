@@ -1329,10 +1329,12 @@ def test_inventory_machine_is_exposed_as_stock_and_keeps_local_metadata(app):
         assert confirmation.matricola == "123456"
         assert note.matricola == "123456"
         assert option.matricola == "123456"
+        dashboard = build_assignment_dashboard()
         assert {
             item["serial_number"]
-            for item in build_assignment_dashboard()["assignment_machines"]
+            for item in dashboard["assignment_machines"]
         } == {"123456"}
+        assert dashboard["assignment_machines"][0]["production_note"] == "Nota stock"
         machine = build_vendite_payload()["machines"][0]
         assert machine["order"] == "STOCK"
         assert machine["description"] == "Macchina MODELLO-1"

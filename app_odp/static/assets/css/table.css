@@ -87,6 +87,14 @@
     min-width: 132rem;
 }
 
+#vendite-assegnazioni-page #vendite-available-machines-table {
+    min-width: 62rem;
+}
+
+#vendite-assegnazioni-page #vendite-available-machines-table th:last-child {
+    min-width: 18rem;
+}
+
 #vendite-assegnazioni-page #vendite-customer-orders-table th:first-child {
     width: 3.5rem;
     min-width: 3.5rem;
