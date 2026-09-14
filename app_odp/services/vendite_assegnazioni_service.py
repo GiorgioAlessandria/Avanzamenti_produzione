@@ -1465,6 +1465,22 @@ def build_assignment_dashboard(*, include_planned: bool = True) -> dict:
             packaged = packaging is not None
             if packaged:
                 customer_packaged += 1
+            row_missing_components = []
+            if assignment is not None:
+                for component in missing_components.get(
+                    (
+                        row.odp_id_documento,
+                        row.odp_id_riga,
+                        assignment["phase"],
+                    ),
+                    [],
+                ):
+                    code = _norm_text(component.get("code"))
+                    description = _norm_text(component.get("description"))
+                    if code and description:
+                        row_missing_components.append(
+                            {"code": code, "description": description}
+                        )
 
             rows_payload.append(
                 {
@@ -1481,18 +1497,7 @@ def build_assignment_dashboard(*, include_planned: bool = True) -> dict:
                     "sales_note": row.note or "",
                     "commercial_note": row.note_commerciali or "",
                     "production_note": row.note_produzione or "",
-                    "missing_components": (
-                        missing_components.get(
-                            (
-                                row.odp_id_documento,
-                                row.odp_id_riga,
-                                assignment["phase"],
-                            ),
-                            [],
-                        )
-                        if assignment is not None
-                        else []
-                    ),
+                    "missing_components": row_missing_components,
                     "production_instructions": row.note_per_produzione or "",
                     "shipping_note": row.note_spedizione or "",
                     "available_date": (

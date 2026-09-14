@@ -3,17 +3,45 @@
 /* Layout della situazione produzione vendite. */
 #vendite-page,
 #vendite-page #vendite-tab-content,
-#vendite-page .tab-pane {
+#vendite-page .tab-pane,
+#vendite-assegnazioni-page,
+#vendite-assegnazioni-page .tab-content,
+#vendite-assegnazioni-page .tab-pane,
+#vendite-assegnazioni-page .card {
     min-width: 0;
 }
 
-#vendite-page .vendite-table-scroll {
+#vendite-page .vendite-table-scroll,
+#vendite-assegnazioni-page .vendite-assignment-scroll,
+#vendite-assegnazioni-page .vendite-packaging-scroll {
     width: 100%;
-    min-height: 12rem;
-    max-height: calc(100vh - 16rem);
     overflow: auto;
     overscroll-behavior: contain;
     scrollbar-gutter: stable;
+}
+
+#vendite-page .vendite-table-scroll {
+    min-height: 12rem;
+    max-height: calc(100dvh - 16rem);
+}
+
+#vendite-assegnazioni-page .vendite-assignment-scroll {
+    min-height: 20rem;
+    max-height: calc(100dvh - 20rem);
+}
+
+#vendite-assegnazioni-page .vendite-packaging-scroll {
+    min-height: 12rem;
+    max-height: calc(100dvh - 15rem);
+}
+
+@media (max-width: 1199.98px) {
+    #vendite-assegnazioni-page .vendite-assignment-scroll,
+    #vendite-assegnazioni-page .vendite-packaging-scroll,
+    #vendite-page .vendite-table-scroll {
+        min-height: 0;
+        max-height: 55dvh;
+    }
 }
 .app-header > .container-fluid > .row,
 .app-header .flex-nowrap {

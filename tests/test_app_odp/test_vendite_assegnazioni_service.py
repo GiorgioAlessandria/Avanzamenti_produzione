@@ -1393,16 +1393,22 @@ def test_customer_production_note_includes_missing_components(app):
             machine = _add_machine()
             customer = create_customer_order(_payload(model_key=_model_key()), ACTOR)
             _assign_test_machine(customer.righe[0], machine)
-            save_missing_components(machine, "1", [{
-                "CodArt": "COMP-01",
-                "VarianteArt": "V2",
-                "DesArt": "Componente mancante",
-                "Quantita": 1,
-            }])
+            save_missing_components(machine, "1", [
+                {
+                    "CodArt": "COMP-01",
+                    "VarianteArt": "V2",
+                    "DesArt": "Componente mancante",
+                    "Quantita": 1,
+                },
+                {
+                    "CodArt": "COMP-SENZA-DESCRIZIONE",
+                    "DesArt": "",
+                    "Quantita": 1,
+                },
+            ])
             row = build_assignment_dashboard()["customer_orders"][0]["rows"][0]
             assert row["missing_components"] == [{
                 "code": "COMP-01",
-                "variant": "V2",
                 "description": "Componente mancante",
             }]
         finally:

@@ -6,13 +6,21 @@
 }
 
 #vendite-page .vendite-note-column {
-    min-width: 260px;
+    min-width: 18rem;
     white-space: normal;
+    overflow-wrap: anywhere;
 }
 
 #vendite-page #vendite-machines-table {
     min-width: max-content;
 }
+
+#vendite-page #vendite-machines-table th:nth-child(2) { min-width: 9rem; }
+#vendite-page #vendite-machines-table th:nth-child(3) { min-width: 11rem; }
+#vendite-page #vendite-machines-table th:nth-child(4) { min-width: 14rem; }
+#vendite-page #vendite-machines-table th:nth-child(5) { min-width: 9rem; }
+#vendite-page #vendite-machines-table th:nth-child(6) { min-width: 7rem; }
+#vendite-page #vendite-machines-table th:nth-child(7) { min-width: 9rem; }
 
 #vendite-page #vendite-machines-table > :is(thead, tbody) > tr > :is(th, td) {
     vertical-align: middle;
@@ -22,6 +30,92 @@
 #vendite-page .vendite-summary-table td:not(:first-child) {
     text-align: center;
     vertical-align: middle;
+}
+
+#vendite-page .vendite-summary-table {
+    min-width: 48rem;
+}
+
+:is(#vendite-page, #vendite-assegnazioni-page) .vendite-data-table {
+    font-size: .875rem;
+    line-height: 1.35;
+}
+
+:is(#vendite-page, #vendite-assegnazioni-page)
+.vendite-data-table > :is(thead, tbody, tfoot) > tr > :is(th, td) {
+    padding: .5rem .6rem;
+    vertical-align: middle;
+}
+
+:is(#vendite-page, #vendite-assegnazioni-page) .vendite-data-table thead th {
+    white-space: normal;
+    line-height: 1.2;
+}
+
+#vendite-assegnazioni-page .vendite-model-cell {
+    width: 14rem;
+    min-width: 14rem;
+    max-width: 14rem;
+    white-space: normal;
+}
+
+#vendite-assegnazioni-page .vendite-note-cell {
+    min-width: 17rem;
+    max-width: 24rem;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+#vendite-assegnazioni-page .vendite-row-note {
+    width: 100%;
+    min-width: 16rem;
+    resize: vertical;
+}
+
+#vendite-assegnazioni-page .vendite-assignment-select {
+    width: 19rem;
+    min-width: 19rem;
+}
+
+#vendite-assegnazioni-page .vendite-assignment-select option.vendite-machine-assigned {
+    color: #664d03;
+    background-color: #fff3cd;
+    font-weight: 600;
+}
+
+#vendite-assegnazioni-page #vendite-customer-orders-table {
+    min-width: 132rem;
+}
+
+#vendite-assegnazioni-page #vendite-customer-orders-table th:first-child {
+    width: 3.5rem;
+    min-width: 3.5rem;
+}
+
+#vendite-assegnazioni-page #vendite-customer-orders-table th:nth-child(3) {
+    min-width: 9rem;
+}
+
+#vendite-assegnazioni-page #vendite-customer-orders-table th:nth-child(6) {
+    min-width: 19rem;
+}
+
+#vendite-assegnazioni-page #vendite-customer-orders-table th:last-child {
+    min-width: 8rem;
+}
+
+#vendite-assegnazioni-page #vendite-packaging-notes-table {
+    min-width: 52rem;
+}
+
+#vendite-assegnazioni-page #vendite-packaging-notes-table th:nth-child(2) {
+    min-width: 30rem;
+}
+
+#vendite-assegnazioni-page #vendite-packaging-notes-table textarea {
+    min-height: 7rem;
+    line-height: 1.4;
+    resize: vertical;
 }
 
 #vendite-page .vendite-summary-table thead tr:first-child th {
