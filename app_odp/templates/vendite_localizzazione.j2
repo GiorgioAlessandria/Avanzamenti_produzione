@@ -1,0 +1,175 @@
+{% extends "base.j2" %}
+
+{% block title %}Localizzazione ordini - Vendite{% endblock %}
+
+{% block styles %}
+    {{ super() }}
+    <link rel="stylesheet"
+          href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+          crossorigin="">
+    <style>
+        #vendite-map { height: min(72vh, 760px); min-height: 480px; }
+        #vendite-location-list { max-height: min(72vh, 760px); overflow-y: auto; }
+        .vendite-location-item { cursor: pointer; }
+    </style>
+{% endblock %}
+
+{% block content %}
+    <main class="container-fluid py-3"
+          id="vendite-location-page"
+          data-api-url="{{ operator_url_for('main.api_vendite_localizzazione') }}"
+          data-geocode-url="{{ operator_url_for('main.api_vendite_localizzazione_geocodifica') }}"
+          data-tile-url="{{ tile_url }}">
+        <ul class="nav nav-tabs mb-3">
+            <li class="nav-item"><a class="nav-link" href="{{ operator_url_for('main.vendite_assegnazioni_page', vista='ordini') }}">Ordini cliente</a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ operator_url_for('main.vendite_page', vista='matricola') }}">Situazione produzione per matricola</a></li>
+            <li class="nav-item"><a class="nav-link active" aria-current="page" href="#">Localizzazione ordini</a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ operator_url_for('main.vendite_assegnazioni_page', vista='imballaggio') }}">Note per imballo</a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ operator_url_for('main.vendite_page', vista='modello') }}">Situazione produzione per modello</a></li>
+        </ul>
+
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+            <div>
+                <h1 class="h5 mb-1">Localizzazione ordini automatici</h1>
+                <div class="small text-muted" id="vendite-location-status" role="status" aria-live="polite">Caricamento...</div>
+            </div>
+            <div class="d-flex gap-2">
+                <button type="button" class="btn btn-outline-primary btn-sm" id="vendite-geocode">Localizza clienti mancanti</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="vendite-location-refresh">Aggiorna</button>
+            </div>
+        </div>
+        <div class="alert alert-danger d-none" id="vendite-location-error" role="alert"></div>
+
+        <div class="row g-3">
+            <section class="col-12 col-xl-8">
+                <div class="card shadow-sm">
+                    <div class="card-body p-0"><div id="vendite-map" aria-label="Mappa dei clienti con ordini automatici"></div></div>
+                </div>
+            </section>
+            <aside class="col-12 col-xl-4">
+                <div class="card shadow-sm">
+                    <div class="card-header fw-semibold">Clienti e macchine ordinate</div>
+                    <div class="list-group list-group-flush" id="vendite-location-list"></div>
+                </div>
+            </aside>
+        </div>
+    </main>
+{% endblock %}
+
+{% block extra_js %}
+    {{ super() }}
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+            crossorigin=""></script>
+    <script>
+        (() => {
+            const page = document.getElementById("vendite-location-page");
+            if (!page) return;
+            const status = document.getElementById("vendite-location-status");
+            const error = document.getElementById("vendite-location-error");
+            const list = document.getElementById("vendite-location-list");
+            const geocodeButton = document.getElementById("vendite-geocode");
+            const refreshButton = document.getElementById("vendite-location-refresh");
+            if (!window.L) {
+                error.textContent = "Impossibile caricare la libreria della mappa.";
+                error.classList.remove("d-none");
+                return;
+            }
+            const map = L.map("vendite-map").setView([42.5, 12.5], 6);
+            const markerLayer = L.layerGroup().addTo(map);
+            const markers = new Map();
+
+            L.tileLayer(page.dataset.tileUrl, {
+                maxZoom: 19,
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+            }).addTo(map);
+
+            const esc = value => String(value ?? "").replace(/[&<>"']/g, char => ({
+                "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+            }[char]));
+            const machineLabel = machine => [
+                machine.model_code,
+                machine.variant,
+                machine.serial_number ? `Matricola ${machine.serial_number}` : "",
+                machine.order ? `Ordine ${machine.order}` : "",
+            ].filter(Boolean).join(" · ");
+
+            function render(data) {
+                markerLayer.clearLayers();
+                markers.clear();
+                const bounds = [];
+                for (const customer of data.locations || []) {
+                    const point = [customer.latitude, customer.longitude];
+                    const machines = customer.machines || [];
+                    const popup = `<strong>${esc(customer.customer_name)}</strong><br>${esc(customer.address)}<hr class="my-2">` +
+                        machines.map(machine => `<div>${esc(machineLabel(machine))}</div>`).join("");
+                    const marker = L.marker(point).bindPopup(popup).addTo(markerLayer);
+                    markers.set(String(customer.customer_code), marker);
+                    bounds.push(point);
+                }
+                if (bounds.length) map.fitBounds(bounds, {padding: [30, 30], maxZoom: 12});
+
+                const visible = (data.locations || []).map(customer => `
+                    <button type="button" class="list-group-item list-group-item-action vendite-location-item text-start"
+                            data-customer-code="${esc(customer.customer_code)}">
+                        <span class="fw-semibold">${esc(customer.customer_name)}</span>
+                        <span class="badge text-bg-primary float-end">${customer.machines.length}</span>
+                        <div class="small text-muted mb-2">${esc(customer.address)}</div>
+                        ${customer.machines.map(machine => `<div class="small border-top py-1">${esc(machineLabel(machine))}${machine.description ? `<br><span class="text-muted">${esc(machine.description)}</span>` : ""}<br><span class="text-muted">Spedizione ${esc(machine.delivery_date)}</span></div>`).join("")}
+                    </button>`).join("");
+                const missing = (data.unlocated || []).map(customer => `
+                    <div class="list-group-item">
+                        <span class="fw-semibold">${esc(customer.customer_name)}</span>
+                        <div class="small text-danger">${esc(customer.reason)}</div>
+                    </div>`).join("");
+                list.innerHTML = visible + missing || '<div class="list-group-item text-muted">Nessun ordine automatico presente.</div>';
+                const pending = (data.pending || []).length;
+                status.textContent = `${data.locations.length} clienti sulla mappa · ${pending} da localizzare · ${data.unlocated.length} non localizzati`;
+                geocodeButton.disabled = pending === 0;
+                geocodeButton.dataset.pending = pending;
+            }
+
+            async function load(url = page.dataset.apiUrl, options = {}) {
+                const response = await window.avpFetch(url, options);
+                const payload = await response.json().catch(() => ({}));
+                if (!response.ok || !payload.ok) throw new Error(payload.error || "Impossibile caricare la localizzazione ordini.");
+                render(payload.data || {locations: [], pending: [], unlocated: []});
+            }
+
+            async function refresh() {
+                error.classList.add("d-none");
+                refreshButton.disabled = true;
+                try { await load(); }
+                catch (reason) { error.textContent = reason.message; error.classList.remove("d-none"); }
+                finally { refreshButton.disabled = false; }
+            }
+
+            geocodeButton.addEventListener("click", async () => {
+                geocodeButton.disabled = true;
+                error.classList.add("d-none");
+                try {
+                    for (let count = 0; count < 20 && Number(geocodeButton.dataset.pending); count += 1) {
+                        status.textContent = "Localizzazione cliente in corso...";
+                        await load(page.dataset.geocodeUrl, {method: "POST"});
+                    }
+                } catch (reason) {
+                    error.textContent = reason.message;
+                    error.classList.remove("d-none");
+                } finally {
+                    geocodeButton.disabled = Number(geocodeButton.dataset.pending) === 0;
+                }
+            });
+            refreshButton.addEventListener("click", refresh);
+            list.addEventListener("click", event => {
+                const item = event.target.closest("[data-customer-code]");
+                const marker = item && markers.get(item.dataset.customerCode);
+                if (marker) {
+                    map.setView(marker.getLatLng(), 12);
+                    marker.openPopup();
+                }
+            });
+            refresh();
+        })();
+    </script>
+{% endblock %}

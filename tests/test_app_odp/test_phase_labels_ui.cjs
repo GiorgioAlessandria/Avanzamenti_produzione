@@ -185,7 +185,7 @@ assert.ok(assignments.includes('esc(row.production_note || "—")'));
 const customerContext = vm.createContext({
     esc: context.esc, customerOrdersBody: {innerHTML: ""},
     canEditSalesNotes: true, canEditProductionInstructions: true, canConfirmOrderRead: false, canConfirmShipment: false,
-    canDeleteOrders: false, collapsedOrders: new Set(),
+    canDeleteOrders: false, collapsedOrders: new Set(), collapsedCustomerGroups: new Set(),
     currentGrouping: {groups: [
         {id: 1, name: "Gruppo A", family_codes: ["FAM-A"]},
         {id: 2, name: "Gruppo B", family_codes: ["FAM-B"]},
@@ -214,6 +214,7 @@ assert.ok(customerContext.customerOrdersBody.innerHTML.includes("Gruppo B (1)"))
 assert.ok(customerContext.customerOrdersBody.innerHTML.includes("Senza raggruppamento (1)"));
 assert.equal((customerContext.customerOrdersBody.innerHTML.match(/data-customer-row-id=/g) || []).length, 3);
 assert.equal((customerContext.customerOrdersBody.innerHTML.match(/Cliente/g) || []).length, 3);
+assert.equal((customerContext.customerOrdersBody.innerHTML.match(/data-toggle-customer-group=/g) || []).length, 3);
 assert.equal(vm.runInContext("rowNotesPayload(1).commercial_note", noteContext), "Nota precedente");
 noteContext.canEditSalesNotes = false;
 assert.equal(vm.runInContext("rowNotesPayload(1).production_instructions", noteContext), undefined);
@@ -236,7 +237,7 @@ sortContext.row = {children: [{dataset: {phaseCode: "2"}, textContent: "Collaudo
 assert.equal(vm.runInContext("cellValue(row, 0)", sortContext), "2");
 
 // Tutti gli script dei template modificati devono mantenere sintassi JavaScript valida.
-const files = ["base.j2", "home.j2", "preferenze_fasi.j2", "vendite.j2", "vendite_assegnazioni.j2",
+const files = ["base.j2", "home.j2", "preferenze_fasi.j2", "vendite.j2", "vendite_assegnazioni.j2", "vendite_localizzazione.j2",
     "admin_ricrea_avp.j2", "priorita_edit.j2", "priorita_view.j2", "storico_ordini.j2",
     "report_settimanale.j2", "home_acquisti.j2", "impostazioni.j2",
     "partials/_home_montaggio.j2", "partials/_home_standard.j2"];

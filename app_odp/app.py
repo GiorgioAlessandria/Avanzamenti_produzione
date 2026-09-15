@@ -18,6 +18,7 @@ from app_odp.policy.policy import RbacPolicy
 from pathlib import Path
 from datetime import datetime
 import logging
+import os
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 from sqlalchemy import event, inspect
@@ -688,6 +689,18 @@ def create_app():
     }
     app.config["ERP_EXPORT_DIR"] = configurazione["Percorsi"]["percorso_file_output"]
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+    app.config["VENDITE_GEOCODER_URL"] = os.environ.get(
+        "VENDITE_GEOCODER_URL",
+        "https://nominatim.openstreetmap.org/search",
+    )
+    app.config["VENDITE_GEOCODER_USER_AGENT"] = os.environ.get(
+        "VENDITE_GEOCODER_USER_AGENT",
+        "AvanzamentiProduzione/1.0 (internal customer order map)",
+    )
+    app.config["VENDITE_TILE_URL"] = os.environ.get(
+        "VENDITE_TILE_URL",
+        "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+    )
     app.config["DIMENSIONI"] = configurazione["parametri_etichette"]["dimensioni"]
     app.config["DPI"] = configurazione["parametri_etichette"]["dpi"]
     app.config["FONT_PATH"] = configurazione["parametri_etichette"]["font_path"]

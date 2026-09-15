@@ -32,6 +32,11 @@ from app_odp.services.vendite_raggruppamenti_service import (
     delete_machine_group,
     save_machine_group,
 )
+from app_odp.services.vendite_localizzazione_service import (
+    VenditeGeocodificaError,
+    build_customer_locations,
+    geocode_next_customer,
+)
 
 
 def _can_view_customer_orders(policy) -> bool:
@@ -125,6 +130,43 @@ def vendite_assegnazioni_page():
         can_view_model_summary=_can_view_customer_orders(policy),
         can_confirm_order_read=admin or policy.can("utente_produzione"),
     )
+
+
+@main_bp.get("/vendite/localizzazione")
+@require_active_perm("vendite")
+def vendite_localizzazione_page():
+    if not _can_view_customer_orders(active_policy()):
+        abort(403)
+    return render_template(
+        "vendite_localizzazione.j2",
+        tile_url=current_app.config["VENDITE_TILE_URL"],
+    )
+
+
+@main_bp.get("/api/vendite/localizzazione")
+@require_active_perm("vendite")
+def api_vendite_localizzazione():
+    if not _can_view_customer_orders(active_policy()):
+        abort(403)
+    response = jsonify({"ok": True, "data": build_customer_locations()})
+    response.headers["Cache-Control"] = "no-store"
+    return response, 200
+
+
+@main_bp.post("/api/vendite/localizzazione/geocodifica")
+@require_active_perm("vendite")
+def api_vendite_localizzazione_geocodifica():
+    if not _can_view_customer_orders(active_policy()):
+        abort(403)
+    try:
+        data = geocode_next_customer()
+        db.session.commit()
+    except VenditeGeocodificaError as exc:
+        db.session.rollback()
+        return jsonify({"ok": False, "error": str(exc)}), 502
+    response = jsonify({"ok": True, "data": data})
+    response.headers["Cache-Control"] = "no-store"
+    return response, 200
 
 
 @main_bp.get("/api/vendite/assegnazioni")

@@ -137,6 +137,12 @@
                     Situazione produzione per matricola
                 </a>
             </li>
+            <li class="nav-item" role="presentation">
+                <a class="nav-link"
+                   href="{{ operator_url_for('main.vendite_localizzazione_page') }}">
+                    Localizzazione ordini
+                </a>
+            </li>
             {% if can_view_packaging_notes %}
                 <li class="nav-item"
                     role="presentation">
@@ -554,6 +560,7 @@
             const dirtyDates = new Set();
             const dirtyOrderDetails = new Set();
             const collapsedOrders = new Set();
+            const collapsedCustomerGroups = new Set();
             let packagingNotesDirty = false;
 
             function esc(value) {
@@ -1068,10 +1075,18 @@
                 const renderedHeadings = new Set();
                 customerOrderSections(customerOrders, groups).forEach(section => {
                     if (section.name !== null) {
+                        const expanded = !collapsedCustomerGroups.has(section.key);
                         html.push(`
-                            <tr class="table-secondary" data-customer-group-heading>
+                            <tr class="table-secondary" data-customer-group-heading
+                                data-customer-group-key="${esc(section.key)}">
                                 <th colspan="10" scope="rowgroup" class="fw-semibold">
-                                    ${esc(section.name)} (${section.orders.reduce((count, order) => count + order.rows.length, 0)})
+                                    <button type="button" class="btn text-start fw-semibold w-100 p-0"
+                                            data-toggle-customer-group="${esc(section.key)}"
+                                            aria-expanded="${expanded}"
+                                            aria-label="${expanded ? "Riduci" : "Espandi"} raggruppamento ${esc(section.name)}">
+                                        <span aria-hidden="true">${expanded ? "▾" : "▸"}</span>
+                                        ${esc(section.name)} (${section.orders.reduce((count, order) => count + order.rows.length, 0)})
+                                    </button>
                                 </th>
                             </tr>`);
                     }
@@ -1276,13 +1291,18 @@
                 flushOrder();
 
                 customerOrdersBody.querySelectorAll("[data-customer-group-heading]").forEach(heading => {
+                    const rows = [];
                     let row = heading.nextElementSibling;
                     let hasVisibleContent = false;
                     while (row && !row.hasAttribute("data-customer-group-heading")) {
+                        rows.push(row);
                         hasVisibleContent ||= !row.hidden;
                         row = row.nextElementSibling;
                     }
                     heading.hidden = !hasVisibleContent;
+                    if (collapsedCustomerGroups.has(heading.dataset.customerGroupKey)) {
+                        rows.forEach(item => { item.hidden = true; });
+                    }
                 });
             }
 
@@ -1747,6 +1767,24 @@
                 }
             });
             customerOrdersBody.addEventListener("click", event => {
+                const groupButton = event.target.closest("[data-toggle-customer-group]");
+                if (groupButton) {
+                    const groupKey = groupButton.dataset.toggleCustomerGroup;
+                    if (collapsedCustomerGroups.has(groupKey)) {
+                        collapsedCustomerGroups.delete(groupKey);
+                    } else {
+                        collapsedCustomerGroups.add(groupKey);
+                    }
+                    const expanded = !collapsedCustomerGroups.has(groupKey);
+                    groupButton.setAttribute("aria-expanded", String(expanded));
+                    groupButton.setAttribute(
+                        "aria-label",
+                        `${expanded ? "Riduci" : "Espandi"} raggruppamento`
+                    );
+                    groupButton.querySelector("span").textContent = expanded ? "▾" : "▸";
+                    applyDemandFilter();
+                    return;
+                }
                 const toggleButton = event.target.closest("[data-toggle-order-rows]");
                 if (toggleButton) {
                     const orderId = String(toggleButton.dataset.toggleOrderRows);

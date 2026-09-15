@@ -29,6 +29,17 @@ class VenditeRaggruppamento(db.Model):
     __mapper_args__ = {"version_id_col": versione}
 
 
+class VenditeClienteGeocodifica(db.Model):
+    __tablename__ = "vendite_clienti_geocodifica"
+
+    cliente_codice = db.Column(db.String(120), primary_key=True)
+    indirizzo_chiave = db.Column(db.String(64), nullable=False)
+    latitudine = db.Column(db.Float, nullable=True)
+    longitudine = db.Column(db.Float, nullable=True)
+    nome_luogo = db.Column(db.String(500), nullable=True)
+    aggiornato_il = db.Column(db.Text, nullable=False, default=_rome_iso_now)
+
+
 class VenditeNotaProduzioneMacchina(db.Model):
     __tablename__ = "vendite_note_produzione_macchina"
 

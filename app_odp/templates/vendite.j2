@@ -49,6 +49,14 @@
                     Situazione produzione per matricola
                 </button>
             </li>
+            {% if can_view_customer_orders|default(true) %}
+            <li class="nav-item" role="presentation">
+                <a class="nav-link"
+                   href="{{ operator_url_for('main.vendite_localizzazione_page') }}">
+                    Localizzazione ordini
+                </a>
+            </li>
+            {% endif %}
             {% if can_view_packaging_notes %}
             <li class="nav-item"
                 role="presentation">
