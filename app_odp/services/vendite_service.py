@@ -62,6 +62,12 @@ def _phase_label(value) -> str:
     return _norm_text(value) or "1"
 
 
+def _is_phase_one_planned(state, phase) -> bool:
+    return (
+        _canonical_state(state) == "Pianificata" and _phase_label(phase) == "1"
+    )
+
+
 def _phase_sort_key(value) -> tuple:
     phase_number = _fase_to_int(value)
     if phase_number is not None:
@@ -335,13 +341,13 @@ def _build_vendite_payload(
 
     for order in orders:
         state = _canonical_state(getattr(order, "StatoOrdine", ""))
+        phase = _phase_label(getattr(order, "FaseAttiva", ""))
         is_stock = bool(getattr(order, "IsStock", False))
         if state.casefold() in _TERMINAL_STATES and not is_stock:
             continue
-        if not include_planned and state == "Pianificata":
+        if not include_planned and _is_phase_one_planned(state, phase):
             continue
 
-        phase = _phase_label(getattr(order, "FaseAttiva", ""))
         model_code = _norm_text(getattr(order, "CodArt", "")) or "Senza modello"
         variant = _norm_text(getattr(order, "VarianteArt", ""))
         description = _norm_text(getattr(order, "DesArt", ""))
@@ -425,6 +431,7 @@ def _build_vendite_payload(
         (phase, state)
         for phase in sorted(phases, key=_phase_sort_key)
         for state in sorted(states, key=_state_sort_key)
+        if include_planned or not _is_phase_one_planned(state, phase)
     ]
     columns = [
         {"phase": phase, "state": state}

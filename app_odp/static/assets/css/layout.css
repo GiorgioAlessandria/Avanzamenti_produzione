@@ -30,6 +30,10 @@
     max-height: calc(100dvh - 20rem);
 }
 
+#vendite-assegnazioni-page #vendite-customer-orders-panel .vendite-assignment-scroll {
+    min-height: 0;
+}
+
 #vendite-assegnazioni-page .vendite-packaging-scroll {
     min-height: 12rem;
     max-height: calc(100dvh - 15rem);

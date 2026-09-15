@@ -140,11 +140,14 @@ def test_planned_visibility_filters_all_customer_lists_and_counts(app):
         planned = _add_machine()
         active = _add_machine(document="ACTIVE", serial="MAT-ACTIVE")
         active.StatoOrdine = "Attivo"
+        phase_two_planned = _add_machine(document="PHASE-2", serial="MAT-PLAN-2")
+        phase_two_planned.FaseAttiva = "2"
         only_planned = _add_machine(document="ONLY", serial="MAT-ONLY")
         _add_machine(document="FREE", serial="MAT-FREE")
         customer = create_customer_order(_payload(model_key=_model_key(), quantity=3), ACTOR)
         _assign_test_machine(customer.righe[0], planned)
         _assign_test_machine(customer.righe[1], active)
+        _assign_test_machine(customer.righe[2], phase_two_planned)
         other = create_customer_order(_payload(model_key=_model_key(), order="OC-HIDDEN"), ACTOR)
         _assign_test_machine(other.righe[0], only_planned)
         db.session.add(
@@ -157,11 +160,13 @@ def test_planned_visibility_filters_all_customer_lists_and_counts(app):
         assert len(visible["customer_orders"]) == 1
         order = visible["customer_orders"][0]
         assert order["total_rows"] == 2
-        assert order["assigned_rows"] == 1
+        assert order["assigned_rows"] == 2
         assert [row["id"] for row in order["rows"]] == [row.id for row in customer.righe[1:]]
         assert visible["summary"]["total_demand"] == 2
-        assert visible["summary"]["assigned_demand"] == 1
-        assert {m["serial_number"] for m in visible["assignment_machines"]} == {"MAT-ACTIVE", "123456"}
+        assert visible["summary"]["assigned_demand"] == 2
+        assert {m["serial_number"] for m in visible["assignment_machines"]} == {
+            "MAT-ACTIVE", "MAT-PLAN-2", "123456",
+        }
         assert {m["serial_number"] for m in visible["machines"]} == {"123456"}
         assert "shipment_ready" not in order
         assert len(build_assignment_dashboard(include_planned=True)["customer_orders"]) == 2

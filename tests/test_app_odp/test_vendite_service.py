@@ -39,18 +39,22 @@ def _order(
 
 def test_planned_filter_removes_machines_models_columns_and_totals():
     orders = [
-        _order(1, model="SOLO-PIANIFICATO", serial="PLAN", state="pianificato"),
+        _order(1, model="SOLO-PIANIFICATO", serial="PLAN-1", state="pianificato"),
         _order(2, serial="ACTIVE", state="Attivo"),
         _order(3, serial="SUSPENDED", state="Sospeso"),
         _order(4, serial="DEFAULT", state=""),
+        _order(5, serial="PLAN-2", phase="2", state="pianificato"),
     ]
     payload = _build_vendite_payload(orders, include_planned=False)
-    assert payload["total_machines"] == 2
-    assert {m["serial_number"] for m in payload["machines"]} == {"ACTIVE", "SUSPENDED"}
-    assert {c["state"] for c in payload["columns"]} == {"Attivo", "In Sospeso"}
+    assert payload["total_machines"] == 3
+    assert {m["serial_number"] for m in payload["machines"]} == {
+        "ACTIVE", "SUSPENDED", "PLAN-2",
+    }
+    assert {"phase": "1", "state": "Pianificata"} not in payload["columns"]
+    assert {"phase": "2", "state": "Pianificata"} in payload["columns"]
     assert [m["model_code"] for m in payload["models"]] == ["MODELLO-1"]
-    assert payload["models"][0]["total"] == 2
-    assert _build_vendite_payload(orders, include_planned=True)["total_machines"] == 4
+    assert payload["models"][0]["total"] == 3
+    assert _build_vendite_payload(orders, include_planned=True)["total_machines"] == 5
 
 
 def test_build_vendite_payload_groups_by_model_phase_and_state():

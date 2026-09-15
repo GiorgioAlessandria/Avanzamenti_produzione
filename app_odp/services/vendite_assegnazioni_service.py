@@ -22,6 +22,7 @@ from app_odp.services.order_helpers import (
 from app_odp.services.ordini_query_service import _base_odp_query
 from app_odp.services.vendite_service import (
     _canonical_state,
+    _is_phase_one_planned,
     _missing_components_for_orders,
     _packaging_confirmations,
     _machine_options,
@@ -1384,7 +1385,10 @@ def build_assignment_dashboard(*, include_planned: bool = True) -> dict:
     if not include_planned:
         open_machines = [
             machine for machine in open_machines
-            if _canonical_state(machine.StatoOrdine) != "Pianificata"
+            if not _is_phase_one_planned(
+                machine.StatoOrdine,
+                machine.FaseAttiva,
+            )
         ]
     customer_orders = (
         VenditeOrdineCliente.query.options(selectinload(VenditeOrdineCliente.righe))
@@ -1457,7 +1461,11 @@ def build_assignment_dashboard(*, include_planned: bool = True) -> dict:
                     in completed_missing_keys
                 ),
             )
-            if not include_planned and assignment and assignment["state"] == "Pianificata":
+            if (
+                not include_planned
+                and assignment
+                and _is_phase_one_planned(assignment["state"], assignment["phase"])
+            ):
                 continue
             total_demand += 1
             if assignment is not None:
