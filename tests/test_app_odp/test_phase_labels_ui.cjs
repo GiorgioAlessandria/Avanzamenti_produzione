@@ -167,9 +167,9 @@ vm.runInContext(namedFunction(assignments, "machineOptionLabel"), labelContext);
 assert.equal(vm.runInContext("machineOptionLabel(machine)", labelContext), "M1 · Opzionata da Alice");
 const noteContext = vm.createContext({
     esc: context.esc, CSS: {escape: String},
-    canEditSalesNotes: true, canEditProductionNotes: true,
+    canEditSalesNotes: true, canEditProductionInstructions: true,
     customerOrdersBody: {querySelector: () => ({
-        dataset: {version: "7"},
+        dataset: {version: "7", managed: "true"},
         querySelector: selector => ({value: selector.includes("production_instructions")
             ? "  Accessorio speciale\nControllare  " : "Nota precedente"}),
     })},
@@ -184,7 +184,7 @@ assert.ok(!assignments.includes('noteTextarea(row, "production_note"'));
 assert.ok(assignments.includes('esc(row.production_note || "—")'));
 const customerContext = vm.createContext({
     esc: context.esc, customerOrdersBody: {innerHTML: ""},
-    canEditSalesNotes: true, canConfirmOrderRead: false, canConfirmShipment: false,
+    canEditSalesNotes: true, canEditProductionInstructions: true, canConfirmOrderRead: false, canConfirmShipment: false,
     canDeleteOrders: false, collapsedOrders: new Set(),
     dirtyAssignments: new Set(), dirtyNotes: new Set(), dirtyDates: new Set(), dirtyOrderDetails: new Set(),
     referenceClass: () => "", orderDetails: () => "", formatDateTime: String,
@@ -193,7 +193,7 @@ const customerContext = vm.createContext({
 });
 vm.runInContext(namedFunction(assignments, "noteTextarea") + "\n" +
                 namedFunction(assignments, "renderCustomerOrders"), customerContext);
-customerContext.orders = [{id: 1, customer_name: "Cliente", customer_order: "OC1", rows: [{
+customerContext.orders = [{id: 1, managed: true, customer_name: "Cliente", customer_order: "OC1", rows: [{
     id: 1, position: 1, production_note: "</textarea><img>", production_instructions: "Istruzioni",
 }]}];
 vm.runInContext("renderCustomerOrders(orders)", customerContext);
@@ -201,6 +201,7 @@ assert.ok(!customerContext.customerOrdersBody.innerHTML.includes('data-note-fiel
 assert.ok(customerContext.customerOrdersBody.innerHTML.includes('data-note-field="production_instructions"'));
 assert.ok(customerContext.customerOrdersBody.innerHTML.includes("&lt;/textarea>&lt;img>"));
 assert.ok(!customerContext.customerOrdersBody.innerHTML.includes("<img>"));
+assert.ok(!customerContext.customerOrdersBody.innerHTML.includes("readonly"));
 assert.equal(vm.runInContext("rowNotesPayload(1).commercial_note", noteContext), "Nota precedente");
 noteContext.canEditSalesNotes = false;
 assert.equal(vm.runInContext("rowNotesPayload(1).production_instructions", noteContext), undefined);

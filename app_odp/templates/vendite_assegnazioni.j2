@@ -1117,10 +1117,10 @@
                                 <td class="vendite-model-cell">${modelLabel(row)}</td>
                                 <td>${dateInput(row, "delivery_date", "Data di spedizione", !order.managed && canEditSalesNotes)}</td>
                                 <td class="vendite-note-cell">
-                                    ${noteTextarea(row, "sales_note", "Note di vendita", !order.managed && canEditSalesNotes)}
+                                    ${noteTextarea(row, "sales_note", "Note di vendita", canEditSalesNotes)}
                                 </td>
                                 <td class="vendite-note-cell">
-                                    ${noteTextarea(row, "commercial_note", "Note commerciali", !order.managed && canEditSalesNotes)}
+                                    ${noteTextarea(row, "commercial_note", "Note commerciali", canEditSalesNotes)}
                                 </td>
                                 <td>${assignmentSelect(row)}</td>
                                 <td class="vendite-note-cell">
@@ -1134,10 +1134,10 @@
                                     <div style="white-space: pre-wrap">${esc(row.production_note || ((row.missing_components || []).length ? "" : "—"))}</div>
                                 </td>
                                 <td class="vendite-note-cell">
-                                    ${noteTextarea(row, "production_instructions", "Note per produzione", !order.managed && canEditProductionInstructions)}
+                                    ${noteTextarea(row, "production_instructions", "Note per produzione", canEditProductionInstructions)}
                                 </td>
                                 <td class="vendite-note-cell">
-                                    ${noteTextarea(row, "shipping_note", "Note per imballo", !order.managed && canEditSalesNotes)}
+                                    ${noteTextarea(row, "shipping_note", "Note per imballo", canEditSalesNotes)}
                                 </td>
                                 <td>${rowActions(row)}</td>
                             </tr>`);
@@ -1471,17 +1471,16 @@
                     `[data-customer-row-id="${CSS.escape(String(rowId))}"]`
                 );
                 if (!row) return null;
-                const managed = row.dataset.managed === "true";
                 const value = field => row.querySelector(
                     `[data-note-field="${CSS.escape(field)}"]`
                 )?.value.trim() || "";
                 const payload = {version: Number(row.dataset.version)};
-                if (!managed && canEditSalesNotes) {
+                if (canEditSalesNotes) {
                     payload.sales_note = value("sales_note");
                     payload.commercial_note = value("commercial_note");
                     payload.shipping_note = value("shipping_note");
                 }
-                if (!managed && canEditProductionInstructions) {
+                if (canEditProductionInstructions) {
                     payload.production_instructions = value("production_instructions");
                 }
                 return payload;
