@@ -131,6 +131,7 @@ class VenditeOrdineClienteRiga(db.Model):
     note_produzione = db.Column(db.String(1000), nullable=True)
     note_per_produzione = db.Column(db.String(1000), nullable=True)
     note_spedizione = db.Column(db.String(1000), nullable=True)
+    campi_modificati = db.Column(db.JSON, nullable=False, default=list)
     data_disponibile = db.Column(db.Date, nullable=True, index=True)
     data_consegna = db.Column(db.Date, nullable=False, index=True)
     versione = db.Column(db.Integer, nullable=False, default=1)

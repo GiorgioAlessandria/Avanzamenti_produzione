@@ -413,6 +413,11 @@ def _ensure_vendite_schema() -> None:
                 "ALTER TABLE vendite_ordini_cliente_righe "
                 "ADD COLUMN note_spedizione VARCHAR(1000)"
             )
+        if "campi_modificati" not in columns:
+            additions.append(
+                "ALTER TABLE vendite_ordini_cliente_righe "
+                "ADD COLUMN campi_modificati JSON NOT NULL DEFAULT '[]'"
+            )
         if "data_disponibile" not in columns:
             additions.append(
                 "ALTER TABLE vendite_ordini_cliente_righe "

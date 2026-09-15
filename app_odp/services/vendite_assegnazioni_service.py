@@ -154,6 +154,10 @@ def _require_read_confirmation(customer: VenditeOrdineCliente) -> None:
     customer.confermato_da_nome = None
 
 
+def _mark_row_changed(row: VenditeOrdineClienteRiga, *fields: str) -> None:
+    row.campi_modificati = sorted(set(row.campi_modificati or ()) | set(fields))
+
+
 def _is_stock_machine(machine) -> bool:
     return bool(getattr(machine, "IsStock", False))
 
@@ -650,6 +654,7 @@ def set_machine_assignment(
     if not id_documento and not id_riga:
         _clear_assignment(row)
         if any(old_assignment):
+            _mark_row_changed(row, "assignment")
             _require_read_confirmation(row.ordine_cliente)
         db.session.flush()
         if commit:
@@ -688,6 +693,7 @@ def set_machine_assignment(
     )
     for already_assigned in already_assigned_rows:
         _clear_assignment(already_assigned)
+        _mark_row_changed(already_assigned, "assignment")
         _require_read_confirmation(already_assigned.ordine_cliente)
     if already_assigned_rows:
         db.session.flush()
@@ -701,6 +707,7 @@ def set_machine_assignment(
         automatic=False,
     )
     if old_assignment != (row.odp_id_documento, row.odp_id_riga, row.odp_matricola):
+        _mark_row_changed(row, "assignment")
         _require_read_confirmation(row.ordine_cliente)
     db.session.flush()
     if commit:
@@ -833,8 +840,11 @@ def _apply_note_updates(
             "Le note per produzione",
             MAX_NOTE,
         ) or None
-        changed |= row.note_per_produzione != value
+        field_changed = row.note_per_produzione != value
+        changed |= field_changed
         row.note_per_produzione = value
+        if field_changed:
+            _mark_row_changed(row, "production_instructions")
         updated = True
     if can_edit_sales:
         if "commercial_note" in payload:
@@ -843,8 +853,11 @@ def _apply_note_updates(
                 "Le note commerciali",
                 MAX_NOTE,
             ) or None
-            changed |= row.note_commerciali != value
+            field_changed = row.note_commerciali != value
+            changed |= field_changed
             row.note_commerciali = value
+            if field_changed:
+                _mark_row_changed(row, "commercial_note")
             updated = True
         if "sales_note" in payload:
             value = _optional_text(
@@ -852,8 +865,11 @@ def _apply_note_updates(
                 "Le note di vendita",
                 MAX_NOTE,
             ) or None
-            changed |= row.note != value
+            field_changed = row.note != value
+            changed |= field_changed
             row.note = value
+            if field_changed:
+                _mark_row_changed(row, "sales_note")
             updated = True
         if "shipping_note" in payload:
             value = _optional_text(
@@ -861,8 +877,11 @@ def _apply_note_updates(
                 "Le note per imballo",
                 MAX_NOTE,
             ) or None
-            changed |= row.note_spedizione != value
+            field_changed = row.note_spedizione != value
+            changed |= field_changed
             row.note_spedizione = value
+            if field_changed:
+                _mark_row_changed(row, "shipping_note")
             updated = True
     if not updated:
         raise VenditeAssegnazioniError(
@@ -989,6 +1008,8 @@ def confirm_customer_order_read(
         _actor_id, actor_name = _actor(user)
         customer.confermato_il = _now_rome_dt().isoformat(timespec="seconds")
         customer.confermato_da_nome = actor_name
+        for row in customer.righe:
+            row.campi_modificati = []
         db.session.flush()
     if commit:
         db.session.commit()
@@ -1038,7 +1059,10 @@ def update_customer_order_details(
         for row in customer.righe:
             current_note = _norm_text(row.note_spedizione)
             if not current_note or current_note == old_default:
-                row.note_spedizione = new_default or None
+                value = new_default or None
+                if row.note_spedizione != value:
+                    row.note_spedizione = value
+                    _mark_row_changed(row, "shipping_note")
         _require_read_confirmation(customer)
 
     customer.riferimento_interno = new_reference
@@ -1070,16 +1094,22 @@ def update_customer_row_dates(
             payload.get("delivery_date"),
             "La data di consegna",
         )
-        changed |= row.data_consegna != value
+        field_changed = row.data_consegna != value
+        changed |= field_changed
         row.data_consegna = value
+        if field_changed:
+            _mark_row_changed(row, "delivery_date")
         updated = True
     if can_edit_available and "available_date" in payload:
         value = _optional_date(
             payload.get("available_date"),
             "La data disponibile",
         )
-        changed |= row.data_disponibile != value
+        field_changed = row.data_disponibile != value
+        changed |= field_changed
         row.data_disponibile = value
+        if field_changed:
+            _mark_row_changed(row, "available_date")
         updated = True
     if not updated:
         raise VenditeAssegnazioniError("Nessuna data modificabile ricevuta.")
@@ -1374,6 +1404,11 @@ def _sync_open_customer_orders() -> None:
             }.items():
                 if getattr(row, field) != value:
                     setattr(row, field, value)
+                    if field == "data_consegna":
+                        _mark_row_changed(row, "delivery_date")
+                    elif field in {"modello_codice", "modello_descrizione"}:
+                        _mark_row_changed(row, "model")
+                    _require_read_confirmation(customer)
                     changed = True
         shipping_date = min(value[0] for value in source_rows)
         if customer.data_spedizione != shipping_date:
@@ -1552,6 +1587,7 @@ def build_assignment_dashboard(*, include_planned: bool = True) -> dict:
                     "missing_components": row_missing_components,
                     "production_instructions": row.note_per_produzione or "",
                     "shipping_note": row.note_spedizione or "",
+                    "modified_fields": row.campi_modificati or [],
                     "available_date": (
                         row.data_disponibile.isoformat()
                         if row.data_disponibile

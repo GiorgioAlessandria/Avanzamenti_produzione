@@ -35,16 +35,6 @@
             outline-offset: -1px;
         }
 
-        #vendite-assegnazioni-page tr.vendite-order-unread > td {
-            color: #664d03 !important;
-            background-color: #fff3cd !important;
-            box-shadow: none !important;
-        }
-
-        #vendite-assegnazioni-page tr.vendite-order-unread .text-muted {
-            color: #806a1e !important;
-        }
-
         #vendite-assegnazioni-page tr.vendite-order-italia > td {
             color: #174c61 !important;
             background-color: #dff3fb !important;
@@ -54,6 +44,11 @@
         #vendite-assegnazioni-page tr.vendite-order-estero > td {
             color: #6d3441 !important;
             background-color: #f9e1e7 !important;
+            box-shadow: none !important;
+        }
+
+        #vendite-assegnazioni-page tr.vendite-order-extracee > td {
+            background-color: #eee5ff !important;
             box-shadow: none !important;
         }
 
@@ -73,6 +68,32 @@
         #vendite-assegnazioni-page tr.vendite-order-estero .form-select {
             background-color: #fff3f6;
             border-color: #e5abb9;
+        }
+
+        #vendite-assegnazioni-page tr.vendite-order-extracee .form-control,
+        #vendite-assegnazioni-page tr.vendite-order-extracee .form-select {
+            background-color: #f6f1ff;
+        }
+
+        #vendite-assegnazioni-page tr.vendite-order-unread > td {
+            background-color: #fff3cd !important;
+            box-shadow: none !important;
+        }
+
+        #vendite-assegnazioni-page [data-customer-row-id] :is(.form-control, .form-select),
+        #vendite-assegnazioni-page [data-customer-row-id] :is(td, .text-muted, .btn:not([data-save-row])) {
+            color: #000 !important;
+            border-color: #000 !important;
+        }
+
+        #vendite-assegnazioni-page [data-customer-row-id] .vendite-field-modified {
+            background-color: #ffd9a8 !important;
+            border: 2px solid #dc3545 !important;
+        }
+
+        #vendite-assegnazioni-page [data-customer-row-id] .text-danger,
+        #vendite-assegnazioni-page [data-customer-row-id] .text-danger * {
+            color: var(--bs-danger) !important;
         }
 
         #vendite-assegnazioni-page tr.vendite-machine-completed > td {
@@ -371,6 +392,14 @@
                                         Ogni riga corrisponde a una singola macchina richiesta.
                                         <span id="vendite-customer-grouping-description">Gli ordini sono suddivisi usando i raggruppamenti per famiglia configurati nella situazione per matricola.</span>
                                     </div>
+                                    <div class="small d-flex flex-wrap gap-2 mt-1" aria-label="Legenda colori ordini">
+                                        <span class="badge border text-dark" style="background:#dff3fb">ITALIA</span>
+                                        <span class="badge border text-dark" style="background:#f9e1e7">ESTERO</span>
+                                        <span class="badge border text-dark" style="background:#eee5ff">EXTRACEE</span>
+                                        <span class="badge border text-dark" style="background:#fff3cd">Lettura da confermare</span>
+                                        <span class="badge border border-danger text-dark" style="background:#ffd9a8">Campo modificato</span>
+                                        <span class="badge border text-dark" style="background:#d1e7dd">Macchina imballata</span>
+                                    </div>
                                 </div>
                                 <div class="form-check form-switch mb-0">
                                     <input class="form-check-input" type="checkbox"
@@ -668,15 +697,14 @@
             }
 
             function referenceClass(reference) {
-                return String(reference || "ITALIA").toUpperCase() === "ITALIA"
-                    ? "vendite-order-italia"
-                    : "vendite-order-estero";
+                return `vendite-order-${String(reference || "ITALIA").toLowerCase()}`;
             }
 
             function orderDetails(order) {
                 const reference = String(order.internal_reference || "ITALIA").toUpperCase();
                 if (order.managed) {
-                    return `<span class="badge text-bg-primary">Gestionale · ${esc(order.customer_code)}</span>`;
+                    return `<span class="badge text-bg-primary">Gestionale · ${esc(order.customer_code)}</span>
+                            <span class="badge text-bg-light border">${esc(reference)}</span>`;
                 }
                 return canEditOrderDetails
                     ? `
@@ -887,7 +915,7 @@
                 return `
                     <div class="d-flex align-items-start gap-2">
                         ${automaticMarker}
-                        <select class="form-select form-select-sm vendite-assignment-select"
+                        <select class="form-select form-select-sm vendite-assignment-select${(row.modified_fields || []).includes("assignment") ? " vendite-field-modified" : ""}"
                                 data-assignment-row-id="${esc(row.id)}"
                                 data-version="${esc(row.version)}"
                                 data-original-value="${esc(currentIdentity)}"
@@ -903,10 +931,12 @@
             }
 
             function noteTextarea(row, field, label, editable) {
+                const modified = (row.modified_fields || []).includes(field);
                 return `
-                    <textarea class="form-control form-control-sm vendite-row-note"
+                    <textarea class="form-control form-control-sm vendite-row-note${modified ? " vendite-field-modified" : ""}"
                               data-note-row-id="${esc(row.id)}"
                               data-note-field="${esc(field)}"
+                              data-original-value="${esc(row[field] || "")}"
                               maxlength="1000"
                               rows="2"
                               aria-label="${esc(label)} riga ${esc(row.position)}"
@@ -914,8 +944,9 @@
             }
 
             function dateInput(row, field, label, editable) {
+                const modified = (row.modified_fields || []).includes(field);
                 return `
-                    <input class="form-control form-control-sm"
+                    <input class="form-control form-control-sm${modified ? " vendite-field-modified" : ""}"
                            data-date-row-id="${esc(row.id)}"
                            data-date-field="${esc(field)}"
                            data-original-value="${esc(row[field] || "")}"
@@ -1225,7 +1256,7 @@
                                 data-managed="${order.managed ? "true" : "false"}"
                                 data-version="${esc(row.version)}">
                                 <td class="fw-semibold">${esc(row.position)}</td>
-                                <td class="vendite-model-cell">${modelLabel(row)}</td>
+                                <td class="vendite-model-cell${(row.modified_fields || []).includes("model") ? " vendite-field-modified" : ""}">${modelLabel(row)}</td>
                                 <td>${dateInput(row, "delivery_date", "Data di spedizione", !order.managed && canEditSalesNotes)}</td>
                                 <td class="vendite-note-cell">
                                     ${noteTextarea(row, "sales_note", "Note di vendita", canEditSalesNotes)}
@@ -1754,13 +1785,25 @@
             });
             createForm.addEventListener("submit", createCustomerOrder);
 
+            function markRowPending(field) {
+                const changed = field.value !== field.dataset.originalValue;
+                field.classList.toggle("vendite-field-modified", changed);
+                if (changed) {
+                    field.closest("[data-customer-row-id]")?.classList.add("vendite-order-unread");
+                }
+            }
+
             customerOrdersBody.addEventListener("input", event => {
                 const note = event.target.closest("[data-note-row-id]");
-                if (note) dirtyNotes.add(String(note.dataset.noteRowId));
+                if (note) {
+                    dirtyNotes.add(String(note.dataset.noteRowId));
+                    markRowPending(note);
+                }
             });
             customerOrdersBody.addEventListener("change", event => {
                 const dateField = event.target.closest("[data-date-row-id]");
                 if (dateField) {
+                    markRowPending(dateField);
                     const rowId = String(dateField.dataset.dateRowId);
                     const fields = customerOrdersBody.querySelectorAll(
                         `[data-date-row-id="${CSS.escape(rowId)}"]`
@@ -1790,6 +1833,7 @@
                 }
                 const select = event.target.closest("[data-assignment-row-id]");
                 if (!select) return;
+                markRowPending(select);
                 const rowId = String(select.dataset.assignmentRowId);
                 if (select.value === select.dataset.originalValue) {
                     dirtyAssignments.delete(rowId);
