@@ -121,17 +121,18 @@ def test_synced_customer_orders_are_grouped_expanded_and_assignable(app):
         }
 
         row = db.session.get(VenditeOrdineClienteRiga, order["rows"][0]["id"])
-        set_machine_assignment(
-            row.id,
-            {
-                "version": row.versione,
-                "id_documento": "MATRICOLA",
-                "id_riga": "123456",
-            },
-            ACTOR,
-            commit=True,
+        update_customer_row(
+            row.id, {"version": row.versione, "assignment_changed": True,
+                     "id_documento": "MATRICOLA", "id_riga": "123456",
+                     "sales_note": "Nota vendita", "commercial_note": "Nota commerciale",
+                     "production_instructions": "Nota produzione", "shipping_note": "Nota imballo"},
+            ACTOR, can_edit_sales=True, can_edit_production=False,
+            can_edit_production_instructions=True, can_assign=True, commit=True,
         )
         assert row.odp_matricola == "123456"
+        assert (row.note, row.note_commerciali, row.note_per_produzione, row.note_spedizione) == (
+            "Nota vendita", "Nota commerciale", "Nota produzione", "Nota imballo",
+        )
 
 
 def test_planned_visibility_filters_all_customer_lists_and_counts(app):

@@ -519,7 +519,7 @@ def _require_manual_order(customer: VenditeOrdineCliente) -> None:
 def _require_manual_row(row: VenditeOrdineClienteRiga) -> None:
     if row.gestionale_id_documento:
         raise VenditeAssegnazioniError(
-            "La riga gestionale consente soltanto l'assegnazione della matricola."
+            "La riga gestionale non consente la modifica delle date."
         )
 
 
@@ -865,7 +865,6 @@ def update_customer_row_notes(
         raise VenditeAssegnazioniError("Dati delle note non validi.")
 
     row = _customer_row(row_id)
-    _require_manual_row(row)
     _check_row_version(row, payload)
     changed = _apply_note_updates(
         row,
