@@ -201,9 +201,19 @@ class VenditeOrdineClienteRiga(db.Model):
             name="uq_vendite_ordine_cliente_riga_gestionale",
         ),
     )
-
     __mapper_args__ = {"version_id_col": versione}
 
+
+class VenditeMacchinaSpedibile(db.Model):
+    __tablename__ = "vendite_macchine_spedibili"
+
+    matricola_chiave = db.Column(db.String(200), primary_key=True)
+    matricola = db.Column(db.String(200), nullable=False)
+    modello = db.Column(db.String(160), nullable=False)
+    cliente = db.Column(db.String(160), nullable=False)
+    rilevata_il = db.Column(db.Text, nullable=False, default=_rome_iso_now)
+    motivo = db.Column(db.String(20), nullable=False)
+    spedita_il = db.Column(db.Text, nullable=True, index=True)
 
 class VenditeNotaImballoLettura(db.Model):
     __tablename__ = "vendite_note_imballo_letture"

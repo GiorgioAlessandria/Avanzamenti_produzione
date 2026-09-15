@@ -308,6 +308,16 @@ def _ensure_logistica_schema() -> None:
                     f"ALTER TABLE packing_lists ADD COLUMN {name} {column_type}"
                 )
 
+    if "movimenti" in tables:
+        columns = {
+            column["name"] for column in inspect(engine).get_columns("movimenti")
+        }
+        if "spedizione_macchine" not in columns:
+            additions.append(
+                "ALTER TABLE movimenti ADD COLUMN "
+                "spedizione_macchine BOOLEAN NOT NULL DEFAULT 0"
+            )
+
     if "packing_list_righe" in tables:
         columns = {
             column["name"]

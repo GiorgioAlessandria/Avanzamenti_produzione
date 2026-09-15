@@ -1630,6 +1630,15 @@ class AcqMatricolaMacchina(db.Model):
     synced_at = db.Column(db.Text)
 
 
+class AcqMatricolaMacchinaUscita(db.Model):
+    __bind_key__ = "acq"
+    __tablename__ = "matricole_macchine_uscite"
+
+    CodMatricola = db.Column(db.Text, primary_key=True)
+    CodArt = db.Column(db.Text, nullable=False)
+    uscita_at = db.Column(db.Text, nullable=False)
+
+
 class AcqOrdineClienteAperto(db.Model):
     __bind_key__ = "acq"
     __tablename__ = "ordini_cliente_aperti"

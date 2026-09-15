@@ -7,6 +7,8 @@ from sqlalchemy.orm import selectinload
 from app_odp.models import (
     AcqArticoliLookup,
     AcqClienteFornitore,
+    AcqMatricolaMacchina,
+    AcqMatricolaMacchinaUscita,
     AcqOrdineClienteAperto,
     InputOdp,
     InputOdpLog,
@@ -36,6 +38,7 @@ from app_odp.vendite_models import (
     VENDITE_DEFAULT_PACKAGING_NOTES,
     VENDITE_INTERNAL_REFERENCES,
     VenditeImballoMacchina,
+    VenditeMacchinaSpedibile,
     VenditeNotaImballaggio,
     VenditeNotaProduzioneMacchina,
     VenditeOpzioneMacchina,
@@ -156,6 +159,75 @@ def _require_read_confirmation(customer: VenditeOrdineCliente) -> None:
 
 def _mark_row_changed(row: VenditeOrdineClienteRiga, *fields: str) -> None:
     row.campi_modificati = sorted(set(row.campi_modificati or ()) | set(fields))
+
+
+def _register_shippable_machine(
+    row: VenditeOrdineClienteRiga,
+    reason: str,
+    model: str,
+) -> VenditeMacchinaSpedibile | None:
+    serial = _norm_text(row.odp_matricola)
+    if not serial:
+        return None
+    key = _normalized_key(serial)
+    saved = db.session.get(VenditeMacchinaSpedibile, key)
+    if saved is None:
+        saved = VenditeMacchinaSpedibile(
+            matricola_chiave=key,
+            matricola=serial,
+            modello=_norm_text(model) or _norm_text(row.modello_codice),
+            cliente=_norm_text(row.ordine_cliente.cliente_nome),
+            motivo=reason,
+        )
+        db.session.add(saved)
+    return saved
+
+
+def sync_shippable_machines() -> list[VenditeMacchinaSpedibile]:
+    warehouse = {
+        _normalized_key(item.CodMatricola): item
+        for item in AcqMatricolaMacchina.query.all()
+    }
+    exits = {
+        _normalized_key(item.CodMatricola): item
+        for item in AcqMatricolaMacchinaUscita.query.all()
+    }
+    packaging = {
+        _normalized_key(item.matricola): item
+        for item in VenditeImballoMacchina.query.all()
+    }
+    rows = (
+        VenditeOrdineClienteRiga.query.options(
+            selectinload(VenditeOrdineClienteRiga.ordine_cliente)
+        )
+        .filter(VenditeOrdineClienteRiga.odp_matricola.is_not(None))
+        .all()
+    )
+    for row in rows:
+        key = _normalized_key(row.odp_matricola)
+        events = []
+        if key in packaging:
+            events.append((
+                packaging[key].confermata_il,
+                "IMBALLATA",
+                getattr(warehouse.get(key), "CodArt", ""),
+            ))
+        if key in exits:
+            events.append((
+                exits[key].uscita_at,
+                "USCITA_MAGAZZINO",
+                exits[key].CodArt,
+            ))
+        if events:
+            first = min(events)
+            _register_shippable_machine(row, first[1], first[2])
+    db.session.flush()
+    return (
+        VenditeMacchinaSpedibile.query
+        .filter(VenditeMacchinaSpedibile.spedita_il.is_(None))
+        .order_by(VenditeMacchinaSpedibile.cliente, VenditeMacchinaSpedibile.matricola)
+        .all()
+    )
 
 
 def _is_stock_machine(machine) -> bool:
@@ -948,6 +1020,7 @@ def confirm_machine_packaging(payload, user, *, commit: bool = False):
         )
         db.session.add(confirmation)
         db.session.flush()
+    sync_shippable_machines()
     if commit:
         db.session.commit()
     return confirmation
@@ -1424,6 +1497,7 @@ def _sync_open_customer_orders() -> None:
 
 
 def build_assignment_dashboard(*, include_planned: bool = True) -> dict:
+    sync_shippable_machines()
     _sync_open_customer_orders()
     production_machines = load_machine_orders(include_closed=True)
     inventory_machines = load_inventory_machine_orders()

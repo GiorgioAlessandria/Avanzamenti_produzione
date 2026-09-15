@@ -39,6 +39,51 @@
     </style>
 {% endblock %}
 
+{% block scripts %}
+    {{ super() }}
+    <script>
+        (() => {
+            const toggle = document.getElementById("logistica-spedizione-macchine");
+            const panel = document.getElementById("logistica-machine-shipment");
+            const rows = document.getElementById("logistica-machine-rows");
+            const add = document.getElementById("logistica-add-machine");
+            if (!toggle || !panel || !rows || !add) return;
+
+            function updateMode() {
+                panel.classList.toggle("d-none", !toggle.checked);
+                document.querySelectorAll("[data-standard-shipment]").forEach(element => {
+                    element.classList.toggle("d-none", toggle.checked);
+                    element.querySelectorAll("input, select").forEach(field => {
+                        field.disabled = toggle.checked;
+                    });
+                });
+                rows.querySelectorAll("select").forEach(select => {
+                    select.required = toggle.checked;
+                    select.disabled = !toggle.checked;
+                });
+            }
+
+            toggle.addEventListener("change", updateMode);
+            add.addEventListener("click", () => {
+                const row = rows.rows[0].cloneNode(true);
+                row.querySelector("select").value = "";
+                rows.appendChild(row);
+                updateMode();
+            });
+            rows.addEventListener("click", event => {
+                const button = event.target.closest("[data-remove-machine]");
+                if (!button) return;
+                if (rows.rows.length === 1) {
+                    rows.rows[0].querySelector("select").value = "";
+                } else {
+                    button.closest("tr").remove();
+                }
+            });
+            updateMode();
+        })();
+    </script>
+{% endblock %}
+
 {% block content %}
     <main class="container-fluid py-3" id="logistica-page">
         <div class="card shadow-sm mb-3">
@@ -111,12 +156,22 @@
                 </div>
 
                 <div class="col-12 col-xl-9">
-                    <form method="post"
+                    <form method="post" id="logistica-movimento-form"
                           action="{{ operator_url_for('main.logistica_movimento_create') }}"
                           class="card shadow-sm h-100">
                         <div class="card-header">Nuova spedizione</div>
                         <div class="card-body">
                             <div class="row g-2 align-items-end">
+                                <div class="col-12">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" role="switch"
+                                               id="logistica-spedizione-macchine"
+                                               name="spedizione_macchine" value="1">
+                                        <label class="form-check-label fw-semibold" for="logistica-spedizione-macchine">
+                                            Spedizione macchina
+                                        </label>
+                                    </div>
+                                </div>
                                 <div class="col-12 col-md-4 col-xl-3">
                                     <label class="form-label" for="logistica-vettore">Vettore</label>
                                     <select class="form-select"
@@ -130,7 +185,7 @@
                                     </select>
                                 </div>
 
-                                <div class="col-6 col-md-2">
+                                <div class="col-6 col-md-2" data-standard-shipment>
                                     <label class="form-label" for="logistica-movimento">Movimento</label>
                                     <select class="form-select"
                                             id="logistica-movimento"
@@ -141,7 +196,7 @@
                                     </select>
                                 </div>
 
-                                <div class="col-6 col-md-2">
+                                <div class="col-6 col-md-2" data-standard-shipment>
                                     <label class="form-label" for="logistica-tipologia">Tipologia</label>
                                     <select class="form-select"
                                             id="logistica-tipologia"
@@ -152,7 +207,7 @@
                                     </select>
                                 </div>
 
-                                <div class="col-12 col-md-4 col-xl-3">
+                                <div class="col-12 col-md-4 col-xl-3" data-standard-shipment>
                                     <label class="form-label" for="logistica-controparte">Controparte</label>
                                     <input class="form-control"
                                            id="logistica-controparte"
@@ -172,7 +227,7 @@
                                            required>
                                 </div>
 
-                                <div class="col-12 col-md-5">
+                                <div class="col-12 col-md-5" data-standard-shipment>
                                     <label class="form-label" for="logistica-materiale">Materiale</label>
                                     <input class="form-control"
                                            id="logistica-materiale"
@@ -180,6 +235,40 @@
                                            maxlength="300"
                                            autocomplete="off"
                                            required>
+                                </div>
+
+                                <div class="col-12 d-none" id="logistica-machine-shipment">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <span class="fw-semibold">Macchine da spedire</span>
+                                        <button class="btn btn-sm btn-outline-primary" type="button"
+                                                id="logistica-add-machine" aria-label="Aggiungi macchina">+</button>
+                                    </div>
+                                    <div class="table-responsive">
+                                        <table class="table table-sm table-bordered align-middle mb-0">
+                                            <thead><tr><th>Macchina, modello e cliente</th><th></th></tr></thead>
+                                            <tbody id="logistica-machine-rows">
+                                                <tr>
+                                                    <td>
+                                                        <select class="form-select" name="macchina">
+                                                            <option value="">Seleziona macchina</option>
+                                                            {% for macchina in macchine_spedibili %}
+                                                                <option value="{{ macchina.matricola_chiave }}">
+                                                                    {{ macchina.matricola }} — {{ macchina.modello }} — {{ macchina.cliente }}
+                                                                </option>
+                                                            {% endfor %}
+                                                        </select>
+                                                    </td>
+                                                    <td class="text-center">
+                                                        <button class="btn btn-sm btn-outline-danger" type="button"
+                                                                data-remove-machine aria-label="Rimuovi macchina">−</button>
+                                                    </td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    {% if not macchine_spedibili %}
+                                        <div class="form-text">Nessuna macchina pronta per la spedizione.</div>
+                                    {% endif %}
                                 </div>
 
                                 <div class="col-12 col-md-5">
@@ -243,15 +332,29 @@
                                 </td>
                                 <td>{{ movimento.movimento|title }}</td>
                                 <td>
+                                    {% if movimento.spedizione_macchine %}
+                                        {% for macchina in movimento.macchine %}
+                                            <div>{{ macchina.cliente }}</div>
+                                        {% endfor %}
+                                    {% else %}
                                     <span class="badge {{ 'text-bg-success' if movimento.tipologia == 'CLIENTE' else 'text-bg-primary' }}">
                                         {{ movimento.tipologia|title }}
                                     </span>
                                     {{ movimento.controparte }}
+                                    {% endif %}
                                 </td>
                                 <td class="text-nowrap fw-semibold">
                                     {{ movimento.data.strftime('%d/%m/%Y') }}
                                 </td>
-                                <td>{{ movimento.materiale }}</td>
+                                <td>
+                                    {% if movimento.spedizione_macchine %}
+                                        {% for macchina in movimento.macchine %}
+                                            <div><strong>{{ macchina.matricola }}</strong> — {{ macchina.modello }}</div>
+                                        {% endfor %}
+                                    {% else %}
+                                        {{ movimento.materiale }}
+                                    {% endif %}
+                                </td>
                                 <td class="logistica-note-cell">
                                     {% if can_carica %}
                                         <label class="visually-hidden"
@@ -356,9 +459,23 @@
                                 <td>{{ movimento.id }}</td>
                                 <td>{{ movimento.vettore.nome }}</td>
                                 <td>{{ movimento.movimento|title }}</td>
-                                <td>{{ movimento.tipologia|title }} — {{ movimento.controparte }}</td>
+                                <td>
+                                    {% if movimento.spedizione_macchine %}
+                                        {% for macchina in movimento.macchine %}<div>{{ macchina.cliente }}</div>{% endfor %}
+                                    {% else %}
+                                        {{ movimento.tipologia|title }} — {{ movimento.controparte }}
+                                    {% endif %}
+                                </td>
                                 <td>{{ movimento.data.strftime('%d/%m/%Y') }}</td>
-                                <td>{{ movimento.materiale }}</td>
+                                <td>
+                                    {% if movimento.spedizione_macchine %}
+                                        {% for macchina in movimento.macchine %}
+                                            <div><strong>{{ macchina.matricola }}</strong> — {{ macchina.modello }}</div>
+                                        {% endfor %}
+                                    {% else %}
+                                        {{ movimento.materiale }}
+                                    {% endif %}
+                                </td>
                                 <td class="text-nowrap">
                                     {{ movimento.completato_il.strftime('%d/%m/%Y %H:%M') }}
                                     — {{ movimento.completato_da_nome }}
