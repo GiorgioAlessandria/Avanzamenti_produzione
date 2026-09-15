@@ -186,22 +186,34 @@ const customerContext = vm.createContext({
     esc: context.esc, customerOrdersBody: {innerHTML: ""},
     canEditSalesNotes: true, canEditProductionInstructions: true, canConfirmOrderRead: false, canConfirmShipment: false,
     canDeleteOrders: false, collapsedOrders: new Set(),
+    currentGrouping: {groups: [
+        {id: 1, name: "Gruppo A", family_codes: ["FAM-A"]},
+        {id: 2, name: "Gruppo B", family_codes: ["FAM-B"]},
+    ]},
     dirtyAssignments: new Set(), dirtyNotes: new Set(), dirtyDates: new Set(), dirtyOrderDetails: new Set(),
     referenceClass: () => "", orderDetails: () => "", formatDateTime: String,
     modelLabel: () => "Modello", dateInput: () => "", assignmentSelect: () => "",
     rowActions: () => "", applyDemandFilter() {},
 });
 vm.runInContext(namedFunction(assignments, "noteTextarea") + "\n" +
+                namedFunction(assignments, "customerOrderSections") + "\n" +
                 namedFunction(assignments, "renderCustomerOrders"), customerContext);
-customerContext.orders = [{id: 1, managed: true, customer_name: "Cliente", customer_order: "OC1", rows: [{
-    id: 1, position: 1, production_note: "</textarea><img>", production_instructions: "Istruzioni",
-}]}];
+customerContext.orders = [{id: 1, managed: true, customer_name: "Cliente", customer_order: "OC1", rows: [
+    {id: 1, position: 1, family_code: "FAM-A", production_note: "</textarea><img>", production_instructions: "Istruzioni"},
+    {id: 2, position: 2, family_code: "FAM-B", production_note: "", production_instructions: ""},
+    {id: 3, position: 3, family_code: "FAM-X", production_note: "", production_instructions: ""},
+]}];
 vm.runInContext("renderCustomerOrders(orders)", customerContext);
 assert.ok(!customerContext.customerOrdersBody.innerHTML.includes('data-note-field="production_note"'));
 assert.ok(customerContext.customerOrdersBody.innerHTML.includes('data-note-field="production_instructions"'));
 assert.ok(customerContext.customerOrdersBody.innerHTML.includes("&lt;/textarea>&lt;img>"));
 assert.ok(!customerContext.customerOrdersBody.innerHTML.includes("<img>"));
 assert.ok(!customerContext.customerOrdersBody.innerHTML.includes("readonly"));
+assert.ok(customerContext.customerOrdersBody.innerHTML.includes("Gruppo A (1)"));
+assert.ok(customerContext.customerOrdersBody.innerHTML.includes("Gruppo B (1)"));
+assert.ok(customerContext.customerOrdersBody.innerHTML.includes("Senza raggruppamento (1)"));
+assert.equal((customerContext.customerOrdersBody.innerHTML.match(/data-customer-row-id=/g) || []).length, 3);
+assert.equal((customerContext.customerOrdersBody.innerHTML.match(/Cliente/g) || []).length, 3);
 assert.equal(vm.runInContext("rowNotesPayload(1).commercial_note", noteContext), "Nota precedente");
 noteContext.canEditSalesNotes = false;
 assert.equal(vm.runInContext("rowNotesPayload(1).production_instructions", noteContext), undefined);

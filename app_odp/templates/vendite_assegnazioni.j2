@@ -361,7 +361,8 @@
                             <div class="card-header">
                                 <div class="fw-semibold">Righe ordini cliente</div>
                                 <div class="small text-muted">
-                                    Ogni riga corrisponde a una singola macchina richiesta
+                                    Ogni riga corrisponde a una singola macchina richiesta.
+                                    Gli ordini sono suddivisi usando i raggruppamenti per famiglia configurati nella situazione per matricola.
                                 </div>
                             </div>
                             <div class="card-body py-2 border-bottom">
@@ -544,6 +545,7 @@
             let models = [];
             let machines = [];
             let assignmentMachines = [];
+            let currentGrouping = {groups: [], families: []};
             let formDirty = false;
             let loadInFlight = false;
             let mutationInFlight = false;
@@ -1005,6 +1007,49 @@
                 applyMachineFilter();
             }
 
+            function customerOrderSections(customerOrders, groups) {
+                if (!groups.length) {
+                    return [{key: "all", name: null, orders: customerOrders}];
+                }
+
+                const claimedRows = new Set();
+                const groupedFamilies = new Set(groups.flatMap(group => (
+                    group.family_codes || []
+                )).map(String));
+                const makeOrders = predicate => customerOrders.flatMap(order => {
+                    const rows = (order.rows || []).filter(row => {
+                        const rowKey = String(row.id);
+                        if (claimedRows.has(rowKey) || !predicate(row)) return false;
+                        claimedRows.add(rowKey);
+                        return true;
+                    });
+                    if (!rows.length) return [];
+                    return [{
+                        ...order,
+                        rows,
+                        total_rows: rows.length,
+                        assigned_rows: rows.filter(row => row.assignment).length,
+                        packaged_rows: rows.filter(row => row.packaged).length,
+                        packaged: rows.every(row => row.packaged),
+                    }];
+                });
+
+                const sections = groups.map(group => {
+                    const families = new Set((group.family_codes || []).map(String));
+                    return {
+                        key: `group-${group.id}`,
+                        name: group.name,
+                        orders: makeOrders(row => families.has(String(row.family_code || ""))),
+                    };
+                });
+                sections.push({
+                    key: "ungrouped",
+                    name: "Senza raggruppamento",
+                    orders: makeOrders(row => !groupedFamilies.has(String(row.family_code || ""))),
+                });
+                return sections;
+            }
+
             function renderCustomerOrders(customerOrders) {
                 if (!customerOrders.length) {
                     customerOrdersBody.innerHTML = `
@@ -1017,21 +1062,36 @@
                 }
 
                 const html = [];
-                customerOrders.forEach(order => {
+                const groups = Array.isArray(currentGrouping.groups)
+                    ? currentGrouping.groups
+                    : [];
+                const renderedHeadings = new Set();
+                customerOrderSections(customerOrders, groups).forEach(section => {
+                    if (section.name !== null) {
+                        html.push(`
+                            <tr class="table-secondary" data-customer-group-heading>
+                                <th colspan="10" scope="rowgroup" class="fw-semibold">
+                                    ${esc(section.name)} (${section.orders.reduce((count, order) => count + order.rows.length, 0)})
+                                </th>
+                            </tr>`);
+                    }
+                    section.orders.forEach(order => {
+                    const primaryHeading = !renderedHeadings.has(String(order.id));
+                    renderedHeadings.add(String(order.id));
                     const neutralClass = referenceClass(order.internal_reference);
                     const orderClass = !order.read_confirmed
                         ? "vendite-order-unread"
                         : order.packaged
                             ? "vendite-machine-completed"
                             : neutralClass;
-                    const confirmButton = !order.managed && canConfirmOrderRead && !order.read_confirmed
+                    const confirmButton = primaryHeading && !order.managed && canConfirmOrderRead && !order.read_confirmed
                         ? `<button class="btn btn-sm btn-warning text-nowrap"
                                    type="button"
                                    data-confirm-order-read="${esc(order.id)}">
                                Conferma lettura
                            </button>`
                         : "";
-                    const deleteButton = !order.managed && canDeleteOrders
+                    const deleteButton = primaryHeading && !order.managed && canDeleteOrders
                         ? `<button class="btn btn-sm btn-outline-danger text-nowrap"
                                    type="button"
                                    data-delete-customer-order="${esc(order.id)}"
@@ -1046,24 +1106,31 @@
                         order.internal_reference,
                         order.created_by_name,
                     ].join(" ").toLocaleLowerCase("it");
-                    const rowsExpanded = !collapsedOrders.has(String(order.id));
+                    const collapseKey = `${section.key}:${order.id}`;
+                    const rowsExpanded = !collapsedOrders.has(collapseKey);
+                    const details = primaryHeading
+                        ? orderDetails(order)
+                        : `<span class="badge text-bg-light border">${esc(
+                            order.internal_reference || "ITALIA"
+                        )}</span>`;
                     html.push(`
                         <tr class="${orderClass} vendite-customer-heading"
                             data-demand-search="${esc(orderSearch)}"
                             data-customer-order-id="${esc(order.id)}"
+                            data-collapse-key="${esc(collapseKey)}"
                             data-reference-class="${neutralClass}">
                             <td colspan="10">
                                 <div class="d-flex flex-wrap justify-content-between gap-2">
                                     <div class="d-flex flex-wrap align-items-center gap-2">
                                         <button class="btn btn-sm btn-outline-secondary"
                                                 type="button"
-                                                data-toggle-order-rows="${esc(order.id)}"
+                                                data-toggle-order-rows="${esc(collapseKey)}"
                                                 aria-expanded="${rowsExpanded}"
                                                 aria-label="${rowsExpanded ? "Chiudi" : "Apri"} righe ordine">
                                             <span aria-hidden="true">${rowsExpanded ? "▾" : "▸"}</span>
                                         </button>
                                         <span class="fw-semibold">${esc(order.customer_name)}</span>
-                                        ${orderDetails(order)}
+                                        ${details}
                                         <span class="text-muted"> · Ordine ${esc(order.customer_order)}</span>
                                     </div>
                                     <div class="d-flex flex-wrap align-items-center gap-2">
@@ -1109,6 +1176,7 @@
                             <tr class="${rowClass}"
                                 data-demand-search="${esc(search)}"
                                 data-customer-order-id="${esc(order.id)}"
+                                data-collapse-key="${esc(collapseKey)}"
                                 data-reference-class="${neutralClass}"
                                 data-customer-row-id="${esc(row.id)}"
                                 data-managed="${order.managed ? "true" : "false"}"
@@ -1142,6 +1210,7 @@
                                 <td>${rowActions(row)}</td>
                             </tr>`);
                     });
+                    });
                 });
 
                 customerOrdersBody.innerHTML = html.join("");
@@ -1153,6 +1222,7 @@
             }
 
             function render(data) {
+                currentGrouping = data.grouping || {groups: [], families: []};
                 models = Array.isArray(data.models) ? data.models : [];
                 machines = Array.isArray(data.machines) ? data.machines : [];
                 assignmentMachines = Array.isArray(data.assignment_machines)
@@ -1183,9 +1253,7 @@
                     const anyRowMatches = currentOrderRows.some(row => (
                         !query || row.dataset.demandSearch.includes(query)
                     ));
-                    const collapsed = collapsedOrders.has(
-                        String(currentHeading.dataset.customerOrderId)
-                    );
+                    const collapsed = collapsedOrders.has(currentHeading.dataset.collapseKey);
                     currentHeading.hidden = !headingMatches && !anyRowMatches;
                     currentOrderRows.forEach(row => {
                         row.hidden = collapsed || (
@@ -1206,6 +1274,16 @@
                     }
                 });
                 flushOrder();
+
+                customerOrdersBody.querySelectorAll("[data-customer-group-heading]").forEach(heading => {
+                    let row = heading.nextElementSibling;
+                    let hasVisibleContent = false;
+                    while (row && !row.hasAttribute("data-customer-group-heading")) {
+                        hasVisibleContent ||= !row.hidden;
+                        row = row.nextElementSibling;
+                    }
+                    heading.hidden = !hasVisibleContent;
+                });
             }
 
             function hasFocusedEditor() {

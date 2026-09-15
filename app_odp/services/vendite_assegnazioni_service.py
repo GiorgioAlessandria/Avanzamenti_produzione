@@ -273,6 +273,7 @@ def _model_catalog(orders) -> dict[str, dict]:
                 "model_code": code,
                 "variant": variant,
                 "description": _norm_text(getattr(order, "DesArt", "")),
+                "family_code": _norm_text(getattr(order, "CodFamiglia", "")),
             },
         )
     return catalog
@@ -287,7 +288,9 @@ def _available_model_catalog(open_machines) -> dict[str, dict]:
         == "si"
     ).all()
     for key, model in _model_catalog(known_machine_models).items():
-        catalog.setdefault(key, model)
+        current = catalog.setdefault(key, model)
+        if not current["family_code"]:
+            current["family_code"] = model["family_code"]
     return catalog
 
 
@@ -1390,6 +1393,7 @@ def build_assignment_dashboard(*, include_planned: bool = True) -> dict:
                 machine.FaseAttiva,
             )
         ]
+    model_catalog = _available_model_catalog(open_machines)
     customer_orders = (
         VenditeOrdineCliente.query.options(selectinload(VenditeOrdineCliente.righe))
         .order_by(
@@ -1501,14 +1505,19 @@ def build_assignment_dashboard(*, include_planned: bool = True) -> dict:
                             {"code": code, "description": description}
                         )
 
+            row_model_key = _model_key(
+                row.modello_codice,
+                row.modello_variante,
+            )
+            row_model = model_catalog.get(row_model_key, {})
             rows_payload.append(
                 {
                     "id": row.id,
                     "position": row.posizione,
                     "version": row.versione,
-                    "model_key": _model_key(
-                        row.modello_codice,
-                        row.modello_variante,
+                    "model_key": row_model_key,
+                    "family_code": row_model.get("family_code") or _norm_text(
+                        getattr(current_machine, "CodFamiglia", "")
                     ),
                     "model_code": row.modello_codice,
                     "variant": row.modello_variante or "",
@@ -1623,7 +1632,7 @@ def build_assignment_dashboard(*, include_planned: bool = True) -> dict:
         if not machine["assigned"]
     ]
     models = sorted(
-        _available_model_catalog(open_machines).values(),
+        model_catalog.values(),
         key=lambda item: (
             item["model_code"].casefold(),
             item["variant"].casefold(),
