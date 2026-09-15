@@ -364,11 +364,20 @@
                             <span aria-hidden="true">›</span>
                         </button>
                         <div class="card shadow-sm h-100">
-                            <div class="card-header">
-                                <div class="fw-semibold">Righe ordini cliente</div>
-                                <div class="small text-muted">
-                                    Ogni riga corrisponde a una singola macchina richiesta.
-                                    Gli ordini sono suddivisi usando i raggruppamenti per famiglia configurati nella situazione per matricola.
+                            <div class="card-header d-flex flex-wrap justify-content-between align-items-start gap-2">
+                                <div>
+                                    <div class="fw-semibold">Righe ordini cliente</div>
+                                    <div class="small text-muted">
+                                        Ogni riga corrisponde a una singola macchina richiesta.
+                                        <span id="vendite-customer-grouping-description">Gli ordini sono suddivisi usando i raggruppamenti per famiglia configurati nella situazione per matricola.</span>
+                                    </div>
+                                </div>
+                                <div class="form-check form-switch mb-0">
+                                    <input class="form-check-input" type="checkbox"
+                                           role="switch" id="vendite-group-by-customer">
+                                    <label class="form-check-label" for="vendite-group-by-customer">
+                                        Raggruppa per cliente
+                                    </label>
                                 </div>
                             </div>
                             <div class="card-body py-2 border-bottom">
@@ -539,6 +548,8 @@
             const machinesPanelToggle = document.getElementById("vendite-machines-panel-toggle");
             const machineFilter = document.getElementById("vendite-machine-filter");
             const demandFilter = document.getElementById("vendite-demand-filter");
+            const groupByCustomerToggle = document.getElementById("vendite-group-by-customer");
+            const groupingDescription = document.getElementById("vendite-customer-grouping-description");
             const packagingNotesBody = document.getElementById("vendite-packaging-notes-body");
             const savePackagingNotesButton = document.getElementById("vendite-save-packaging-notes");
             const canAssignMachines = page.dataset.canAssignMachines === "true";
@@ -552,6 +563,8 @@
             let machines = [];
             let assignmentMachines = [];
             let currentGrouping = {groups: [], families: []};
+            let currentCustomerOrders = [];
+            let groupCustomerOrders = false;
             let formDirty = false;
             let loadInFlight = false;
             let mutationInFlight = false;
@@ -1015,6 +1028,21 @@
             }
 
             function customerOrderSections(customerOrders, groups) {
+                if (groupCustomerOrders) {
+                    const customers = new Map();
+                    customerOrders.forEach(order => {
+                        const identity = String(order.customer_name || "")
+                            .trim().toLocaleLowerCase("it");
+                        const section = customers.get(identity) || {
+                            key: `customer-${identity}`,
+                            name: order.customer_name || "Cliente non indicato",
+                            orders: [],
+                        };
+                        section.orders.push(order);
+                        customers.set(identity, section);
+                    });
+                    return [...customers.values()];
+                }
                 if (!groups.length) {
                     return [{key: "all", name: null, orders: customerOrders}];
                 }
@@ -1099,7 +1127,7 @@
                         : order.packaged
                             ? "vendite-machine-completed"
                             : neutralClass;
-                    const confirmButton = primaryHeading && !order.managed && canConfirmOrderRead && !order.read_confirmed
+                    const confirmButton = primaryHeading && canConfirmOrderRead && !order.read_confirmed
                         ? `<button class="btn btn-sm btn-warning text-nowrap"
                                    type="button"
                                    data-confirm-order-read="${esc(order.id)}">
@@ -1238,6 +1266,9 @@
 
             function render(data) {
                 currentGrouping = data.grouping || {groups: [], families: []};
+                currentCustomerOrders = Array.isArray(data.customer_orders)
+                    ? data.customer_orders
+                    : [];
                 models = Array.isArray(data.models) ? data.models : [];
                 machines = Array.isArray(data.machines) ? data.machines : [];
                 assignmentMachines = Array.isArray(data.assignment_machines)
@@ -1245,7 +1276,7 @@
                     : machines;
                 refreshCreateModelOptions();
                 renderMachines();
-                renderCustomerOrders(Array.isArray(data.customer_orders) ? data.customer_orders : []);
+                renderCustomerOrders(currentCustomerOrders);
                 renderPackagingNotes(Array.isArray(data.packaging_notes) ? data.packaging_notes : []);
                 statusBox.textContent = `Ultimo aggiornamento: ${formatDateTime(data.generated_at)}`;
             }
@@ -1833,6 +1864,13 @@
 
             machineFilter.addEventListener("input", applyMachineFilter);
             demandFilter.addEventListener("input", applyDemandFilter);
+            groupByCustomerToggle.addEventListener("change", () => {
+                groupCustomerOrders = groupByCustomerToggle.checked;
+                groupingDescription.textContent = groupCustomerOrders
+                    ? "Gli ordini sono suddivisi per cliente."
+                    : "Gli ordini sono suddivisi usando i raggruppamenti per famiglia configurati nella situazione per matricola.";
+                renderCustomerOrders(currentCustomerOrders);
+            });
             machinesPanelToggle.addEventListener("click", () => {
                 setMachinesPanelExpanded(
                     machinesPanelToggle.getAttribute("aria-expanded") !== "true"

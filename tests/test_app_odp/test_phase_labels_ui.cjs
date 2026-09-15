@@ -186,6 +186,7 @@ const customerContext = vm.createContext({
     esc: context.esc, customerOrdersBody: {innerHTML: ""},
     canEditSalesNotes: true, canEditProductionInstructions: true, canConfirmOrderRead: false, canConfirmShipment: false,
     canDeleteOrders: false, collapsedOrders: new Set(), collapsedCustomerGroups: new Set(),
+    groupCustomerOrders: false,
     currentGrouping: {groups: [
         {id: 1, name: "Gruppo A", family_codes: ["FAM-A"]},
         {id: 2, name: "Gruppo B", family_codes: ["FAM-B"]},
@@ -215,6 +216,14 @@ assert.ok(customerContext.customerOrdersBody.innerHTML.includes("Senza raggruppa
 assert.equal((customerContext.customerOrdersBody.innerHTML.match(/data-customer-row-id=/g) || []).length, 3);
 assert.equal((customerContext.customerOrdersBody.innerHTML.match(/Cliente/g) || []).length, 3);
 assert.equal((customerContext.customerOrdersBody.innerHTML.match(/data-toggle-customer-group=/g) || []).length, 3);
+customerContext.canConfirmOrderRead = true;
+vm.runInContext("renderCustomerOrders(orders)", customerContext);
+assert.equal((customerContext.customerOrdersBody.innerHTML.match(/data-confirm-order-read=/g) || []).length, 1);
+customerContext.groupCustomerOrders = true;
+vm.runInContext("renderCustomerOrders(orders)", customerContext);
+assert.ok(customerContext.customerOrdersBody.innerHTML.includes("Cliente (3)"));
+assert.ok(!customerContext.customerOrdersBody.innerHTML.includes("Gruppo A (1)"));
+assert.equal((customerContext.customerOrdersBody.innerHTML.match(/data-toggle-customer-group=/g) || []).length, 1);
 assert.equal(vm.runInContext("rowNotesPayload(1).commercial_note", noteContext), "Nota precedente");
 noteContext.canEditSalesNotes = false;
 assert.equal(vm.runInContext("rowNotesPayload(1).production_instructions", noteContext), undefined);
