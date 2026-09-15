@@ -50,6 +50,11 @@ MAX_NOTE = 1000
 MAX_EXPANDED_ROWS = 500
 LOG_QUERY_BATCH_SIZE = 400
 STOCK_LABEL = "STOCK"
+EU_COUNTRY_CODES = {
+    "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR",
+    "DE", "GR", "EL", "HU", "IE", "IT", "LV", "LT", "LU", "MT",
+    "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE",
+}
 
 
 class VenditeAssegnazioniError(ValueError):
@@ -248,6 +253,15 @@ def _internal_reference(value) -> str:
             "Il riferimento interno deve essere ITALIA, ESTERO oppure EXTRACEE."
         )
     return reference
+
+
+def _internal_reference_for_country(value) -> str:
+    country_code = _norm_text(value).upper()
+    if country_code == "IT":
+        return "ITALIA"
+    if not country_code or country_code in EU_COUNTRY_CODES:
+        return "ESTERO"
+    return "EXTRACEE"
 
 
 def _packaging_notes_by_reference() -> dict[str, str]:
@@ -899,7 +913,11 @@ def _selected_machine(payload):
 
 
 def confirm_machine_packaging(payload, user, *, commit: bool = False):
-    _machine, key = _selected_machine(payload)
+    machine, key = _selected_machine(payload)
+    if _canonical_state(getattr(machine, "StatoOrdine", "")) != "Chiusa":
+        raise VenditeAssegnazioniError(
+            "La macchina può essere imballata solamente quando è in stato Chiusa."
+        )
     confirmation = db.session.get(VenditeImballoMacchina, key)
     if confirmation is None:
         actor_id, actor_name = _actor(user)
@@ -921,6 +939,7 @@ def update_machine_option(payload, user, *, commit: bool = False):
     optioned = payload.get("optioned")
     if not isinstance(optioned, bool):
         raise VenditeAssegnazioniError("Lo stato dell'opzione non è valido.")
+    note = _optional_text(payload.get("note"), "La nota dell'opzione", MAX_NOTE)
     actor_id, actor_name = _actor(user)
     option = db.session.get(VenditeOpzioneMacchina, key)
     owns_option = option is not None and (
@@ -939,8 +958,11 @@ def update_machine_option(payload, user, *, commit: bool = False):
                 opzionata_il=_now_rome_dt().isoformat(timespec="seconds"),
                 opzionata_da_id=actor_id,
                 opzionata_da_nome=actor_name,
+                nota=note or None,
             )
             db.session.add(option)
+        else:
+            option.nota = note or None
     elif option is not None:
         if not owns_option:
             raise VenditeAssegnazioniConflictError(
@@ -1201,6 +1223,7 @@ def _synced_date(value) -> date | None:
 
 
 def _sync_open_customer_orders() -> None:
+    packaging_notes = _packaging_notes_by_reference()
     machine_model_codes = {
         _normalized_key(code)
         for (code,) in db.session.query(AcqArticoliLookup.CodArt).filter(
@@ -1253,7 +1276,7 @@ def _sync_open_customer_orders() -> None:
         customer = managed_orders.pop(client_code, None)
         customer_name, country_code = clients.get(client_code, (client_code, ""))
         customer_name = customer_name or client_code
-        internal_reference = "ITALIA" if country_code == "IT" else "ESTERO"
+        internal_reference = _internal_reference_for_country(country_code)
         if customer is None:
             customer = VenditeOrdineCliente(
                 cliente_nome=customer_name,
@@ -1337,6 +1360,7 @@ def _sync_open_customer_orders() -> None:
                     modello_codice=_norm_text(item.CodArt),
                     modello_variante="",
                     modello_descrizione=_norm_text(item.DesArt) or None,
+                    note_spedizione=packaging_notes[internal_reference] or None,
                     data_consegna=delivery_date,
                     posizione=position,
                 )

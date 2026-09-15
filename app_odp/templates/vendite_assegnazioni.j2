@@ -860,14 +860,14 @@
                         && String(machine.assigned_row_id) !== String(row.id)
                     );
                     const label = assignedElsewhere
-                        ? `⚠ ${machineOptionLabel(machine)} · Ordine: ${machine.assigned_customer_order || "-"}`
+                        ? `⚠ ${machineOptionLabel(machine)} · Cliente: ${machine.assigned_customer_name || "-"}`
                         : machineOptionLabel(machine);
                     options.push(`
                         <option value="${esc(identity)}"
                                 class="${assignedElsewhere ? "vendite-machine-assigned" : ""}"
                                 data-id-documento="${esc(machine.id_documento)}"
                                 data-id-riga="${esc(machine.id_riga)}"
-                                data-assigned-customer-order="${esc(machine.assigned_customer_order || "")}"
+                                data-assigned-customer-name="${esc(machine.assigned_customer_name || "")}"
                                 title="${esc(label)}"
                                 ${identity === currentIdentity ? "selected" : ""}>
                             ${esc(label)}

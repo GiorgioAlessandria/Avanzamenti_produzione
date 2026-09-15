@@ -289,14 +289,14 @@
             }
 
             function hasUnsavedNotes() {
-                return Array.from(machinesBody.querySelectorAll("[data-production-note]"))
+                return Array.from(machinesBody.querySelectorAll("[data-production-note], [data-machine-option-note]"))
                     .some(field => field.value !== field.dataset.originalValue);
             }
 
             function editingNotes() {
                 return savingNote || hasUnsavedNotes()
                     || priorityDirty
-                    || Boolean(document.activeElement?.matches("[data-production-note]"));
+                    || Boolean(document.activeElement?.matches("[data-production-note], [data-machine-option-note]"));
             }
 
             function esc(value) {
@@ -430,7 +430,7 @@
                             ${machine.packaging?.confirmed_by_name ? ` · ${esc(machine.packaging.confirmed_by_name)}` : ""}
                         </div>`;
                 }
-                if (!canConfirmPackaging || !machine.has_serial) return "—";
+                if (!canConfirmPackaging || !machine.has_serial || machine.state !== "Chiusa") return "—";
                 return `<button type="button" class="btn btn-success btn-sm text-nowrap"
                                 data-confirm-packaging
                                 data-id-documento="${esc(machine.id_documento)}"
@@ -442,12 +442,25 @@
 
             function optionCell(machine) {
                 if (machine.option) {
+                    const canEdit = canOptionMachines && machine.option.can_remove;
                     return `
                         <span class="badge text-bg-warning">Opzionata</span>
                         <div class="small text-muted mt-1">
                             ${esc(machine.option.optioned_by_name)} · ${esc(formatUpdateTime(machine.option.optioned_at))}
                         </div>
-                        ${canOptionMachines && machine.option.can_remove ? `
+                        <textarea class="form-control form-control-sm mt-1" rows="2" maxlength="1000"
+                                  aria-label="Nota opzione matricola ${esc(machine.serial_number)}"
+                                  data-machine-option-note
+                                  data-original-value="${esc(machine.option.note || "")}"${canEdit ? "" : " readonly"}>${esc(machine.option.note || "")}</textarea>
+                        ${canEdit ? `
+                            <button type="button" class="btn btn-primary btn-sm text-nowrap mt-1"
+                                    data-machine-option="true"
+                                    data-save-machine-option-note
+                                    data-id-documento="${esc(machine.id_documento)}"
+                                    data-id-riga="${esc(machine.id_riga)}"
+                                    data-serial="${esc(machine.serial_number)}">
+                                Salva nota
+                            </button>
                             <button type="button" class="btn btn-outline-secondary btn-sm text-nowrap mt-1"
                                     data-machine-option="false"
                                     data-id-documento="${esc(machine.id_documento)}"
@@ -846,8 +859,10 @@
                 if (optionButton) {
                     if (optionInFlight || !canOptionMachines || !canChangeMachineView()) return;
                     const optioned = optionButton.dataset.machineOption === "true";
+                    const savingNote = optionButton.hasAttribute("data-save-machine-option-note");
                     const action = optioned ? "opzionare" : "rimuovere l'opzione dalla";
-                    if (!window.confirm(`Confermare di ${action} matricola ${optionButton.dataset.serial}?`)) return;
+                    if (!savingNote && !window.confirm(`Confermare di ${action} matricola ${optionButton.dataset.serial}?`)) return;
+                    const noteField = optionButton.closest("td")?.querySelector("[data-machine-option-note]");
                     optionInFlight = true;
                     optionButton.disabled = true;
                     try {
@@ -859,6 +874,7 @@
                                 id_riga: optionButton.dataset.idRiga,
                                 serial_number: optionButton.dataset.serial,
                                 optioned,
+                                note: noteField?.value || "",
                             }),
                         });
                         const payload = await response.json().catch(() => ({}));

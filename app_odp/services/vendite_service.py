@@ -239,6 +239,7 @@ def _machine_options(serials, viewer=None) -> dict[str, dict]:
         item.matricola: {
             "optioned_at": item.opzionata_il,
             "optioned_by_name": item.opzionata_da_nome,
+            "note": item.nota or "",
             "can_remove": (
                 item.opzionata_da_id == viewer_id
                 if item.opzionata_da_id is not None
@@ -343,8 +344,6 @@ def _build_vendite_payload(
         state = _canonical_state(getattr(order, "StatoOrdine", ""))
         phase = _phase_label(getattr(order, "FaseAttiva", ""))
         is_stock = bool(getattr(order, "IsStock", False))
-        if state.casefold() in _TERMINAL_STATES and not is_stock:
-            continue
         if not include_planned and _is_phase_one_planned(state, phase):
             continue
 
@@ -367,7 +366,7 @@ def _build_vendite_payload(
         model_key = (model_code.casefold(), variant.casefold())
         combination = (phase, state)
 
-        if not is_stock:
+        if not is_stock and state.casefold() not in _TERMINAL_STATES:
             phases.add(phase)
             states.add(state)
             group = model_groups.setdefault(
@@ -475,7 +474,7 @@ def _build_vendite_payload(
 
 
 def build_vendite_payload(*, include_planned: bool = True, viewer=None) -> dict:
-    orders = load_inventory_machine_orders() + load_machine_orders()
+    orders = load_inventory_machine_orders() + load_machine_orders(include_closed=True)
     unique_orders = []
     seen_serials = set()
     for order in orders:

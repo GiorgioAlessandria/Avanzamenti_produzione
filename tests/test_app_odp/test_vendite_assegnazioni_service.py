@@ -20,6 +20,7 @@ from app_odp.services.order_helpers import _now_rome_dt
 from app_odp.services.vendite_assegnazioni_service import (
     VenditeAssegnazioniConflictError,
     VenditeAssegnazioniError,
+    _internal_reference_for_country,
     build_assignment_dashboard,
     confirm_customer_order_read,
     confirm_machine_packaging,
@@ -46,6 +47,15 @@ from app_odp.vendite_models import (
 ACTOR = SimpleNamespace(id=None, username="commerciale")
 
 
+@pytest.mark.parametrize(
+    ("country_code", "expected"),
+    [("IT", "ITALIA"), ("FR", "ESTERO"), ("DE", "ESTERO"),
+     ("CH", "EXTRACEE"), ("US", "EXTRACEE"), ("", "ESTERO")],
+)
+def test_internal_reference_is_derived_from_country(country_code, expected):
+    assert _internal_reference_for_country(country_code) == expected
+
+
 def test_synced_customer_orders_are_grouped_expanded_and_assignable(app):
     with app.app_context():
         db.session.add_all([
@@ -66,7 +76,7 @@ def test_synced_customer_orders_are_grouped_expanded_and_assignable(app):
             ),
             AcqClienteFornitore(
                 TipoAnagrafica="1", CodCliFor="CLI-2", RagioneSociale="Cliente Extra",
-                CodStato="FR",
+                CodStato="US",
             ),
             AcqOrdineClienteAperto(
                 IdDocumento="DOC-ERP-1", IdRigaDoc="20", CodCliFor="CLI-1",
@@ -111,7 +121,8 @@ def test_synced_customer_orders_are_grouped_expanded_and_assignable(app):
         assert order["customer_code"] == "CLI-1"
         assert order["customer_order"] == "Gestionale"
         assert order["internal_reference"] == "ITALIA"
-        assert extra_order["internal_reference"] == "ESTERO"
+        assert extra_order["internal_reference"] == "EXTRACEE"
+        assert extra_order["rows"][0]["shipping_note"] == "Inserire sacchetto anti-umidità"
         assert [row["delivery_date"] for row in order["rows"]] == [
             "2026-09-15", "2026-09-20", "2026-09-20"
         ]
@@ -225,6 +236,7 @@ def test_vendite_api_filters_planned_and_keeps_customer_production_notes_readonl
         packaging_payload = {"id_documento": machine.IdDocumento,
                              "id_riga": machine.IdRiga,
                              "serial_number": machine.CodMatricola}
+        machine.StatoOrdine = "Chiusa"
         permissions.remove("assegna_matricole")
         assert client.post("/api/vendite/macchine/conferma-imballo",
                            json=packaging_payload).status_code == 403
@@ -1100,6 +1112,7 @@ def test_packaging_confirmation_follows_serial_into_customer_order(app):
             ACTOR,
         ).righe[0]
         customer_row.note_spedizione = "Cassa rinforzata"
+        machine.StatoOrdine = "Chiusa"
         confirmation = confirm_machine_packaging(
             {
                 "id_documento": machine.IdDocumento,
@@ -1130,6 +1143,9 @@ def test_packaging_confirmation_validates_machine_identity_and_is_idempotent(app
         machine = _add_machine()
         payload = {"id_documento": machine.IdDocumento, "id_riga": machine.IdRiga,
                    "serial_number": machine.CodMatricola}
+        with pytest.raises(VenditeAssegnazioniError, match="stato Chiusa"):
+            confirm_machine_packaging(payload, ACTOR)
+        machine.StatoOrdine = "Chiusa"
         first = confirm_machine_packaging(payload, ACTOR)
         second = confirm_machine_packaging(payload, ACTOR)
         assert first is second
@@ -1144,7 +1160,8 @@ def test_machine_option_is_visible_and_only_owner_can_remove_it(app):
     with app.app_context():
         machine = _add_machine()
         payload = {"id_documento": machine.IdDocumento, "id_riga": machine.IdRiga,
-                   "serial_number": machine.CodMatricola, "optioned": True}
+                   "serial_number": machine.CodMatricola, "optioned": True,
+                   "note": "Riservata al cliente Rossi"}
         option = update_machine_option(payload, owner)
 
         assert option.opzionata_da_nome == "alice"
@@ -1153,8 +1170,11 @@ def test_machine_option_is_visible_and_only_owner_can_remove_it(app):
         choice = build_assignment_dashboard()["assignment_machines"][0]["option"]
         assert production["optioned_by_name"] == "alice"
         assert production["optioned_at"] == option.opzionata_il
+        assert production["note"] == "Riservata al cliente Rossi"
         assert production["can_remove"] is True
         assert choice["optioned_by_name"] == "alice"
+        update_machine_option({**payload, "note": "Nota aggiornata"}, owner)
+        assert option.nota == "Nota aggiornata"
         with pytest.raises(VenditeAssegnazioniConflictError, match="già opzionata da alice"):
             update_machine_option(payload, other)
         with pytest.raises(VenditeAssegnazioniConflictError, match="solamente dall'utente"):

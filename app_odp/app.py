@@ -338,6 +338,16 @@ def _ensure_vendite_schema() -> None:
     added_row_available_date = False
     order_has_available_date = False
 
+    if "vendite_opzioni_macchina" in tables:
+        columns = {
+            column["name"]
+            for column in inspect(engine).get_columns("vendite_opzioni_macchina")
+        }
+        if "nota" not in columns:
+            additions.append(
+                "ALTER TABLE vendite_opzioni_macchina ADD COLUMN nota VARCHAR(1000)"
+            )
+
     if "vendite_ordini_cliente" in tables:
         columns = {
             column["name"]

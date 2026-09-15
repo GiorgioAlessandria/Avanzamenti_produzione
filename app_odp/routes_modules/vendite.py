@@ -83,7 +83,9 @@ def vendite_page():
             admin or policy.can("utente_produzione") or policy.can("utente_imballi")
         ),
         can_option_machines=admin or policy.can("utente_vendite"),
-        can_view_options=admin or not policy.can("utente_imballi"),
+        can_view_options=(
+            admin or policy.can("utente_produzione") or not policy.can("utente_imballi")
+        ),
         can_view_production_instructions=admin or not policy.can("utente_amministrazione"),
         can_view_packaging_notes=admin or not policy.can("utente_imballi"),
         can_view_model_summary=_can_view_customer_orders(policy),

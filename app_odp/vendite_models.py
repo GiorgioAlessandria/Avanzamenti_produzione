@@ -251,6 +251,7 @@ class VenditeOpzioneMacchina(db.Model):
         nullable=True,
     )
     opzionata_da_nome = db.Column(db.String(120), nullable=False)
+    nota = db.Column(db.String(1000), nullable=True)
 
 
 class VenditeSpedizioneConfermata(db.Model):
