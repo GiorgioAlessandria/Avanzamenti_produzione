@@ -2623,8 +2623,8 @@
                         showFeedback("Seleziona esattamente 2 ordini con tempo condiviso.");
                         return;
                     }
-                    if (maskIndexes.length < 1 || maskIndexes.length > 2) {
-                        showFeedback("Seleziona da 1 a 2 ordini mascherati.");
+                    if (maskIndexes.length < 1 || maskIndexes.length > 3) {
+                        showFeedback("Seleziona da 1 a 3 ordini mascherati.");
                         return;
                     }
                     if (maskIndexes.some(index => sharedIndexes.includes(index))) {

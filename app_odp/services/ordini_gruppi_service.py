@@ -478,8 +478,8 @@ def create_misto_group(
         )
     if isinstance(masked_keys, dict):
         masked_keys = [masked_keys]
-    if not isinstance(masked_keys, list) or not 1 <= len(masked_keys) <= 2:
-        raise ValueError("Selezionare da 1 a 2 ordini mascherati per il gruppo misto.")
+    if not isinstance(masked_keys, list) or not 1 <= len(masked_keys) <= 3:
+        raise ValueError("Selezionare da 1 a 3 ordini mascherati per il gruppo misto.")
 
     shared_ordini = [
         _get_visible_odp_by_key(
