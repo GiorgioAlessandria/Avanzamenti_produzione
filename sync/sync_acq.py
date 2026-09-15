@@ -361,6 +361,13 @@ def ensure_schema():
             ON matricole_macchine (CodMag)
         """,
         """
+        CREATE TABLE IF NOT EXISTS matricole_macchine_uscite (
+            CodMatricola TEXT NOT NULL PRIMARY KEY,
+            CodArt TEXT NOT NULL,
+            uscita_at TEXT NOT NULL
+        )
+        """,
+        """
         CREATE TABLE IF NOT EXISTS clienti_fornitori (
                                                          TipoAnagrafica TEXT NOT NULL,
                                                          CodCliFor TEXT NOT NULL,
@@ -1240,6 +1247,28 @@ def _replace_table(engine, table_name: str, df: pd.DataFrame):
             df.to_sql(name=table_name, con=conn, if_exists="append", index=False)
 
 
+def _record_removed_matricole(engine, current: pd.DataFrame) -> None:
+    with engine.begin() as conn:
+        previous = conn.execute(
+            sa.text("SELECT CodMatricola, CodArt FROM matricole_macchine")
+        ).fetchall()
+        current_keys = set(current["CodMatricola"].astype(str))
+        removed = [row for row in previous if str(row[0]) not in current_keys]
+        if removed:
+            conn.execute(
+                sa.text(
+                    "INSERT OR IGNORE INTO matricole_macchine_uscite "
+                    "(CodMatricola, CodArt, uscita_at) "
+                    "VALUES (:serial, :model, :exited_at)"
+                ),
+                [
+                    {"serial": str(row[0]), "model": str(row[1]),
+                     "exited_at": datetime.now(ZoneInfo(TIMEZONE or "Europe/Rome")).isoformat(timespec="seconds")}
+                    for row in removed
+                ],
+            )
+
+
 def elaborazione_dati_acq():
     ensure_init()
     ensure_schema()
@@ -1272,6 +1301,7 @@ def elaborazione_dati_acq():
     _replace_table(sqlite_engine_acq, "acq_articoli", df_acq_articoli)
     _replace_table(sqlite_engine_acq, "acq_articoli_lookup", df_acq_articoli_lookup)
     _replace_table(sqlite_engine_acq, "acq_giacenze", df_acq_giacenze)
+    _record_removed_matricole(sqlite_engine_acq, df_matricole_macchine)
     _replace_table(sqlite_engine_acq, "matricole_macchine", df_matricole_macchine)
     _replace_table(sqlite_engine_acq, "clienti_fornitori", df_clienti_fornitori_cache)
     _replace_table(sqlite_engine_acq, "ordini_for_clav_aperti", df_ordini_for_clav_cache)

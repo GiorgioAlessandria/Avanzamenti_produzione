@@ -8,6 +8,7 @@ from app_odp.models import (
     AcqArticoliLookup,
     AcqClienteFornitore,
     AcqMatricolaMacchina,
+    AcqMatricolaMacchinaUscita,
     AcqOrdineClienteAperto,
     InputOdp,
     InputOdpLog,
@@ -27,6 +28,7 @@ from app_odp.services.vendite_assegnazioni_service import (
     create_customer_order,
     delete_customer_order,
     set_machine_assignment,
+    sync_shippable_machines,
     update_customer_order_details,
     update_customer_row,
     update_customer_row_dates,
@@ -37,6 +39,7 @@ from app_odp.services.vendite_assegnazioni_service import (
 )
 from app_odp.vendite_models import (
     VenditeImballoMacchina,
+    VenditeMacchinaSpedibile,
     VenditeNotaProduzioneMacchina,
     VenditeOpzioneMacchina,
     VenditeOrdineCliente,
@@ -841,6 +844,7 @@ def test_customer_changes_require_read_confirmation_again(app):
         )
         assert customer.confermato_il is None
         assert customer.confermato_da_nome is None
+        assert row.campi_modificati == ["production_instructions"]
 
         confirm_customer_order_read(customer.id, ACTOR)
         update_customer_row_dates(
@@ -850,6 +854,7 @@ def test_customer_changes_require_read_confirmation_again(app):
             can_edit_available=False,
         )
         assert customer.confermato_il is None
+        assert row.campi_modificati == ["delivery_date"]
 
         confirm_customer_order_read(customer.id, ACTOR)
         set_machine_assignment(
@@ -859,9 +864,11 @@ def test_customer_changes_require_read_confirmation_again(app):
             ACTOR,
         )
         assert customer.confermato_il is None
-        assert build_assignment_dashboard()["customer_orders"][0]["read_confirmed"] is False
+        dashboard_row = build_assignment_dashboard()["customer_orders"][0]["rows"][0]
+        assert dashboard_row["modified_fields"] == ["assignment"]
 
         confirm_customer_order_read(customer.id, ACTOR)
+        assert row.campi_modificati == []
         update_customer_row_notes(
             row.id,
             {"version": row.versione, "production_instructions": row.note_per_produzione},
@@ -1152,6 +1159,38 @@ def test_packaging_confirmation_validates_machine_identity_and_is_idempotent(app
         assert VenditeImballoMacchina.query.count() == 1
         with pytest.raises(VenditeAssegnazioniConflictError, match="non corrisponde"):
             confirm_machine_packaging({**payload, "serial_number": "ERRATA"}, ACTOR)
+
+
+def test_machine_becomes_shippable_once_after_leaving_all_warehouses(app):
+    with app.app_context():
+        machine = _add_machine()
+        customer = create_customer_order(_payload(model_key=_model_key()), ACTOR)
+        set_machine_assignment(
+            customer.righe[0].id,
+            {"version": customer.righe[0].versione,
+             "id_documento": machine.IdDocumento, "id_riga": machine.IdRiga},
+            ACTOR,
+        )
+        exit_event = AcqMatricolaMacchinaUscita(
+            CodMatricola=machine.CodMatricola,
+            CodArt=machine.CodArt,
+            uscita_at="2026-09-15T10:00:00+02:00",
+        )
+        db.session.add(exit_event)
+        sync_shippable_machines()
+        saved = VenditeMacchinaSpedibile.query.one()
+        assert (saved.matricola, saved.modello, saved.cliente, saved.motivo) == (
+            "MAT-001", "MODELLO-1", customer.cliente_nome, "USCITA_MAGAZZINO"
+        )
+
+        machine.StatoOrdine = "Chiusa"
+        confirm_machine_packaging(
+            {"id_documento": machine.IdDocumento, "id_riga": machine.IdRiga,
+             "serial_number": machine.CodMatricola},
+            ACTOR,
+        )
+        assert VenditeMacchinaSpedibile.query.count() == 1
+        assert saved.motivo == "USCITA_MAGAZZINO"
 
 
 def test_machine_option_is_visible_and_only_owner_can_remove_it(app):

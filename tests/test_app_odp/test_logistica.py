@@ -14,11 +14,13 @@ from app_odp.logistica_models import (
     ImpostazioniPackingList,
     LOGISTICA_BIND_KEY,
     MovimentoLogistico,
+    MovimentoLogisticoMacchina,
     PackingList,
     RigaPackingList,
     VettoreTrasporto,
 )
 from app_odp.models import db
+from app_odp.vendite_models import VenditeMacchinaSpedibile
 from app_odp.policy import decorator as policy_decorator
 from app_odp.routes_modules import logistica as logistica_routes
 from app_odp.routes_modules.logistica import (
@@ -51,6 +53,7 @@ def test_logistica_creates_tables_and_persists_a_movement(app):
     with app.app_context():
         assert set(inspect(db.engines[LOGISTICA_BIND_KEY]).get_table_names()) == {
             "movimenti",
+            "movimenti_macchine",
             "packing_clienti",
             "packing_impostazioni",
             "packing_list_righe",
@@ -146,6 +149,49 @@ def test_note_remains_editable_after_movement_completion(app, monkeypatch):
             MovimentoLogistico,
             movimento_id,
         ).note == "Nota aggiornata"
+
+
+def test_machine_shipment_groups_rows_and_consumes_them_on_confirmation(app, monkeypatch):
+    with app.app_context():
+        VenditeMacchinaSpedibile.__table__.create(db.engine)
+        try:
+            vettore = VettoreTrasporto(nome="Trasporti Rossi")
+            db.session.add_all([
+                vettore,
+                VenditeMacchinaSpedibile(
+                    matricola_chiave="mat-001", matricola="MAT-001",
+                    modello="MODELLO-1", cliente="Cliente Uno", motivo="IMBALLATA",
+                ),
+                VenditeMacchinaSpedibile(
+                    matricola_chiave="mat-002", matricola="MAT-002",
+                    modello="MODELLO-2", cliente="Cliente Due", motivo="IMBALLATA",
+                ),
+            ])
+            db.session.commit()
+            monkeypatch.setattr(logistica_routes, "_redirect_logistica", lambda: None)
+            monkeypatch.setattr(logistica_routes, "flash", lambda *_args: None)
+            monkeypatch.setattr(
+                logistica_routes, "active_user",
+                lambda: SimpleNamespace(id=None, username="operatore"),
+            )
+            with app.test_request_context(method="POST", data=MultiDict([
+                ("vettore_id", str(vettore.id)), ("spedizione_macchine", "1"),
+                ("data", "2026-07-28"), ("macchina", "mat-001"),
+                ("macchina", "mat-002"),
+            ])):
+                logistica_routes.logistica_movimento_create.__wrapped__()
+
+            movement = MovimentoLogistico.query.one()
+            assert movement.spedizione_macchine is True
+            assert [(row.matricola, row.cliente) for row in movement.macchine] == [
+                ("MAT-001", "Cliente Uno"), ("MAT-002", "Cliente Due")
+            ]
+            with app.test_request_context(method="POST"):
+                logistica_routes.logistica_movimento_conferma.__wrapped__(movement.id)
+            assert all(item.spedita_il for item in VenditeMacchinaSpedibile.query.all())
+        finally:
+            db.session.remove()
+            VenditeMacchinaSpedibile.__table__.drop(db.engine)
 
 
 def test_note_update_requires_carica_permission(app, monkeypatch):
