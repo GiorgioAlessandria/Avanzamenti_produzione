@@ -25,6 +25,49 @@
     max-height: calc(100dvh - 16rem);
 }
 
+body:has(> #vendite-page #vendite-matricole-pane.show) {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    overflow: hidden;
+}
+
+body > #vendite-page,
+#vendite-page > #vendite-tab-content,
+#vendite-page #vendite-matricole-pane.show,
+#vendite-page #vendite-matricole-pane .vendite-table-scroll {
+    min-height: 0;
+}
+
+body > #vendite-page,
+#vendite-page > #vendite-tab-content,
+#vendite-page #vendite-matricole-pane.show {
+    display: flex;
+    flex-direction: column;
+}
+
+body > #vendite-page,
+#vendite-page > #vendite-tab-content,
+#vendite-page #vendite-matricole-pane.show,
+#vendite-page #vendite-matricole-pane .vendite-table-scroll {
+    flex: 1 1 0;
+}
+
+#vendite-page > :not(#vendite-tab-content),
+#vendite-page #vendite-matricole-pane > :not(.vendite-table-scroll) {
+    flex: 0 0 auto;
+}
+
+#vendite-page > #vendite-tab-content,
+#vendite-page #vendite-matricole-pane.show {
+    overflow: hidden;
+}
+
+#vendite-page #vendite-matricole-pane .vendite-table-scroll {
+    max-height: none;
+    overflow: auto;
+}
+
 #vendite-assegnazioni-page .vendite-assignment-scroll {
     min-height: 20rem;
     max-height: calc(100dvh - 20rem);
@@ -32,6 +75,60 @@
 
 #vendite-assegnazioni-page #vendite-customer-orders-panel .vendite-assignment-scroll {
     min-height: 0;
+    max-height: none;
+    overflow: auto;
+}
+
+body:has(> #vendite-assegnazioni-page) {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    overflow: hidden;
+}
+
+body > #vendite-assegnazioni-page,
+#vendite-assegnazioni-page > .tab-content,
+#vendite-assegnazioni-page #vendite-orders-tab.show,
+#vendite-assegnazioni-page #vendite-orders-tab > .row,
+#vendite-assegnazioni-page #vendite-customer-orders-panel,
+#vendite-assegnazioni-page #vendite-customer-orders-panel > .card {
+    min-height: 0;
+}
+
+body > #vendite-assegnazioni-page,
+#vendite-assegnazioni-page > .tab-content,
+#vendite-assegnazioni-page #vendite-orders-tab.show,
+#vendite-assegnazioni-page #vendite-customer-orders-panel,
+#vendite-assegnazioni-page #vendite-customer-orders-panel > .card {
+    display: flex;
+    flex-direction: column;
+}
+
+body > #vendite-assegnazioni-page,
+#vendite-assegnazioni-page > .tab-content,
+#vendite-assegnazioni-page #vendite-orders-tab.show,
+#vendite-assegnazioni-page #vendite-orders-tab > .row,
+#vendite-assegnazioni-page #vendite-customer-orders-panel .vendite-assignment-scroll {
+    flex: 1 1 0;
+}
+
+#vendite-assegnazioni-page > .tab-content {
+    overflow: hidden;
+}
+
+#vendite-assegnazioni-page > :not(.tab-content),
+#vendite-assegnazioni-page #vendite-orders-tab > :not(.row),
+#vendite-assegnazioni-page #vendite-customer-orders-panel > .card > :not(.vendite-assignment-scroll) {
+    flex: 0 0 auto;
+}
+
+#vendite-assegnazioni-page #vendite-orders-tab > .row,
+#vendite-assegnazioni-page #vendite-customer-orders-panel > .card {
+    overflow: hidden;
+}
+
+#vendite-assegnazioni-page #vendite-customer-orders-panel .vendite-assignment-scroll {
+    overflow: auto;
 }
 
 #vendite-assegnazioni-page .vendite-packaging-scroll {
