@@ -37,6 +37,7 @@ class VenditeClienteGeocodifica(db.Model):
     latitudine = db.Column(db.Float, nullable=True)
     longitudine = db.Column(db.Float, nullable=True)
     nome_luogo = db.Column(db.String(500), nullable=True)
+    precisione = db.Column(db.String(20), nullable=True)
     aggiornato_il = db.Column(db.Text, nullable=False, default=_rome_iso_now)
 
 

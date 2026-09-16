@@ -369,6 +369,17 @@ def _ensure_vendite_schema() -> None:
                 "ALTER TABLE vendite_opzioni_macchina ADD COLUMN nota VARCHAR(1000)"
             )
 
+    if "vendite_clienti_geocodifica" in tables:
+        columns = {
+            column["name"]
+            for column in inspect(engine).get_columns("vendite_clienti_geocodifica")
+        }
+        if "precisione" not in columns:
+            additions.append(
+                "ALTER TABLE vendite_clienti_geocodifica "
+                "ADD COLUMN precisione VARCHAR(20)"
+            )
+
     if "vendite_imballi_macchina" in tables:
         columns = {
             column["name"]

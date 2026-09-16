@@ -22,6 +22,11 @@ from app_odp.vendite_models import (
 ROME_TZ = ZoneInfo("Europe/Rome")
 _GEOCODE_LOCK = threading.Lock()
 _LAST_GEOCODE_AT = 0.0
+_GEOCODING_VERSION = "v2"
+_COUNTRY_NAMES = {
+    "CN": "China", "GB": "United Kingdom", "JP": "Japan",
+    "KR": "South Korea", "US": "United States",
+}
 
 
 class VenditeGeocodificaError(RuntimeError):
@@ -43,7 +48,36 @@ def _address(client) -> str:
 
 
 def _address_key(address: str) -> str:
+    value = f"{_GEOCODING_VERSION}|{address.casefold()}"
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _legacy_address_key(address: str) -> str:
     return hashlib.sha256(address.casefold().encode("utf-8")).hexdigest()
+
+
+def _geocode_attempts(client) -> list[tuple[str, str]]:
+    street = _text(client.Indirizzo)
+    postal_code = _text(client.Cap)
+    locality = _text(client.Localita)
+    province = _text(client.Provincia)
+    country_code = _text(client.CodStato).upper()
+    country = _COUNTRY_NAMES.get(country_code, country_code)
+    candidates = [
+        (_address(client), "indirizzo"),
+        (", ".join(filter(None, (street, locality, province, postal_code, country))), "indirizzo"),
+        (", ".join(filter(None, (street, postal_code, country))), "strada"),
+        (", ".join(filter(None, (postal_code, locality, province, country))), "CAP"),
+        (", ".join(filter(None, (locality, province, country))), "città"),
+    ]
+    attempts = []
+    seen = set()
+    for query, precision in candidates:
+        key = query.casefold()
+        if query and key not in seen:
+            seen.add(key)
+            attempts.append((query, precision))
+    return attempts
 
 
 def _automatic_orders():
@@ -113,7 +147,14 @@ def build_customer_locations() -> dict:
         }
         if not address:
             unlocated.append({**base, "reason": "Indirizzo non disponibile"})
-        elif cache is None or cache.indirizzo_chiave != address_key:
+        elif cache is None or (
+            cache.indirizzo_chiave != address_key
+            and not (
+                cache.latitudine is not None
+                and cache.longitudine is not None
+                and cache.indirizzo_chiave == _legacy_address_key(address)
+            )
+        ):
             pending.append(base)
         elif cache.latitudine is None or cache.longitudine is None:
             unlocated.append({**base, "reason": "Indirizzo non trovato"})
@@ -123,6 +164,7 @@ def build_customer_locations() -> dict:
                 "latitude": cache.latitudine,
                 "longitude": cache.longitudine,
                 "place_name": cache.nome_luogo or address,
+                "precision": cache.precisione or "indirizzo",
             })
 
     return {
@@ -133,9 +175,12 @@ def build_customer_locations() -> dict:
     }
 
 
-def _geocode(address: str) -> tuple[float | None, float | None, str]:
+def _geocode(address: str, country_code: str = "") -> tuple[float | None, float | None, str]:
     global _LAST_GEOCODE_AT
-    query = urlencode({"q": address, "format": "jsonv2", "limit": 1})
+    params = {"q": address, "format": "jsonv2", "limit": 1}
+    if country_code:
+        params["countrycodes"] = country_code.casefold()
+    query = urlencode(params)
     url = f"{current_app.config['VENDITE_GEOCODER_URL']}?{query}"
     request = Request(
         url,
@@ -180,7 +225,19 @@ def geocode_next_customer() -> dict:
         return data
 
     customer = data["pending"][0]
-    latitude, longitude, place_name = _geocode(customer["address"])
+    client = _clients_by_code({customer["customer_code"]}).get(
+        customer["customer_code"]
+    )
+    latitude = longitude = None
+    place_name = ""
+    precision = None
+    if client is not None:
+        country_code = _text(client.CodStato)
+        for query, attempt_precision in _geocode_attempts(client):
+            latitude, longitude, place_name = _geocode(query, country_code)
+            if latitude is not None and longitude is not None:
+                precision = attempt_precision
+                break
     item = db.session.get(VenditeClienteGeocodifica, customer["customer_code"])
     if item is None:
         item = VenditeClienteGeocodifica(cliente_codice=customer["customer_code"])
@@ -189,6 +246,7 @@ def geocode_next_customer() -> dict:
     item.latitudine = latitude
     item.longitudine = longitude
     item.nome_luogo = place_name or None
+    item.precisione = precision
     item.aggiornato_il = datetime.now(ROME_TZ).isoformat(timespec="seconds")
     db.session.flush()
     return build_customer_locations()

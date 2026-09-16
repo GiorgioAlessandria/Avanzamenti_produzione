@@ -118,6 +118,7 @@
                         <span class="fw-semibold">${esc(customer.customer_name)}</span>
                         <span class="badge text-bg-primary float-end">${customer.machines.length}</span>
                         <div class="small text-muted mb-2">${esc(customer.address)}</div>
+                        ${customer.precision && customer.precision !== "indirizzo" ? `<div class="small text-warning mb-1">Posizione approssimativa: ${esc(customer.precision)}</div>` : ""}
                         ${customer.machines.map(machine => `<div class="small border-top py-1">${esc(machineLabel(machine))}${machine.description ? `<br><span class="text-muted">${esc(machine.description)}</span>` : ""}<br><span class="text-muted">Spedizione ${esc(machine.delivery_date)}</span></div>`).join("")}
                     </button>`).join("");
                 const missing = (data.unlocated || []).map(customer => `
