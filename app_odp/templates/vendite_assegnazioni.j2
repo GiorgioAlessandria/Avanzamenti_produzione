@@ -113,6 +113,16 @@
             border-color: #75b798;
         }
 
+        .vendite-suplex-stage { position: fixed; left: calc(100vw + 1rem); width: 13rem; height: 8rem; z-index: 1090; pointer-events: none; animation: vendite-suplex-stage 5s linear forwards; }
+        .vendite-suplex-fighter { position: absolute; bottom: 1.1rem; font-size: 3.2rem; line-height: 1; transform-origin: center bottom; }
+        .vendite-suplex-attacker { left: 1rem; animation: vendite-suplex-attacker 5s ease-in-out forwards; }
+        .vendite-suplex-victim { left: 5rem; animation: vendite-suplex-victim 5s ease-in-out forwards; }
+        .vendite-suplex-impact { position: absolute; left: 1.2rem; bottom: .3rem; font-size: 3.4rem; opacity: 0; animation: vendite-suplex-impact 5s ease-out forwards; }
+        @keyframes vendite-suplex-stage { 0% { transform: translateX(0); } 14%, 80% { transform: translateX(-16rem); } 100% { transform: translateX(2rem); } }
+        @keyframes vendite-suplex-attacker { 0%, 30% { transform: translate(0, 0) rotate(0); } 38% { transform: translateX(1.4rem) rotate(-15deg); } 52% { transform: translateX(1.6rem) rotate(35deg); } 60% { transform: translateX(.5rem) rotate(0); } 70% { transform: translateX(1.5rem) rotate(40deg); } 78%, 100% { transform: translate(0, 0) rotate(0); } }
+        @keyframes vendite-suplex-victim { 0%, 32% { transform: translate(0, 0) rotate(0); } 42% { transform: translate(-1rem, -1.5rem) rotate(-70deg); } 52% { transform: translate(-3.5rem, -4.5rem) rotate(-180deg); } 58% { transform: translate(-4.2rem, .6rem) rotate(-270deg); } 68% { transform: translate(-4.2rem, 1.4rem) rotate(-270deg); } 76%, 100% { transform: translate(-3.4rem, -.8rem) rotate(-90deg) scale(.72); } }
+        @keyframes vendite-suplex-impact { 0%, 56% { opacity: 0; transform: scale(.2); } 58% { opacity: 1; transform: scale(1.25); } 64%, 100% { opacity: 0; transform: scale(1.8); } }
+
     </style>
 {% endblock %}
 
@@ -1690,6 +1700,38 @@
                 }
             }
 
+            function playReadConfirmationAnimation(button, onImpact) {
+                if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+                    onImpact();
+                    return Promise.resolve();
+                }
+                const anchor = button.closest("[data-customer-order-id]")?.getBoundingClientRect();
+                const stage = document.createElement("div");
+                stage.className = "vendite-suplex-stage";
+                stage.setAttribute("aria-hidden", "true");
+                stage.style.top = `${Math.max(8, Math.min(window.innerHeight - 130, (anchor?.top || 0) - 20))}px`;
+                stage.innerHTML = `
+                    <span class="vendite-suplex-fighter vendite-suplex-attacker">🧍</span>
+                    <span class="vendite-suplex-fighter vendite-suplex-victim">🧍</span>
+                    <span class="vendite-suplex-impact">💥</span>`;
+                document.body.appendChild(stage);
+                return new Promise(resolve => {
+                    let impacted = false;
+                    const impact = () => {
+                        if (impacted) return;
+                        impacted = true;
+                        onImpact();
+                    };
+                    const impactTimer = window.setTimeout(impact, 2900);
+                    window.setTimeout(() => {
+                        window.clearTimeout(impactTimer);
+                        impact();
+                        stage.remove();
+                        resolve();
+                    }, 5100);
+                });
+            }
+
             async function confirmOrderRead(orderId, button) {
                 if (mutationInFlight) return;
                 mutationInFlight = true;
@@ -1715,21 +1757,23 @@
                     const updatedOrder = (payload.data?.customer_orders || []).find(order => (
                         String(order.id) === String(orderId)
                     ));
-                    orderRows.forEach(row => {
-                        if (!row.classList.contains("vendite-order-unread")) return;
-                        row.classList.remove("vendite-order-unread");
-                        const packaged = row.dataset.customerRowId
-                            ? updatedOrder?.rows?.find(item => (
-                                String(item.id) === row.dataset.customerRowId
-                            ))?.packaged
-                            : updatedOrder?.packaged;
-                        if (packaged) {
-                            row.classList.add("vendite-machine-completed");
-                        } else if (row.dataset.referenceClass) {
-                            row.classList.add(row.dataset.referenceClass);
-                        }
+                    await playReadConfirmationAnimation(button, () => {
+                        orderRows.forEach(row => {
+                            if (!row.classList.contains("vendite-order-unread")) return;
+                            row.classList.remove("vendite-order-unread");
+                            const packaged = row.dataset.customerRowId
+                                ? updatedOrder?.rows?.find(item => (
+                                    String(item.id) === row.dataset.customerRowId
+                                ))?.packaged
+                                : updatedOrder?.packaged;
+                            if (packaged) {
+                                row.classList.add("vendite-machine-completed");
+                            } else if (row.dataset.referenceClass) {
+                                row.classList.add(row.dataset.referenceClass);
+                            }
+                        });
+                        button.remove();
                     });
-                    button.remove();
                     showAlert("success", payload.message || "Lettura confermata.");
                     alertBox.dataset.source = "mutation";
                 } catch (error) {
