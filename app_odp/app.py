@@ -552,6 +552,29 @@ def _ensure_vendite_schema() -> None:
                         "data_consegna = COALESCE(data_spedizione, data_consegna)"
                     )
 
+    # Conserva i sensori già registrati dalla versione che li memorizzava
+    # insieme alla conferma di imballo.
+    tables = set(inspect(engine).get_table_names())
+    if {
+        "vendite_imballi_macchina",
+        "vendite_sensori_macchina",
+    }.issubset(tables):
+        packaging_columns = {
+            column["name"]
+            for column in inspect(engine).get_columns("vendite_imballi_macchina")
+        }
+        if "sensori_antiribaltamento" in packaging_columns:
+            with engine.begin() as connection:
+                connection.exec_driver_sql(
+                    "INSERT OR IGNORE INTO vendite_sensori_macchina "
+                    "(matricola, sensori, aggiornato_il, aggiornato_da_id, "
+                    "aggiornato_da_nome) "
+                    "SELECT matricola, sensori_antiribaltamento, confermata_il, "
+                    "confermata_da_id, confermata_da_nome "
+                    "FROM vendite_imballi_macchina "
+                    "WHERE TRIM(COALESCE(sensori_antiribaltamento, '')) <> ''"
+                )
+
     with engine.begin() as connection:
         connection.exec_driver_sql(
             "CREATE UNIQUE INDEX IF NOT EXISTS "

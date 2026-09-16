@@ -16,6 +16,7 @@ from app_odp.vendite_models import (
     VenditeOpzioneMacchina,
     VenditeOrdineCliente,
     VenditeOrdineClienteRiga,
+    VenditeSensoriMacchina,
 )
 from app_odp.services.order_helpers import (
     _fase_to_int,
@@ -224,10 +225,19 @@ def _packaging_confirmations(serials) -> dict[str, dict[str, str]]:
         item.matricola: {
             "confirmed_at": item.confermata_il,
             "confirmed_by_name": item.confermata_da_nome,
-            "tilt_sensor_serials": item.sensori_antiribaltamento or "",
         }
         for item in VenditeImballoMacchina.query.filter(
             VenditeImballoMacchina.matricola.in_(keys)
+        ).all()
+    }
+
+
+def _machine_tilt_sensors(serials) -> dict[str, str]:
+    keys = {_norm_text(serial).casefold() for serial in serials if _norm_text(serial)}
+    return {
+        item.matricola: item.sensori
+        for item in VenditeSensoriMacchina.query.filter(
+            VenditeSensoriMacchina.matricola.in_(keys)
         ).all()
     }
 
@@ -323,6 +333,7 @@ def _build_vendite_payload(
     customer_assignments=None,
     production_notes=None,
     packaging_confirmations=None,
+    tilt_sensors=None,
     machine_options=None,
     missing_components=None,
     include_planned: bool = True,
@@ -332,6 +343,7 @@ def _build_vendite_payload(
     customer_assignments = customer_assignments or {}
     production_notes = production_notes or {}
     packaging_confirmations = packaging_confirmations or {}
+    tilt_sensors = tilt_sensors or {}
     machine_options = machine_options or {}
     missing_components = missing_components or {}
     machine_rows = []
@@ -426,6 +438,9 @@ def _build_vendite_payload(
                 ),
                 "packaged": packaging is not None,
                 "packaging": packaging,
+                "tilt_sensor_serials": tilt_sensors.get(
+                    serial_number.casefold(), ""
+                ),
                 "option": machine_option,
                 "optioned_at": (machine_option or {}).get("optioned_at", ""),
             }
@@ -508,6 +523,7 @@ def build_vendite_payload(*, include_planned: bool = True, viewer=None) -> dict:
         customer_assignments=_customer_assignments(orders),
         production_notes=production_notes,
         packaging_confirmations=_packaging_confirmations(serials),
+        tilt_sensors=_machine_tilt_sensors(serials),
         machine_options=_machine_options(serials, viewer),
         missing_components=_missing_components_for_orders(order_keys),
         include_planned=include_planned,

@@ -46,6 +46,7 @@ from app_odp.vendite_models import (
     VenditeOrdineCliente,
     VenditeOrdineClienteRiga,
     VenditeSensoreAntiribaltamentoLog,
+    VenditeSensoriMacchina,
 )
 
 
@@ -1005,13 +1006,8 @@ def _selected_machine(payload):
     return machine, _normalized_key(serial)
 
 
-def confirm_machine_packaging(payload, user, *, commit: bool = False):
-    machine, key = _selected_machine(payload)
-    if _canonical_state(getattr(machine, "StatoOrdine", "")) != "Chiusa":
-        raise VenditeAssegnazioniError(
-            "La macchina può essere imballata solamente quando è in stato Chiusa."
-        )
-    raw_sensors = str((payload or {}).get("tilt_sensor_serials") or "").strip()
+def _save_machine_tilt_sensors(key, raw_value, user):
+    raw_sensors = str(raw_value or "").strip()
     if len(raw_sensors) > MAX_NOTE:
         raise VenditeAssegnazioniError(
             "I seriali dei sensori antiribaltamento superano 1000 caratteri."
@@ -1030,20 +1026,25 @@ def confirm_machine_packaging(payload, user, *, commit: bool = False):
         seen_sensors.add(sensor_key)
         sensors.append(sensor)
 
-    confirmation = db.session.get(VenditeImballoMacchina, key)
     actor_id, actor_name = _actor(user)
-    if confirmation is None:
-        confirmation = VenditeImballoMacchina(
+    saved = db.session.get(VenditeSensoriMacchina, key)
+    joined = "\n".join(sensors)
+    if saved is None and joined:
+        saved = VenditeSensoriMacchina(
             matricola=key,
-            confermata_il=_now_rome_dt().isoformat(timespec="seconds"),
-            confermata_da_id=actor_id,
-            confermata_da_nome=actor_name,
-            sensori_antiribaltamento="\n".join(sensors) or None,
+            sensori=joined,
+            aggiornato_il=_now_rome_dt().isoformat(timespec="seconds"),
+            aggiornato_da_id=actor_id,
+            aggiornato_da_nome=actor_name,
         )
-        db.session.add(confirmation)
-        db.session.flush()
-    else:
-        confirmation.sensori_antiribaltamento = "\n".join(sensors) or None
+        db.session.add(saved)
+    elif saved is not None and joined:
+        saved.sensori = joined
+        saved.aggiornato_il = _now_rome_dt().isoformat(timespec="seconds")
+        saved.aggiornato_da_id = actor_id
+        saved.aggiornato_da_nome = actor_name
+    elif saved is not None:
+        db.session.delete(saved)
 
     logged = {
         row.sensore_seriale.casefold()
@@ -1059,6 +1060,29 @@ def confirm_machine_packaging(payload, user, *, commit: bool = False):
                 registrato_da_id=actor_id,
                 registrato_da_nome=actor_name,
             ))
+    return saved
+
+
+def confirm_machine_packaging(payload, user, *, commit: bool = False):
+    machine, key = _selected_machine(payload)
+    if _canonical_state(getattr(machine, "StatoOrdine", "")) != "Chiusa":
+        raise VenditeAssegnazioniError(
+            "La macchina può essere imballata solamente quando è in stato Chiusa."
+        )
+    confirmation = db.session.get(VenditeImballoMacchina, key)
+    actor_id, actor_name = _actor(user)
+    if confirmation is None:
+        confirmation = VenditeImballoMacchina(
+            matricola=key,
+            confermata_il=_now_rome_dt().isoformat(timespec="seconds"),
+            confermata_da_id=actor_id,
+            confermata_da_nome=actor_name,
+        )
+        db.session.add(confirmation)
+    if str((payload or {}).get("tilt_sensor_serials") or "").strip():
+        _save_machine_tilt_sensors(
+            key, payload.get("tilt_sensor_serials"), user
+        )
     sync_shippable_machines()
     if commit:
         db.session.commit()
@@ -1067,11 +1091,12 @@ def confirm_machine_packaging(payload, user, *, commit: bool = False):
 
 def update_machine_tilt_sensors(payload, user, *, commit: bool = False):
     _machine, key = _selected_machine(payload)
-    if db.session.get(VenditeImballoMacchina, key) is None:
-        raise VenditeAssegnazioniError(
-            "Salvare i sensori dopo aver confermato l'imballo della macchina."
-        )
-    return confirm_machine_packaging(payload, user, commit=commit)
+    saved = _save_machine_tilt_sensors(
+        key, (payload or {}).get("tilt_sensor_serials"), user
+    )
+    if commit:
+        db.session.commit()
+    return saved
 
 
 def update_machine_option(payload, user, *, commit: bool = False):

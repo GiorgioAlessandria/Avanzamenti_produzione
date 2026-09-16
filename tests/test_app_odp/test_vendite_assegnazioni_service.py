@@ -39,6 +39,7 @@ from app_odp.services.vendite_assegnazioni_service import (
 )
 from app_odp.vendite_models import (
     VenditeImballoMacchina,
+    VenditeSensoriMacchina,
     VenditeMacchinaSpedibile,
     VenditeNotaProduzioneMacchina,
     VenditeOpzioneMacchina,
@@ -250,8 +251,8 @@ def test_vendite_api_filters_planned_and_keeps_customer_production_notes_readonl
                                json=packaging_payload)
         assert response.status_code == 200
         assert db.session.get(
-            VenditeImballoMacchina, machine.CodMatricola.casefold()
-        ).sensori_antiribaltamento == "SENS-001\nSENS-002"
+            VenditeSensoriMacchina, machine.CodMatricola.casefold()
+        ).sensori == "SENS-001\nSENS-002"
         assert {
             row.sensore_seriale
             for row in VenditeSensoreAntiribaltamentoLog.query.all()
@@ -262,8 +263,8 @@ def test_vendite_api_filters_planned_and_keeps_customer_production_notes_readonl
         )
         assert response.status_code == 200
         assert db.session.get(
-            VenditeImballoMacchina, machine.CodMatricola.casefold()
-        ).sensori_antiribaltamento == "SENS-003"
+            VenditeSensoriMacchina, machine.CodMatricola.casefold()
+        ).sensori == "SENS-003"
         assert {
             row.sensore_seriale
             for row in VenditeSensoreAntiribaltamentoLog.query.all()

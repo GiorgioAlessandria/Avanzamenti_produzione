@@ -27,9 +27,9 @@ from app_odp.logistica_models import (
 from app_odp.models import db
 from app_odp.services.vendite_assegnazioni_service import sync_shippable_machines
 from app_odp.vendite_models import (
-    VenditeImballoMacchina,
     VenditeMacchinaSpedibile,
     VenditeSensoreAntiribaltamentoLog,
+    VenditeSensoriMacchina,
 )
 from app_odp.operator_session import active_policy, active_token, active_user
 from app_odp.policy.decorator import require_active_any_perm, require_active_perm
@@ -387,13 +387,13 @@ def logistica_page():
         if item.matricola_chiave not in busy_serials
     ]
     sensors_by_serial = {
-        item.matricola: item.sensori_antiribaltamento
-        for item in VenditeImballoMacchina.query.filter(
-            VenditeImballoMacchina.matricola.in_(
+        item.matricola: item.sensori
+        for item in VenditeSensoriMacchina.query.filter(
+            VenditeSensoriMacchina.matricola.in_(
                 [machine.matricola_chiave for machine in macchine_spedibili]
             )
         ).all()
-        if item.sensori_antiribaltamento
+        if item.sensori
     }
     db.session.commit()
     attesi = (
@@ -604,9 +604,9 @@ def logistica_movimento_create():
                     "Una o più macchine sono già inserite in una spedizione attesa."
                 )
             packaging_by_serial = {
-                item.matricola: item.sensori_antiribaltamento
-                for item in VenditeImballoMacchina.query.filter(
-                    VenditeImballoMacchina.matricola.in_(machine_keys)
+                item.matricola: item.sensori
+                for item in VenditeSensoriMacchina.query.filter(
+                    VenditeSensoriMacchina.matricola.in_(machine_keys)
                 ).all()
             }
 

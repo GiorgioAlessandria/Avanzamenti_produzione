@@ -20,7 +20,7 @@ from app_odp.logistica_models import (
     VettoreTrasporto,
 )
 from app_odp.models import db
-from app_odp.vendite_models import VenditeImballoMacchina, VenditeMacchinaSpedibile
+from app_odp.vendite_models import VenditeMacchinaSpedibile, VenditeSensoriMacchina
 from app_odp.policy import decorator as policy_decorator
 from app_odp.routes_modules import logistica as logistica_routes
 from app_odp.routes_modules.logistica import (
@@ -154,7 +154,7 @@ def test_note_remains_editable_after_movement_completion(app, monkeypatch):
 def test_machine_shipment_groups_rows_and_consumes_them_on_confirmation(app, monkeypatch):
     with app.app_context():
         VenditeMacchinaSpedibile.__table__.create(db.engine)
-        VenditeImballoMacchina.__table__.create(db.engine)
+        VenditeSensoriMacchina.__table__.create(db.engine)
         try:
             vettore = VettoreTrasporto(nome="Trasporti Rossi")
             db.session.add_all([
@@ -163,9 +163,9 @@ def test_machine_shipment_groups_rows_and_consumes_them_on_confirmation(app, mon
                     matricola_chiave="mat-001", matricola="MAT-001",
                     modello="MODELLO-1", cliente="Cliente Uno", motivo="IMBALLATA",
                 ),
-                VenditeImballoMacchina(
-                    matricola="mat-001", confermata_da_nome="imballaggio",
-                    sensori_antiribaltamento="SENS-001",
+                VenditeSensoriMacchina(
+                    matricola="mat-001", sensori="SENS-001",
+                    aggiornato_da_nome="imballaggio",
                 ),
                 VenditeMacchinaSpedibile(
                     matricola_chiave="mat-002", matricola="MAT-002",
@@ -197,7 +197,7 @@ def test_machine_shipment_groups_rows_and_consumes_them_on_confirmation(app, mon
             assert all(item.spedita_il for item in VenditeMacchinaSpedibile.query.all())
         finally:
             db.session.remove()
-            VenditeImballoMacchina.__table__.drop(db.engine)
+            VenditeSensoriMacchina.__table__.drop(db.engine)
             VenditeMacchinaSpedibile.__table__.drop(db.engine)
 
 

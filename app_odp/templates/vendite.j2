@@ -451,7 +451,7 @@
 
             function packagingCell(machine) {
                 if (machine.packaged) {
-                    const sensors = machine.packaging?.tilt_sensor_serials;
+                    const sensors = machine.tilt_sensor_serials;
                     return `
                         <span class="badge text-bg-success">Macchina imballata</span>
                         <div class="small text-muted mt-1">
@@ -475,12 +475,19 @@
                         ` : ""}`;
                 }
                 if (!canConfirmPackaging || !machine.has_serial || machine.state !== "Chiusa") return "—";
+                const sensors = machine.tilt_sensor_serials || "";
                 return `<div class="d-flex flex-wrap align-items-end gap-1">
                             <div class="flex-grow-1">
                                 <label class="form-label small mb-1">Seriali sensori antiribaltamento</label>
                                 <input class="form-control form-control-sm" data-tilt-sensor-serials
+                                       data-original-value="${esc(sensors)}" value="${esc(sensors)}"
                                        maxlength="1000" placeholder="Facoltativi, separati da virgola">
                             </div>
+                            <button type="button" class="btn btn-primary btn-sm text-nowrap"
+                                    data-save-tilt-sensors
+                                    data-id-documento="${esc(machine.id_documento)}"
+                                    data-id-riga="${esc(machine.id_riga)}"
+                                    data-serial="${esc(machine.serial_number)}">Salva sensori</button>
                             <button type="button" class="btn btn-success btn-sm text-nowrap"
                                     data-confirm-packaging
                                     data-id-documento="${esc(machine.id_documento)}"
