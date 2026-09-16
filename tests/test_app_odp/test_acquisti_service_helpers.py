@@ -169,6 +169,7 @@ def test_supplier_order_rows_join_registry_and_local_metadata(monkeypatch):
         CodSerie="A",
         NumRegistraz="100",
         GruppoDoc="ORA",
+        DataRegistrazione="2026-09-01",
         TipoAnagrafica="2",
         CodCliFor="F1",
         CodArt="ART-1",
@@ -182,6 +183,14 @@ def test_supplier_order_rows_join_registry_and_local_metadata(monkeypatch):
         Commento_Riga_Saldata="Parziale",
         NotaInterna="Nota ERP",
     )
+    note_order = SimpleNamespace(
+        **{
+            **vars(order),
+            "IdRigaDoc": "3",
+            "TipoRigaDoc": "N",
+            "DataConsegna": "1800-01-01",
+        }
+    )
     meta = SimpleNamespace(
         IdDocumento="10",
         IdRigaDoc="2",
@@ -194,15 +203,19 @@ def test_supplier_order_rows_join_registry_and_local_metadata(monkeypatch):
         service, "AcqClienteFornitore", SimpleNamespace(query=Query([supplier]))
     )
     monkeypatch.setattr(
-        service, "AcqOrdineFornitoreAperto", SimpleNamespace(query=Query([order]))
+        service,
+        "AcqOrdineFornitoreAperto",
+        SimpleNamespace(query=Query([order, note_order])),
     )
     monkeypatch.setattr(
         service, "AcqOrdineFornitoreMeta", SimpleNamespace(query=Query([meta]))
     )
 
-    row = service._build_acquisti_ordini_fornitore_rows(
+    rows = service._build_acquisti_ordini_fornitore_rows(
         today=datetime(2026, 9, 10).date()
-    )[0]
+    )
+    row = next(item for item in rows if item["IdRigaDoc"] == "2")
+    note_row = next(item for item in rows if item["IdRigaDoc"] == "3")
 
     assert row["Fornitore"] == "Fornitore Test"
     assert row["ArrivaOggi"] is True
@@ -214,6 +227,9 @@ def test_supplier_order_rows_join_registry_and_local_metadata(monkeypatch):
     assert row["Stato"] == "Sollecitato"
     assert row["NumeroSolleciti"] == 2
     assert row["Note"] == "Chiamato il fornitore"
+    assert row["DataRegistrazioneIso"] == "2026-09-01"
+    assert note_row["DataConsegnaIso"] == ""
+    assert note_row["DataConsegnaText"] == "-"
 
 
 def test_supplier_order_rows_are_grouped_by_document():
@@ -226,6 +242,7 @@ def test_supplier_order_rows_are_grouped_by_document():
             "CodFornitore": "F1",
             "Fornitore": "Fornitore Test",
             "ConsegnaCritica": False,
+            "DataRegistrazioneIso": "2026-09-01",
             "DataConsegnaIso": "2026-09-12",
             "Sollecitato": False,
             "NumeroSolleciti": 0,
@@ -238,6 +255,7 @@ def test_supplier_order_rows_are_grouped_by_document():
             "CodFornitore": "F1",
             "Fornitore": "Fornitore Test",
             "ConsegnaCritica": True,
+            "DataRegistrazioneIso": "2026-09-01",
             "DataConsegnaIso": "2026-09-10",
             "Sollecitato": True,
             "NumeroSolleciti": 3,
@@ -255,8 +273,8 @@ def test_supplier_order_rows_are_grouped_by_document():
     assert [row["IdRigaDoc"] for row in groups[0]["Righe"]] == ["2", "10"]
 
 
-def test_supplier_orders_are_sorted_by_first_delivery_year_then_registration():
-    def row(document, registration, delivery):
+def test_supplier_orders_are_sorted_by_registration_date_year_then_number():
+    def row(document, registration, registration_date, delivery):
         return {
             "IdDocumento": document,
             "IdRigaDoc": "1",
@@ -265,6 +283,7 @@ def test_supplier_orders_are_sorted_by_first_delivery_year_then_registration():
             "CodFornitore": "F1",
             "Fornitore": "Fornitore Test",
             "ConsegnaCritica": False,
+            "DataRegistrazioneIso": registration_date,
             "DataConsegnaIso": delivery,
             "Sollecitato": False,
             "NumeroSolleciti": 0,
@@ -272,9 +291,9 @@ def test_supplier_orders_are_sorted_by_first_delivery_year_then_registration():
 
     groups = service._group_acquisti_ordini_fornitore_rows(
         [
-            row("a", "10", "2026-01-02"),
-            row("b", "2", "2026-12-20"),
-            row("c", "99", "2025-12-31"),
+            row("a", "10", "2026-01-02", "2024-01-01"),
+            row("b", "2", "2026-12-20", "2024-01-02"),
+            row("c", "99", "2025-12-31", "2027-01-01"),
         ]
     )
 

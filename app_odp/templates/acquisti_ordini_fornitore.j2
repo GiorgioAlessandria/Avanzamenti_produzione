@@ -173,8 +173,10 @@
     .calendar-event.purchase-overdue { background: #f5aeb5; }
     .purchase-calendar-toast { width: min(60rem, calc(100vw - 2rem)); max-width: none; }
     .purchase-toast-matching > * { background: #fff3cd !important; font-weight: 600; }
-    .purchase-reminder-van { position: fixed; left: calc(100vw + 3rem); z-index: 1080; font-size: 2rem; line-height: 1; pointer-events: none; animation: purchase-van-trip 3.5s linear forwards; }
-    @keyframes purchase-van-trip { to { transform: translateX(calc(-100vw - 7rem)); } }
+    .purchase-reminder-truck { position: fixed; z-index: 1080; margin: 0; overflow: visible; pointer-events: none; animation-name: purchase-van-trip; animation-timing-function: ease-in-out; animation-fill-mode: forwards; }
+    .purchase-reminder-truck::before { content: ""; position: absolute; left: -.85rem; bottom: 0; width: 1rem; height: 1.15rem; background: #ffc107; border: 1px solid #212529; border-radius: .5rem 0 0 .2rem; }
+    .purchase-reminder-truck::after { content: "●    ●"; position: absolute; left: -.55rem; right: .2rem; bottom: -.7rem; color: #212529; font-size: .7rem; letter-spacing: .35rem; white-space: nowrap; }
+    @keyframes purchase-van-trip { 0% { transform: translateX(0); } 42% { transform: translateX(var(--trip-left)); } 43% { transform: translateX(var(--trip-right)); } 100% { transform: translateX(0); } }
     @media (max-width: 767px) { .calendar-day { min-height: 5rem; } .calendar-event { font-size: .68rem; } }
 </style>
 {% endblock %}
@@ -288,16 +290,28 @@
     }));
     function runReminderTraffic(button, count) {
         if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-        const top = Math.max(8, Math.min(window.innerHeight - 40, button.getBoundingClientRect().top));
+        const rect = button.getBoundingClientRect();
+        button.style.visibility = "hidden";
+        let finished = 0;
         for (let index = 0; index < count; index += 1) {
-            const van = document.createElement("span");
-            van.className = "purchase-reminder-van";
-            van.textContent = "🚚";
-            van.setAttribute("aria-hidden", "true");
-            van.style.top = `${top + (index % 3) * 8}px`;
-            van.style.animationDelay = `${index * 280}ms`;
-            van.addEventListener("animationend", () => van.remove(), {once: true});
-            document.body.appendChild(van);
+            const truck = button.cloneNode(true);
+            truck.classList.add("purchase-reminder-truck");
+            truck.removeAttribute("form");
+            truck.disabled = true;
+            truck.style.left = `${rect.left}px`;
+            truck.style.top = `${rect.top}px`;
+            truck.style.width = `${rect.width}px`;
+            truck.style.height = `${rect.height}px`;
+            truck.style.setProperty("--trip-left", `${-(rect.right + 40)}px`);
+            truck.style.setProperty("--trip-right", `${window.innerWidth - rect.left + 40}px`);
+            truck.style.animationDelay = `${index * 260}ms`;
+            truck.style.animationDuration = `${3.4 + (index % 4) * .22}s`;
+            truck.addEventListener("animationend", () => {
+                truck.remove();
+                finished += 1;
+                if (finished === count) button.style.visibility = "";
+            }, {once: true});
+            document.body.appendChild(truck);
         }
     }
     document.querySelectorAll("#purchase-table form").forEach(form => form.addEventListener("submit", async event => {

@@ -300,6 +300,9 @@ def _build_acquisti_ordini_fornitore_rows(today: date | None = None) -> list[dic
         key = (_norm_text(ordine.IdDocumento), _norm_text(ordine.IdRigaDoc))
         local = meta.get(key)
         delivery_date = _parse_acquisti_date(ordine.DataConsegna)
+        registration_date = _parse_acquisti_date(ordine.DataRegistrazione)
+        if delivery_date == date(1800, 1, 1):
+            delivery_date = None
         supplier_key = (
             _norm_text(ordine.TipoAnagrafica),
             _norm_text(ordine.CodCliFor),
@@ -312,13 +315,14 @@ def _build_acquisti_ordini_fornitore_rows(today: date | None = None) -> list[dic
                 "Ordine": _ordine_fornitore_label(ordine),
                 "GruppoDoc": _norm_text(ordine.GruppoDoc).upper(),
                 "NumRegistraz": _norm_text(ordine.NumRegistraz),
+                "DataRegistrazioneIso": registration_date.isoformat() if registration_date else "",
                 "CodFornitore": supplier_key[1],
                 "Fornitore": supplier_name,
                 "CodArt": _norm_text(ordine.CodArt),
                 "DesArt": _norm_text(ordine.DesArt or ordine.DesEstesa),
                 "DataConsegnaIso": delivery_date.isoformat() if delivery_date else "",
                 "DataConsegnaText": (
-                    delivery_date.strftime("%d/%m/%Y") if delivery_date else ""
+                    delivery_date.strftime("%d/%m/%Y") if delivery_date else "-"
                 ),
                 "ArrivaOggi": delivery_date == today,
                 "ConsegnaCritica": bool(delivery_date and delivery_date <= today),
@@ -366,6 +370,7 @@ def _group_acquisti_ordini_fornitore_rows(rows: list[dict]) -> list[dict]:
                 "CodFornitore": row["CodFornitore"],
                 "Fornitore": row["Fornitore"],
                 "ConsegnaCritica": False,
+                "DataRegistrazioneIso": "",
                 "DataConsegnaIso": "",
                 "Sollecitato": False,
                 "NumeroSolleciti": 0,
@@ -375,6 +380,11 @@ def _group_acquisti_ordini_fornitore_rows(rows: list[dict]) -> list[dict]:
         group["ConsegnaCritica"] = group["ConsegnaCritica"] or row[
             "ConsegnaCritica"
         ]
+        if row.get("DataRegistrazioneIso") and (
+            not group["DataRegistrazioneIso"]
+            or row["DataRegistrazioneIso"] < group["DataRegistrazioneIso"]
+        ):
+            group["DataRegistrazioneIso"] = row["DataRegistrazioneIso"]
         if row["DataConsegnaIso"] and (
             not group["DataConsegnaIso"]
             or row["DataConsegnaIso"] < group["DataConsegnaIso"]
@@ -394,7 +404,7 @@ def _group_acquisti_ordini_fornitore_rows(rows: list[dict]) -> list[dict]:
     return sorted(
         groups.values(),
         key=lambda group: (
-            (group["DataConsegnaIso"] or "9999")[:4],
+            (group["DataRegistrazioneIso"] or "9999")[:4],
             (
                 0,
                 int(group["NumRegistraz"]),
