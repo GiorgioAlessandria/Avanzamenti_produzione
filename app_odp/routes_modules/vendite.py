@@ -18,13 +18,13 @@ from app_odp.services.vendite_assegnazioni_service import (
     create_customer_order,
     delete_customer_order,
     set_machine_assignment,
-    ship_stock_machine,
     update_customer_order_details,
     update_customer_row,
     update_customer_row_dates,
     update_customer_row_notes,
     update_packaging_notes,
     update_machine_production_note,
+    update_machine_tilt_sensors,
     update_machine_option,
 )
 from app_odp.services.vendite_service import build_vendite_payload
@@ -32,6 +32,11 @@ from app_odp.services.vendite_raggruppamenti_service import (
     build_machine_grouping,
     delete_machine_group,
     save_machine_group,
+)
+from app_odp.services.vendite_localizzazione_service import (
+    VenditeGeocodificaError,
+    build_customer_locations,
+    geocode_next_customer,
 )
 
 
@@ -47,11 +52,14 @@ def _visible_assignment_dashboard():
     policy = active_policy()
     if not _can_view_customer_orders(policy):
         abort(403)
-    return build_assignment_dashboard(
-        include_planned=(
-            policy.can("visualizza_pianificati") or policy.can("utente_produzione")
-        )
-    )
+    return {
+        **build_assignment_dashboard(
+            include_planned=(
+                policy.can("visualizza_pianificati") or policy.can("utente_produzione")
+            )
+        ),
+        "grouping": build_machine_grouping(),
+    }
 
 
 def _visible_production_dashboard():
@@ -73,11 +81,16 @@ def vendite_page():
         can_view_customer_orders=_can_view_customer_orders(policy),
         can_edit_production_notes=admin or policy.can("utente_produzione"),
         can_confirm_packaging=(
-            admin or policy.can("utente_produzione") or policy.can("utente_imballi")
+            admin
+            or policy.can("utente_amministrazione")
+            or policy.can("utente_produzione")
+            or policy.can("utente_imballi")
         ),
         can_option_machines=admin or policy.can("utente_vendite"),
-        can_view_options=admin or not policy.can("utente_imballi"),
-        can_view_production_instructions=admin or not policy.can("utente_amministrazione"),
+        can_view_options=(
+            admin or policy.can("utente_produzione") or not policy.can("utente_imballi")
+        ),
+        can_view_production_instructions=True,
         can_view_packaging_notes=admin or not policy.can("utente_imballi"),
         can_view_model_summary=_can_view_customer_orders(policy),
         can_manage_groups=(
@@ -118,17 +131,62 @@ def vendite_assegnazioni_page():
             admin or can_create_customer_orders or policy.can("utente_produzione")
         ),
         can_edit_sales_notes=can_create_customer_orders,
-        can_edit_production_instructions=can_create_customer_orders,
+        can_edit_production_instructions=(
+            can_create_customer_orders or policy.can("utente_amministrazione")
+        ),
         can_view_packaging_notes=admin or not policy.can("utente_imballi"),
         can_view_model_summary=_can_view_customer_orders(policy),
         can_confirm_order_read=admin or policy.can("utente_produzione"),
     )
 
 
+@main_bp.get("/vendite/localizzazione")
+@require_active_perm("vendite")
+def vendite_localizzazione_page():
+    policy = active_policy()
+    if not _can_view_customer_orders(policy):
+        abort(403)
+    return render_template(
+        "vendite_localizzazione.j2",
+        tile_url=current_app.config["VENDITE_TILE_URL"],
+        can_view_packaging_notes=(
+            policy.has_direct_admin_role or not policy.can("utente_imballi")
+        ),
+    )
+
+
+@main_bp.get("/api/vendite/localizzazione")
+@require_active_perm("vendite")
+def api_vendite_localizzazione():
+    if not _can_view_customer_orders(active_policy()):
+        abort(403)
+    response = jsonify({"ok": True, "data": build_customer_locations()})
+    response.headers["Cache-Control"] = "no-store"
+    return response, 200
+
+
+@main_bp.post("/api/vendite/localizzazione/geocodifica")
+@require_active_perm("vendite")
+def api_vendite_localizzazione_geocodifica():
+    if not _can_view_customer_orders(active_policy()):
+        abort(403)
+    try:
+        data = geocode_next_customer()
+        db.session.commit()
+    except VenditeGeocodificaError as exc:
+        db.session.rollback()
+        return jsonify({"ok": False, "error": str(exc)}), 502
+    response = jsonify({"ok": True, "data": data})
+    response.headers["Cache-Control"] = "no-store"
+    return response, 200
+
+
 @main_bp.get("/api/vendite/assegnazioni")
 @require_active_perm("vendite")
 def api_vendite_assegnazioni():
-    response = jsonify({"ok": True, "data": _visible_assignment_dashboard()})
+    data = _visible_assignment_dashboard()
+    db.session.commit()
+    response = jsonify({"ok": True, "data": data})
     response.headers["Cache-Control"] = "no-store"
     return response, 200
 
@@ -229,11 +287,28 @@ def api_vendite_macchina_note_produzione():
 
 @main_bp.post("/api/vendite/macchine/conferma-imballo")
 @require_active_perm("vendite")
-@require_active_any_perm("utente_produzione", "utente_imballi")
+@require_active_any_perm(
+    "utente_amministrazione", "utente_produzione", "utente_imballi"
+)
 def api_vendite_macchina_conferma_imballo():
     return _assignment_mutation(
         lambda: confirm_machine_packaging(request.get_json(silent=True), active_user()),
         "Macchina segnalata come imballata.",
+        dashboard_builder=_visible_production_dashboard,
+    )
+
+
+@main_bp.post("/api/vendite/macchine/sensori-antiribaltamento")
+@require_active_perm("vendite")
+@require_active_any_perm(
+    "utente_amministrazione", "utente_produzione", "utente_imballi"
+)
+def api_vendite_macchina_sensori_antiribaltamento():
+    return _assignment_mutation(
+        lambda: update_machine_tilt_sensors(
+            request.get_json(silent=True), active_user()
+        ),
+        "Sensori antiribaltamento salvati.",
         dashboard_builder=_visible_production_dashboard,
     )
 
@@ -309,7 +384,9 @@ def api_vendite_riga_salva(row_id: int):
     payload = request.get_json(silent=True)
     policy = active_policy()
     can_edit_sales = policy.can("utente_vendite")
-    can_edit_production_instructions = can_edit_sales
+    can_edit_production_instructions = (
+        can_edit_sales or policy.can("utente_amministrazione")
+    )
     can_assign = can_edit_sales or policy.can("utente_produzione")
     return _assignment_mutation(
         lambda: update_customer_row(
@@ -349,23 +426,12 @@ def api_vendite_riga_note(row_id: int):
             row_id,
             payload,
             can_edit_sales=policy.can("utente_vendite"),
-            can_edit_production_instructions=policy.can("utente_vendite"),
+            can_edit_production_instructions=(
+                policy.can("utente_vendite")
+                or policy.can("utente_amministrazione")
+            ),
         ),
         "Note aggiornate.",
-    )
-
-
-@main_bp.post("/api/vendite/stock/spedisci")
-@require_active_perm("vendite")
-@require_active_perm("utente_vendite")
-def api_vendite_stock_spedisci():
-    payload = request.get_json(silent=True) or {}
-    return _assignment_mutation(
-        lambda: ship_stock_machine(
-            payload.get("id_documento"),
-            payload.get("id_riga"),
-        ),
-        "Spedizione della matricola STOCK confermata.",
     )
 
 

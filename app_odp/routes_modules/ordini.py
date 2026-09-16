@@ -2793,22 +2793,6 @@ def _chiudi_ordine_montaggio_macchina_da_payload(
         fase_corrente,
         chiusura_parziale=chiusura_parziale,
     )
-    stock_required = False
-    if _fase_to_int(fase_corrente) == 2 and phase_export_flags["is_last_phase"]:
-        from app_odp.services.vendite_assegnazioni_service import (
-            VenditeAssegnazioniConflictError,
-            VenditeAssegnazioniError,
-            validate_closed_machine_stock,
-        )
-
-        try:
-            stock_required = validate_closed_machine_stock(ordine)
-        except VenditeAssegnazioniConflictError as exc:
-            db.session.rollback()
-            return jsonify({"ok": False, "error": str(exc)}), 409
-        except VenditeAssegnazioniError as exc:
-            db.session.rollback()
-            return jsonify({"ok": False, "error": str(exc)}), 400
 
     tempo_finale = "0"
     if stato is not None:
@@ -2985,25 +2969,6 @@ def _chiudi_ordine_montaggio_macchina_da_payload(
             f"Restano {len(missing_components)} componenti mancanti; ordine macchina sospeso."
         )
     elif transition["tipo"] == "finale":
-        if stock_required:
-            from app_odp.services.vendite_assegnazioni_service import (
-                VenditeAssegnazioniConflictError,
-                VenditeAssegnazioniError,
-                register_closed_machine_stock,
-            )
-
-            try:
-                register_closed_machine_stock(
-                    ordine,
-                    closed_at=now_iso,
-                    closed_by=_current_username(),
-                )
-            except VenditeAssegnazioniConflictError as exc:
-                db.session.rollback()
-                return jsonify({"ok": False, "error": str(exc)}), 409
-            except VenditeAssegnazioniError as exc:
-                db.session.rollback()
-                return jsonify({"ok": False, "error": str(exc)}), 400
         _delete_closed_order_from_runtime_db(ordine=ordine, stato=stato)
         stato_ordine_response = "Chiusa"
         qty_da_lavorare_response = "0"

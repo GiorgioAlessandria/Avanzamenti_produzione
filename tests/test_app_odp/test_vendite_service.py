@@ -22,6 +22,7 @@ def _order(
     phase="1",
     state="Pianificata",
     description="Macchina prova",
+    stock=False,
 ):
     return SimpleNamespace(
         IdDocumento="DOC",
@@ -34,23 +35,28 @@ def _order(
         CodMatricola=serial,
         FaseAttiva=phase,
         StatoOrdine=state,
+        IsStock=stock,
     )
 
 
 def test_planned_filter_removes_machines_models_columns_and_totals():
     orders = [
-        _order(1, model="SOLO-PIANIFICATO", serial="PLAN", state="pianificato"),
+        _order(1, model="SOLO-PIANIFICATO", serial="PLAN-1", state="pianificato"),
         _order(2, serial="ACTIVE", state="Attivo"),
         _order(3, serial="SUSPENDED", state="Sospeso"),
         _order(4, serial="DEFAULT", state=""),
+        _order(5, serial="PLAN-2", phase="2", state="pianificato"),
     ]
     payload = _build_vendite_payload(orders, include_planned=False)
-    assert payload["total_machines"] == 2
-    assert {m["serial_number"] for m in payload["machines"]} == {"ACTIVE", "SUSPENDED"}
-    assert {c["state"] for c in payload["columns"]} == {"Attivo", "In Sospeso"}
+    assert payload["total_machines"] == 3
+    assert {m["serial_number"] for m in payload["machines"]} == {
+        "ACTIVE", "SUSPENDED", "PLAN-2",
+    }
+    assert {"phase": "1", "state": "Pianificata"} not in payload["columns"]
+    assert {"phase": "2", "state": "Pianificata"} in payload["columns"]
     assert [m["model_code"] for m in payload["models"]] == ["MODELLO-1"]
-    assert payload["models"][0]["total"] == 2
-    assert _build_vendite_payload(orders, include_planned=True)["total_machines"] == 4
+    assert payload["models"][0]["total"] == 3
+    assert _build_vendite_payload(orders, include_planned=True)["total_machines"] == 5
 
 
 def test_build_vendite_payload_groups_by_model_phase_and_state():
@@ -98,6 +104,7 @@ def test_build_vendite_payload_groups_by_model_phase_and_state():
             "model_code": "MODELLO-1",
             "variant": "",
             "description": "Macchina prova",
+            "stock_count": 0,
             "total": 3,
             "counts": [0, 1, 1, 1, 0, 0],
         },
@@ -105,6 +112,7 @@ def test_build_vendite_payload_groups_by_model_phase_and_state():
             "model_code": "MODELLO-2",
             "variant": "V2",
             "description": "Macchina prova",
+            "stock_count": 0,
             "total": 1,
             "counts": [0, 0, 0, 0, 1, 0],
         },
@@ -116,6 +124,18 @@ def test_build_vendite_payload_groups_by_model_phase_and_state():
     assert payload["machines"][1]["state"] == "In Sospeso"
     assert payload["machines"][1]["last_suspension_cause"] == "Attesa materiale"
     assert all(row["missing_components"] == [] for row in payload["machines"])
+
+
+def test_build_vendite_payload_counts_stock_by_model():
+    payload = _build_vendite_payload([
+        _order(1, serial="STOCK-1", stock=True),
+        _order(2, serial="STOCK-2", stock=True),
+        _order(3, serial="PROD-1", state="Attivo"),
+    ])
+
+    assert payload["total_stock"] == 2
+    assert payload["total_machines"] == 1
+    assert payload["models"][0]["stock_count"] == 2
 
 
 def test_missing_components_follow_saved_residue_and_current_machine_phase():
@@ -142,7 +162,7 @@ def test_missing_components_follow_saved_residue_and_current_machine_phase():
                                 [{"CodArt": "ALTRO-ORDINE", "Quantita": 1}])
         db.session.commit()
         with patch("app_odp.services.vendite_service.load_machine_orders", return_value=[machine, other_machine]), \
-             patch("app_odp.services.vendite_service.load_stock_machine_orders", return_value=[]), \
+             patch("app_odp.services.vendite_service.load_inventory_machine_orders", return_value=[]), \
              patch("app_odp.services.vendite_service._latest_suspension_causes", return_value={("DOC", "1"): "Attesa materiale"}), \
              patch("app_odp.services.vendite_service._customer_assignments", return_value={}), \
              patch("app_odp.services.vendite_service._packaging_confirmations", return_value={}), \

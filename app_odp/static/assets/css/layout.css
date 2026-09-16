@@ -3,21 +3,168 @@
 /* Layout della situazione produzione vendite. */
 #vendite-page,
 #vendite-page #vendite-tab-content,
-#vendite-page .tab-pane {
+#vendite-page .tab-pane,
+#vendite-assegnazioni-page,
+#vendite-assegnazioni-page .tab-content,
+#vendite-assegnazioni-page .tab-pane,
+#vendite-assegnazioni-page .card {
     min-width: 0;
 }
 
-#vendite-page .vendite-table-scroll {
+#vendite-page .vendite-table-scroll,
+#vendite-assegnazioni-page .vendite-assignment-scroll,
+#vendite-assegnazioni-page .vendite-packaging-scroll {
     width: 100%;
-    min-height: 12rem;
-    max-height: calc(100vh - 16rem);
     overflow: auto;
     overscroll-behavior: contain;
     scrollbar-gutter: stable;
 }
-.app-header > .container-fluid > .row,
+
+#vendite-page .vendite-table-scroll {
+    min-height: 12rem;
+    max-height: calc(100dvh - 16rem);
+}
+
+body:has(> #vendite-page) {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    overflow: hidden;
+}
+
+body > #vendite-page,
+#vendite-page > #vendite-tab-content,
+#vendite-page .tab-pane.show,
+#vendite-page .tab-pane .vendite-table-scroll {
+    min-height: 0;
+}
+
+body > #vendite-page,
+#vendite-page > #vendite-tab-content,
+#vendite-page .tab-pane.show {
+    display: flex;
+    flex-direction: column;
+}
+
+body > #vendite-page,
+#vendite-page > #vendite-tab-content,
+#vendite-page .tab-pane.show,
+#vendite-page .tab-pane .vendite-table-scroll {
+    flex: 1 1 0;
+}
+
+#vendite-page > :not(#vendite-tab-content),
+#vendite-page .tab-pane > :not(.vendite-table-scroll) {
+    flex: 0 0 auto;
+}
+
+#vendite-page > #vendite-tab-content,
+#vendite-page .tab-pane.show {
+    overflow: hidden;
+}
+
+#vendite-page .tab-pane .vendite-table-scroll {
+    max-height: none;
+    overflow: auto;
+}
+
+#vendite-assegnazioni-page .vendite-assignment-scroll {
+    min-height: 20rem;
+    max-height: calc(100dvh - 20rem);
+}
+
+#vendite-assegnazioni-page #vendite-customer-orders-panel .vendite-assignment-scroll {
+    min-height: 0;
+    max-height: none;
+    overflow: auto;
+}
+
+body:has(> #vendite-assegnazioni-page) {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    overflow: hidden;
+}
+
+body > #vendite-assegnazioni-page,
+#vendite-assegnazioni-page > .tab-content,
+#vendite-assegnazioni-page #vendite-orders-tab.show,
+#vendite-assegnazioni-page #vendite-orders-tab > .row,
+#vendite-assegnazioni-page #vendite-customer-orders-panel,
+#vendite-assegnazioni-page #vendite-customer-orders-panel > .card {
+    min-height: 0;
+}
+
+body > #vendite-assegnazioni-page,
+#vendite-assegnazioni-page > .tab-content,
+#vendite-assegnazioni-page #vendite-orders-tab.show,
+#vendite-assegnazioni-page #vendite-customer-orders-panel,
+#vendite-assegnazioni-page #vendite-customer-orders-panel > .card {
+    display: flex;
+    flex-direction: column;
+}
+
+body > #vendite-assegnazioni-page,
+#vendite-assegnazioni-page > .tab-content,
+#vendite-assegnazioni-page #vendite-orders-tab.show,
+#vendite-assegnazioni-page #vendite-orders-tab > .row,
+#vendite-assegnazioni-page #vendite-customer-orders-panel .vendite-assignment-scroll {
+    flex: 1 1 0;
+}
+
+#vendite-assegnazioni-page > .tab-content {
+    overflow: hidden;
+}
+
+#vendite-assegnazioni-page > :not(.tab-content),
+#vendite-assegnazioni-page #vendite-orders-tab > :not(.row),
+#vendite-assegnazioni-page #vendite-customer-orders-panel > .card > :not(.vendite-assignment-scroll) {
+    flex: 0 0 auto;
+}
+
+#vendite-assegnazioni-page #vendite-orders-tab > .row,
+#vendite-assegnazioni-page #vendite-customer-orders-panel > .card {
+    overflow: hidden;
+}
+
+#vendite-assegnazioni-page #vendite-customer-orders-panel .vendite-assignment-scroll {
+    overflow: auto;
+}
+
+#vendite-assegnazioni-page .vendite-packaging-scroll {
+    min-height: 12rem;
+    max-height: calc(100dvh - 15rem);
+}
+
+@media (max-width: 1199.98px) {
+    #vendite-assegnazioni-page .vendite-assignment-scroll,
+    #vendite-assegnazioni-page .vendite-packaging-scroll,
+    #vendite-page .vendite-table-scroll {
+        min-height: 0;
+        max-height: 55dvh;
+    }
+}
+.app-header {
+    width: 100% !important;
+    margin-inline: 0 !important;
+}
+.app-header > .container-fluid > .row {
+    display: grid !important;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    flex-wrap: nowrap !important;
+}
+.app-header > .container-fluid > .row > :first-child {
+    justify-self: start;
+}
+.app-header > .container-fluid > .row > :nth-child(2) {
+    min-width: 0;
+    justify-self: stretch;
+}
+.app-header > .container-fluid > .row > :last-child {
+    justify-self: end;
+}
 .app-header .flex-nowrap {
-    flex-wrap: wrap !important;
+    flex-wrap: nowrap !important;
 }
 .app-header .flex-grow-1 {
     min-width: 0;

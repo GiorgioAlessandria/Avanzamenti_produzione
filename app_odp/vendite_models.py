@@ -29,6 +29,18 @@ class VenditeRaggruppamento(db.Model):
     __mapper_args__ = {"version_id_col": versione}
 
 
+class VenditeClienteGeocodifica(db.Model):
+    __tablename__ = "vendite_clienti_geocodifica"
+
+    cliente_codice = db.Column(db.String(120), primary_key=True)
+    indirizzo_chiave = db.Column(db.String(64), nullable=False)
+    latitudine = db.Column(db.Float, nullable=True)
+    longitudine = db.Column(db.Float, nullable=True)
+    nome_luogo = db.Column(db.String(500), nullable=True)
+    precisione = db.Column(db.String(20), nullable=True)
+    aggiornato_il = db.Column(db.Text, nullable=False, default=_rome_iso_now)
+
+
 class VenditeNotaProduzioneMacchina(db.Model):
     __tablename__ = "vendite_note_produzione_macchina"
 
@@ -75,6 +87,9 @@ class VenditeOrdineCliente(db.Model):
     creato_da_nome = db.Column(db.String(120), nullable=False)
     confermato_il = db.Column(db.Text, nullable=True)
     confermato_da_nome = db.Column(db.String(120), nullable=True)
+    gestionale_cod_cliente = db.Column(
+        db.String(120), nullable=True, index=True
+    )
 
     righe = db.relationship(
         "VenditeOrdineClienteRiga",
@@ -90,6 +105,10 @@ class VenditeOrdineCliente(db.Model):
             "cliente_chiave",
             "numero_ordine_chiave",
             name="uq_vendite_ordine_cliente_numero",
+        ),
+        db.UniqueConstraint(
+            "gestionale_cod_cliente",
+            name="uq_vendite_ordine_cliente_gestionale",
         ),
     )
 
@@ -113,6 +132,7 @@ class VenditeOrdineClienteRiga(db.Model):
     note_produzione = db.Column(db.String(1000), nullable=True)
     note_per_produzione = db.Column(db.String(1000), nullable=True)
     note_spedizione = db.Column(db.String(1000), nullable=True)
+    campi_modificati = db.Column(db.JSON, nullable=False, default=list)
     data_disponibile = db.Column(db.Date, nullable=True, index=True)
     data_consegna = db.Column(db.Date, nullable=False, index=True)
     versione = db.Column(db.Integer, nullable=False, default=1)
@@ -135,6 +155,9 @@ class VenditeOrdineClienteRiga(db.Model):
         nullable=False,
         default=False,
     )
+    gestionale_id_documento = db.Column(db.Text, nullable=True)
+    gestionale_id_riga = db.Column(db.Text, nullable=True)
+    gestionale_unita = db.Column(db.Integer, nullable=True)
 
     ordine_cliente = db.relationship(
         "VenditeOrdineCliente",
@@ -172,10 +195,26 @@ class VenditeOrdineClienteRiga(db.Model):
             "odp_id_riga",
             name="uq_vendite_ordine_cliente_riga_odp",
         ),
+        db.UniqueConstraint(
+            "gestionale_id_documento",
+            "gestionale_id_riga",
+            "gestionale_unita",
+            name="uq_vendite_ordine_cliente_riga_gestionale",
+        ),
     )
-
     __mapper_args__ = {"version_id_col": versione}
 
+
+class VenditeMacchinaSpedibile(db.Model):
+    __tablename__ = "vendite_macchine_spedibili"
+
+    matricola_chiave = db.Column(db.String(200), primary_key=True)
+    matricola = db.Column(db.String(200), nullable=False)
+    modello = db.Column(db.String(160), nullable=False)
+    cliente = db.Column(db.String(160), nullable=False)
+    rilevata_il = db.Column(db.Text, nullable=False, default=_rome_iso_now)
+    motivo = db.Column(db.String(20), nullable=False)
+    spedita_il = db.Column(db.Text, nullable=True, index=True)
 
 class VenditeNotaImballoLettura(db.Model):
     __tablename__ = "vendite_note_imballo_letture"
@@ -198,39 +237,6 @@ class VenditeNotaImballoLettura(db.Model):
     )
 
 
-class VenditeMacchinaStock(db.Model):
-    __tablename__ = "vendite_macchine_stock"
-
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    odp_id_documento = db.Column(db.Text, nullable=False)
-    odp_id_riga = db.Column(db.Text, nullable=False)
-    odp_rif_registraz = db.Column(db.Text, nullable=True)
-    odp_num_progr_riga = db.Column(db.Text, nullable=True)
-    modello_codice = db.Column(db.String(160), nullable=False, index=True)
-    modello_variante = db.Column(db.String(120), nullable=False, default="")
-    modello_descrizione = db.Column(db.String(500), nullable=True)
-    matricola = db.Column(db.String(6), nullable=False, unique=True, index=True)
-    inserita_il = db.Column(
-        db.Text,
-        nullable=False,
-        default=_rome_iso_now,
-        index=True,
-    )
-    inserita_da_nome = db.Column(db.String(120), nullable=False)
-
-    __table_args__ = (
-        db.CheckConstraint(
-            "length(matricola) = 6 AND matricola NOT GLOB '*[^0-9]*'",
-            name="ck_vendite_macchina_stock_matricola",
-        ),
-        db.UniqueConstraint(
-            "odp_id_documento",
-            "odp_id_riga",
-            name="uq_vendite_macchina_stock_odp",
-        ),
-    )
-
-
 class VenditeImballoMacchina(db.Model):
     __tablename__ = "vendite_imballi_macchina"
 
@@ -243,6 +249,36 @@ class VenditeImballoMacchina(db.Model):
         nullable=True,
     )
     confermata_da_nome = db.Column(db.String(120), nullable=False)
+    sensori_antiribaltamento = db.Column(db.String(1000), nullable=True)
+
+
+class VenditeSensoriMacchina(db.Model):
+    __tablename__ = "vendite_sensori_macchina"
+
+    matricola = db.Column(db.String(200), primary_key=True)
+    sensori = db.Column(db.String(1000), nullable=False)
+    aggiornato_il = db.Column(db.Text, nullable=False, default=_rome_iso_now)
+    aggiornato_da_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    aggiornato_da_nome = db.Column(db.String(120), nullable=False)
+
+
+class VenditeSensoreAntiribaltamentoLog(db.Model):
+    __tablename__ = "vendite_sensori_antiribaltamento_log"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    matricola = db.Column(db.String(200), nullable=False, index=True)
+    sensore_seriale = db.Column(db.String(200), nullable=False, index=True)
+    registrato_il = db.Column(db.Text, nullable=False, default=_rome_iso_now)
+    registrato_da_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    registrato_da_nome = db.Column(db.String(120), nullable=False)
 
 
 class VenditeOpzioneMacchina(db.Model):
@@ -257,6 +293,7 @@ class VenditeOpzioneMacchina(db.Model):
         nullable=True,
     )
     opzionata_da_nome = db.Column(db.String(120), nullable=False)
+    nota = db.Column(db.String(1000), nullable=True)
 
 
 class VenditeSpedizioneConfermata(db.Model):

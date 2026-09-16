@@ -18,6 +18,7 @@ from app_odp.policy.policy import RbacPolicy
 from pathlib import Path
 from datetime import datetime
 import logging
+import os
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 from sqlalchemy import event, inspect
@@ -307,6 +308,27 @@ def _ensure_logistica_schema() -> None:
                     f"ALTER TABLE packing_lists ADD COLUMN {name} {column_type}"
                 )
 
+    if "movimenti" in tables:
+        columns = {
+            column["name"] for column in inspect(engine).get_columns("movimenti")
+        }
+        if "spedizione_macchine" not in columns:
+            additions.append(
+                "ALTER TABLE movimenti ADD COLUMN "
+                "spedizione_macchine BOOLEAN NOT NULL DEFAULT 0"
+            )
+
+    if "movimenti_macchine" in tables:
+        columns = {
+            column["name"]
+            for column in inspect(engine).get_columns("movimenti_macchine")
+        }
+        if "sensori_antiribaltamento" not in columns:
+            additions.append(
+                "ALTER TABLE movimenti_macchine ADD COLUMN "
+                "sensori_antiribaltamento VARCHAR(1000)"
+            )
+
     if "packing_list_righe" in tables:
         columns = {
             column["name"]
@@ -327,10 +349,47 @@ def _ensure_logistica_schema() -> None:
 def _ensure_vendite_schema() -> None:
     engine = db.engine
     tables = set(inspect(engine).get_table_names())
+    if "vendite_macchine_stock" in tables:
+        with engine.begin() as connection:
+            connection.exec_driver_sql("DROP TABLE vendite_macchine_stock")
+        tables.remove("vendite_macchine_stock")
+
     additions = []
     added_confirmation = False
     added_row_available_date = False
     order_has_available_date = False
+
+    if "vendite_opzioni_macchina" in tables:
+        columns = {
+            column["name"]
+            for column in inspect(engine).get_columns("vendite_opzioni_macchina")
+        }
+        if "nota" not in columns:
+            additions.append(
+                "ALTER TABLE vendite_opzioni_macchina ADD COLUMN nota VARCHAR(1000)"
+            )
+
+    if "vendite_clienti_geocodifica" in tables:
+        columns = {
+            column["name"]
+            for column in inspect(engine).get_columns("vendite_clienti_geocodifica")
+        }
+        if "precisione" not in columns:
+            additions.append(
+                "ALTER TABLE vendite_clienti_geocodifica "
+                "ADD COLUMN precisione VARCHAR(20)"
+            )
+
+    if "vendite_imballi_macchina" in tables:
+        columns = {
+            column["name"]
+            for column in inspect(engine).get_columns("vendite_imballi_macchina")
+        }
+        if "sensori_antiribaltamento" not in columns:
+            additions.append(
+                "ALTER TABLE vendite_imballi_macchina ADD COLUMN "
+                "sensori_antiribaltamento VARCHAR(1000)"
+            )
 
     if "vendite_ordini_cliente" in tables:
         columns = {
@@ -357,6 +416,11 @@ def _ensure_vendite_schema() -> None:
             additions.append(
                 "ALTER TABLE vendite_ordini_cliente "
                 "ADD COLUMN data_spedizione DATE"
+            )
+        if "gestionale_cod_cliente" not in columns:
+            additions.append(
+                "ALTER TABLE vendite_ordini_cliente "
+                "ADD COLUMN gestionale_cod_cliente VARCHAR(120)"
             )
         order_has_available_date = "data_disponibile" in columns
 
@@ -392,12 +456,27 @@ def _ensure_vendite_schema() -> None:
                 "ALTER TABLE vendite_ordini_cliente_righe "
                 "ADD COLUMN note_spedizione VARCHAR(1000)"
             )
+        if "campi_modificati" not in columns:
+            additions.append(
+                "ALTER TABLE vendite_ordini_cliente_righe "
+                "ADD COLUMN campi_modificati JSON NOT NULL DEFAULT '[]'"
+            )
         if "data_disponibile" not in columns:
             additions.append(
                 "ALTER TABLE vendite_ordini_cliente_righe "
                 "ADD COLUMN data_disponibile DATE"
             )
             added_row_available_date = True
+        for name, column_type in (
+            ("gestionale_id_documento", "TEXT"),
+            ("gestionale_id_riga", "TEXT"),
+            ("gestionale_unita", "INTEGER"),
+        ):
+            if name not in columns:
+                additions.append(
+                    "ALTER TABLE vendite_ordini_cliente_righe "
+                    f"ADD COLUMN {name} {column_type}"
+                )
 
     if "vendite_spedizioni_confermate" in tables:
         columns = {
@@ -483,6 +562,44 @@ def _ensure_vendite_schema() -> None:
                         "SET data_disponibile = COALESCE(data_disponibile, data_consegna), "
                         "data_consegna = COALESCE(data_spedizione, data_consegna)"
                     )
+
+    # Conserva i sensori già registrati dalla versione che li memorizzava
+    # insieme alla conferma di imballo.
+    tables = set(inspect(engine).get_table_names())
+    if {
+        "vendite_imballi_macchina",
+        "vendite_sensori_macchina",
+    }.issubset(tables):
+        packaging_columns = {
+            column["name"]
+            for column in inspect(engine).get_columns("vendite_imballi_macchina")
+        }
+        if "sensori_antiribaltamento" in packaging_columns:
+            with engine.begin() as connection:
+                connection.exec_driver_sql(
+                    "INSERT OR IGNORE INTO vendite_sensori_macchina "
+                    "(matricola, sensori, aggiornato_il, aggiornato_da_id, "
+                    "aggiornato_da_nome) "
+                    "SELECT matricola, sensori_antiribaltamento, confermata_il, "
+                    "confermata_da_id, confermata_da_nome "
+                    "FROM vendite_imballi_macchina "
+                    "WHERE TRIM(COALESCE(sensori_antiribaltamento, '')) <> ''"
+                )
+
+    with engine.begin() as connection:
+        connection.exec_driver_sql(
+            "CREATE UNIQUE INDEX IF NOT EXISTS "
+            "uq_vendite_ordine_cliente_gestionale "
+            "ON vendite_ordini_cliente (gestionale_cod_cliente) "
+            "WHERE gestionale_cod_cliente IS NOT NULL"
+        )
+        connection.exec_driver_sql(
+            "CREATE UNIQUE INDEX IF NOT EXISTS "
+            "uq_vendite_ordine_cliente_riga_gestionale "
+            "ON vendite_ordini_cliente_righe "
+            "(gestionale_id_documento, gestionale_id_riga, gestionale_unita) "
+            "WHERE gestionale_id_documento IS NOT NULL"
+        )
 
     if "vendite_note_imballaggio" in tables:
         now = datetime.now(ZoneInfo("Europe/Rome")).isoformat(timespec="seconds")
@@ -653,6 +770,18 @@ def create_app():
     }
     app.config["ERP_EXPORT_DIR"] = configurazione["Percorsi"]["percorso_file_output"]
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+    app.config["VENDITE_GEOCODER_URL"] = os.environ.get(
+        "VENDITE_GEOCODER_URL",
+        "https://nominatim.openstreetmap.org/search",
+    )
+    app.config["VENDITE_GEOCODER_USER_AGENT"] = os.environ.get(
+        "VENDITE_GEOCODER_USER_AGENT",
+        "AvanzamentiProduzione/1.0 (internal customer order map)",
+    )
+    app.config["VENDITE_TILE_URL"] = os.environ.get(
+        "VENDITE_TILE_URL",
+        "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+    )
     app.config["DIMENSIONI"] = configurazione["parametri_etichette"]["dimensioni"]
     app.config["DPI"] = configurazione["parametri_etichette"]["dpi"]
     app.config["FONT_PATH"] = configurazione["parametri_etichette"]["font_path"]

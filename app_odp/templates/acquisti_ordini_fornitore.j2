@@ -1,0 +1,346 @@
+{% extends "base.j2" %}
+
+{% block title %}Ordini acquisto{% endblock %}
+
+{% block content %}
+<main class="container-fluid py-3">
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+        <div>
+            <h1 class="h3 mb-1">Ordini acquisto</h1>
+            <div class="text-muted">Ordini fornitore e conto lavoro aperti dal gestionale</div>
+        </div>
+        <div class="d-flex gap-2">
+            <a class="btn btn-outline-secondary" href="{{ operator_url_for('main.home_acquisti') }}">Torna agli acquisti</a>
+            <button class="btn btn-primary js-view" type="button" data-view="list">Elenco</button>
+            <button class="btn btn-outline-primary js-view" type="button" data-view="calendar">Calendario</button>
+        </div>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for category, message in messages %}
+            <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Chiudi"></button>
+            </div>
+        {% endfor %}
+    {% endwith %}
+
+    <section id="purchase-list">
+        <div class="card shadow-sm">
+            <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+                <div>
+                    <strong>{{ groups|length }} ordini · {{ rows|length }} righe aperte</strong>
+                    <div class="d-flex flex-wrap gap-3 mt-2 small" aria-label="Legenda ordini">
+                        <span><i class="purchase-swatch purchase-orl"></i> Ordini di conto lavoro</span>
+                        <span><i class="purchase-swatch purchase-ora"></i> Ordini di acquisto</span>
+                        <span><i class="purchase-swatch purchase-overdue"></i> Consegna scaduta o odierna</span>
+                    </div>
+                    <div class="btn-group mt-2" role="group" aria-label="Filtra tipologia ordine">
+                        <button type="button" class="btn btn-sm btn-primary js-purchase-type-filter" data-type="all">Totale</button>
+                        <button type="button" class="btn btn-sm btn-outline-primary js-purchase-type-filter" data-type="ORL">Conto lavoro</button>
+                        <button type="button" class="btn btn-sm btn-outline-primary js-purchase-type-filter" data-type="ORA">Acquisto</button>
+                    </div>
+                </div>
+                <input id="purchase-search" class="form-control" style="max-width: 28rem"
+                       type="search" placeholder="Cerca ordine, fornitore, codice o descrizione">
+            </div>
+            <div class="table-responsive" style="max-height: calc(100vh - 230px)">
+                <table class="table table-sm table-striped table-hover align-middle mb-0" id="purchase-table">
+                    <thead class="sticky-top">
+                    <tr>
+                        <th>Numero Registrazione</th>
+                        <th>Codice Articolo</th>
+                        <th>Descrizione</th>
+                        <th>Data di consegna</th>
+                        <th>UdM</th>
+                        <th class="text-end">Ordinato</th>
+                        <th class="text-end">Consegnata</th>
+                        <th class="text-end">Saldo documento</th>
+                        <th>Commento</th>
+                        <th>Stato</th>
+                        <th style="min-width: 18rem">Note</th>
+                        <th>Azioni</th>
+                    </tr>
+                    </thead>
+                    {% for group in groups %}
+                    {% set group_loop = loop %}
+                    <tbody class="purchase-group" data-gruppo-doc="{{ group.GruppoDoc }}">
+                        <tr class="purchase-group-header {% if group.ConsegnaCritica %}purchase-overdue{% elif group.GruppoDoc == 'ORL' %}purchase-orl{% elif group.GruppoDoc == 'ORA' %}purchase-ora{% endif %}">
+                            <td colspan="12">
+                                <strong>Numero Registrazione {{ group.NumRegistraz }}</strong>
+                                <span class="ms-3">{{ group.Fornitore or 'Fornitore non trovato' }} ({{ group.CodFornitore }})</span>
+                                <span class="badge text-bg-light ms-2">{{ group.Righe|length }} righe</span>
+                            </td>
+                        </tr>
+                        {% for row in group.Righe %}
+                        <tr class="purchase-line {% if row.ConsegnaCritica %}purchase-overdue{% elif row.GruppoDoc == 'ORL' %}purchase-orl{% elif row.GruppoDoc == 'ORA' %}purchase-ora{% endif %}">
+                            <td>{{ row.NumRegistraz }}</td>
+                            <td>{{ row.CodArt }}</td>
+                            <td>{{ row.DesArt }}</td>
+                            <td>{{ row.DataConsegnaText or 'Non indicata' }}</td>
+                            <td>{{ row.UmDoc }}</td>
+                            <td class="text-end">{{ row.QtaOrd }}</td>
+                            <td class="text-end">{{ row.QtaCons }}</td>
+                            <td class="text-end">{{ row.QtaSaldo }}</td>
+                            <td>{{ row.CommentoRigaSaldata }}</td>
+                            <td>
+                                <span class="badge text-bg-{{ 'warning' if row.Sollecitato else 'secondary' }}">
+                                    {{ row.Stato }}
+                                </span>
+                                <small class="js-sollecito-date d-block mt-1{% if not row.SollecitatoAt %} d-none{% endif %}"
+                                       data-sollecitato-at="{{ row.SollecitatoAt }}">
+                                    Sollecitato il <span></span>
+                                </small>
+                            </td>
+                            <td>
+                                <form id="purchase-{{ group_loop.index0 }}-{{ loop.index0 }}" method="post"
+                                      action="{{ operator_url_for('main.acquisti_ordine_fornitore_update') }}">
+                                    <input type="hidden" name="id_documento" value="{{ row.IdDocumento }}">
+                                    <input type="hidden" name="id_riga" value="{{ row.IdRigaDoc }}">
+                                    <textarea class="form-control form-control-sm" name="note" maxlength="2000"
+                                              rows="2" placeholder="Note acquisti">{{ row.Note }}</textarea>
+                                    {% if row.NoteErp %}
+                                        <small class="text-muted">Gestionale: {{ row.NoteErp }}</small>
+                                    {% endif %}
+                                </form>
+                            </td>
+                            <td>
+                                <div class="d-grid gap-1">
+                                    <button class="btn btn-sm btn-outline-primary" type="submit" name="action"
+                                            value="note" form="purchase-{{ group_loop.index0 }}-{{ loop.index0 }}">Salva</button>
+                                    <button class="btn btn-sm btn-warning purchase-reminder-button" type="submit" name="action"
+                                            value="sollecita" form="purchase-{{ group_loop.index0 }}-{{ loop.index0 }}"
+                                            >{{ 'Rimuovi sollecito' if row.Sollecitato else 'Sollecita' }}</button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    {% else %}
+                    <tbody><tr><td colspan="12" class="text-center text-muted py-4">Nessun ordine aperto.</td></tr></tbody>
+                    {% endfor %}
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <section id="purchase-calendar" class="d-none">
+        <div class="card shadow-sm">
+            <div class="card-header d-flex align-items-center justify-content-between">
+                <button class="btn btn-sm btn-outline-secondary" type="button" id="calendar-prev">‹</button>
+                <h2 class="h5 mb-0" id="calendar-title"></h2>
+                <button class="btn btn-sm btn-outline-secondary" type="button" id="calendar-next">›</button>
+            </div>
+            <div class="card-body p-2">
+                <div class="calendar-grid calendar-weekdays text-center fw-semibold">
+                    {% for day in ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'] %}<div>{{ day }}</div>{% endfor %}
+                </div>
+                <div class="calendar-grid" id="calendar-grid"></div>
+            </div>
+        </div>
+    </section>
+
+    <div class="toast-container position-fixed top-0 end-0 p-3">
+        <div id="purchase-calendar-toast" class="toast purchase-calendar-toast" role="status"
+             aria-live="polite" aria-atomic="true" data-bs-autohide="false">
+            <div class="toast-header">
+                <strong class="me-auto" id="purchase-toast-title">Dettaglio ordine</strong>
+                <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Chiudi"></button>
+            </div>
+            <div class="toast-body" id="purchase-toast-body"></div>
+        </div>
+    </div>
+</main>
+
+<style>
+    #purchase-table thead th { background: #f8f9fa !important; color: #212529 !important; }
+    #purchase-table .purchase-group-header > * { font-weight: 500; border-top: 2px solid #495057; }
+    #purchase-table tr.purchase-orl > *, .purchase-swatch.purchase-orl { background: #ffd39b !important; color: #212529 !important; }
+    #purchase-table tr.purchase-ora > *, .purchase-swatch.purchase-ora { background: #b9dcff !important; color: #212529 !important; }
+    #purchase-table tr.purchase-overdue > *, .purchase-swatch.purchase-overdue { background: #f5aeb5 !important; color: #212529 !important; }
+    .purchase-swatch { display: inline-block; width: 1rem; height: 1rem; border: 1px solid #495057; border-radius: .2rem; vertical-align: -.15rem; }
+    .calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+    .calendar-weekdays > div { padding: .5rem; background: var(--bs-info-bg-subtle); }
+    .calendar-day { min-height: 8rem; padding: .4rem; border: 1px solid var(--bs-border-color); overflow: hidden; }
+    .calendar-day.today { background: var(--bs-danger-bg-subtle); }
+    .calendar-event { display: block; width: 100%; margin-top: .3rem; padding: .25rem .35rem; border: 0; border-radius: .25rem; background: var(--bs-primary-bg-subtle); font-size: .78rem; text-align: left; }
+    .calendar-event.sollecitato { background: var(--bs-warning-bg-subtle); }
+    .calendar-event.purchase-orl { background: #ffd39b; }
+    .calendar-event.purchase-ora { background: #b9dcff; }
+    .calendar-event.purchase-overdue { background: #f5aeb5; }
+    .purchase-calendar-toast { width: min(60rem, calc(100vw - 2rem)); max-width: none; }
+    .purchase-toast-matching > * { background: #fff3cd !important; font-weight: 600; }
+    .purchase-reminder-button.is-driving { position: relative; z-index: 10; animation: purchase-van-trip 4s ease-in-out; }
+    .purchase-reminder-button.is-driving::before { content: ""; position: absolute; left: -.85rem; bottom: 0; width: 1rem; height: 1.15rem; background: #ffc107; border: 1px solid #212529; border-radius: .5rem 0 0 .2rem; }
+    .purchase-reminder-button.is-driving::after { content: "●    ●"; position: absolute; left: -.55rem; right: .2rem; bottom: -.7rem; color: #212529; font-size: .7rem; letter-spacing: .35rem; white-space: nowrap; }
+    @keyframes purchase-van-trip { 0% { transform: translateX(0); } 42% { transform: translateX(-110vw); } 43% { transform: translateX(110vw); } 100% { transform: translateX(0); } }
+    @media (max-width: 767px) { .calendar-day { min-height: 5rem; } .calendar-event { font-size: .68rem; } }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+{{ super() }}
+<script>
+(() => {
+    const events = {{ calendar_events|tojson }};
+    const list = document.getElementById("purchase-list");
+    const calendar = document.getElementById("purchase-calendar");
+    const title = document.getElementById("calendar-title");
+    const grid = document.getElementById("calendar-grid");
+    const toastElement = document.getElementById("purchase-calendar-toast");
+    const toastTitle = document.getElementById("purchase-toast-title");
+    const toastBody = document.getElementById("purchase-toast-body");
+    let shown = new Date();
+
+    function escapeHtml(value) {
+        const el = document.createElement("div");
+        el.textContent = value ?? "";
+        return el.innerHTML;
+    }
+
+    function formatReminderDate(value) {
+        const date = new Date(value);
+        return Number.isNaN(date.getTime()) ? value.replace("T", " ") : date.toLocaleString("it-IT", {dateStyle: "short", timeStyle: "short"});
+    }
+
+    document.querySelectorAll(".js-sollecito-date").forEach(element => {
+        element.querySelector("span").textContent = formatReminderDate(element.dataset.sollecitatoAt);
+    });
+
+    function renderCalendar() {
+        const year = shown.getFullYear();
+        const month = shown.getMonth();
+        const first = new Date(year, month, 1);
+        const days = new Date(year, month + 1, 0).getDate();
+        const offset = (first.getDay() + 6) % 7;
+        const today = new Date();
+        title.textContent = first.toLocaleDateString("it-IT", {month: "long", year: "numeric"});
+        grid.innerHTML = "";
+        for (let i = 0; i < offset; i += 1) grid.insertAdjacentHTML("beforeend", '<div class="calendar-day"></div>');
+        for (let day = 1; day <= days; day += 1) {
+            const key = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+            const isToday = today.getFullYear() === year && today.getMonth() === month && today.getDate() === day;
+            const dayEvents = events.map((event, index) => ({event, index})).filter(item => item.event.date === key);
+            const html = dayEvents.map(({event, index}) => {
+                const typeClass = event.gruppo_doc === "ORL" ? "purchase-orl" : "purchase-ora";
+                return `<button type="button" class="calendar-event ${typeClass} ${event.sollecitato ? "sollecitato" : ""}" data-event-index="${index}">${escapeHtml(event.title)}</button>`;
+            }).join("");
+            grid.insertAdjacentHTML("beforeend", `<div class="calendar-day ${isToday ? "today" : ""}"><strong>${day}</strong>${html}</div>`);
+        }
+    }
+
+    document.querySelectorAll(".js-view").forEach(button => button.addEventListener("click", () => {
+        const showCalendar = button.dataset.view === "calendar";
+        list.classList.toggle("d-none", showCalendar);
+        calendar.classList.toggle("d-none", !showCalendar);
+        document.querySelectorAll(".js-view").forEach(item => {
+            const active = item === button;
+            item.classList.toggle("btn-primary", active);
+            item.classList.toggle("btn-outline-primary", !active);
+        });
+        if (showCalendar) renderCalendar();
+    }));
+    document.getElementById("calendar-prev").addEventListener("click", () => { shown = new Date(shown.getFullYear(), shown.getMonth() - 1, 1); renderCalendar(); });
+    document.getElementById("calendar-next").addEventListener("click", () => { shown = new Date(shown.getFullYear(), shown.getMonth() + 1, 1); renderCalendar(); });
+    grid.addEventListener("click", event => {
+        const button = event.target.closest("[data-event-index]");
+        if (!button) return;
+        const order = events[Number(button.dataset.eventIndex)];
+        if (!order) return;
+        const columns = [
+            ["numero_registrazione", "Numero Registrazione"],
+            ["codice_articolo", "Codice Articolo"],
+            ["descrizione", "Descrizione"],
+            ["data_consegna", "Data di consegna"],
+            ["udm", "UdM"],
+            ["ordinato", "Ordinato"],
+            ["consegnata", "Consegnata"],
+            ["saldo_documento", "Saldo documento"],
+            ["commento", "Commento"],
+        ];
+        toastTitle.textContent = `Numero Registrazione ${order.rows[0]?.numero_registrazione || ""} · ${order.date_text}`;
+        toastBody.innerHTML = `<div class="table-responsive"><table class="table table-sm mb-0"><thead><tr>${columns.map(column => `<th>${column[1]}</th>`).join("")}</tr></thead><tbody>${order.rows.map(row => `<tr class="${row.evidenziata ? "purchase-toast-matching" : ""}">${columns.map(column => `<td>${escapeHtml(row[column[0]])}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+        bootstrap.Toast.getOrCreateInstance(toastElement).show();
+    });
+    let groupFilter = "all";
+    let searchNeedle = "";
+    function applyListFilters() {
+        document.querySelectorAll("#purchase-table tbody.purchase-group").forEach(group => {
+            const matchesType = groupFilter === "all" || group.dataset.gruppoDoc === groupFilter;
+            const matchesSearch = !searchNeedle || group.textContent.toLocaleLowerCase("it").includes(searchNeedle);
+            group.classList.toggle("d-none", !matchesType || !matchesSearch);
+        });
+    }
+    document.getElementById("purchase-search").addEventListener("input", event => {
+        searchNeedle = event.target.value.trim().toLocaleLowerCase("it");
+        applyListFilters();
+    });
+    document.querySelectorAll(".js-purchase-type-filter").forEach(button => button.addEventListener("click", () => {
+        groupFilter = button.dataset.type;
+        document.querySelectorAll(".js-purchase-type-filter").forEach(item => {
+            const active = item === button;
+            item.classList.toggle("btn-primary", active);
+            item.classList.toggle("btn-outline-primary", !active);
+        });
+        applyListFilters();
+    }));
+    document.querySelectorAll("#purchase-table form").forEach(form => form.addEventListener("submit", async event => {
+        event.preventDefault();
+        const button = event.submitter;
+        if (!button) return;
+        const originalLabel = button.textContent;
+        button.disabled = true;
+        const body = new FormData(form);
+        body.set("action", button.value);
+        try {
+            const response = await (window.avpFetch || window.fetch)(form.getAttribute("action"), {
+                method: "POST",
+                headers: {"X-Requested-With": "XMLHttpRequest", "Accept": "application/json"},
+                credentials: "same-origin",
+                body,
+            });
+            if (response.redirected) {
+                window.location.assign(response.url);
+                return;
+            }
+            const contentType = response.headers.get("Content-Type") || "";
+            if (!contentType.includes("application/json")) {
+                throw new Error(`Risposta non valida dal server (${response.status}).`);
+            }
+            const data = await response.json();
+            if (!response.ok || data.ok === false) throw new Error(data.error || "Salvataggio non riuscito.");
+            const row = form.closest("tr");
+            if (button.value === "sollecita") {
+                const badge = row.querySelector(".badge");
+                badge.textContent = data.stato;
+                badge.classList.toggle("text-bg-warning", data.sollecitato);
+                badge.classList.toggle("text-bg-secondary", !data.sollecitato);
+                const date = row.querySelector(".js-sollecito-date");
+                date.classList.toggle("d-none", !data.sollecitato);
+                date.querySelector("span").textContent = data.sollecitato ? formatReminderDate(data.sollecitato_at) : "";
+                events.filter(item => item.id_documento === data.id_documento).forEach(item => { item.sollecitato = data.sollecitato; });
+                const finish = () => {
+                    button.classList.remove("is-driving");
+                    button.textContent = data.sollecitato ? "Rimuovi sollecito" : "Sollecita";
+                    button.disabled = false;
+                };
+                if (data.sollecitato && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+                    button.classList.add("is-driving");
+                    button.addEventListener("animationend", finish, {once: true});
+                } else {
+                    finish();
+                }
+            } else {
+                button.textContent = "Salvato";
+                window.setTimeout(() => { button.textContent = originalLabel; }, 1200);
+            }
+        } catch (error) {
+            alert(error.message || "Errore durante il salvataggio.");
+            button.disabled = false;
+        } finally {
+            if (!button.classList.contains("is-driving")) button.disabled = false;
+        }
+    }));
+})();
+</script>
+{% endblock %}

@@ -16,7 +16,8 @@ class VenditeTabsTest(unittest.TestCase):
         ]))
         env.globals["operator_url_for"] = lambda endpoint, **args: "/" + endpoint + "?" + urlencode({**args, "tab_session": "operatore-test"})
         expected = ["Ordini cliente", "Situazione produzione per matricola",
-                    "Note per imballo", "Situazione produzione per modello"]
+                    "Localizzazione ordini", "Note per imballo",
+                    "Situazione produzione per modello"]
         cases = [("vendite_assegnazioni.j2", "ordini", "vendite-orders-tab"),
                  ("vendite_assegnazioni.j2", "imballaggio", "vendite-packaging-tab"),
                  ("vendite.j2", "matricola", "vendite-matricole-pane"),

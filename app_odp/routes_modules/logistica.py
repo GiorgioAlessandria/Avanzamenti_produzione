@@ -19,11 +19,18 @@ from app_odp.logistica_models import (
     ClientePackingList,
     ImpostazioniPackingList,
     MovimentoLogistico,
+    MovimentoLogisticoMacchina,
     PackingList,
     RigaPackingList,
     VettoreTrasporto,
 )
 from app_odp.models import db
+from app_odp.services.vendite_assegnazioni_service import sync_shippable_machines
+from app_odp.vendite_models import (
+    VenditeMacchinaSpedibile,
+    VenditeSensoreAntiribaltamentoLog,
+    VenditeSensoriMacchina,
+)
 from app_odp.operator_session import active_policy, active_token, active_user
 from app_odp.policy.decorator import require_active_any_perm, require_active_perm
 from app_odp.routes_blueprint import main_bp
@@ -31,6 +38,7 @@ from app_odp.services.packing_list_pdf_service import (
     COMPANY_LINES,
     build_packing_list_pdf,
 )
+from app_odp.services.order_helpers import _now_rome_dt
 
 
 def _redirect_logistica():
@@ -355,6 +363,39 @@ def _save(action, success_message: str, redirector=None):
 @require_active_any_perm("carica", "ricezione")
 def logistica_page():
     policy = active_policy()
+    sensor_query = str(request.args.get("sensore") or "").strip()
+    sensor_logs = []
+    if sensor_query:
+        sensor_logs = (
+            VenditeSensoreAntiribaltamentoLog.query.filter(
+                VenditeSensoreAntiribaltamentoLog.sensore_seriale.ilike(
+                    f"%{sensor_query}%"
+                )
+            )
+            .order_by(VenditeSensoreAntiribaltamentoLog.id.desc())
+            .limit(100)
+            .all()
+        )
+    macchine_spedibili = sync_shippable_machines()
+    busy_serials = {
+        item.matricola.casefold()
+        for item in MovimentoLogisticoMacchina.query.join(MovimentoLogistico)
+        .filter(MovimentoLogistico.completato_il.is_(None)).all()
+    }
+    macchine_spedibili = [
+        item for item in macchine_spedibili
+        if item.matricola_chiave not in busy_serials
+    ]
+    sensors_by_serial = {
+        item.matricola: item.sensori
+        for item in VenditeSensoriMacchina.query.filter(
+            VenditeSensoriMacchina.matricola.in_(
+                [machine.matricola_chiave for machine in macchine_spedibili]
+            )
+        ).all()
+        if item.sensori
+    }
+    db.session.commit()
     attesi = (
         MovimentoLogistico.query.filter(MovimentoLogistico.completato_il.is_(None))
         .order_by(MovimentoLogistico.data.asc(), MovimentoLogistico.id.asc())
@@ -374,6 +415,10 @@ def logistica_page():
         oggi=date.today(),
         row_class=_row_class,
         can_carica=policy.can("carica"),
+        macchine_spedibili=macchine_spedibili,
+        sensors_by_serial=sensors_by_serial,
+        sensor_query=sensor_query,
+        sensor_logs=sensor_logs,
     )
 
 
@@ -527,28 +572,90 @@ def logistica_movimento_create():
         if vettore is None:
             raise ValueError("Selezionare un vettore valido.")
 
-        movimento = str(request.form.get("movimento") or "").strip().upper()
+        selected_machine_keys = [
+            str(value or "").strip() for value in request.form.getlist("macchina")
+            if str(value or "").strip()
+        ]
+        machine_keys = list(dict.fromkeys(selected_machine_keys))
+        is_machine_shipment = request.form.get("spedizione_macchine") == "1"
+        if is_machine_shipment:
+            if not machine_keys:
+                raise ValueError("Selezionare almeno una macchina.")
+            if len(machine_keys) != len(selected_machine_keys):
+                raise ValueError("La stessa macchina è stata selezionata più volte.")
+            machines = VenditeMacchinaSpedibile.query.filter(
+                VenditeMacchinaSpedibile.matricola_chiave.in_(machine_keys),
+                VenditeMacchinaSpedibile.spedita_il.is_(None),
+            ).all()
+            if len(machines) != len(machine_keys):
+                raise ValueError("Una o più macchine non sono più disponibili.")
+            busy = {
+                item.matricola
+                for item in MovimentoLogisticoMacchina.query.join(MovimentoLogistico)
+                .filter(
+                    MovimentoLogisticoMacchina.matricola.in_(
+                        [machine.matricola for machine in machines]
+                    ),
+                    MovimentoLogistico.completato_il.is_(None),
+                ).all()
+            }
+            if busy:
+                raise ValueError(
+                    "Una o più macchine sono già inserite in una spedizione attesa."
+                )
+            packaging_by_serial = {
+                item.matricola: item.sensori
+                for item in VenditeSensoriMacchina.query.filter(
+                    VenditeSensoriMacchina.matricola.in_(machine_keys)
+                ).all()
+            }
+
+        movimento = "SCARICO" if is_machine_shipment else str(
+            request.form.get("movimento") or ""
+        ).strip().upper()
         if movimento not in {"CARICO", "SCARICO"}:
             raise ValueError("Selezionare carico o scarico.")
 
-        tipologia = str(request.form.get("tipologia") or "").strip().upper()
+        tipologia = "CLIENTE" if is_machine_shipment else str(
+            request.form.get("tipologia") or ""
+        ).strip().upper()
         if tipologia not in {"CLIENTE", "FORNITORE"}:
             raise ValueError("Selezionare cliente o fornitore.")
 
         user_id, username = _actor()
-        db.session.add(
-            MovimentoLogistico(
+        movement = MovimentoLogistico(
                 vettore_id=vettore.id,
                 movimento=movimento,
                 tipologia=tipologia,
-                controparte=_required_text("controparte", "Controparte", 160),
+                controparte=(
+                    "Clienti macchine"
+                    if is_machine_shipment
+                    else _required_text("controparte", "Controparte", 160)
+                ),
                 data=_parse_date(request.form.get("data")),
-                materiale=_required_text("materiale", "Materiale", 300),
+                materiale=(
+                    f"{len(machines)} macchine"
+                    if is_machine_shipment
+                    else _required_text("materiale", "Materiale", 300)
+                ),
+                spedizione_macchine=is_machine_shipment,
                 note=_optional_text("note", 1000),
                 creato_da_id=user_id,
                 creato_da_nome=username,
             )
-        )
+        if is_machine_shipment:
+            movement.macchine = [
+                MovimentoLogisticoMacchina(
+                    matricola=machine.matricola,
+                    modello=machine.modello,
+                    cliente=machine.cliente,
+                    sensori_antiribaltamento=packaging_by_serial.get(
+                        machine.matricola_chiave
+                    ),
+                )
+                for machine in machines
+            ]
+        db.session.add(movement)
 
     return _save(action, "Spedizione aggiunta.")
 
@@ -599,5 +706,13 @@ def logistica_movimento_conferma(movimento_id: int):
         movimento.completato_il = datetime.now()
         movimento.completato_da_id = user_id
         movimento.completato_da_nome = username
+        if movimento.spedizione_macchine:
+            now = _now_rome_dt().isoformat(timespec="seconds")
+            keys = [row.matricola.casefold() for row in movimento.macchine]
+            for machine in VenditeMacchinaSpedibile.query.filter(
+                VenditeMacchinaSpedibile.matricola_chiave.in_(keys),
+                VenditeMacchinaSpedibile.spedita_il.is_(None),
+            ).all():
+                machine.spedita_il = now
 
     return _save(action, "Movimentazione confermata.")

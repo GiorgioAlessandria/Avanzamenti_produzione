@@ -15,4 +15,3 @@ def test_add_workdays_skips_weekend():
 
     assert add_workdays(friday, 1) == date(2026, 7, 13)
     assert add_workdays(friday, 3) == date(2026, 7, 15)
-

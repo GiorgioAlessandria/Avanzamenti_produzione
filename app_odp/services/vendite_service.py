@@ -3,14 +3,20 @@ from types import SimpleNamespace
 
 from sqlalchemy import func, or_, tuple_
 
-from app_odp.models import InputOdp, InputOdpLog, OdpDistintaMancante
+from app_odp.models import (
+    AcqArticoliLookup,
+    AcqMatricolaMacchina,
+    InputOdp,
+    InputOdpLog,
+    OdpDistintaMancante,
+)
 from app_odp.vendite_models import (
     VenditeImballoMacchina,
-    VenditeMacchinaStock,
     VenditeNotaProduzioneMacchina,
     VenditeOpzioneMacchina,
     VenditeOrdineCliente,
     VenditeOrdineClienteRiga,
+    VenditeSensoriMacchina,
 )
 from app_odp.services.order_helpers import (
     _fase_to_int,
@@ -41,6 +47,7 @@ _STATE_ORDER = {
 _STANDARD_STATES = tuple(_STATE_ORDER)
 _TERMINAL_STATES = {"chiusa"}
 _QUERY_BATCH_SIZE = 400
+INVENTORY_DOCUMENT = "MATRICOLA"
 
 
 def _canonical_state(value) -> str:
@@ -54,6 +61,12 @@ def _phase_label(value) -> str:
     if phase_number is not None and phase_number > 0:
         return str(phase_number)
     return _norm_text(value) or "1"
+
+
+def _is_phase_one_planned(state, phase) -> bool:
+    return (
+        _canonical_state(state) == "Pianificata" and _phase_label(phase) == "1"
+    )
 
 
 def _phase_sort_key(value) -> tuple:
@@ -162,30 +175,46 @@ def load_machine_orders(*, include_closed: bool = False) -> list:
     return [order for order in orders if is_open_machine_order(order)]
 
 
-def _stock_machine(stock: VenditeMacchinaStock):
+def _inventory_machine(item, article=None):
     return SimpleNamespace(
-        IdDocumento=stock.odp_id_documento,
-        IdRiga=stock.odp_id_riga,
+        IdDocumento=INVENTORY_DOCUMENT,
+        IdRiga=_norm_text(item.CodMatricola),
         RifRegistraz="STOCK",
         NumProgrRiga="",
-        CodArt=stock.modello_codice,
-        VarianteArt=stock.modello_variante or "",
-        DesArt=stock.modello_descrizione or "",
-        CodMatricola=stock.matricola,
+        CodArt=_norm_text(item.CodArt),
+        VarianteArt="",
+        DesArt=_norm_text(getattr(article, "DesArt", "")),
+        CodMatricola=_norm_text(item.CodMatricola),
+        CodFamiglia=_norm_text(getattr(article, "CodFamiglia", "")),
         GestioneMatricola="si",
         FaseAttiva="2",
         StatoOrdine="Chiusa",
         IsStock=True,
-        StockRecord=stock,
+        IsInventory=True,
     )
 
 
-def load_stock_machine_orders() -> list:
+def load_inventory_machine_orders() -> list:
+    articles = {}
+    for article in AcqArticoliLookup.query.order_by(
+        AcqArticoliLookup.CodArt,
+        AcqArticoliLookup.VarianteArt,
+        AcqArticoliLookup.IndiceModifica,
+    ).all():
+        articles.setdefault(_norm_text(article.CodArt).casefold(), article)
+
     return [
-        _stock_machine(stock)
-        for stock in VenditeMacchinaStock.query.order_by(
-            VenditeMacchinaStock.matricola,
-            VenditeMacchinaStock.id,
+        _inventory_machine(
+            item,
+            articles.get(_norm_text(item.CodArt).casefold()),
+        )
+        for item in AcqMatricolaMacchina.query.filter(
+            func.trim(func.coalesce(AcqMatricolaMacchina.CodMag, "")) == "0",
+            func.trim(func.coalesce(AcqMatricolaMacchina.CodMatricola, "")) != "",
+            func.trim(func.coalesce(AcqMatricolaMacchina.CodArt, "")) != "",
+        ).order_by(
+            AcqMatricolaMacchina.CodArt,
+            AcqMatricolaMacchina.CodMatricola,
         ).all()
     ]
 
@@ -203,6 +232,16 @@ def _packaging_confirmations(serials) -> dict[str, dict[str, str]]:
     }
 
 
+def _machine_tilt_sensors(serials) -> dict[str, str]:
+    keys = {_norm_text(serial).casefold() for serial in serials if _norm_text(serial)}
+    return {
+        item.matricola: item.sensori.replace("\n", ", ")
+        for item in VenditeSensoriMacchina.query.filter(
+            VenditeSensoriMacchina.matricola.in_(keys)
+        ).all()
+    }
+
+
 def _machine_options(serials, viewer=None) -> dict[str, dict]:
     keys = {_norm_text(serial).casefold() for serial in serials if _norm_text(serial)}
     viewer_id = getattr(viewer, "id", None)
@@ -211,6 +250,7 @@ def _machine_options(serials, viewer=None) -> dict[str, dict]:
         item.matricola: {
             "optioned_at": item.opzionata_il,
             "optioned_by_name": item.opzionata_da_nome,
+            "note": item.nota or "",
             "can_remove": (
                 item.opzionata_da_id == viewer_id
                 if item.opzionata_da_id is not None
@@ -293,6 +333,7 @@ def _build_vendite_payload(
     customer_assignments=None,
     production_notes=None,
     packaging_confirmations=None,
+    tilt_sensors=None,
     machine_options=None,
     missing_components=None,
     include_planned: bool = True,
@@ -302,6 +343,7 @@ def _build_vendite_payload(
     customer_assignments = customer_assignments or {}
     production_notes = production_notes or {}
     packaging_confirmations = packaging_confirmations or {}
+    tilt_sensors = tilt_sensors or {}
     machine_options = machine_options or {}
     missing_components = missing_components or {}
     machine_rows = []
@@ -313,13 +355,11 @@ def _build_vendite_payload(
 
     for order in orders:
         state = _canonical_state(getattr(order, "StatoOrdine", ""))
+        phase = _phase_label(getattr(order, "FaseAttiva", ""))
         is_stock = bool(getattr(order, "IsStock", False))
-        if state.casefold() in _TERMINAL_STATES and not is_stock:
-            continue
-        if not include_planned and state == "Pianificata":
+        if not include_planned and _is_phase_one_planned(state, phase):
             continue
 
-        phase = _phase_label(getattr(order, "FaseAttiva", ""))
         model_code = _norm_text(getattr(order, "CodArt", "")) or "Senza modello"
         variant = _norm_text(getattr(order, "VarianteArt", ""))
         description = _norm_text(getattr(order, "DesArt", ""))
@@ -339,9 +379,7 @@ def _build_vendite_payload(
         model_key = (model_code.casefold(), variant.casefold())
         combination = (phase, state)
 
-        if not is_stock:
-            phases.add(phase)
-            states.add(state)
+        if is_stock or state.casefold() not in _TERMINAL_STATES:
             group = model_groups.setdefault(
                 model_key,
                 {
@@ -349,11 +387,17 @@ def _build_vendite_payload(
                     "variant": variant,
                     "description": description,
                     "counts": defaultdict(int),
+                    "stock_count": 0,
                     "total": 0,
                 },
             )
-            group["counts"][combination] += 1
-            group["total"] += 1
+            if is_stock:
+                group["stock_count"] += 1
+            else:
+                phases.add(phase)
+                states.add(state)
+                group["counts"][combination] += 1
+                group["total"] += 1
 
         machine_rows.append(
             {
@@ -394,6 +438,9 @@ def _build_vendite_payload(
                 ),
                 "packaged": packaging is not None,
                 "packaging": packaging,
+                "tilt_sensor_serials": tilt_sensors.get(
+                    serial_number.casefold(), ""
+                ),
                 "option": machine_option,
                 "optioned_at": (machine_option or {}).get("optioned_at", ""),
             }
@@ -403,6 +450,7 @@ def _build_vendite_payload(
         (phase, state)
         for phase in sorted(phases, key=_phase_sort_key)
         for state in sorted(states, key=_state_sort_key)
+        if include_planned or not _is_phase_one_planned(state, phase)
     ]
     columns = [
         {"phase": phase, "state": state}
@@ -439,6 +487,7 @@ def _build_vendite_payload(
         "generated_at": generated_at
         or _now_rome_dt().isoformat(timespec="seconds"),
         "total_machines": sum(group["total"] for group in models),
+        "total_stock": sum(group["stock_count"] for group in models),
         "columns": columns,
         "models": models,
         "machines": machine_rows,
@@ -446,7 +495,7 @@ def _build_vendite_payload(
 
 
 def build_vendite_payload(*, include_planned: bool = True, viewer=None) -> dict:
-    orders = load_stock_machine_orders() + load_machine_orders()
+    orders = load_inventory_machine_orders() + load_machine_orders(include_closed=True)
     unique_orders = []
     seen_serials = set()
     for order in orders:
@@ -474,6 +523,7 @@ def build_vendite_payload(*, include_planned: bool = True, viewer=None) -> dict:
         customer_assignments=_customer_assignments(orders),
         production_notes=production_notes,
         packaging_confirmations=_packaging_confirmations(serials),
+        tilt_sensors=_machine_tilt_sensors(serials),
         machine_options=_machine_options(serials, viewer),
         missing_components=_missing_components_for_orders(order_keys),
         include_planned=include_planned,

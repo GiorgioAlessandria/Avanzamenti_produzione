@@ -5,46 +5,6 @@
 {% block styles %}
     {{ super() }}
     <style>
-        #vendite-assegnazioni-page .vendite-assignment-scroll {
-            max-height: calc(100vh - 330px);
-            min-height: 22rem;
-            overflow: auto;
-        }
-
-        #vendite-assegnazioni-page .vendite-assignment-scroll thead th {
-            position: sticky;
-            top: 0;
-            z-index: 2;
-        }
-
-        #vendite-assegnazioni-page .vendite-model-cell {
-            width: 13rem;
-            min-width: 13rem;
-            max-width: 13rem;
-            white-space: normal;
-        }
-
-        #vendite-assegnazioni-page .vendite-note-cell {
-            min-width: 14rem;
-            white-space: normal;
-        }
-
-        #vendite-assegnazioni-page .vendite-row-note {
-            min-width: 14rem;
-            resize: vertical;
-        }
-
-        #vendite-assegnazioni-page .vendite-assignment-select {
-            width: 20rem;
-            min-width: 20rem;
-        }
-
-        #vendite-assegnazioni-page .vendite-assignment-select option.vendite-machine-assigned {
-            color: #664d03;
-            background-color: #fff3cd;
-            font-weight: 600;
-        }
-
         #vendite-assegnazioni-page .vendite-machines-panel-toggle {
             position: absolute;
             top: 4rem;
@@ -57,24 +17,6 @@
             font-size: 1.5rem;
             line-height: 1;
             border-radius: 0 .4rem .4rem 0;
-        }
-
-        #vendite-assegnazioni-page .vendite-create-order-panel-toggle {
-            position: absolute;
-            top: 0;
-            left: 0;
-            z-index: 3;
-            width: 1.75rem;
-            height: 3rem;
-            padding: 0;
-            transform: translateX(-50%);
-            font-size: 1.5rem;
-            line-height: 1;
-            border-radius: 0 .4rem .4rem 0;
-        }
-
-        #vendite-assegnazioni-page #vendite-create-order-shell {
-            min-height: 3rem;
         }
 
         #vendite-assegnazioni-page .vendite-auto-assignment-dot {
@@ -93,16 +35,6 @@
             outline-offset: -1px;
         }
 
-        #vendite-assegnazioni-page tr.vendite-order-unread > td {
-            color: #664d03 !important;
-            background-color: #fff3cd !important;
-            box-shadow: none !important;
-        }
-
-        #vendite-assegnazioni-page tr.vendite-order-unread .text-muted {
-            color: #806a1e !important;
-        }
-
         #vendite-assegnazioni-page tr.vendite-order-italia > td {
             color: #174c61 !important;
             background-color: #dff3fb !important;
@@ -112,6 +44,11 @@
         #vendite-assegnazioni-page tr.vendite-order-estero > td {
             color: #6d3441 !important;
             background-color: #f9e1e7 !important;
+            box-shadow: none !important;
+        }
+
+        #vendite-assegnazioni-page tr.vendite-order-extracee > td {
+            background-color: #eee5ff !important;
             box-shadow: none !important;
         }
 
@@ -133,6 +70,32 @@
             border-color: #e5abb9;
         }
 
+        #vendite-assegnazioni-page tr.vendite-order-extracee .form-control,
+        #vendite-assegnazioni-page tr.vendite-order-extracee .form-select {
+            background-color: #f6f1ff;
+        }
+
+        #vendite-assegnazioni-page tr.vendite-order-unread > td {
+            background-color: #fff3cd !important;
+            box-shadow: none !important;
+        }
+
+        #vendite-assegnazioni-page [data-customer-row-id] :is(.form-control, .form-select),
+        #vendite-assegnazioni-page [data-customer-row-id] :is(td, .text-muted, .btn:not([data-save-row])) {
+            color: #000 !important;
+            border-color: #000 !important;
+        }
+
+        #vendite-assegnazioni-page [data-customer-row-id] .vendite-field-modified {
+            background-color: #ffd9a8 !important;
+            border: 2px solid #dc3545 !important;
+        }
+
+        #vendite-assegnazioni-page [data-customer-row-id] .text-danger,
+        #vendite-assegnazioni-page [data-customer-row-id] .text-danger * {
+            color: var(--bs-danger) !important;
+        }
+
         #vendite-assegnazioni-page tr.vendite-machine-completed > td {
             color: #0f5132 !important;
             background-color: #d1e7dd !important;
@@ -150,12 +113,6 @@
             border-color: #75b798;
         }
 
-        @media (max-width: 1199.98px) {
-            #vendite-assegnazioni-page .vendite-assignment-scroll {
-                max-height: 36rem;
-                min-height: 0;
-            }
-        }
     </style>
 {% endblock %}
 
@@ -175,16 +132,6 @@
           data-can-delete-orders="{{ 'true' if can_create_customer_orders else 'false' }}"
           data-can-edit-order-details="{{ 'true' if can_create_customer_orders else 'false' }}"
           data-can-confirm-order-read="{{ 'true' if can_confirm_order_read else 'false' }}">
-        <div class="d-flex flex-wrap justify-content-end align-items-start gap-3 mb-3">
-            <div class="d-flex flex-wrap gap-2">
-                <button class="btn btn-outline-secondary btn-sm"
-                        type="button"
-                        id="vendite-assignments-refresh">
-                    Aggiorna ora
-                </button>
-            </div>
-        </div>
-
         <div class="alert d-none"
              id="vendite-assignments-alert"
              role="alert"></div>
@@ -209,6 +156,12 @@
                 <a class="nav-link"
                    href="{{ operator_url_for('main.vendite_page', vista='matricola') }}">
                     Situazione produzione per matricola
+                </a>
+            </li>
+            <li class="nav-item" role="presentation">
+                <a class="nav-link"
+                   href="{{ operator_url_for('main.vendite_localizzazione_page') }}">
+                    Localizzazione ordini
                 </a>
             </li>
             {% if can_view_packaging_notes %}
@@ -243,18 +196,9 @@
                  role="tabpanel"
                  aria-labelledby="vendite-orders-tab-button">
 
-                <div class="position-relative mb-3{% if not can_create_customer_orders %} d-none{% endif %}"
+                <div{% if not can_create_customer_orders %} class="d-none"{% endif %}
                      id="vendite-create-order-shell">
-                    <button class="btn btn-light border vendite-create-order-panel-toggle"
-                            type="button"
-                            id="vendite-create-order-panel-toggle"
-                            aria-expanded="false"
-                            aria-controls="vendite-create-order-panel"
-                            aria-label="Mostra nuovo ordine cliente"
-                            title="Mostra nuovo ordine cliente">
-                        <span aria-hidden="true">›</span>
-                    </button>
-                    <section class="card shadow-sm d-none"
+                    <section class="card shadow-sm d-none mb-3"
                              id="vendite-create-order-panel">
                         <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
                             <div>
@@ -305,7 +249,7 @@
                                 </div>
 
                                 <div class="table-responsive">
-                                    <table class="table table-bordered align-middle mb-0">
+                                    <table class="table table-bordered align-middle mb-0 vendite-fit-table">
                                         <thead class="table-light">
                                         <tr>
                                             <th scope="col"
@@ -361,7 +305,26 @@
                          aria-live="polite">
                         Caricamento...
                     </div>
-                    <div class="small text-muted">Aggiornamento automatico ogni 5 secondi</div>
+                    <div class="d-flex flex-wrap align-items-center gap-2">
+                        {% if can_create_customer_orders %}
+                            <button class="btn btn-outline-primary btn-sm d-inline-flex align-items-center gap-1"
+                                    type="button"
+                                    id="vendite-create-order-panel-toggle"
+                                    aria-expanded="false"
+                                    aria-controls="vendite-create-order-panel"
+                                    aria-label="Mostra nuovo ordine cliente"
+                                    title="Mostra nuovo ordine cliente">
+                                <span aria-hidden="true">›</span>
+                                <span>Nuovo ordine manuale</span>
+                            </button>
+                        {% endif %}
+                        <button class="btn btn-outline-secondary btn-sm"
+                                type="button"
+                                id="vendite-assignments-refresh">
+                            Aggiorna ora
+                        </button>
+                        <div class="small text-muted">Aggiornamento automatico ogni 5 secondi</div>
+                    </div>
                 </div>
 
                 <div class="row g-3">
@@ -386,13 +349,15 @@
                                        autocomplete="off">
                             </div>
                             <div class="table-responsive vendite-assignment-scroll">
-                                <table class="table table-sm table-hover align-middle small mb-0">
+                                <table class="table table-sm table-hover align-middle small mb-0 vendite-data-table"
+                                       id="vendite-available-machines-table">
                                     <thead class="table-light">
                                     <tr>
                                         <th>Modello</th>
                                         <th>Matricola</th>
                                         <th>Ordine</th>
                                         <th>Fase / stato</th>
+                                        <th>Note di produzione</th>
                                     </tr>
                                     </thead>
                                     <tbody id="vendite-machines-body">
@@ -420,10 +385,28 @@
                             <span aria-hidden="true">›</span>
                         </button>
                         <div class="card shadow-sm h-100">
-                            <div class="card-header">
-                                <div class="fw-semibold">Righe ordini cliente</div>
-                                <div class="small text-muted">
-                                    Ogni riga corrisponde a una singola macchina richiesta
+                            <div class="card-header d-flex flex-wrap justify-content-between align-items-start gap-2">
+                                <div>
+                                    <div class="fw-semibold">Righe ordini cliente</div>
+                                    <div class="small text-muted">
+                                        Ogni riga corrisponde a una singola macchina richiesta.
+                                        <span id="vendite-customer-grouping-description">Gli ordini sono suddivisi usando i raggruppamenti per famiglia configurati nella situazione per matricola.</span>
+                                    </div>
+                                    <div class="small d-flex flex-wrap gap-2 mt-1" aria-label="Legenda colori ordini">
+                                        <span class="badge border text-dark" style="background:#dff3fb">ITALIA</span>
+                                        <span class="badge border text-dark" style="background:#f9e1e7">ESTERO</span>
+                                        <span class="badge border text-dark" style="background:#eee5ff">EXTRACEE</span>
+                                        <span class="badge border text-dark" style="background:#fff3cd">Lettura da confermare</span>
+                                        <span class="badge border border-danger text-dark" style="background:#ffd9a8">Campo modificato</span>
+                                        <span class="badge border text-dark" style="background:#d1e7dd">Macchina imballata</span>
+                                    </div>
+                                </div>
+                                <div class="form-check form-switch mb-0">
+                                    <input class="form-check-input" type="checkbox"
+                                           role="switch" id="vendite-group-by-customer">
+                                    <label class="form-check-label" for="vendite-group-by-customer">
+                                        Raggruppa per cliente
+                                    </label>
                                 </div>
                             </div>
                             <div class="card-body py-2 border-bottom">
@@ -438,7 +421,8 @@
                                        autocomplete="off">
                             </div>
                             <div class="table-responsive vendite-assignment-scroll">
-                                <table class="table table-sm table-hover align-middle mb-0">
+                                <table class="table table-sm table-hover align-middle mb-0 vendite-data-table"
+                                       id="vendite-customer-orders-table">
                                     <thead class="table-light">
                                     <tr>
                                         <th>#</th>
@@ -480,8 +464,9 @@
                                 La nota viene proposta sulle righe degli ordini e resta modificabile.
                             </div>
                         </div>
-                        <div class="table-responsive">
-                            <table class="table table-bordered align-middle mb-0">
+                        <div class="table-responsive vendite-packaging-scroll">
+                            <table class="table table-bordered align-middle mb-0 vendite-data-table"
+                                   id="vendite-packaging-notes-table">
                                 <thead class="table-light">
                                 <tr>
                                     <th style="width: 12rem;">Riferimento</th>
@@ -592,6 +577,8 @@
             const machinesPanelToggle = document.getElementById("vendite-machines-panel-toggle");
             const machineFilter = document.getElementById("vendite-machine-filter");
             const demandFilter = document.getElementById("vendite-demand-filter");
+            const groupByCustomerToggle = document.getElementById("vendite-group-by-customer");
+            const groupingDescription = document.getElementById("vendite-customer-grouping-description");
             const packagingNotesBody = document.getElementById("vendite-packaging-notes-body");
             const savePackagingNotesButton = document.getElementById("vendite-save-packaging-notes");
             const canAssignMachines = page.dataset.canAssignMachines === "true";
@@ -604,6 +591,9 @@
             let models = [];
             let machines = [];
             let assignmentMachines = [];
+            let currentGrouping = {groups: [], families: []};
+            let currentCustomerOrders = [];
+            let groupCustomerOrders = false;
             let formDirty = false;
             let loadInFlight = false;
             let mutationInFlight = false;
@@ -612,6 +602,7 @@
             const dirtyDates = new Set();
             const dirtyOrderDetails = new Set();
             const collapsedOrders = new Set();
+            const collapsedCustomerGroups = new Set();
             let packagingNotesDirty = false;
 
             function esc(value) {
@@ -706,13 +697,15 @@
             }
 
             function referenceClass(reference) {
-                return String(reference || "ITALIA").toUpperCase() === "ITALIA"
-                    ? "vendite-order-italia"
-                    : "vendite-order-estero";
+                return `vendite-order-${String(reference || "ITALIA").toLowerCase()}`;
             }
 
             function orderDetails(order) {
                 const reference = String(order.internal_reference || "ITALIA").toUpperCase();
+                if (order.managed) {
+                    return `<span class="badge text-bg-primary">Gestionale · ${esc(order.customer_code)}</span>
+                            <span class="badge text-bg-light border">${esc(reference)}</span>`;
+                }
                 return canEditOrderDetails
                     ? `
                         <label class="visually-hidden" for="vendite-order-reference-${esc(order.id)}">
@@ -895,14 +888,14 @@
                         && String(machine.assigned_row_id) !== String(row.id)
                     );
                     const label = assignedElsewhere
-                        ? `⚠ ${machineOptionLabel(machine)} · Ordine: ${machine.assigned_customer_order || "-"}`
+                        ? `⚠ ${machineOptionLabel(machine)} · Cliente: ${machine.assigned_customer_name || "-"}`
                         : machineOptionLabel(machine);
                     options.push(`
                         <option value="${esc(identity)}"
                                 class="${assignedElsewhere ? "vendite-machine-assigned" : ""}"
                                 data-id-documento="${esc(machine.id_documento)}"
                                 data-id-riga="${esc(machine.id_riga)}"
-                                data-assigned-customer-order="${esc(machine.assigned_customer_order || "")}"
+                                data-assigned-customer-name="${esc(machine.assigned_customer_name || "")}"
                                 title="${esc(label)}"
                                 ${identity === currentIdentity ? "selected" : ""}>
                             ${esc(label)}
@@ -922,7 +915,7 @@
                 return `
                     <div class="d-flex align-items-start gap-2">
                         ${automaticMarker}
-                        <select class="form-select form-select-sm vendite-assignment-select"
+                        <select class="form-select form-select-sm vendite-assignment-select${(row.modified_fields || []).includes("assignment") ? " vendite-field-modified" : ""}"
                                 data-assignment-row-id="${esc(row.id)}"
                                 data-version="${esc(row.version)}"
                                 data-original-value="${esc(currentIdentity)}"
@@ -938,10 +931,12 @@
             }
 
             function noteTextarea(row, field, label, editable) {
+                const modified = (row.modified_fields || []).includes(field);
                 return `
-                    <textarea class="form-control form-control-sm vendite-row-note"
+                    <textarea class="form-control form-control-sm vendite-row-note${modified ? " vendite-field-modified" : ""}"
                               data-note-row-id="${esc(row.id)}"
                               data-note-field="${esc(field)}"
+                              data-original-value="${esc(row[field] || "")}"
                               maxlength="1000"
                               rows="2"
                               aria-label="${esc(label)} riga ${esc(row.position)}"
@@ -949,8 +944,9 @@
             }
 
             function dateInput(row, field, label, editable) {
+                const modified = (row.modified_fields || []).includes(field);
                 return `
-                    <input class="form-control form-control-sm"
+                    <input class="form-control form-control-sm${modified ? " vendite-field-modified" : ""}"
                            data-date-row-id="${esc(row.id)}"
                            data-date-field="${esc(field)}"
                            data-original-value="${esc(row[field] || "")}"
@@ -1045,6 +1041,7 @@
                         machine.phase,
                         window.phaseLabel(machine.phase),
                         machine.state,
+                        machine.production_note,
                     ].join(" ").toLocaleLowerCase("it");
                     return `
                         <tr data-machine-search="${esc(search)}">
@@ -1055,9 +1052,68 @@
                                 <div>${esc(window.phaseLabel(machine.phase))}</div>
                                 ${stateBadge(machine.state)}
                             </td>
+                            <td class="vendite-note-cell" style="white-space: pre-wrap">${esc(machine.production_note || "—")}</td>
                         </tr>`;
                 }).join("");
                 applyMachineFilter();
+            }
+
+            function customerOrderSections(customerOrders, groups) {
+                if (groupCustomerOrders) {
+                    const customers = new Map();
+                    customerOrders.forEach(order => {
+                        const identity = String(order.customer_name || "")
+                            .trim().toLocaleLowerCase("it");
+                        const section = customers.get(identity) || {
+                            key: `customer-${identity}`,
+                            name: order.customer_name || "Cliente non indicato",
+                            orders: [],
+                        };
+                        section.orders.push(order);
+                        customers.set(identity, section);
+                    });
+                    return [...customers.values()];
+                }
+                if (!groups.length) {
+                    return [{key: "all", name: null, orders: customerOrders}];
+                }
+
+                const claimedRows = new Set();
+                const groupedFamilies = new Set(groups.flatMap(group => (
+                    group.family_codes || []
+                )).map(String));
+                const makeOrders = predicate => customerOrders.flatMap(order => {
+                    const rows = (order.rows || []).filter(row => {
+                        const rowKey = String(row.id);
+                        if (claimedRows.has(rowKey) || !predicate(row)) return false;
+                        claimedRows.add(rowKey);
+                        return true;
+                    });
+                    if (!rows.length) return [];
+                    return [{
+                        ...order,
+                        rows,
+                        total_rows: rows.length,
+                        assigned_rows: rows.filter(row => row.assignment).length,
+                        packaged_rows: rows.filter(row => row.packaged).length,
+                        packaged: rows.every(row => row.packaged),
+                    }];
+                });
+
+                const sections = groups.map(group => {
+                    const families = new Set((group.family_codes || []).map(String));
+                    return {
+                        key: `group-${group.id}`,
+                        name: group.name,
+                        orders: makeOrders(row => families.has(String(row.family_code || ""))),
+                    };
+                });
+                sections.push({
+                    key: "ungrouped",
+                    name: "Senza raggruppamento",
+                    orders: makeOrders(row => !groupedFamilies.has(String(row.family_code || ""))),
+                });
+                return sections;
             }
 
             function renderCustomerOrders(customerOrders) {
@@ -1072,21 +1128,44 @@
                 }
 
                 const html = [];
-                customerOrders.forEach(order => {
+                const groups = Array.isArray(currentGrouping.groups)
+                    ? currentGrouping.groups
+                    : [];
+                const renderedHeadings = new Set();
+                customerOrderSections(customerOrders, groups).forEach(section => {
+                    if (section.name !== null) {
+                        const expanded = !collapsedCustomerGroups.has(section.key);
+                        html.push(`
+                            <tr class="table-secondary" data-customer-group-heading
+                                data-customer-group-key="${esc(section.key)}">
+                                <th colspan="10" scope="rowgroup" class="fw-semibold">
+                                    <button type="button" class="btn text-start fw-semibold w-100 p-0"
+                                            data-toggle-customer-group="${esc(section.key)}"
+                                            aria-expanded="${expanded}"
+                                            aria-label="${expanded ? "Riduci" : "Espandi"} raggruppamento ${esc(section.name)}">
+                                        <span aria-hidden="true">${expanded ? "▾" : "▸"}</span>
+                                        ${esc(section.name)} (${section.orders.reduce((count, order) => count + order.rows.length, 0)})
+                                    </button>
+                                </th>
+                            </tr>`);
+                    }
+                    section.orders.forEach(order => {
+                    const primaryHeading = !renderedHeadings.has(String(order.id));
+                    renderedHeadings.add(String(order.id));
                     const neutralClass = referenceClass(order.internal_reference);
                     const orderClass = !order.read_confirmed
                         ? "vendite-order-unread"
                         : order.packaged
                             ? "vendite-machine-completed"
                             : neutralClass;
-                    const confirmButton = canConfirmOrderRead && !order.read_confirmed
+                    const confirmButton = primaryHeading && canConfirmOrderRead && !order.read_confirmed
                         ? `<button class="btn btn-sm btn-warning text-nowrap"
                                    type="button"
                                    data-confirm-order-read="${esc(order.id)}">
                                Conferma lettura
                            </button>`
                         : "";
-                    const deleteButton = canDeleteOrders
+                    const deleteButton = primaryHeading && !order.managed && canDeleteOrders
                         ? `<button class="btn btn-sm btn-outline-danger text-nowrap"
                                    type="button"
                                    data-delete-customer-order="${esc(order.id)}"
@@ -1101,24 +1180,31 @@
                         order.internal_reference,
                         order.created_by_name,
                     ].join(" ").toLocaleLowerCase("it");
-                    const rowsExpanded = !collapsedOrders.has(String(order.id));
+                    const collapseKey = `${section.key}:${order.id}`;
+                    const rowsExpanded = !collapsedOrders.has(collapseKey);
+                    const details = primaryHeading
+                        ? orderDetails(order)
+                        : `<span class="badge text-bg-light border">${esc(
+                            order.internal_reference || "ITALIA"
+                        )}</span>`;
                     html.push(`
                         <tr class="${orderClass} vendite-customer-heading"
                             data-demand-search="${esc(orderSearch)}"
                             data-customer-order-id="${esc(order.id)}"
+                            data-collapse-key="${esc(collapseKey)}"
                             data-reference-class="${neutralClass}">
                             <td colspan="10">
                                 <div class="d-flex flex-wrap justify-content-between gap-2">
                                     <div class="d-flex flex-wrap align-items-center gap-2">
                                         <button class="btn btn-sm btn-outline-secondary"
                                                 type="button"
-                                                data-toggle-order-rows="${esc(order.id)}"
+                                                data-toggle-order-rows="${esc(collapseKey)}"
                                                 aria-expanded="${rowsExpanded}"
                                                 aria-label="${rowsExpanded ? "Chiudi" : "Apri"} righe ordine">
                                             <span aria-hidden="true">${rowsExpanded ? "▾" : "▸"}</span>
                                         </button>
                                         <span class="fw-semibold">${esc(order.customer_name)}</span>
-                                        ${orderDetails(order)}
+                                        ${details}
                                         <span class="text-muted"> · Ordine ${esc(order.customer_order)}</span>
                                     </div>
                                     <div class="d-flex flex-wrap align-items-center gap-2">
@@ -1147,7 +1233,7 @@
                             row.commercial_note,
                             row.production_note,
                             ...(row.missing_components || []).map(component => [
-                                component.code, component.variant, component.description,
+                                component.code, component.description,
                             ].filter(Boolean).join(" ")),
                             row.production_instructions,
                             row.shipping_note,
@@ -1164,12 +1250,14 @@
                             <tr class="${rowClass}"
                                 data-demand-search="${esc(search)}"
                                 data-customer-order-id="${esc(order.id)}"
+                                data-collapse-key="${esc(collapseKey)}"
                                 data-reference-class="${neutralClass}"
                                 data-customer-row-id="${esc(row.id)}"
+                                data-managed="${order.managed ? "true" : "false"}"
                                 data-version="${esc(row.version)}">
                                 <td class="fw-semibold">${esc(row.position)}</td>
-                                <td class="vendite-model-cell">${modelLabel(row)}</td>
-                                <td>${dateInput(row, "delivery_date", "Data di spedizione", canEditSalesNotes)}</td>
+                                <td class="vendite-model-cell${(row.modified_fields || []).includes("model") ? " vendite-field-modified" : ""}">${modelLabel(row)}</td>
+                                <td>${dateInput(row, "delivery_date", "Data di spedizione", !order.managed && canEditSalesNotes)}</td>
                                 <td class="vendite-note-cell">
                                     ${noteTextarea(row, "sales_note", "Note di vendita", canEditSalesNotes)}
                                 </td>
@@ -1182,7 +1270,7 @@
                                         <div class="text-danger mb-1">
                                             <strong>Materiali mancanti:</strong>
                                             <ul class="mb-0 ps-3">${row.missing_components.map(component => `
-                                                <li>${esc([component.code, component.variant, component.description].filter(Boolean).join(" — "))}</li>
+                                                <li><strong>${esc(component.code)} — ${esc(component.description)}</strong></li>
                                             `).join("")}</ul>
                                         </div>` : ""}
                                     <div style="white-space: pre-wrap">${esc(row.production_note || ((row.missing_components || []).length ? "" : "—"))}</div>
@@ -1196,6 +1284,7 @@
                                 <td>${rowActions(row)}</td>
                             </tr>`);
                     });
+                    });
                 });
 
                 customerOrdersBody.innerHTML = html.join("");
@@ -1207,6 +1296,10 @@
             }
 
             function render(data) {
+                currentGrouping = data.grouping || {groups: [], families: []};
+                currentCustomerOrders = Array.isArray(data.customer_orders)
+                    ? data.customer_orders
+                    : [];
                 models = Array.isArray(data.models) ? data.models : [];
                 machines = Array.isArray(data.machines) ? data.machines : [];
                 assignmentMachines = Array.isArray(data.assignment_machines)
@@ -1214,7 +1307,7 @@
                     : machines;
                 refreshCreateModelOptions();
                 renderMachines();
-                renderCustomerOrders(Array.isArray(data.customer_orders) ? data.customer_orders : []);
+                renderCustomerOrders(currentCustomerOrders);
                 renderPackagingNotes(Array.isArray(data.packaging_notes) ? data.packaging_notes : []);
                 statusBox.textContent = `Ultimo aggiornamento: ${formatDateTime(data.generated_at)}`;
             }
@@ -1237,9 +1330,7 @@
                     const anyRowMatches = currentOrderRows.some(row => (
                         !query || row.dataset.demandSearch.includes(query)
                     ));
-                    const collapsed = collapsedOrders.has(
-                        String(currentHeading.dataset.customerOrderId)
-                    );
+                    const collapsed = collapsedOrders.has(currentHeading.dataset.collapseKey);
                     currentHeading.hidden = !headingMatches && !anyRowMatches;
                     currentOrderRows.forEach(row => {
                         row.hidden = collapsed || (
@@ -1260,6 +1351,21 @@
                     }
                 });
                 flushOrder();
+
+                customerOrdersBody.querySelectorAll("[data-customer-group-heading]").forEach(heading => {
+                    const rows = [];
+                    let row = heading.nextElementSibling;
+                    let hasVisibleContent = false;
+                    while (row && !row.hasAttribute("data-customer-group-heading")) {
+                        rows.push(row);
+                        hasVisibleContent ||= !row.hidden;
+                        row = row.nextElementSibling;
+                    }
+                    heading.hidden = !hasVisibleContent;
+                    if (collapsedCustomerGroups.has(heading.dataset.customerGroupKey)) {
+                        rows.forEach(item => { item.hidden = true; });
+                    }
+                });
             }
 
             function hasFocusedEditor() {
@@ -1419,10 +1525,11 @@
                 const payload = rowNotesPayload(rowId) || {
                     version: Number(row.dataset.version),
                 };
+                const managed = row.dataset.managed === "true";
                 const dateValue = field => row.querySelector(
                     `[data-date-field="${CSS.escape(field)}"]`
                 )?.value || "";
-                if (canEditSalesNotes) {
+                if (!managed && canEditSalesNotes) {
                     payload.delivery_date = dateValue("delivery_date");
                 }
                 const select = row.querySelector("[data-assignment-row-id]");
@@ -1678,13 +1785,25 @@
             });
             createForm.addEventListener("submit", createCustomerOrder);
 
+            function markRowPending(field) {
+                const changed = field.value !== field.dataset.originalValue;
+                field.classList.toggle("vendite-field-modified", changed);
+                if (changed) {
+                    field.closest("[data-customer-row-id]")?.classList.add("vendite-order-unread");
+                }
+            }
+
             customerOrdersBody.addEventListener("input", event => {
                 const note = event.target.closest("[data-note-row-id]");
-                if (note) dirtyNotes.add(String(note.dataset.noteRowId));
+                if (note) {
+                    dirtyNotes.add(String(note.dataset.noteRowId));
+                    markRowPending(note);
+                }
             });
             customerOrdersBody.addEventListener("change", event => {
                 const dateField = event.target.closest("[data-date-row-id]");
                 if (dateField) {
+                    markRowPending(dateField);
                     const rowId = String(dateField.dataset.dateRowId);
                     const fields = customerOrdersBody.querySelectorAll(
                         `[data-date-row-id="${CSS.escape(rowId)}"]`
@@ -1714,6 +1833,7 @@
                 }
                 const select = event.target.closest("[data-assignment-row-id]");
                 if (!select) return;
+                markRowPending(select);
                 const rowId = String(select.dataset.assignmentRowId);
                 if (select.value === select.dataset.originalValue) {
                     dirtyAssignments.delete(rowId);
@@ -1722,6 +1842,24 @@
                 }
             });
             customerOrdersBody.addEventListener("click", event => {
+                const groupButton = event.target.closest("[data-toggle-customer-group]");
+                if (groupButton) {
+                    const groupKey = groupButton.dataset.toggleCustomerGroup;
+                    if (collapsedCustomerGroups.has(groupKey)) {
+                        collapsedCustomerGroups.delete(groupKey);
+                    } else {
+                        collapsedCustomerGroups.add(groupKey);
+                    }
+                    const expanded = !collapsedCustomerGroups.has(groupKey);
+                    groupButton.setAttribute("aria-expanded", String(expanded));
+                    groupButton.setAttribute(
+                        "aria-label",
+                        `${expanded ? "Riduci" : "Espandi"} raggruppamento`
+                    );
+                    groupButton.querySelector("span").textContent = expanded ? "▾" : "▸";
+                    applyDemandFilter();
+                    return;
+                }
                 const toggleButton = event.target.closest("[data-toggle-order-rows]");
                 if (toggleButton) {
                     const orderId = String(toggleButton.dataset.toggleOrderRows);
@@ -1770,12 +1908,19 @@
 
             machineFilter.addEventListener("input", applyMachineFilter);
             demandFilter.addEventListener("input", applyDemandFilter);
+            groupByCustomerToggle.addEventListener("change", () => {
+                groupCustomerOrders = groupByCustomerToggle.checked;
+                groupingDescription.textContent = groupCustomerOrders
+                    ? "Gli ordini sono suddivisi per cliente."
+                    : "Gli ordini sono suddivisi usando i raggruppamenti per famiglia configurati nella situazione per matricola.";
+                renderCustomerOrders(currentCustomerOrders);
+            });
             machinesPanelToggle.addEventListener("click", () => {
                 setMachinesPanelExpanded(
                     machinesPanelToggle.getAttribute("aria-expanded") !== "true"
                 );
             });
-            createOrderPanelToggle.addEventListener("click", () => {
+            createOrderPanelToggle?.addEventListener("click", () => {
                 setCreateOrderPanelExpanded(
                     createOrderPanelToggle.getAttribute("aria-expanded") !== "true"
                 );

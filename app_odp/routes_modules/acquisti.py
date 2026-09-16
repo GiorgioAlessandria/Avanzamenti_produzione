@@ -2,14 +2,26 @@
 
 from io import BytesIO
 
-from flask import abort, jsonify, render_template, request, send_file
+from flask import (
+    abort,
+    current_app,
+    flash,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    send_file,
+    url_for,
+)
 
 from app_odp.routes_blueprint import main_bp
 from app_odp.services.order_helpers import _norm_text, _now_rome_dt, _parse_bool_flag
 
 from app_odp.services.acquisti_service import (
     _build_acquisti_giacenze_rows,
+    _build_acquisti_calendar_events,
     _build_acquisti_materiale_rows,
+    _build_acquisti_ordini_fornitore_rows,
     _build_acquisti_ordini_rows,
     _build_acquisti_scorte_rows,
     _filter_acquisti_giacenze_rows,
@@ -19,8 +31,14 @@ from app_odp.services.acquisti_service import (
     _create_scorta_from_qrcode,
     _scorta_to_row,
     _delete_scorte_chiuse_oltre_7_giorni,
+    _group_acquisti_ordini_fornitore_rows,
 )
-from app_odp.models import db, AcqScortaSegnalata
+from app_odp.models import (
+    AcqOrdineFornitoreAperto,
+    AcqOrdineFornitoreMeta,
+    AcqScortaSegnalata,
+    db,
+)
 from app_odp.operator_session import active_policy, active_user
 from app_odp.policy.decorator import require_active_perm
 
@@ -43,6 +61,90 @@ def home_acquisti():
         ordini_rows=ordini_rows,
         scorte_rows=scorte_rows,
     )
+
+
+@main_bp.get("/acquisti/ordini-fornitore")
+@require_active_perm("home_acquisti")
+def acquisti_ordini_fornitore():
+    rows = _build_acquisti_ordini_fornitore_rows()
+    groups = _group_acquisti_ordini_fornitore_rows(rows)
+    return render_template(
+        "acquisti_ordini_fornitore.j2",
+        rows=rows,
+        groups=groups,
+        calendar_events=_build_acquisti_calendar_events(groups),
+    )
+
+
+@main_bp.post("/acquisti/ordini-fornitore")
+@require_active_perm("home_acquisti")
+def acquisti_ordine_fornitore_update():
+    wants_json = (
+        request.headers.get("X-Requested-With") == "XMLHttpRequest"
+        or request.accept_mimetypes.best == "application/json"
+    )
+    id_documento = _norm_text(request.form.get("id_documento"))
+    id_riga = _norm_text(request.form.get("id_riga"))
+    action = _norm_text(request.form.get("action")).lower()
+    note = _norm_text(request.form.get("note"))
+
+    if not id_documento or not id_riga or len(note) > 2000:
+        if wants_json:
+            return jsonify({"ok": False, "error": "Dati dell'ordine non validi."}), 400
+        abort(400)
+    if db.session.get(AcqOrdineFornitoreAperto, (id_documento, id_riga)) is None:
+        if wants_json:
+            return jsonify({"ok": False, "error": "Riga ordine non più disponibile."}), 404
+        abort(404)
+
+    row = db.session.get(AcqOrdineFornitoreMeta, (id_documento, id_riga))
+    if row is None:
+        row = AcqOrdineFornitoreMeta(
+            IdDocumento=id_documento,
+            IdRigaDoc=id_riga,
+        )
+        db.session.add(row)
+    row.Note = note
+
+    if action == "sollecita":
+        row.Sollecitato = not bool(row.Sollecitato)
+        row.SollecitatoAt = (
+            _now_rome_dt().isoformat(timespec="seconds")
+            if row.Sollecitato
+            else None
+        )
+        message = (
+            "Ordine segnato come sollecitato."
+            if row.Sollecitato
+            else "Sollecito rimosso."
+        )
+    elif action == "note":
+        message = "Note salvate."
+    else:
+        abort(400)
+
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("Errore aggiornamento ordine fornitore")
+        if wants_json:
+            return jsonify({"ok": False, "error": "Errore durante il salvataggio."}), 500
+        flash("Errore durante il salvataggio.", "danger")
+    else:
+        if wants_json:
+            return jsonify(
+                {
+                    "ok": True,
+                    "message": message,
+                    "stato": "Sollecitato" if row.Sollecitato else "Aperto",
+                    "sollecitato": bool(row.Sollecitato),
+                    "sollecitato_at": row.SollecitatoAt or "",
+                    "id_documento": id_documento,
+                }
+            )
+        flash(message, "success")
+    return redirect(url_for("main.acquisti_ordini_fornitore"))
 
 
 @main_bp.get("/api/acquisti/export/<section>")

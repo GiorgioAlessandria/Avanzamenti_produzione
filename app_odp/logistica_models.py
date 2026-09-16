@@ -42,6 +42,7 @@ class MovimentoLogistico(db.Model):
     controparte = db.Column(db.String(160), nullable=False)
     data = db.Column(db.Date, nullable=False, index=True)
     materiale = db.Column(db.String(300), nullable=False)
+    spedizione_macchine = db.Column(db.Boolean, nullable=False, default=False)
     note = db.Column(db.String(1000), nullable=True)
     sollecitato_il = db.Column(db.DateTime, nullable=True)
     completato_il = db.Column(db.DateTime, nullable=True, index=True)
@@ -60,6 +61,12 @@ class MovimentoLogistico(db.Model):
         back_populates="movimenti",
         lazy="joined",
     )
+    macchine = db.relationship(
+        "MovimentoLogisticoMacchina",
+        back_populates="movimento_logistico",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
 
     __table_args__ = (
         db.CheckConstraint(
@@ -69,6 +76,36 @@ class MovimentoLogistico(db.Model):
         db.CheckConstraint(
             "tipologia IN ('CLIENTE', 'FORNITORE')",
             name="ck_movimenti_tipologia",
+        ),
+    )
+
+
+class MovimentoLogisticoMacchina(db.Model):
+    __bind_key__ = LOGISTICA_BIND_KEY
+    __tablename__ = "movimenti_macchine"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    movimento_id = db.Column(
+        db.Integer,
+        db.ForeignKey("movimenti.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    matricola = db.Column(db.String(200), nullable=False, index=True)
+    modello = db.Column(db.String(160), nullable=False)
+    cliente = db.Column(db.String(160), nullable=False)
+    sensori_antiribaltamento = db.Column(db.String(1000), nullable=True)
+
+    movimento_logistico = db.relationship(
+        "MovimentoLogistico",
+        back_populates="macchine",
+    )
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "movimento_id",
+            "matricola",
+            name="uq_movimenti_macchine_matricola",
         ),
     )
 

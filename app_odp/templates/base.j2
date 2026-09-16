@@ -214,15 +214,14 @@
                             Benvenut{{ genere }} {{ visible_user.username }}
                         {% endif %}
                     </h1>
-
-                    {% if can_show_cambia_pagina %}
-                        {{ cambia_pagina_dropdown(area_switch_items, home_switch_items) }}
-                    {% endif %}
                 {% endif %}
             </div>
             <div class="d-flex w-auto flex-shrink-0 flex-nowrap justify-content-end align-items-center"
                  style="width: auto; height: auto;">
                 <div class="d-flex flex-nowrap flex-shrink-0 align-items-center gap-1 me-0">
+                    {% if can_show_cambia_pagina %}
+                        {{ cambia_pagina_dropdown(area_switch_items, home_switch_items) }}
+                    {% endif %}
                     <button class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-2 text-nowrap"
                             type="button"
                             data-bs-toggle="modal"
@@ -2623,8 +2622,8 @@
                         showFeedback("Seleziona esattamente 2 ordini con tempo condiviso.");
                         return;
                     }
-                    if (maskIndexes.length < 1 || maskIndexes.length > 2) {
-                        showFeedback("Seleziona da 1 a 2 ordini mascherati.");
+                    if (maskIndexes.length < 1 || maskIndexes.length > 3) {
+                        showFeedback("Seleziona da 1 a 3 ordini mascherati.");
                         return;
                     }
                     if (maskIndexes.some(index => sharedIndexes.includes(index))) {
