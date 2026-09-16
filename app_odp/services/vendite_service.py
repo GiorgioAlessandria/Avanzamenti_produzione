@@ -366,9 +366,7 @@ def _build_vendite_payload(
         model_key = (model_code.casefold(), variant.casefold())
         combination = (phase, state)
 
-        if not is_stock and state.casefold() not in _TERMINAL_STATES:
-            phases.add(phase)
-            states.add(state)
+        if is_stock or state.casefold() not in _TERMINAL_STATES:
             group = model_groups.setdefault(
                 model_key,
                 {
@@ -376,11 +374,17 @@ def _build_vendite_payload(
                     "variant": variant,
                     "description": description,
                     "counts": defaultdict(int),
+                    "stock_count": 0,
                     "total": 0,
                 },
             )
-            group["counts"][combination] += 1
-            group["total"] += 1
+            if is_stock:
+                group["stock_count"] += 1
+            else:
+                phases.add(phase)
+                states.add(state)
+                group["counts"][combination] += 1
+                group["total"] += 1
 
         machine_rows.append(
             {
@@ -467,6 +471,7 @@ def _build_vendite_payload(
         "generated_at": generated_at
         or _now_rome_dt().isoformat(timespec="seconds"),
         "total_machines": sum(group["total"] for group in models),
+        "total_stock": sum(group["stock_count"] for group in models),
         "columns": columns,
         "models": models,
         "machines": machine_rows,

@@ -25,7 +25,9 @@
             <li class="nav-item"><a class="nav-link" href="{{ operator_url_for('main.vendite_assegnazioni_page', vista='ordini') }}">Ordini cliente</a></li>
             <li class="nav-item"><a class="nav-link" href="{{ operator_url_for('main.vendite_page', vista='matricola') }}">Situazione produzione per matricola</a></li>
             <li class="nav-item"><a class="nav-link active" aria-current="page" href="#">Localizzazione ordini</a></li>
-            <li class="nav-item"><a class="nav-link" href="{{ operator_url_for('main.vendite_assegnazioni_page', vista='imballaggio') }}">Note per imballo</a></li>
+            {% if can_view_packaging_notes %}
+                <li class="nav-item"><a class="nav-link" href="{{ operator_url_for('main.vendite_assegnazioni_page', vista='imballaggio') }}">Note per imballo</a></li>
+            {% endif %}
             <li class="nav-item"><a class="nav-link" href="{{ operator_url_for('main.vendite_page', vista='modello') }}">Situazione produzione per modello</a></li>
         </ul>
 

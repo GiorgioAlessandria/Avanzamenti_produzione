@@ -139,11 +139,15 @@ def vendite_assegnazioni_page():
 @main_bp.get("/vendite/localizzazione")
 @require_active_perm("vendite")
 def vendite_localizzazione_page():
-    if not _can_view_customer_orders(active_policy()):
+    policy = active_policy()
+    if not _can_view_customer_orders(policy):
         abort(403)
     return render_template(
         "vendite_localizzazione.j2",
         tile_url=current_app.config["VENDITE_TILE_URL"],
+        can_view_packaging_notes=(
+            policy.has_direct_admin_role or not policy.can("utente_imballi")
+        ),
     )
 
 

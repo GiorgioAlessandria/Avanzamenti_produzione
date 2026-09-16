@@ -340,19 +340,43 @@
                 const columns = Array.isArray(data.columns) ? data.columns : [];
                 const models = Array.isArray(data.models) ? data.models : [];
 
-                if (!columns.length) {
+                if (!columns.length && !models.length) {
                     summaryHead.innerHTML = `
                         <tr>
                             <th class="vendite-model-column">Modello</th>
+                            <th>Stock</th>
                             <th>Totale</th>
                         </tr>`;
                     summaryBody.innerHTML = `
                         <tr>
-                            <td colspan="2" class="text-center text-muted py-4">
+                            <td colspan="3" class="text-center text-muted py-4">
                                 Nessun ordine macchina presente.
                             </td>
                         </tr>`;
                     summaryFoot.innerHTML = "";
+                    return;
+                }
+
+                if (!columns.length) {
+                    summaryHead.innerHTML = `
+                        <tr>
+                            <th class="vendite-model-column">Modello</th>
+                            <th>Stock</th>
+                            <th>Totale</th>
+                        </tr>`;
+                    summaryBody.innerHTML = models.map(model => `
+                        <tr>
+                            <td>${modelLabel(model)}</td>
+                            ${countCell(model.stock_count)}
+                            ${countCell(model.total)}
+                        </tr>
+                    `).join("");
+                    summaryFoot.innerHTML = `
+                        <tr>
+                            <td>Totale produzione</td>
+                            ${countCell(data.total_stock)}
+                            ${countCell(data.total_machines)}
+                        </tr>`;
                     return;
                 }
 
@@ -372,6 +396,7 @@
                         ${phaseGroups.map(group => `
                             <th colspan="${group.count}">${esc(window.phaseLabel(group.phase))}</th>
                         `).join("")}
+                        <th rowspan="2">Stock</th>
                         <th rowspan="2">Totale</th>
                     </tr>
                     <tr>
@@ -382,6 +407,7 @@
                     <tr>
                         <td>${modelLabel(model)}</td>
                         ${(model.counts || []).map(countCell).join("")}
+                        ${countCell(model.stock_count)}
                         ${countCell(model.total)}
                     </tr>
                 `).join("");
@@ -394,6 +420,7 @@
                     <tr>
                         <td>Totale produzione</td>
                         ${columnTotals.map(countCell).join("")}
+                        ${countCell(data.total_stock)}
                         ${countCell(data.total_machines)}
                     </tr>`;
             }

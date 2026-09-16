@@ -25,7 +25,7 @@
     max-height: calc(100dvh - 16rem);
 }
 
-body:has(> #vendite-page #vendite-matricole-pane.show) {
+body:has(> #vendite-page) {
     display: flex;
     flex-direction: column;
     height: 100dvh;
@@ -34,36 +34,36 @@ body:has(> #vendite-page #vendite-matricole-pane.show) {
 
 body > #vendite-page,
 #vendite-page > #vendite-tab-content,
-#vendite-page #vendite-matricole-pane.show,
-#vendite-page #vendite-matricole-pane .vendite-table-scroll {
+#vendite-page .tab-pane.show,
+#vendite-page .tab-pane .vendite-table-scroll {
     min-height: 0;
 }
 
 body > #vendite-page,
 #vendite-page > #vendite-tab-content,
-#vendite-page #vendite-matricole-pane.show {
+#vendite-page .tab-pane.show {
     display: flex;
     flex-direction: column;
 }
 
 body > #vendite-page,
 #vendite-page > #vendite-tab-content,
-#vendite-page #vendite-matricole-pane.show,
-#vendite-page #vendite-matricole-pane .vendite-table-scroll {
+#vendite-page .tab-pane.show,
+#vendite-page .tab-pane .vendite-table-scroll {
     flex: 1 1 0;
 }
 
 #vendite-page > :not(#vendite-tab-content),
-#vendite-page #vendite-matricole-pane > :not(.vendite-table-scroll) {
+#vendite-page .tab-pane > :not(.vendite-table-scroll) {
     flex: 0 0 auto;
 }
 
 #vendite-page > #vendite-tab-content,
-#vendite-page #vendite-matricole-pane.show {
+#vendite-page .tab-pane.show {
     overflow: hidden;
 }
 
-#vendite-page #vendite-matricole-pane .vendite-table-scroll {
+#vendite-page .tab-pane .vendite-table-scroll {
     max-height: none;
     overflow: auto;
 }
@@ -144,9 +144,27 @@ body > #vendite-assegnazioni-page,
         max-height: 55dvh;
     }
 }
-.app-header > .container-fluid > .row,
+.app-header {
+    width: 100% !important;
+    margin-inline: 0 !important;
+}
+.app-header > .container-fluid > .row {
+    display: grid !important;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    flex-wrap: nowrap !important;
+}
+.app-header > .container-fluid > .row > :first-child {
+    justify-self: start;
+}
+.app-header > .container-fluid > .row > :nth-child(2) {
+    min-width: 0;
+    justify-self: stretch;
+}
+.app-header > .container-fluid > .row > :last-child {
+    justify-self: end;
+}
 .app-header .flex-nowrap {
-    flex-wrap: wrap !important;
+    flex-wrap: nowrap !important;
 }
 .app-header .flex-grow-1 {
     min-width: 0;

@@ -22,6 +22,7 @@ def _order(
     phase="1",
     state="Pianificata",
     description="Macchina prova",
+    stock=False,
 ):
     return SimpleNamespace(
         IdDocumento="DOC",
@@ -34,6 +35,7 @@ def _order(
         CodMatricola=serial,
         FaseAttiva=phase,
         StatoOrdine=state,
+        IsStock=stock,
     )
 
 
@@ -102,6 +104,7 @@ def test_build_vendite_payload_groups_by_model_phase_and_state():
             "model_code": "MODELLO-1",
             "variant": "",
             "description": "Macchina prova",
+            "stock_count": 0,
             "total": 3,
             "counts": [0, 1, 1, 1, 0, 0],
         },
@@ -109,6 +112,7 @@ def test_build_vendite_payload_groups_by_model_phase_and_state():
             "model_code": "MODELLO-2",
             "variant": "V2",
             "description": "Macchina prova",
+            "stock_count": 0,
             "total": 1,
             "counts": [0, 0, 0, 0, 1, 0],
         },
@@ -120,6 +124,18 @@ def test_build_vendite_payload_groups_by_model_phase_and_state():
     assert payload["machines"][1]["state"] == "In Sospeso"
     assert payload["machines"][1]["last_suspension_cause"] == "Attesa materiale"
     assert all(row["missing_components"] == [] for row in payload["machines"])
+
+
+def test_build_vendite_payload_counts_stock_by_model():
+    payload = _build_vendite_payload([
+        _order(1, serial="STOCK-1", stock=True),
+        _order(2, serial="STOCK-2", stock=True),
+        _order(3, serial="PROD-1", state="Attivo"),
+    ])
+
+    assert payload["total_stock"] == 2
+    assert payload["total_machines"] == 1
+    assert payload["models"][0]["stock_count"] == 2
 
 
 def test_missing_components_follow_saved_residue_and_current_machine_phase():
