@@ -3,7 +3,11 @@ from unittest.mock import patch
 
 from flask import Flask
 
-from app_odp.services.vendite_localizzazione_service import _address, _geocode
+from app_odp.services.vendite_localizzazione_service import (
+    _address,
+    _geocode,
+    _geocode_attempts,
+)
 
 
 class _Response:
@@ -25,6 +29,10 @@ def test_address_and_geocoder_headers():
         "Localita": "MONOPOLI", "Provincia": "BA", "CodStato": "IT",
     })()
     assert _address(client) == "VIA MARINA NEL MONDO, 62, 70043 MONOPOLI (BA), IT"
+    assert _geocode_attempts(client)[1] == (
+        "VIA MARINA NEL MONDO, 62, MONOPOLI, BA, 70043, IT",
+        "indirizzo",
+    )
 
     app = Flask(__name__)
     app.config.update(
@@ -39,3 +47,17 @@ def test_address_and_geocoder_headers():
         request = mocked.call_args.args[0]
         assert request.headers["User-agent"] == "AvanzamentiProduzione/Test"
         assert "format=jsonv2" in request.full_url
+
+
+def test_japanese_address_has_automatic_fallbacks():
+    client = type("Client", (), {
+        "Indirizzo": "4-13-8 Shinden Ichikawa", "Cap": "272-0035",
+        "Localita": "CHIBA", "Provincia": "", "CodStato": "JP",
+    })()
+    assert _geocode_attempts(client) == [
+        ("4-13-8 Shinden Ichikawa, 272-0035 CHIBA, JP", "indirizzo"),
+        ("4-13-8 Shinden Ichikawa, CHIBA, 272-0035, Japan", "indirizzo"),
+        ("4-13-8 Shinden Ichikawa, 272-0035, Japan", "strada"),
+        ("272-0035, CHIBA, Japan", "CAP"),
+        ("CHIBA, Japan", "città"),
+    ]
