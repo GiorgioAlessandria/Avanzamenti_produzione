@@ -80,7 +80,10 @@ def vendite_page():
         can_view_customer_orders=_can_view_customer_orders(policy),
         can_edit_production_notes=admin or policy.can("utente_produzione"),
         can_confirm_packaging=(
-            admin or policy.can("utente_produzione") or policy.can("utente_imballi")
+            admin
+            or policy.can("utente_amministrazione")
+            or policy.can("utente_produzione")
+            or policy.can("utente_imballi")
         ),
         can_option_machines=admin or policy.can("utente_vendite"),
         can_view_options=(
@@ -283,7 +286,9 @@ def api_vendite_macchina_note_produzione():
 
 @main_bp.post("/api/vendite/macchine/conferma-imballo")
 @require_active_perm("vendite")
-@require_active_any_perm("utente_produzione", "utente_imballi")
+@require_active_any_perm(
+    "utente_amministrazione", "utente_produzione", "utente_imballi"
+)
 def api_vendite_macchina_conferma_imballo():
     return _assignment_mutation(
         lambda: confirm_machine_packaging(request.get_json(silent=True), active_user()),

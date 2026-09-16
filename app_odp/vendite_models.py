@@ -248,6 +248,22 @@ class VenditeImballoMacchina(db.Model):
         nullable=True,
     )
     confermata_da_nome = db.Column(db.String(120), nullable=False)
+    sensori_antiribaltamento = db.Column(db.String(1000), nullable=True)
+
+
+class VenditeSensoreAntiribaltamentoLog(db.Model):
+    __tablename__ = "vendite_sensori_antiribaltamento_log"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    matricola = db.Column(db.String(200), nullable=False, index=True)
+    sensore_seriale = db.Column(db.String(200), nullable=False, index=True)
+    registrato_il = db.Column(db.Text, nullable=False, default=_rome_iso_now)
+    registrato_da_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    registrato_da_nome = db.Column(db.String(120), nullable=False)
 
 
 class VenditeOpzioneMacchina(db.Model):

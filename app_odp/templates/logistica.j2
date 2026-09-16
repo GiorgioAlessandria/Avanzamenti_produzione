@@ -120,6 +120,39 @@
             </div>
         </div>
 
+        <section class="card shadow-sm mb-3">
+            <div class="card-header fw-semibold">Ricerca sensore antiribaltamento</div>
+            <div class="card-body">
+                <form class="d-flex flex-wrap gap-2" method="get">
+                    {% if tab_session %}<input type="hidden" name="tab_session" value="{{ tab_session }}">{% endif %}
+                    <label class="visually-hidden" for="logistica-sensore-search">Seriale sensore</label>
+                    <input class="form-control" style="max-width: 32rem" type="search"
+                           id="logistica-sensore-search" name="sensore"
+                           value="{{ sensor_query }}" placeholder="Cerca seriale sensore...">
+                    <button class="btn btn-outline-primary" type="submit">Cerca</button>
+                </form>
+                {% if sensor_query %}
+                    <div class="table-responsive mt-3">
+                        <table class="table table-sm table-bordered mb-0">
+                            <thead><tr><th>Sensore</th><th>Matricola macchina</th><th>Registrato</th><th>Operatore</th></tr></thead>
+                            <tbody>
+                                {% for log in sensor_logs %}
+                                    <tr>
+                                        <td class="fw-semibold">{{ log.sensore_seriale }}</td>
+                                        <td>{{ log.matricola }}</td>
+                                        <td>{{ log.registrato_il }}</td>
+                                        <td>{{ log.registrato_da_nome }}</td>
+                                    </tr>
+                                {% else %}
+                                    <tr><td colspan="4" class="text-center text-muted">Nessun sensore trovato.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% endif %}
+            </div>
+        </section>
+
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% for category, message in messages %}
                 <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
@@ -253,7 +286,7 @@
                                                             <option value="">Seleziona macchina</option>
                                                             {% for macchina in macchine_spedibili %}
                                                                 <option value="{{ macchina.matricola_chiave }}">
-                                                                    {{ macchina.matricola }} — {{ macchina.modello }} — {{ macchina.cliente }}
+                                                                    {{ macchina.matricola }} — {{ macchina.modello }} — {{ macchina.cliente }}{% if sensors_by_serial.get(macchina.matricola_chiave) %} — Sensori: {{ sensors_by_serial[macchina.matricola_chiave]|replace('\n', ', ') }}{% endif %}
                                                                 </option>
                                                             {% endfor %}
                                                         </select>
@@ -349,7 +382,12 @@
                                 <td>
                                     {% if movimento.spedizione_macchine %}
                                         {% for macchina in movimento.macchine %}
-                                            <div><strong>{{ macchina.matricola }}</strong> — {{ macchina.modello }}</div>
+                                            <div>
+                                                <strong>{{ macchina.matricola }}</strong> — {{ macchina.modello }}
+                                                {% if macchina.sensori_antiribaltamento %}
+                                                    <br><span class="small">Sensori: {{ macchina.sensori_antiribaltamento|replace('\n', ', ') }}</span>
+                                                {% endif %}
+                                            </div>
                                         {% endfor %}
                                     {% else %}
                                         {{ movimento.materiale }}
@@ -470,7 +508,12 @@
                                 <td>
                                     {% if movimento.spedizione_macchine %}
                                         {% for macchina in movimento.macchine %}
-                                            <div><strong>{{ macchina.matricola }}</strong> — {{ macchina.modello }}</div>
+                                            <div>
+                                                <strong>{{ macchina.matricola }}</strong> — {{ macchina.modello }}
+                                                {% if macchina.sensori_antiribaltamento %}
+                                                    <br><span class="small">Sensori: {{ macchina.sensori_antiribaltamento|replace('\n', ', ') }}</span>
+                                                {% endif %}
+                                            </div>
                                         {% endfor %}
                                     {% else %}
                                         {{ movimento.materiale }}

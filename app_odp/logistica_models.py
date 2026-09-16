@@ -94,6 +94,7 @@ class MovimentoLogisticoMacchina(db.Model):
     matricola = db.Column(db.String(200), nullable=False, index=True)
     modello = db.Column(db.String(160), nullable=False)
     cliente = db.Column(db.String(160), nullable=False)
+    sensori_antiribaltamento = db.Column(db.String(1000), nullable=True)
 
     movimento_logistico = db.relationship(
         "MovimentoLogistico",

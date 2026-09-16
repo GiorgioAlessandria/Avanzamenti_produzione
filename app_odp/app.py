@@ -318,6 +318,17 @@ def _ensure_logistica_schema() -> None:
                 "spedizione_macchine BOOLEAN NOT NULL DEFAULT 0"
             )
 
+    if "movimenti_macchine" in tables:
+        columns = {
+            column["name"]
+            for column in inspect(engine).get_columns("movimenti_macchine")
+        }
+        if "sensori_antiribaltamento" not in columns:
+            additions.append(
+                "ALTER TABLE movimenti_macchine ADD COLUMN "
+                "sensori_antiribaltamento VARCHAR(1000)"
+            )
+
     if "packing_list_righe" in tables:
         columns = {
             column["name"]
@@ -356,6 +367,17 @@ def _ensure_vendite_schema() -> None:
         if "nota" not in columns:
             additions.append(
                 "ALTER TABLE vendite_opzioni_macchina ADD COLUMN nota VARCHAR(1000)"
+            )
+
+    if "vendite_imballi_macchina" in tables:
+        columns = {
+            column["name"]
+            for column in inspect(engine).get_columns("vendite_imballi_macchina")
+        }
+        if "sensori_antiribaltamento" not in columns:
+            additions.append(
+                "ALTER TABLE vendite_imballi_macchina ADD COLUMN "
+                "sensori_antiribaltamento VARCHAR(1000)"
             )
 
     if "vendite_ordini_cliente" in tables:

@@ -1,4 +1,5 @@
 import json
+import re
 import unicodedata
 from datetime import date, datetime
 from sqlalchemy import func, or_, tuple_
@@ -44,6 +45,7 @@ from app_odp.vendite_models import (
     VenditeOpzioneMacchina,
     VenditeOrdineCliente,
     VenditeOrdineClienteRiga,
+    VenditeSensoreAntiribaltamentoLog,
 )
 
 
@@ -1009,17 +1011,54 @@ def confirm_machine_packaging(payload, user, *, commit: bool = False):
         raise VenditeAssegnazioniError(
             "La macchina può essere imballata solamente quando è in stato Chiusa."
         )
+    raw_sensors = str((payload or {}).get("tilt_sensor_serials") or "").strip()
+    if len(raw_sensors) > MAX_NOTE:
+        raise VenditeAssegnazioniError(
+            "I seriali dei sensori antiribaltamento superano 1000 caratteri."
+        )
+    sensors = []
+    seen_sensors = set()
+    for value in re.split(r"[\r\n,;]+", raw_sensors):
+        sensor = value.strip()
+        sensor_key = sensor.casefold()
+        if not sensor or sensor_key in seen_sensors:
+            continue
+        if len(sensor) > 200:
+            raise VenditeAssegnazioniError(
+                "Ogni seriale del sensore può contenere al massimo 200 caratteri."
+            )
+        seen_sensors.add(sensor_key)
+        sensors.append(sensor)
+
     confirmation = db.session.get(VenditeImballoMacchina, key)
+    actor_id, actor_name = _actor(user)
     if confirmation is None:
-        actor_id, actor_name = _actor(user)
         confirmation = VenditeImballoMacchina(
             matricola=key,
             confermata_il=_now_rome_dt().isoformat(timespec="seconds"),
             confermata_da_id=actor_id,
             confermata_da_nome=actor_name,
+            sensori_antiribaltamento="\n".join(sensors) or None,
         )
         db.session.add(confirmation)
         db.session.flush()
+    elif sensors:
+        confirmation.sensori_antiribaltamento = "\n".join(sensors)
+
+    logged = {
+        row.sensore_seriale.casefold()
+        for row in VenditeSensoreAntiribaltamentoLog.query.filter_by(
+            matricola=key
+        ).all()
+    }
+    for sensor in sensors:
+        if sensor.casefold() not in logged:
+            db.session.add(VenditeSensoreAntiribaltamentoLog(
+                matricola=key,
+                sensore_seriale=sensor,
+                registrato_da_id=actor_id,
+                registrato_da_nome=actor_name,
+            ))
     sync_shippable_machines()
     if commit:
         db.session.commit()

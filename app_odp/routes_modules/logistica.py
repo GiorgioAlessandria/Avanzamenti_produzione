@@ -26,7 +26,11 @@ from app_odp.logistica_models import (
 )
 from app_odp.models import db
 from app_odp.services.vendite_assegnazioni_service import sync_shippable_machines
-from app_odp.vendite_models import VenditeMacchinaSpedibile
+from app_odp.vendite_models import (
+    VenditeImballoMacchina,
+    VenditeMacchinaSpedibile,
+    VenditeSensoreAntiribaltamentoLog,
+)
 from app_odp.operator_session import active_policy, active_token, active_user
 from app_odp.policy.decorator import require_active_any_perm, require_active_perm
 from app_odp.routes_blueprint import main_bp
@@ -359,6 +363,19 @@ def _save(action, success_message: str, redirector=None):
 @require_active_any_perm("carica", "ricezione")
 def logistica_page():
     policy = active_policy()
+    sensor_query = str(request.args.get("sensore") or "").strip()
+    sensor_logs = []
+    if sensor_query:
+        sensor_logs = (
+            VenditeSensoreAntiribaltamentoLog.query.filter(
+                VenditeSensoreAntiribaltamentoLog.sensore_seriale.ilike(
+                    f"%{sensor_query}%"
+                )
+            )
+            .order_by(VenditeSensoreAntiribaltamentoLog.id.desc())
+            .limit(100)
+            .all()
+        )
     macchine_spedibili = sync_shippable_machines()
     busy_serials = {
         item.matricola.casefold()
@@ -369,6 +386,15 @@ def logistica_page():
         item for item in macchine_spedibili
         if item.matricola_chiave not in busy_serials
     ]
+    sensors_by_serial = {
+        item.matricola: item.sensori_antiribaltamento
+        for item in VenditeImballoMacchina.query.filter(
+            VenditeImballoMacchina.matricola.in_(
+                [machine.matricola_chiave for machine in macchine_spedibili]
+            )
+        ).all()
+        if item.sensori_antiribaltamento
+    }
     db.session.commit()
     attesi = (
         MovimentoLogistico.query.filter(MovimentoLogistico.completato_il.is_(None))
@@ -390,6 +416,9 @@ def logistica_page():
         row_class=_row_class,
         can_carica=policy.can("carica"),
         macchine_spedibili=macchine_spedibili,
+        sensors_by_serial=sensors_by_serial,
+        sensor_query=sensor_query,
+        sensor_logs=sensor_logs,
     )
 
 
@@ -574,6 +603,12 @@ def logistica_movimento_create():
                 raise ValueError(
                     "Una o più macchine sono già inserite in una spedizione attesa."
                 )
+            packaging_by_serial = {
+                item.matricola: item.sensori_antiribaltamento
+                for item in VenditeImballoMacchina.query.filter(
+                    VenditeImballoMacchina.matricola.in_(machine_keys)
+                ).all()
+            }
 
         movimento = "SCARICO" if is_machine_shipment else str(
             request.form.get("movimento") or ""
@@ -614,6 +649,9 @@ def logistica_movimento_create():
                     matricola=machine.matricola,
                     modello=machine.modello,
                     cliente=machine.cliente,
+                    sensori_antiribaltamento=packaging_by_serial.get(
+                        machine.matricola_chiave
+                    ),
                 )
                 for machine in machines
             ]

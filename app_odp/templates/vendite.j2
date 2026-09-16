@@ -450,21 +450,32 @@
 
             function packagingCell(machine) {
                 if (machine.packaged) {
+                    const sensors = machine.packaging?.tilt_sensor_serials;
                     return `
                         <span class="badge text-bg-success">Macchina imballata</span>
                         <div class="small text-muted mt-1">
                             ${esc(formatUpdateTime(machine.packaging?.confirmed_at))}
                             ${machine.packaging?.confirmed_by_name ? ` · ${esc(machine.packaging.confirmed_by_name)}` : ""}
-                        </div>`;
+                        </div>
+                        ${canConfirmPackaging && sensors ? `
+                            <div class="small mt-1"><strong>Sensori antiribaltamento:</strong><br>${esc(sensors).replaceAll("\n", "<br>")}</div>
+                        ` : ""}`;
                 }
                 if (!canConfirmPackaging || !machine.has_serial || machine.state !== "Chiusa") return "—";
-                return `<button type="button" class="btn btn-success btn-sm text-nowrap"
-                                data-confirm-packaging
-                                data-id-documento="${esc(machine.id_documento)}"
-                                data-id-riga="${esc(machine.id_riga)}"
-                                data-serial="${esc(machine.serial_number)}">
-                            Macchina imballata
-                        </button>`;
+                return `<div class="d-flex flex-wrap align-items-end gap-1">
+                            <div class="flex-grow-1">
+                                <label class="form-label small mb-1">Seriali sensori antiribaltamento</label>
+                                <input class="form-control form-control-sm" data-tilt-sensor-serials
+                                       maxlength="1000" placeholder="Facoltativi, separati da virgola">
+                            </div>
+                            <button type="button" class="btn btn-success btn-sm text-nowrap"
+                                    data-confirm-packaging
+                                    data-id-documento="${esc(machine.id_documento)}"
+                                    data-id-riga="${esc(machine.id_riga)}"
+                                    data-serial="${esc(machine.serial_number)}">
+                                Macchina imballata
+                            </button>
+                        </div>`;
             }
 
             function optionCell(machine) {
@@ -933,6 +944,8 @@
                                 id_documento: packagingButton.dataset.idDocumento,
                                 id_riga: packagingButton.dataset.idRiga,
                                 serial_number: packagingButton.dataset.serial,
+                                tilt_sensor_serials: packagingButton.closest("td")
+                                    ?.querySelector("[data-tilt-sensor-serials]")?.value || "",
                             }),
                         });
                         const payload = await response.json().catch(() => ({}));

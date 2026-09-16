@@ -224,6 +224,7 @@ def _packaging_confirmations(serials) -> dict[str, dict[str, str]]:
         item.matricola: {
             "confirmed_at": item.confermata_il,
             "confirmed_by_name": item.confermata_da_nome,
+            "tilt_sensor_serials": item.sensori_antiribaltamento or "",
         }
         for item in VenditeImballoMacchina.query.filter(
             VenditeImballoMacchina.matricola.in_(keys)
