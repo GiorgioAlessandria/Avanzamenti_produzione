@@ -10,6 +10,7 @@
           data-group-delete-url="{{ operator_url_for('main.api_vendite_raggruppamenti_delete', group_id=0) }}"
           data-note-url="{{ operator_url_for('main.api_vendite_macchina_note_produzione') }}"
           data-packaging-url="{{ operator_url_for('main.api_vendite_macchina_conferma_imballo') }}"
+          data-sensor-url="{{ operator_url_for('main.api_vendite_macchina_sensori_antiribaltamento') }}"
           data-option-url="{{ operator_url_for('main.api_vendite_macchina_opzione') }}"
           data-priority-operators-url="{{ operator_url_for('main.api_priorita_operatori') }}"
           data-priority-orders-url="{{ operator_url_for('main.api_priorita_ordini_operatore', operatore_id=0) }}"
@@ -457,8 +458,20 @@
                             ${esc(formatUpdateTime(machine.packaging?.confirmed_at))}
                             ${machine.packaging?.confirmed_by_name ? ` · ${esc(machine.packaging.confirmed_by_name)}` : ""}
                         </div>
-                        ${canConfirmPackaging && sensors ? `
-                            <div class="small mt-1"><strong>Sensori antiribaltamento:</strong><br>${esc(sensors).replaceAll("\n", "<br>")}</div>
+                        ${canConfirmPackaging ? `
+                            <div class="d-flex flex-wrap align-items-end gap-1 mt-1">
+                                <div class="flex-grow-1">
+                                    <label class="form-label small mb-1">Seriali sensori antiribaltamento</label>
+                                    <input class="form-control form-control-sm" data-tilt-sensor-serials
+                                           data-original-value="${esc(sensors || "")}" value="${esc(sensors || "")}"
+                                           maxlength="1000" placeholder="Facoltativi, separati da virgola">
+                                </div>
+                                <button type="button" class="btn btn-primary btn-sm text-nowrap"
+                                        data-save-tilt-sensors
+                                        data-id-documento="${esc(machine.id_documento)}"
+                                        data-id-riga="${esc(machine.id_riga)}"
+                                        data-serial="${esc(machine.serial_number)}">Salva sensori</button>
+                            </div>
                         ` : ""}`;
                 }
                 if (!canConfirmPackaging || !machine.has_serial || machine.state !== "Chiusa") return "—";
@@ -473,7 +486,7 @@
                                     data-id-documento="${esc(machine.id_documento)}"
                                     data-id-riga="${esc(machine.id_riga)}"
                                     data-serial="${esc(machine.serial_number)}">
-                                Macchina imballata
+                                Imballo
                             </button>
                         </div>`;
             }
@@ -893,6 +906,41 @@
             }
 
             machinesBody.addEventListener("click", async event => {
+                const sensorSaveButton = event.target.closest("[data-save-tilt-sensors]");
+                if (sensorSaveButton) {
+                    if (packagingInFlight || !canConfirmPackaging) return;
+                    const field = sensorSaveButton.closest("td")
+                        ?.querySelector("[data-tilt-sensor-serials]");
+                    packagingInFlight = true;
+                    sensorSaveButton.disabled = true;
+                    try {
+                        const response = await window.avpFetch(page.dataset.sensorUrl, {
+                            method: "POST",
+                            headers: {"Content-Type": "application/json"},
+                            body: JSON.stringify({
+                                id_documento: sensorSaveButton.dataset.idDocumento,
+                                id_riga: sensorSaveButton.dataset.idRiga,
+                                serial_number: sensorSaveButton.dataset.serial,
+                                tilt_sensor_serials: field?.value || "",
+                            }),
+                        });
+                        const payload = await response.json().catch(() => ({}));
+                        if (!response.ok || !payload.ok) throw new Error(
+                            payload.error || `Errore server (${response.status})`
+                        );
+                        noteRevision += 1;
+                        render(payload.data);
+                        errorElement.classList.add("d-none");
+                        setStatus(payload.message || "Sensori antiribaltamento salvati.");
+                    } catch (error) {
+                        errorElement.textContent = error.message || "Impossibile salvare i sensori.";
+                        errorElement.classList.remove("d-none");
+                        sensorSaveButton.disabled = false;
+                    } finally {
+                        packagingInFlight = false;
+                    }
+                    return;
+                }
                 const optionButton = event.target.closest("[data-machine-option]");
                 if (optionButton) {
                     if (optionInFlight || !canOptionMachines || !canChangeMachineView()) return;

@@ -1042,8 +1042,8 @@ def confirm_machine_packaging(payload, user, *, commit: bool = False):
         )
         db.session.add(confirmation)
         db.session.flush()
-    elif sensors:
-        confirmation.sensori_antiribaltamento = "\n".join(sensors)
+    else:
+        confirmation.sensori_antiribaltamento = "\n".join(sensors) or None
 
     logged = {
         row.sensore_seriale.casefold()
@@ -1063,6 +1063,15 @@ def confirm_machine_packaging(payload, user, *, commit: bool = False):
     if commit:
         db.session.commit()
     return confirmation
+
+
+def update_machine_tilt_sensors(payload, user, *, commit: bool = False):
+    _machine, key = _selected_machine(payload)
+    if db.session.get(VenditeImballoMacchina, key) is None:
+        raise VenditeAssegnazioniError(
+            "Salvare i sensori dopo aver confermato l'imballo della macchina."
+        )
+    return confirm_machine_packaging(payload, user, commit=commit)
 
 
 def update_machine_option(payload, user, *, commit: bool = False):

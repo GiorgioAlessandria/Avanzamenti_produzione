@@ -24,6 +24,7 @@ from app_odp.services.vendite_assegnazioni_service import (
     update_customer_row_notes,
     update_packaging_notes,
     update_machine_production_note,
+    update_machine_tilt_sensors,
     update_machine_option,
 )
 from app_odp.services.vendite_service import build_vendite_payload
@@ -293,6 +294,21 @@ def api_vendite_macchina_conferma_imballo():
     return _assignment_mutation(
         lambda: confirm_machine_packaging(request.get_json(silent=True), active_user()),
         "Macchina segnalata come imballata.",
+        dashboard_builder=_visible_production_dashboard,
+    )
+
+
+@main_bp.post("/api/vendite/macchine/sensori-antiribaltamento")
+@require_active_perm("vendite")
+@require_active_any_perm(
+    "utente_amministrazione", "utente_produzione", "utente_imballi"
+)
+def api_vendite_macchina_sensori_antiribaltamento():
+    return _assignment_mutation(
+        lambda: update_machine_tilt_sensors(
+            request.get_json(silent=True), active_user()
+        ),
+        "Sensori antiribaltamento salvati.",
         dashboard_builder=_visible_production_dashboard,
     )
 

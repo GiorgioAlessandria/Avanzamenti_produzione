@@ -44,6 +44,7 @@ from app_odp.vendite_models import (
     VenditeOpzioneMacchina,
     VenditeOrdineCliente,
     VenditeOrdineClienteRiga,
+    VenditeSensoreAntiribaltamentoLog,
 )
 
 
@@ -238,7 +239,8 @@ def test_vendite_api_filters_planned_and_keeps_customer_production_notes_readonl
         assert row.note_produzione == "Aggiornata da produzione"
         packaging_payload = {"id_documento": machine.IdDocumento,
                              "id_riga": machine.IdRiga,
-                             "serial_number": machine.CodMatricola}
+                             "serial_number": machine.CodMatricola,
+                             "tilt_sensor_serials": "SENS-001, SENS-002"}
         machine.StatoOrdine = "Chiusa"
         permissions.remove("assegna_matricole")
         assert client.post("/api/vendite/macchine/conferma-imballo",
@@ -247,6 +249,25 @@ def test_vendite_api_filters_planned_and_keeps_customer_production_notes_readonl
         response = client.post("/api/vendite/macchine/conferma-imballo",
                                json=packaging_payload)
         assert response.status_code == 200
+        assert db.session.get(
+            VenditeImballoMacchina, machine.CodMatricola.casefold()
+        ).sensori_antiribaltamento == "SENS-001\nSENS-002"
+        assert {
+            row.sensore_seriale
+            for row in VenditeSensoreAntiribaltamentoLog.query.all()
+        } == {"SENS-001", "SENS-002"}
+        response = client.post(
+            "/api/vendite/macchine/sensori-antiribaltamento",
+            json={**packaging_payload, "tilt_sensor_serials": "SENS-003"},
+        )
+        assert response.status_code == 200
+        assert db.session.get(
+            VenditeImballoMacchina, machine.CodMatricola.casefold()
+        ).sensori_antiribaltamento == "SENS-003"
+        assert {
+            row.sensore_seriale
+            for row in VenditeSensoreAntiribaltamentoLog.query.all()
+        } == {"SENS-001", "SENS-002", "SENS-003"}
         option_payload = {**packaging_payload, "optioned": True}
         permissions.remove("carica_ordini_cliente")
         assert client.post("/api/vendite/macchine/opzione",
