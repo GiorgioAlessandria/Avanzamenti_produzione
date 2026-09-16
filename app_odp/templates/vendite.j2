@@ -284,20 +284,25 @@
             let priorityData = {available: [], prioritized: []};
             let sortKey = "model_code", sortDirection = 1;
             let groupFormDirty = false, groupMutation = false;
+            let sensorFieldFocused = false;
 
             function setStatus(message) {
                 statusElements.forEach(element => element.textContent = message);
             }
 
             function hasUnsavedNotes() {
-                return Array.from(machinesBody.querySelectorAll("[data-production-note], [data-machine-option-note]"))
+                return Array.from(machinesBody.querySelectorAll(
+                    "[data-production-note], [data-machine-option-note], [data-tilt-sensor-serials]"
+                ))
                     .some(field => field.value !== field.dataset.originalValue);
             }
 
             function editingNotes() {
-                return savingNote || hasUnsavedNotes()
+                return savingNote || sensorFieldFocused || hasUnsavedNotes()
                     || priorityDirty
-                    || Boolean(document.activeElement?.matches("[data-production-note], [data-machine-option-note]"));
+                    || Boolean(document.activeElement?.matches(
+                        "[data-production-note], [data-machine-option-note], [data-tilt-sensor-serials]"
+                    ));
             }
 
             function esc(value) {
@@ -1103,6 +1108,21 @@
                 priorityDirty = true;
                 prioritySave.disabled = false;
                 setStatus("Priorità modificate: salvare per riprendere l'aggiornamento.");
+            });
+            machinesBody.addEventListener("focusin", event => {
+                if (event.target.matches("[data-tilt-sensor-serials]")) {
+                    sensorFieldFocused = true;
+                }
+            });
+            machinesBody.addEventListener("focusout", event => {
+                if (event.target.matches("[data-tilt-sensor-serials]")) {
+                    sensorFieldFocused = false;
+                }
+            });
+            machinesBody.addEventListener("input", event => {
+                if (event.target.matches("[data-tilt-sensor-serials]")) {
+                    noteRevision += 1;
+                }
             });
             window.addEventListener("beforeunload", event => {
                 if (savingNote || hasUnsavedNotes() || priorityDirty || groupFormDirty || groupMutation) {

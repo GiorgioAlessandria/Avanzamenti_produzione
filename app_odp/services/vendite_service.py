@@ -235,7 +235,7 @@ def _packaging_confirmations(serials) -> dict[str, dict[str, str]]:
 def _machine_tilt_sensors(serials) -> dict[str, str]:
     keys = {_norm_text(serial).casefold() for serial in serials if _norm_text(serial)}
     return {
-        item.matricola: item.sensori
+        item.matricola: item.sensori.replace("\n", ", ")
         for item in VenditeSensoriMacchina.query.filter(
             VenditeSensoriMacchina.matricola.in_(keys)
         ).all()
