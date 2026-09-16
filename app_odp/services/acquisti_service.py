@@ -339,6 +339,7 @@ def _build_acquisti_ordini_fornitore_rows(today: date | None = None) -> list[dic
                 "Note": _norm_text(local.Note) if local else "",
                 "Sollecitato": bool(local and local.Sollecitato),
                 "SollecitatoAt": _norm_text(local.SollecitatoAt) if local else "",
+                "NumeroSolleciti": int(local.NumeroSolleciti or 0) if local else 0,
                 "Stato": "Sollecitato" if local and local.Sollecitato else "Aperto",
             }
         )
@@ -367,6 +368,7 @@ def _group_acquisti_ordini_fornitore_rows(rows: list[dict]) -> list[dict]:
                 "ConsegnaCritica": False,
                 "DataConsegnaIso": "",
                 "Sollecitato": False,
+                "NumeroSolleciti": 0,
                 "Righe": [],
             },
         )
@@ -379,6 +381,9 @@ def _group_acquisti_ordini_fornitore_rows(rows: list[dict]) -> list[dict]:
         ):
             group["DataConsegnaIso"] = row["DataConsegnaIso"]
         group["Sollecitato"] = group["Sollecitato"] or row["Sollecitato"]
+        group["NumeroSolleciti"] = max(
+            group["NumeroSolleciti"], row.get("NumeroSolleciti", 0)
+        )
         group["Righe"].append(row)
 
     for group in groups.values():
@@ -386,7 +391,19 @@ def _group_acquisti_ordini_fornitore_rows(rows: list[dict]) -> list[dict]:
             key=lambda row: Decimal(row["IdRigaDoc"])
         )
 
-    return list(groups.values())
+    return sorted(
+        groups.values(),
+        key=lambda group: (
+            (group["DataConsegnaIso"] or "9999")[:4],
+            (
+                0,
+                int(group["NumRegistraz"]),
+            )
+            if group["NumRegistraz"].isdigit()
+            else (1, group["NumRegistraz"].lower()),
+            group["IdDocumento"],
+        ),
+    )
 
 
 def _build_acquisti_calendar_events(groups: list[dict]) -> list[dict]:
@@ -414,6 +431,7 @@ def _build_acquisti_calendar_events(groups: list[dict]) -> list[dict]:
                     ),
                     "id_documento": group["IdDocumento"],
                     "sollecitato": group["Sollecitato"],
+                    "numero_solleciti": group["NumeroSolleciti"],
                     "gruppo_doc": group["GruppoDoc"],
                     "rows": [
                         {

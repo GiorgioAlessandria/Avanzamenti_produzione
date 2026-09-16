@@ -89,7 +89,7 @@
                                 </span>
                                 <small class="js-sollecito-date d-block mt-1{% if not row.SollecitatoAt %} d-none{% endif %}"
                                        data-sollecitato-at="{{ row.SollecitatoAt }}">
-                                    Sollecitato il <span></span>
+                                    Ultimo sollecito il <span></span>
                                 </small>
                             </td>
                             <td>
@@ -110,7 +110,7 @@
                                             value="note" form="purchase-{{ group_loop.index0 }}-{{ loop.index0 }}">Salva</button>
                                     <button class="btn btn-sm btn-warning purchase-reminder-button" type="submit" name="action"
                                             value="sollecita" form="purchase-{{ group_loop.index0 }}-{{ loop.index0 }}"
-                                            >{{ 'Rimuovi sollecito' if row.Sollecitato else 'Sollecita' }}</button>
+                                            >Sollecita ({{ row.NumeroSolleciti }})</button>
                                 </div>
                             </td>
                         </tr>
@@ -126,10 +126,13 @@
 
     <section id="purchase-calendar" class="d-none">
         <div class="card shadow-sm">
-            <div class="card-header d-flex align-items-center justify-content-between">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2">
                 <button class="btn btn-sm btn-outline-secondary" type="button" id="calendar-prev">‹</button>
                 <h2 class="h5 mb-0" id="calendar-title"></h2>
-                <button class="btn btn-sm btn-outline-secondary" type="button" id="calendar-next">›</button>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-sm btn-outline-primary" type="button" id="calendar-today">Oggi</button>
+                    <button class="btn btn-sm btn-outline-secondary" type="button" id="calendar-next">›</button>
+                </div>
             </div>
             <div class="card-body p-2">
                 <div class="calendar-grid calendar-weekdays text-center fw-semibold">
@@ -170,10 +173,8 @@
     .calendar-event.purchase-overdue { background: #f5aeb5; }
     .purchase-calendar-toast { width: min(60rem, calc(100vw - 2rem)); max-width: none; }
     .purchase-toast-matching > * { background: #fff3cd !important; font-weight: 600; }
-    .purchase-reminder-button.is-driving { position: relative; z-index: 10; animation: purchase-van-trip 4s ease-in-out; }
-    .purchase-reminder-button.is-driving::before { content: ""; position: absolute; left: -.85rem; bottom: 0; width: 1rem; height: 1.15rem; background: #ffc107; border: 1px solid #212529; border-radius: .5rem 0 0 .2rem; }
-    .purchase-reminder-button.is-driving::after { content: "●    ●"; position: absolute; left: -.55rem; right: .2rem; bottom: -.7rem; color: #212529; font-size: .7rem; letter-spacing: .35rem; white-space: nowrap; }
-    @keyframes purchase-van-trip { 0% { transform: translateX(0); } 42% { transform: translateX(-110vw); } 43% { transform: translateX(110vw); } 100% { transform: translateX(0); } }
+    .purchase-reminder-van { position: fixed; left: calc(100vw + 3rem); z-index: 1080; font-size: 2rem; line-height: 1; pointer-events: none; animation: purchase-van-trip 3.5s linear forwards; }
+    @keyframes purchase-van-trip { to { transform: translateX(calc(-100vw - 7rem)); } }
     @media (max-width: 767px) { .calendar-day { min-height: 5rem; } .calendar-event { font-size: .68rem; } }
 </style>
 {% endblock %}
@@ -242,6 +243,7 @@
     }));
     document.getElementById("calendar-prev").addEventListener("click", () => { shown = new Date(shown.getFullYear(), shown.getMonth() - 1, 1); renderCalendar(); });
     document.getElementById("calendar-next").addEventListener("click", () => { shown = new Date(shown.getFullYear(), shown.getMonth() + 1, 1); renderCalendar(); });
+    document.getElementById("calendar-today").addEventListener("click", () => { shown = new Date(); renderCalendar(); });
     grid.addEventListener("click", event => {
         const button = event.target.closest("[data-event-index]");
         if (!button) return;
@@ -284,6 +286,20 @@
         });
         applyListFilters();
     }));
+    function runReminderTraffic(button, count) {
+        if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+        const top = Math.max(8, Math.min(window.innerHeight - 40, button.getBoundingClientRect().top));
+        for (let index = 0; index < count; index += 1) {
+            const van = document.createElement("span");
+            van.className = "purchase-reminder-van";
+            van.textContent = "🚚";
+            van.setAttribute("aria-hidden", "true");
+            van.style.top = `${top + (index % 3) * 8}px`;
+            van.style.animationDelay = `${index * 280}ms`;
+            van.addEventListener("animationend", () => van.remove(), {once: true});
+            document.body.appendChild(van);
+        }
+    }
     document.querySelectorAll("#purchase-table form").forEach(form => form.addEventListener("submit", async event => {
         event.preventDefault();
         const button = event.submitter;
@@ -318,18 +334,13 @@
                 const date = row.querySelector(".js-sollecito-date");
                 date.classList.toggle("d-none", !data.sollecitato);
                 date.querySelector("span").textContent = data.sollecitato ? formatReminderDate(data.sollecitato_at) : "";
-                events.filter(item => item.id_documento === data.id_documento).forEach(item => { item.sollecitato = data.sollecitato; });
-                const finish = () => {
-                    button.classList.remove("is-driving");
-                    button.textContent = data.sollecitato ? "Rimuovi sollecito" : "Sollecita";
-                    button.disabled = false;
-                };
-                if (data.sollecitato && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-                    button.classList.add("is-driving");
-                    button.addEventListener("animationend", finish, {once: true});
-                } else {
-                    finish();
-                }
+                events.filter(item => item.id_documento === data.id_documento).forEach(item => {
+                    item.sollecitato = data.sollecitato;
+                    item.numero_solleciti = data.numero_solleciti;
+                });
+                button.textContent = `Sollecita (${data.numero_solleciti})`;
+                runReminderTraffic(button, data.numero_solleciti);
+                button.disabled = false;
             } else {
                 button.textContent = "Salvato";
                 window.setTimeout(() => { button.textContent = originalLabel; }, 1200);
@@ -338,7 +349,7 @@
             alert(error.message || "Errore durante il salvataggio.");
             button.disabled = false;
         } finally {
-            if (!button.classList.contains("is-driving")) button.disabled = false;
+            button.disabled = false;
         }
     }));
 })();

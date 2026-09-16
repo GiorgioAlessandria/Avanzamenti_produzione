@@ -346,6 +346,27 @@ def _ensure_logistica_schema() -> None:
                 connection.exec_driver_sql(statement)
 
 
+def _ensure_acquisti_schema() -> None:
+    engine = db.engines.get("acq")
+    if engine is None:
+        return
+
+    table = "acq_ordini_fornitore_meta"
+    if table not in inspect(engine).get_table_names():
+        return
+
+    columns = {column["name"] for column in inspect(engine).get_columns(table)}
+    if "NumeroSolleciti" not in columns:
+        with engine.begin() as connection:
+            connection.exec_driver_sql(
+                f"ALTER TABLE {table} "
+                "ADD COLUMN NumeroSolleciti INTEGER NOT NULL DEFAULT 0"
+            )
+            connection.exec_driver_sql(
+                f"UPDATE {table} SET NumeroSolleciti = 1 WHERE Sollecitato = 1"
+            )
+
+
 def _ensure_vendite_schema() -> None:
     engine = db.engine
     tables = set(inspect(engine).get_table_names())
@@ -887,6 +908,7 @@ def create_app():
         _ensure_priorita_schema()
         db.create_all(bind_key="log")
         db.create_all(bind_key="acq")
+        _ensure_acquisti_schema()
         db.create_all(bind_key="manutenzioni")
         db.create_all(bind_key="rifiuti")
         _ensure_rifiuti_schema()

@@ -107,17 +107,10 @@ def acquisti_ordine_fornitore_update():
     row.Note = note
 
     if action == "sollecita":
-        row.Sollecitato = not bool(row.Sollecitato)
-        row.SollecitatoAt = (
-            _now_rome_dt().isoformat(timespec="seconds")
-            if row.Sollecitato
-            else None
-        )
-        message = (
-            "Ordine segnato come sollecitato."
-            if row.Sollecitato
-            else "Sollecito rimosso."
-        )
+        row.Sollecitato = True
+        row.SollecitatoAt = _now_rome_dt().isoformat(timespec="seconds")
+        row.NumeroSolleciti = (row.NumeroSolleciti or 0) + 1
+        message = f"Sollecito registrato ({row.NumeroSolleciti})."
     elif action == "note":
         message = "Note salvate."
     else:
@@ -140,6 +133,7 @@ def acquisti_ordine_fornitore_update():
                     "stato": "Sollecitato" if row.Sollecitato else "Aperto",
                     "sollecitato": bool(row.Sollecitato),
                     "sollecitato_at": row.SollecitatoAt or "",
+                    "numero_solleciti": row.NumeroSolleciti or 0,
                     "id_documento": id_documento,
                 }
             )

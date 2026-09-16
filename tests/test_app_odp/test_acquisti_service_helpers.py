@@ -188,6 +188,7 @@ def test_supplier_order_rows_join_registry_and_local_metadata(monkeypatch):
         Note="Chiamato il fornitore",
         Sollecitato=True,
         SollecitatoAt="2026-09-09T12:00:00",
+        NumeroSolleciti=2,
     )
     monkeypatch.setattr(
         service, "AcqClienteFornitore", SimpleNamespace(query=Query([supplier]))
@@ -211,6 +212,7 @@ def test_supplier_order_rows_join_registry_and_local_metadata(monkeypatch):
     assert row["QtaSaldo"] == "5"
     assert row["CommentoRigaSaldata"] == "Parziale"
     assert row["Stato"] == "Sollecitato"
+    assert row["NumeroSolleciti"] == 2
     assert row["Note"] == "Chiamato il fornitore"
 
 
@@ -226,6 +228,7 @@ def test_supplier_order_rows_are_grouped_by_document():
             "ConsegnaCritica": False,
             "DataConsegnaIso": "2026-09-12",
             "Sollecitato": False,
+            "NumeroSolleciti": 0,
         },
         {
             "IdDocumento": "10",
@@ -237,6 +240,7 @@ def test_supplier_order_rows_are_grouped_by_document():
             "ConsegnaCritica": True,
             "DataConsegnaIso": "2026-09-10",
             "Sollecitato": True,
+            "NumeroSolleciti": 3,
         },
     ]
 
@@ -247,7 +251,34 @@ def test_supplier_order_rows_are_grouped_by_document():
     assert groups[0]["ConsegnaCritica"] is True
     assert groups[0]["DataConsegnaIso"] == "2026-09-10"
     assert groups[0]["Sollecitato"] is True
+    assert groups[0]["NumeroSolleciti"] == 3
     assert [row["IdRigaDoc"] for row in groups[0]["Righe"]] == ["2", "10"]
+
+
+def test_supplier_orders_are_sorted_by_first_delivery_year_then_registration():
+    def row(document, registration, delivery):
+        return {
+            "IdDocumento": document,
+            "IdRigaDoc": "1",
+            "NumRegistraz": registration,
+            "GruppoDoc": "ORA",
+            "CodFornitore": "F1",
+            "Fornitore": "Fornitore Test",
+            "ConsegnaCritica": False,
+            "DataConsegnaIso": delivery,
+            "Sollecitato": False,
+            "NumeroSolleciti": 0,
+        }
+
+    groups = service._group_acquisti_ordini_fornitore_rows(
+        [
+            row("a", "10", "2026-01-02"),
+            row("b", "2", "2026-12-20"),
+            row("c", "99", "2025-12-31"),
+        ]
+    )
+
+    assert [group["IdDocumento"] for group in groups] == ["c", "b", "a"]
 
 
 def test_calendar_has_one_event_per_order_date_and_highlights_matching_rows():
@@ -272,6 +303,7 @@ def test_calendar_has_one_event_per_order_date_and_highlights_matching_rows():
             "GruppoDoc": "ORA",
             "Fornitore": "Fornitore Test",
             "Sollecitato": False,
+            "NumeroSolleciti": 0,
             "Righe": [row("2026-09-10", "A"), row("2026-09-12", "B")],
         }
     ]

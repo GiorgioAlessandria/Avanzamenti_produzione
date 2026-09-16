@@ -1704,6 +1704,7 @@ class AcqOrdineFornitoreMeta(db.Model):
     Note = db.Column(db.Text)
     Sollecitato = db.Column(db.Boolean, nullable=False, default=False)
     SollecitatoAt = db.Column(db.Text)
+    NumeroSolleciti = db.Column(db.Integer, nullable=False, default=0)
 
 
 
