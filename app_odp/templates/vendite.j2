@@ -368,14 +368,14 @@
                         <tr>
                             <td>${modelLabel(model)}</td>
                             ${countCell(model.stock_count)}
-                            ${countCell(model.total)}
+                            ${countCell(Number(model.total || 0) + Number(model.stock_count || 0))}
                         </tr>
                     `).join("");
                     summaryFoot.innerHTML = `
                         <tr>
-                            <td>Totale produzione</td>
+                            <td>Totale</td>
                             ${countCell(data.total_stock)}
-                            ${countCell(data.total_machines)}
+                            ${countCell(Number(data.total_machines || 0) + Number(data.total_stock || 0))}
                         </tr>`;
                     return;
                 }
@@ -408,7 +408,7 @@
                         <td>${modelLabel(model)}</td>
                         ${(model.counts || []).map(countCell).join("")}
                         ${countCell(model.stock_count)}
-                        ${countCell(model.total)}
+                        ${countCell(Number(model.total || 0) + Number(model.stock_count || 0))}
                     </tr>
                 `).join("");
 
@@ -418,10 +418,10 @@
                 ));
                 summaryFoot.innerHTML = `
                     <tr>
-                        <td>Totale produzione</td>
+                        <td>Totale</td>
                         ${columnTotals.map(countCell).join("")}
                         ${countCell(data.total_stock)}
-                        ${countCell(data.total_machines)}
+                        ${countCell(Number(data.total_machines || 0) + Number(data.total_stock || 0))}
                     </tr>`;
             }
 
