@@ -123,6 +123,18 @@
         @keyframes vendite-suplex-victim { 0%, 30% { transform: translate(0, 0) rotate(0); } 38% { transform: translate(-1.2rem, 0) rotate(-6deg); } 46% { transform: translate(-2rem, -1.2rem) rotate(-20deg); } 54% { transform: translate(-3.2rem, -2.8rem) rotate(-55deg); } 60% { transform: translate(-5rem, .9rem) rotate(-105deg); } 70% { transform: translate(-5rem, 1.2rem) rotate(-105deg); } 78%, 100% { transform: translate(-3.2rem, -.8rem) rotate(-90deg) scale(.72); } }
         @keyframes vendite-suplex-impact { 0%, 58% { opacity: 0; transform: scale(.2); } 60% { opacity: 1; transform: scale(1.35); } 66%, 100% { opacity: 0; transform: scale(2); } }
 
+        .vendite-horse-stage { position: fixed; height: 5rem; z-index: 1090; pointer-events: none; overflow: visible; }
+        .vendite-horse { position: absolute; left: -3rem; bottom: .15rem; font-size: 2.8rem; line-height: 1; filter: drop-shadow(0 .2rem .12rem rgba(0, 0, 0, .25)); animation: vendite-horse-run 3s linear forwards; }
+        .vendite-horse-obstacle { position: absolute; left: 68%; bottom: 0; font-size: 2.2rem; line-height: 1; opacity: 0; animation: vendite-horse-obstacle 3s linear forwards; }
+        @keyframes vendite-horse-run {
+            0% { left: -3rem; transform: translateY(0) scaleX(-1) rotate(0); }
+            20% { transform: translateY(-.18rem) scaleX(-1) rotate(-3deg); }
+            48% { left: 52%; transform: translateY(0) scaleX(-1) rotate(0); }
+            64% { left: 65%; transform: translateY(-3.6rem) scaleX(-1) rotate(-10deg); }
+            74% { left: 76%; transform: translateY(0) scaleX(-1) rotate(4deg); }
+            100% { left: calc(100% + 3rem); transform: translateY(0) scaleX(-1) rotate(0); }
+        }
+        @keyframes vendite-horse-obstacle { 0%, 35% { opacity: 0; } 42%, 85% { opacity: 1; } 100% { opacity: 0; } }
     </style>
 {% endblock %}
 
@@ -141,7 +153,8 @@
           data-can-edit-production-instructions="{{ 'true' if can_edit_production_instructions else 'false' }}"
           data-can-delete-orders="{{ 'true' if can_create_customer_orders else 'false' }}"
           data-can-edit-order-details="{{ 'true' if can_create_customer_orders else 'false' }}"
-          data-can-confirm-order-read="{{ 'true' if can_confirm_order_read else 'false' }}">
+          data-can-confirm-order-read="{{ 'true' if can_confirm_order_read else 'false' }}"
+          data-horse-save-animation="{{ 'true' if horse_save_animation else 'false' }}">
         <div class="alert d-none"
              id="vendite-assignments-alert"
              role="alert"></div>
@@ -437,7 +450,14 @@
                                     <tr>
                                         <th>#</th>
                                         <th>Modello</th>
-                                        <th>Spedizione</th>
+                                        <th id="vendite-delivery-sort-heading" aria-sort="none">
+                                            <button class="btn btn-sm border-0 p-0 fw-semibold text-body"
+                                                    type="button"
+                                                    id="vendite-delivery-sort"
+                                                    title="Ordina per data di consegna">
+                                                Spedizione <span id="vendite-delivery-sort-indicator" aria-hidden="true">↕</span>
+                                            </button>
+                                        </th>
                                         <th>Note di vendita</th>
                                         <th>Note commerciali</th>
                                         <th>Matricola assegnata</th>
@@ -582,6 +602,9 @@
             const saveOrderButton = document.getElementById("vendite-save-customer-order");
             const machinesBody = document.getElementById("vendite-machines-body");
             const customerOrdersBody = document.getElementById("vendite-customer-orders-body");
+            const deliverySortButton = document.getElementById("vendite-delivery-sort");
+            const deliverySortHeading = document.getElementById("vendite-delivery-sort-heading");
+            const deliverySortIndicator = document.getElementById("vendite-delivery-sort-indicator");
             const machinesPanel = document.getElementById("vendite-machines-panel");
             const customerOrdersPanel = document.getElementById("vendite-customer-orders-panel");
             const machinesPanelToggle = document.getElementById("vendite-machines-panel-toggle");
@@ -597,6 +620,7 @@
             const canDeleteOrders = page.dataset.canDeleteOrders === "true";
             const canEditOrderDetails = page.dataset.canEditOrderDetails === "true";
             const canConfirmOrderRead = page.dataset.canConfirmOrderRead === "true";
+            const horseSaveAnimation = page.dataset.horseSaveAnimation === "true";
 
             let models = [];
             let machines = [];
@@ -604,6 +628,7 @@
             let currentGrouping = {groups: [], families: []};
             let currentCustomerOrders = [];
             let groupCustomerOrders = false;
+            let customerOrderDeliverySort = null;
             let formDirty = false;
             let loadInFlight = false;
             let mutationInFlight = false;
@@ -1068,6 +1093,34 @@
                 applyMachineFilter();
             }
 
+            function customerOrderDeliveryDate(order) {
+                return (order.rows || [])
+                    .map(row => String(row.delivery_date || ""))
+                    .filter(Boolean)
+                    .sort()[0] || "";
+            }
+
+            function sortCustomerOrdersByDelivery(orders) {
+                if (!customerOrderDeliverySort) return orders;
+                return [...orders].sort((leftOrder, rightOrder) => {
+                    const leftDate = customerOrderDeliveryDate(leftOrder);
+                    const rightDate = customerOrderDeliveryDate(rightOrder);
+                    if (!leftDate) return rightDate ? 1 : 0;
+                    if (!rightDate) return -1;
+                    const comparison = leftDate.localeCompare(rightDate);
+                    return customerOrderDeliverySort === "asc"
+                        ? comparison
+                        : -comparison;
+                });
+            }
+
+            function updateDeliverySortIndicator() {
+                const ascending = customerOrderDeliverySort === "asc";
+                deliverySortHeading.setAttribute("aria-sort", ascending ? "ascending" : "descending");
+                deliverySortIndicator.textContent = ascending ? "▲" : "▼";
+                deliverySortButton.title = `Ordina per data di consegna ${ascending ? "decrescente" : "crescente"}`;
+            }
+
             function customerOrderSections(customerOrders, groups) {
                 if (groupCustomerOrders) {
                     const customers = new Map();
@@ -1143,6 +1196,7 @@
                     : [];
                 const renderedHeadings = new Set();
                 customerOrderSections(customerOrders, groups).forEach(section => {
+                    const sectionOrders = sortCustomerOrdersByDelivery(section.orders);
                     if (section.name !== null) {
                         const expanded = !collapsedCustomerGroups.has(section.key);
                         html.push(`
@@ -1154,12 +1208,12 @@
                                             aria-expanded="${expanded}"
                                             aria-label="${expanded ? "Riduci" : "Espandi"} raggruppamento ${esc(section.name)}">
                                         <span aria-hidden="true">${expanded ? "▾" : "▸"}</span>
-                                        ${esc(section.name)} (${section.orders.reduce((count, order) => count + order.rows.length, 0)})
+                                        ${esc(section.name)} (${sectionOrders.reduce((count, order) => count + order.rows.length, 0)})
                                     </button>
                                 </th>
                             </tr>`);
                     }
-                    section.orders.forEach(order => {
+                    sectionOrders.forEach(order => {
                     const primaryHeading = !renderedHeadings.has(String(order.id));
                     renderedHeadings.add(String(order.id));
                     const neutralClass = referenceClass(order.internal_reference);
@@ -1554,6 +1608,26 @@
                 return payload;
             }
 
+            function playHorseSaveAnimation(row) {
+                if (!horseSaveAnimation || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+                    return Promise.resolve();
+                }
+                const bounds = row.getBoundingClientRect();
+                const left = Math.max(8, bounds.left);
+                const stage = document.createElement("div");
+                stage.className = "vendite-horse-stage";
+                stage.setAttribute("aria-hidden", "true");
+                stage.style.left = `${left}px`;
+                stage.style.top = `${Math.max(0, bounds.top - 48)}px`;
+                stage.style.width = `${Math.max(180, Math.min(bounds.width, window.innerWidth - left - 8))}px`;
+                stage.innerHTML = `
+                    <span class="vendite-horse">🐎</span>
+                    <span class="vendite-horse-obstacle">🚧</span>`;
+                document.body.appendChild(stage);
+                window.setTimeout(() => stage.remove(), 3100);
+                return new Promise(resolve => window.setTimeout(resolve, 2220));
+            }
+
             async function saveRow(rowId, button) {
                 if (mutationInFlight) return;
                 const row = customerOrdersBody.querySelector(
@@ -1564,6 +1638,7 @@
 
                 mutationInFlight = true;
                 button.disabled = true;
+                await playHorseSaveAnimation(row);
                 try {
                     const url = page.dataset.rowSaveUrlTemplate.replace(
                         "/0/",
@@ -1952,6 +2027,11 @@
 
             machineFilter.addEventListener("input", applyMachineFilter);
             demandFilter.addEventListener("input", applyDemandFilter);
+            deliverySortButton.addEventListener("click", () => {
+                customerOrderDeliverySort = customerOrderDeliverySort === "asc" ? "desc" : "asc";
+                updateDeliverySortIndicator();
+                renderCustomerOrders(currentCustomerOrders);
+            });
             groupByCustomerToggle.addEventListener("change", () => {
                 groupCustomerOrders = groupByCustomerToggle.checked;
                 groupingDescription.textContent = groupCustomerOrders

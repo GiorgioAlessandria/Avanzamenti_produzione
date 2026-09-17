@@ -122,6 +122,7 @@ def vendite_assegnazioni_page():
                 tab_session=active_token(),
             )
         )
+    user = active_user()
     admin = policy.has_direct_admin_role
     can_create_customer_orders = admin or policy.can("utente_vendite")
     return render_template(
@@ -137,6 +138,9 @@ def vendite_assegnazioni_page():
         can_view_packaging_notes=admin or not policy.can("utente_imballi"),
         can_view_model_summary=_can_view_customer_orders(policy),
         can_confirm_order_read=admin or policy.can("utente_produzione"),
+        horse_save_animation=admin
+        or str(getattr(user, "username", "")).strip().casefold()
+        == "ambra pirotti",
     )
 
 
