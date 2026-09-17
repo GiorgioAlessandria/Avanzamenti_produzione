@@ -35,6 +35,10 @@
             outline-offset: -1px;
         }
 
+        #vendite-assegnazioni-page .vendite-customer-heading-grouped td {
+            outline: 0;
+        }
+
         #vendite-assegnazioni-page tr.vendite-order-italia > td {
             color: #174c61 !important;
             background-color: #dff3fb !important;
@@ -153,6 +157,7 @@
           data-can-edit-production-instructions="{{ 'true' if can_edit_production_instructions else 'false' }}"
           data-can-delete-orders="{{ 'true' if can_create_customer_orders else 'false' }}"
           data-can-edit-order-details="{{ 'true' if can_create_customer_orders else 'false' }}"
+          data-section-preference-user="{{ section_preference_user }}"
           data-can-confirm-order-read="{{ 'true' if can_confirm_order_read else 'false' }}"
           data-horse-save-animation="{{ 'true' if horse_save_animation else 'false' }}">
         <div class="alert d-none"
@@ -424,12 +429,22 @@
                                         <span class="badge border text-dark" style="background:#d1e7dd">Macchina imballata</span>
                                     </div>
                                 </div>
-                                <div class="form-check form-switch mb-0">
-                                    <input class="form-check-input" type="checkbox"
-                                           role="switch" id="vendite-group-by-customer">
-                                    <label class="form-check-label" for="vendite-group-by-customer">
-                                        Raggruppa per cliente
-                                    </label>
+                                <div class="d-flex flex-wrap align-items-end gap-3">
+                                    <div id="vendite-first-section-control" class="d-none">
+                                        <label class="form-label small mb-1" for="vendite-first-section">
+                                            Prima sezione
+                                        </label>
+                                        <select class="form-select form-select-sm" id="vendite-first-section">
+                                            <option value="">Ordine predefinito</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-check form-switch mb-1">
+                                        <input class="form-check-input" type="checkbox"
+                                               role="switch" id="vendite-group-by-customer">
+                                        <label class="form-check-label" for="vendite-group-by-customer">
+                                            Raggruppa per cliente
+                                        </label>
+                                    </div>
                                 </div>
                             </div>
                             <div class="card-body py-2 border-bottom">
@@ -612,6 +627,8 @@
             const demandFilter = document.getElementById("vendite-demand-filter");
             const groupByCustomerToggle = document.getElementById("vendite-group-by-customer");
             const groupingDescription = document.getElementById("vendite-customer-grouping-description");
+            const firstSectionControl = document.getElementById("vendite-first-section-control");
+            const firstSectionSelect = document.getElementById("vendite-first-section");
             const packagingNotesBody = document.getElementById("vendite-packaging-notes-body");
             const savePackagingNotesButton = document.getElementById("vendite-save-packaging-notes");
             const canAssignMachines = page.dataset.canAssignMachines === "true";
@@ -628,7 +645,7 @@
             let currentGrouping = {groups: [], families: []};
             let currentCustomerOrders = [];
             let groupCustomerOrders = false;
-            let customerOrderDeliverySort = null;
+            let customerOrderDeliverySort = "asc";
             let formDirty = false;
             let loadInFlight = false;
             let mutationInFlight = false;
@@ -1179,8 +1196,42 @@
                 return sections;
             }
 
+            function firstSectionStorageKey() {
+                const mode = groupCustomerOrders ? "customer" : "family";
+                return `vendite:first-section:${page.dataset.sectionPreferenceUser}:${mode}`;
+            }
+
+            function preferredFirstSection() {
+                try {
+                    return window.localStorage.getItem(firstSectionStorageKey()) || "";
+                } catch (_error) {
+                    return "";
+                }
+            }
+
+            function prioritizeCustomerOrderSections(sections) {
+                const available = sections.filter(section => (
+                    section.name !== null && section.orders.length
+                ));
+                const preferred = preferredFirstSection();
+                firstSectionControl.classList.toggle("d-none", available.length < 2);
+                firstSectionSelect.innerHTML = `
+                    <option value="">Ordine predefinito</option>
+                    ${available.map(section => `
+                        <option value="${esc(section.key)}">${esc(section.name)}</option>
+                    `).join("")}`;
+                firstSectionSelect.value = available.some(section => section.key === preferred)
+                    ? preferred
+                    : "";
+                const preferredIndex = sections.findIndex(section => section.key === preferred);
+                return preferredIndex > 0
+                    ? [sections[preferredIndex], ...sections.slice(0, preferredIndex), ...sections.slice(preferredIndex + 1)]
+                    : sections;
+            }
+
             function renderCustomerOrders(customerOrders) {
                 if (!customerOrders.length) {
+                    firstSectionControl.classList.add("d-none");
                     customerOrdersBody.innerHTML = `
                         <tr>
                             <td colspan="10" class="text-center text-muted py-4">
@@ -1195,7 +1246,8 @@
                     ? currentGrouping.groups
                     : [];
                 const renderedHeadings = new Set();
-                customerOrderSections(customerOrders, groups).forEach(section => {
+                const sections = prioritizeCustomerOrderSections(customerOrderSections(customerOrders, groups));
+                sections.forEach(section => {
                     const sectionOrders = sortCustomerOrdersByDelivery(section.orders);
                     if (section.name !== null) {
                         const expanded = !collapsedCustomerGroups.has(section.key);
@@ -1252,7 +1304,7 @@
                             order.internal_reference || "ITALIA"
                         )}</span>`;
                     html.push(`
-                        <tr class="${orderClass} vendite-customer-heading"
+                        <tr class="${orderClass} vendite-customer-heading${groupCustomerOrders ? " vendite-customer-heading-grouped" : ""}"
                             data-demand-search="${esc(orderSearch)}"
                             data-customer-order-id="${esc(order.id)}"
                             data-collapse-key="${esc(collapseKey)}"
@@ -2039,6 +2091,18 @@
                     : "Gli ordini sono suddivisi usando i raggruppamenti per famiglia configurati nella situazione per matricola.";
                 renderCustomerOrders(currentCustomerOrders);
             });
+            firstSectionSelect.addEventListener("change", () => {
+                try {
+                    if (firstSectionSelect.value) {
+                        window.localStorage.setItem(firstSectionStorageKey(), firstSectionSelect.value);
+                    } else {
+                        window.localStorage.removeItem(firstSectionStorageKey());
+                    }
+                } catch (_error) {
+                    // localStorage può essere disabilitato dal browser.
+                }
+                renderCustomerOrders(currentCustomerOrders);
+            });
             machinesPanelToggle.addEventListener("click", () => {
                 setMachinesPanelExpanded(
                     machinesPanelToggle.getAttribute("aria-expanded") !== "true"
@@ -2063,6 +2127,7 @@
                 if (!document.hidden) refresh();
             });
 
+            updateDeliverySortIndicator();
             addCreateLine({}, {focus: false, dirty: false});
             const pollTimer = window.setInterval(() => {
                 if (!document.hidden) refresh();

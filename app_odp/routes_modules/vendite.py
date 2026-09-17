@@ -1,4 +1,12 @@
-from flask import abort, current_app, jsonify, redirect, render_template, request, url_for
+from flask import (
+    abort,
+    current_app,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    url_for,
+)
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.exc import StaleDataError
 
@@ -64,7 +72,9 @@ def _visible_assignment_dashboard():
 
 def _visible_production_dashboard():
     policy = active_policy()
-    priority_mode = request.args.get("priorita") == "1" and policy.can("utente_produzione")
+    priority_mode = request.args.get("priorita") == "1" and policy.can(
+        "utente_produzione"
+    )
     return build_vendite_payload(
         include_planned=policy.can("visualizza_pianificati") or priority_mode,
         viewer=active_user(),
@@ -103,9 +113,15 @@ def vendite_page():
 @main_bp.get("/api/vendite/ordini-macchina")
 @require_active_perm("vendite")
 def api_vendite_ordini_macchina():
-    response = jsonify({"ok": True, "data": {
-        **_visible_production_dashboard(), "grouping": build_machine_grouping(),
-    }})
+    response = jsonify(
+        {
+            "ok": True,
+            "data": {
+                **_visible_production_dashboard(),
+                "grouping": build_machine_grouping(),
+            },
+        }
+    )
     response.headers["Cache-Control"] = "no-store"
     return response, 200
 
@@ -138,9 +154,9 @@ def vendite_assegnazioni_page():
         can_view_packaging_notes=admin or not policy.can("utente_imballi"),
         can_view_model_summary=_can_view_customer_orders(policy),
         can_confirm_order_read=admin or policy.can("utente_produzione"),
+        section_preference_user=getattr(user, "id", "anonymous"),
         horse_save_animation=admin
-        or str(getattr(user, "username", "")).strip().casefold()
-        == "ambra pirotti",
+        or str(getattr(user, "username", "")).strip().casefold() == "pirotti ambra",
     )
 
 
@@ -196,8 +212,11 @@ def api_vendite_assegnazioni():
 
 
 def _assignment_mutation(
-    action, success_message: str, success_status: int = 200,
-    *, dashboard_builder=_visible_assignment_dashboard,
+    action,
+    success_message: str,
+    success_status: int = 200,
+    *,
+    dashboard_builder=_visible_assignment_dashboard,
 ):
     try:
         action()
@@ -340,9 +359,7 @@ def api_vendite_ordini_cliente_create():
     )
 
 
-@main_bp.post(
-    "/api/vendite/ordini-cliente/righe/<int:row_id>/assegnazione"
-)
+@main_bp.post("/api/vendite/ordini-cliente/righe/<int:row_id>/assegnazione")
 @require_active_perm("vendite")
 @require_active_any_perm("utente_vendite", "utente_produzione")
 def api_vendite_riga_assegnazione(row_id: int):
@@ -383,13 +400,15 @@ def api_vendite_riga_date(row_id: int):
 
 @main_bp.post("/api/vendite/ordini-cliente/righe/<int:row_id>/salva")
 @require_active_perm("vendite")
-@require_active_any_perm("utente_vendite", "utente_produzione", "utente_amministrazione")
+@require_active_any_perm(
+    "utente_vendite", "utente_produzione", "utente_amministrazione"
+)
 def api_vendite_riga_salva(row_id: int):
     payload = request.get_json(silent=True)
     policy = active_policy()
     can_edit_sales = policy.can("utente_vendite")
-    can_edit_production_instructions = (
-        can_edit_sales or policy.can("utente_amministrazione")
+    can_edit_production_instructions = can_edit_sales or policy.can(
+        "utente_amministrazione"
     )
     can_assign = can_edit_sales or policy.can("utente_produzione")
     return _assignment_mutation(
@@ -417,9 +436,7 @@ def api_vendite_note_imballaggio():
     )
 
 
-@main_bp.post(
-    "/api/vendite/ordini-cliente/righe/<int:row_id>/note"
-)
+@main_bp.post("/api/vendite/ordini-cliente/righe/<int:row_id>/note")
 @require_active_perm("vendite")
 @require_active_any_perm("utente_vendite", "utente_amministrazione")
 def api_vendite_riga_note(row_id: int):
@@ -431,17 +448,14 @@ def api_vendite_riga_note(row_id: int):
             payload,
             can_edit_sales=policy.can("utente_vendite"),
             can_edit_production_instructions=(
-                policy.can("utente_vendite")
-                or policy.can("utente_amministrazione")
+                policy.can("utente_vendite") or policy.can("utente_amministrazione")
             ),
         ),
         "Note aggiornate.",
     )
 
 
-@main_bp.post(
-    "/api/vendite/ordini-cliente/<int:order_id>/conferma-lettura"
-)
+@main_bp.post("/api/vendite/ordini-cliente/<int:order_id>/conferma-lettura")
 @require_active_perm("vendite")
 @require_active_perm("utente_produzione")
 def api_vendite_ordine_cliente_conferma_lettura(order_id: int):
@@ -451,9 +465,7 @@ def api_vendite_ordine_cliente_conferma_lettura(order_id: int):
     )
 
 
-@main_bp.delete(
-    "/api/vendite/ordini-cliente/<int:order_id>/elimina"
-)
+@main_bp.delete("/api/vendite/ordini-cliente/<int:order_id>/elimina")
 @require_active_perm("vendite")
 @require_active_perm("utente_vendite")
 def api_vendite_ordine_cliente_delete(order_id: int):
