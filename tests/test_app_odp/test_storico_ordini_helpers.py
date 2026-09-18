@@ -1,7 +1,31 @@
 from datetime import datetime, time
 from types import SimpleNamespace
 
+import pytest
+from flask import Flask
+
+from app_odp.models import LottiGeneratiLog, LottiUsatiLog, db
 from app_odp.services import storico_ordini_service as service
+
+
+@pytest.fixture()
+def storico_app():
+    app = Flask(__name__)
+    app.config.update(
+        TESTING=True,
+        SQLALCHEMY_DATABASE_URI="sqlite://",
+        SQLALCHEMY_BINDS={"log": "sqlite://"},
+        SQLALCHEMY_TRACK_MODIFICATIONS=False,
+    )
+    db.init_app(app)
+    with app.app_context():
+        LottiUsatiLog.__table__.create(db.engines["log"])
+        LottiGeneratiLog.__table__.create(db.engines["log"])
+    yield app
+    with app.app_context():
+        db.session.remove()
+        LottiGeneratiLog.__table__.drop(db.engines["log"])
+        LottiUsatiLog.__table__.drop(db.engines["log"])
 
 
 def test_parse_date_returns_day_boundaries_or_none():
@@ -238,3 +262,46 @@ def test_row_matches_python_filters_combines_resource_and_exact_group_type():
         entry,
         {"risorsa": "pressa", "tipo_gruppo": "MISTO"},
     ) is False
+
+
+def test_lot_history_search_returns_used_and_generated_order_assignments(storico_app):
+    common = {
+        "IdDocumento": "DOC-1",
+        "IdRiga": "10",
+        "RifRegistraz": "2026.123",
+        "CodArt": "ART-1",
+        "Quantita": "2",
+        "ClosedBy": "mario",
+        "Fase": "20",
+    }
+    with storico_app.app_context():
+        db.session.add_all(
+            [
+                LottiUsatiLog(
+                    **common,
+                    RifLottoAlfa="LOTTO-ABC",
+                    ClosedAt="2026-09-18T10:00:00",
+                ),
+                LottiGeneratiLog(
+                    **common,
+                    RifLottoAlfa="LOTTO-ABC-PF",
+                    ClosedAt="2026-09-18T11:00:00",
+                ),
+                LottiUsatiLog(
+                    **common,
+                    RifLottoAlfa="ALTRO",
+                    ClosedAt="2026-09-18T12:00:00",
+                ),
+            ]
+        )
+        db.session.commit()
+
+        result = service.build_storico_lotti_search({"lotto": "abc"})
+
+        assert result["ok"] is True
+        assert result["total"] == 2
+        assert [(row["kind"], row["lotto"]) for row in result["rows"]] == [
+            ("generated", "LOTTO-ABC-PF"),
+            ("used", "LOTTO-ABC"),
+        ]
+        assert {row["ordine"] for row in result["rows"]} == {"2026.123"}

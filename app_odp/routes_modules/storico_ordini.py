@@ -8,6 +8,7 @@ from app_odp.routes_blueprint import main_bp
 from app_odp.services.storico_ordini_service import (
     build_storico_ordini_detail,
     build_storico_ordini_list,
+    build_storico_lotti_search,
     default_period,
 )
 
@@ -36,3 +37,10 @@ def api_storico_ordini_detail():
     payload = build_storico_ordini_detail(request.args)
     status = 200 if payload.get("ok") else 400
     return jsonify(payload), status
+
+
+@main_bp.get("/api/storico-ordini/lotti")
+@require_active_perm("storico_ordini")
+def api_storico_ordini_lotti():
+    payload = build_storico_lotti_search(request.args)
+    return jsonify(payload), 200 if payload.get("ok") else 400

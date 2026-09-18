@@ -18,6 +18,7 @@ from app_odp.services.order_helpers import _json_safe, _norm_text
 
 PAGE_SIZE_DEFAULT = 50
 SCAN_LIMIT = 5000
+LOT_SEARCH_LIMIT = 200
 
 
 ACTION_LABELS = {
@@ -809,6 +810,57 @@ def _lotto_generato_to_dict(row):
         "utente": _norm_text(row.ClosedBy),
         "label": _norm_text(row.LabelFilename),
     }
+
+
+def _lotto_search_row(row, kind: str) -> dict:
+    return {
+        "log_id": row.log_id,
+        "kind": kind,
+        "kind_label": "Usato" if kind == "used" else "Generato",
+        "event_at": _norm_text(row.ClosedAt) or _norm_text(row.logged_at),
+        "event_at_display": _format_dt(row.ClosedAt or row.logged_at),
+        "ordine": _norm_text(row.RifRegistraz)
+        or f"{row.IdDocumento}/{row.IdRiga}",
+        "id_documento": _norm_text(row.IdDocumento),
+        "id_riga": _norm_text(row.IdRiga),
+        "articolo": _norm_text(row.CodArt),
+        "lotto": _norm_text(row.RifLottoAlfa),
+        "quantita": _norm_text(row.Quantita),
+        "fase": _norm_text(row.Fase),
+        "utente": _norm_text(row.ClosedBy),
+    }
+
+
+def build_storico_lotti_search(params) -> dict:
+    lotto = _norm_text(params.get("lotto"))
+    if len(lotto) < 2:
+        return {"ok": False, "error": "Inserire almeno 2 caratteri del lotto."}
+
+    like = f"%{lotto}%"
+    rows = []
+    for model, kind in (
+        (LottiUsatiLog, "used"),
+        (LottiGeneratiLog, "generated"),
+    ):
+        matches = (
+            model.query.filter(model.RifLottoAlfa.ilike(like))
+            .order_by(desc(model.ClosedAt), desc(model.logged_at), desc(model.log_id))
+            .limit(LOT_SEARCH_LIMIT + 1)
+            .all()
+        )
+        rows.extend(_lotto_search_row(row, kind) for row in matches)
+
+    rows.sort(key=lambda row: (row["event_at"], row["log_id"]), reverse=True)
+    limited = len(rows) > LOT_SEARCH_LIMIT
+    return _json_safe(
+        {
+            "ok": True,
+            "lotto": lotto,
+            "rows": rows[:LOT_SEARCH_LIMIT],
+            "total": min(len(rows), LOT_SEARCH_LIMIT),
+            "limit_reached": limited,
+        }
+    )
 
 
 def build_storico_ordini_detail(params) -> dict:

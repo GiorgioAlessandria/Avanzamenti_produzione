@@ -48,11 +48,54 @@
     <main class="container-fluid py-3"
           id="storico-ordini-page"
           data-list-url="{{ operator_url_for('main.api_storico_ordini') }}"
-          data-detail-url="{{ operator_url_for('main.api_storico_ordini_detail') }}">
+          data-detail-url="{{ operator_url_for('main.api_storico_ordini_detail') }}"
+          data-lotti-url="{{ operator_url_for('main.api_storico_ordini_lotti') }}">
         <div class="d-flex justify-content-between align-items-start mb-3">
             <div>
                 <h1 class="h4 mb-1">Storico ordini</h1>
                 <div class="text-muted small">Log operativi, chiusure, gruppi, lotti e matricole</div>
+            </div>
+        </div>
+
+        <div class="card shadow-sm mb-3 storico-filter-card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span class="fw-semibold">Ricerca storico lotti</span>
+                <span class="small text-muted" id="storico-lotti-count"
+                      role="status" aria-live="polite"></span>
+            </div>
+            <div class="card-body">
+                <form class="row g-2 align-items-end" id="storico-lotti-form">
+                    <div class="col-12 col-md-5">
+                        <label class="form-label" for="storico-lotto">Lotto</label>
+                        <input class="form-control" id="storico-lotto"
+                               minlength="2" required
+                               placeholder="Inserire almeno 2 caratteri">
+                    </div>
+                    <div class="col-12 col-md-2">
+                        <button type="submit" class="btn btn-primary w-100">
+                            Cerca lotto
+                        </button>
+                    </div>
+                </form>
+            </div>
+            <div class="table-responsive d-none" id="storico-lotti-results">
+                <table class="table table-sm table-hover align-middle mb-0">
+                    <thead class="table-light">
+                    <tr>
+                        <th>Tipo</th>
+                        <th>Lotto</th>
+                        <th>Ordine di produzione</th>
+                        <th>Documento / riga</th>
+                        <th>Articolo</th>
+                        <th>Quantità</th>
+                        <th>Fase</th>
+                        <th>Data</th>
+                        <th>Operatore</th>
+                        <th></th>
+                    </tr>
+                    </thead>
+                    <tbody id="storico-lotti-body"></tbody>
+                </table>
             </div>
         </div>
 
@@ -231,6 +274,9 @@
             const pageEl = document.getElementById("storico-page");
             const prevBtn = document.getElementById("storico-prev");
             const nextBtn = document.getElementById("storico-next");
+            const lotsBody = document.getElementById("storico-lotti-body");
+            const lotsCount = document.getElementById("storico-lotti-count");
+            const lotsResults = document.getElementById("storico-lotti-results");
             const detailModalEl = document.getElementById("storico-detail-modal");
             const detailTitle = document.getElementById("storico-detail-title");
             const detailSubtitle = document.getElementById("storico-detail-subtitle");
@@ -341,6 +387,61 @@
                         </td>
                     </tr>
                 `).join("");
+            }
+
+            async function loadLots() {
+                const lotto = value("storico-lotto");
+                lotsResults.classList.remove("d-none");
+                lotsCount.textContent = "";
+                lotsBody.innerHTML = `<tr><td colspan="10" class="text-center text-muted py-3">Ricerca...</td></tr>`;
+                const sep = page.dataset.lottiUrl.includes("?") ? "&" : "?";
+
+                try {
+                    const resp = await window.avpFetch(
+                        `${page.dataset.lottiUrl}${sep}${new URLSearchParams({lotto})}`
+                    );
+                    const data = await resp.json().catch(() => ({
+                        ok: false,
+                        error: `Risposta non valida dal server (${resp.status})`,
+                    }));
+                    if (!resp.ok || !data.ok) {
+                        lotsBody.innerHTML = `<tr><td colspan="10" class="text-center text-danger py-3">${esc(data.error || "Errore ricerca lotto")}</td></tr>`;
+                        return;
+                    }
+
+                    lotsCount.textContent = data.limit_reached
+                        ? `${data.total} risultati mostrati (limite raggiunto)`
+                        : `${data.total} risultati`;
+                    if (!data.rows.length) {
+                        lotsBody.innerHTML = `<tr><td colspan="10" class="text-center text-muted py-3">Nessuna assegnazione trovata.</td></tr>`;
+                        return;
+                    }
+
+                    lotsBody.innerHTML = data.rows.map(row => `
+                        <tr>
+                            <td>${esc(row.kind_label)}</td>
+                            <td class="fw-semibold">${esc(row.lotto)}</td>
+                            <td>${esc(row.ordine)}</td>
+                            <td>${esc(row.id_documento)} / ${esc(row.id_riga)}</td>
+                            <td>${esc(row.articolo)}</td>
+                            <td>${esc(row.quantita)}</td>
+                            <td>${esc(window.phaseLabel(row.fase))}</td>
+                            <td>${esc(row.event_at_display)}</td>
+                            <td>${esc(row.utente)}</td>
+                            <td class="text-end">
+                                <button type="button"
+                                        class="btn btn-sm btn-outline-primary js-storico-detail"
+                                        data-kind="order"
+                                        data-key="order:${esc(row.id_documento)}|${esc(row.id_riga)}">
+                                    Dettaglio ordine
+                                </button>
+                            </td>
+                        </tr>
+                    `).join("");
+                } catch (err) {
+                    console.error("Errore ricerca storico lotti:", err);
+                    lotsBody.innerHTML = `<tr><td colspan="10" class="text-center text-danger py-3">Errore di comunicazione con il server.</td></tr>`;
+                }
             }
 
             function detailParams(btn) {
@@ -520,6 +621,10 @@
                 currentPage = 1;
                 loadList();
             });
+            document.getElementById("storico-lotti-form").addEventListener("submit", event => {
+                event.preventDefault();
+                loadLots();
+            });
             document.getElementById("storico-reset").addEventListener("click", () => {
                 document.getElementById("storico-filters").reset();
                 currentPage = 1;
@@ -538,6 +643,10 @@
                 }
             });
             body.addEventListener("click", event => {
+                const btn = event.target.closest(".js-storico-detail");
+                if (btn) openDetail(btn);
+            });
+            lotsBody.addEventListener("click", event => {
                 const btn = event.target.closest(".js-storico-detail");
                 if (btn) openDetail(btn);
             });
