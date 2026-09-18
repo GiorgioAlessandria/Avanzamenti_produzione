@@ -205,6 +205,30 @@ class VenditeOrdineClienteRiga(db.Model):
     __mapper_args__ = {"version_id_col": versione}
 
 
+class VenditeOrdineClienteLog(db.Model):
+    __tablename__ = "vendite_ordini_cliente_log"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    ordine_cliente_riga_id = db.Column(db.Integer, nullable=True, index=True)
+    ordine_cliente_id = db.Column(db.Integer, nullable=True, index=True)
+    cliente_nome = db.Column(db.String(160), nullable=False)
+    numero_ordine = db.Column(db.String(120), nullable=False)
+    posizione = db.Column(db.Integer, nullable=True)
+    matricola = db.Column(db.String(200), nullable=True, index=True)
+    entita = db.Column(db.String(30), nullable=False, index=True)
+    evento = db.Column(db.String(20), nullable=False, index=True)
+    campo = db.Column(db.String(50), nullable=True, index=True)
+    valore_precedente = db.Column(db.String(1000), nullable=True)
+    valore_nuovo = db.Column(db.String(1000), nullable=True)
+    modificata_il = db.Column(db.Text, nullable=False, default=_rome_iso_now, index=True)
+    modificata_da_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    modificata_da_nome = db.Column(db.String(120), nullable=False)
+
+
 class VenditeMacchinaSpedibile(db.Model):
     __tablename__ = "vendite_macchine_spedibili"
 

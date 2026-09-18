@@ -979,7 +979,22 @@
                     ? `<div class="small text-success mt-1">Macchina completata: ${esc(window.phaseLabel(2))} — chiusa.</div>`
                     : row.assignment && row.assignment.open === false
                         ? '<div class="small text-danger mt-1">Matricola non più presente tra quelle disponibili.</div>'
-                        : ""}`;
+                        : ""}
+                    ${auditLine(row, "assignment")}`;
+            }
+
+            function auditLine(row, field) {
+                const audit = row.field_audit?.[field];
+                if (!audit) return "";
+                const auditAction = {
+                    INSERIMENTO: "Inserita",
+                    MODIFICA: "Modificata",
+                    CANCELLAZIONE: "Cancellata",
+                }[audit.event] || "Modificata";
+                return `<div class="small text-muted mt-1">
+                    ${esc(auditAction)} da <strong>${esc(audit.changed_by_name)}</strong>
+                    · ${esc(formatDateTime(audit.changed_at))}
+                </div>`;
             }
 
             function noteTextarea(row, field, label, editable) {
@@ -992,7 +1007,8 @@
                               maxlength="1000"
                               rows="2"
                               aria-label="${esc(label)} riga ${esc(row.position)}"
-                              ${editable ? "" : "readonly"}>${esc(row[field] || "")}</textarea>`;
+                              ${editable ? "" : "readonly"}>${esc(row[field] || "")}</textarea>
+                    ${auditLine(row, field)}`;
             }
 
             function dateInput(row, field, label, editable) {
@@ -1005,7 +1021,8 @@
                            type="date"
                            value="${esc(row[field] || "")}"
                            aria-label="${esc(label)} riga ${esc(row.position)}"
-                           ${editable ? "" : "readonly"}>`;
+                           ${editable ? "" : "readonly"}>
+                    ${auditLine(row, field)}`;
             }
 
             function rowActions(row) {

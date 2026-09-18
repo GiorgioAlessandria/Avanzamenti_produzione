@@ -376,7 +376,7 @@ def api_vendite_riga_assegnazione(row_id: int):
 def api_vendite_ordine_cliente_dati(order_id: int):
     payload = request.get_json(silent=True)
     return _assignment_mutation(
-        lambda: update_customer_order_details(order_id, payload),
+        lambda: update_customer_order_details(order_id, payload, active_user()),
         "Dati dell'ordine cliente aggiornati.",
     )
 
@@ -391,6 +391,7 @@ def api_vendite_riga_date(row_id: int):
         lambda: update_customer_row_dates(
             row_id,
             payload,
+            active_user(),
             can_edit_delivery=policy.can("utente_vendite"),
             can_edit_available=False,
         ),
@@ -446,6 +447,7 @@ def api_vendite_riga_note(row_id: int):
         lambda: update_customer_row_notes(
             row_id,
             payload,
+            active_user(),
             can_edit_sales=policy.can("utente_vendite"),
             can_edit_production_instructions=(
                 policy.can("utente_vendite") or policy.can("utente_amministrazione")
@@ -470,6 +472,6 @@ def api_vendite_ordine_cliente_conferma_lettura(order_id: int):
 @require_active_perm("utente_vendite")
 def api_vendite_ordine_cliente_delete(order_id: int):
     return _assignment_mutation(
-        lambda: delete_customer_order(order_id),
+        lambda: delete_customer_order(order_id, active_user()),
         "Ordine cliente eliminato e matricole rese disponibili.",
     )

@@ -44,6 +44,7 @@ from app_odp.vendite_models import (
     VenditeNotaProduzioneMacchina,
     VenditeOpzioneMacchina,
     VenditeOrdineCliente,
+    VenditeOrdineClienteLog,
     VenditeOrdineClienteRiga,
     VenditeSensoreAntiribaltamentoLog,
     VenditeSensoriMacchina,
@@ -153,6 +154,43 @@ def _actor(user) -> tuple[int | None, str]:
         getattr(user, "id", None),
         _norm_text(getattr(user, "username", "")) or "utente",
     )
+
+
+def _log_customer_change(
+    customer,
+    user,
+    *,
+    event=None,
+    field=None,
+    previous=None,
+    current=None,
+    row=None,
+    entity=None,
+) -> None:
+    actor_id, actor_name = _actor(user)
+    previous = previous.isoformat() if isinstance(previous, date) else (_norm_text(previous) or None)
+    current = current.isoformat() if isinstance(current, date) else (_norm_text(current) or None)
+    if event is None:
+        event = (
+            "INSERIMENTO" if previous is None and current is not None
+            else "CANCELLAZIONE" if previous is not None and current is None
+            else "MODIFICA"
+        )
+    db.session.add(VenditeOrdineClienteLog(
+        ordine_cliente_riga_id=row.id if row is not None else None,
+        ordine_cliente_id=customer.id if customer is not None else None,
+        cliente_nome=customer.cliente_nome if customer is not None else "",
+        numero_ordine=customer.numero_ordine if customer is not None else "",
+        posizione=row.posizione if row is not None else None,
+        matricola=row.odp_matricola if row is not None else None,
+        entita=entity or ("RIGA" if row is not None else "ORDINE"),
+        evento=event,
+        campo=field,
+        valore_precedente=previous,
+        valore_nuovo=current,
+        modificata_da_id=actor_id,
+        modificata_da_nome=actor_name,
+    ))
 
 
 def _require_read_confirmation(customer: VenditeOrdineCliente) -> None:
@@ -579,6 +617,32 @@ def create_customer_order(payload, user, *, commit: bool = False):
     ]
     db.session.add(customer)
     db.session.flush()
+    _log_customer_change(
+        customer,
+        user,
+        event="CREAZIONE",
+        field="ordine",
+        current=customer.numero_ordine,
+    )
+    for row in customer.righe:
+        initial_values = {
+            "model": row.modello_codice,
+            "sales_note": row.note,
+            "commercial_note": row.note_commerciali,
+            "production_instructions": row.note_per_produzione,
+            "shipping_note": row.note_spedizione,
+            "delivery_date": row.data_consegna.isoformat(),
+        }
+        for field, value in initial_values.items():
+            if value:
+                _log_customer_change(
+                    customer,
+                    user,
+                    event="INSERIMENTO",
+                    field=field,
+                    current=value,
+                    row=row,
+                )
     for row, (_model, _note, _delivery, machine, _instructions, _commercial_note) in zip(
         customer.righe,
         expanded_rows,
@@ -731,6 +795,10 @@ def set_machine_assignment(
         if any(old_assignment):
             _mark_row_changed(row, "assignment")
             _require_read_confirmation(row.ordine_cliente)
+            _log_customer_change(
+                row.ordine_cliente, user, field="assignment",
+                previous=old_assignment[2], row=row,
+            )
         db.session.flush()
         if commit:
             db.session.commit()
@@ -767,9 +835,14 @@ def set_machine_assignment(
         exclude_row_id=row.id,
     )
     for already_assigned in already_assigned_rows:
+        previous_serial = already_assigned.odp_matricola
         _clear_assignment(already_assigned)
         _mark_row_changed(already_assigned, "assignment")
         _require_read_confirmation(already_assigned.ordine_cliente)
+        _log_customer_change(
+            already_assigned.ordine_cliente, user, field="assignment",
+            previous=previous_serial, row=already_assigned,
+        )
     if already_assigned_rows:
         db.session.flush()
 
@@ -784,6 +857,10 @@ def set_machine_assignment(
     if old_assignment != (row.odp_id_documento, row.odp_id_riga, row.odp_matricola):
         _mark_row_changed(row, "assignment")
         _require_read_confirmation(row.ordine_cliente)
+        _log_customer_change(
+            row.ordine_cliente, user, field="assignment",
+            previous=old_assignment[2], current=row.odp_matricola, row=row,
+        )
     db.session.flush()
     if commit:
         db.session.commit()
@@ -904,12 +981,14 @@ def _apply_note_updates(
     *,
     can_edit_sales: bool,
     can_edit_production_instructions: bool = False,
+    user=None,
 ) -> bool:
     updated = False
     changed = False
     if (
         can_edit_sales or can_edit_production_instructions
     ) and "production_instructions" in payload:
+        previous = row.note_per_produzione
         value = _optional_text(
             payload.get("production_instructions"),
             "Le note per produzione",
@@ -920,9 +999,14 @@ def _apply_note_updates(
         row.note_per_produzione = value
         if field_changed:
             _mark_row_changed(row, "production_instructions")
+            _log_customer_change(
+                row.ordine_cliente, user, field="production_instructions",
+                previous=previous, current=value, row=row,
+            )
         updated = True
     if can_edit_sales:
         if "commercial_note" in payload:
+            previous = row.note_commerciali
             value = _optional_text(
                 payload.get("commercial_note"),
                 "Le note commerciali",
@@ -933,8 +1017,13 @@ def _apply_note_updates(
             row.note_commerciali = value
             if field_changed:
                 _mark_row_changed(row, "commercial_note")
+                _log_customer_change(
+                    row.ordine_cliente, user, field="commercial_note",
+                    previous=previous, current=value, row=row,
+                )
             updated = True
         if "sales_note" in payload:
+            previous = row.note
             value = _optional_text(
                 payload.get("sales_note"),
                 "Le note di vendita",
@@ -945,8 +1034,13 @@ def _apply_note_updates(
             row.note = value
             if field_changed:
                 _mark_row_changed(row, "sales_note")
+                _log_customer_change(
+                    row.ordine_cliente, user, field="sales_note",
+                    previous=previous, current=value, row=row,
+                )
             updated = True
         if "shipping_note" in payload:
+            previous = row.note_spedizione
             value = _optional_text(
                 payload.get("shipping_note"),
                 "Le note per imballo",
@@ -957,6 +1051,10 @@ def _apply_note_updates(
             row.note_spedizione = value
             if field_changed:
                 _mark_row_changed(row, "shipping_note")
+                _log_customer_change(
+                    row.ordine_cliente, user, field="shipping_note",
+                    previous=previous, current=value, row=row,
+                )
             updated = True
     if not updated:
         raise VenditeAssegnazioniError(
@@ -968,6 +1066,7 @@ def _apply_note_updates(
 def update_customer_row_notes(
     row_id: int,
     payload,
+    user=None,
     *,
     can_edit_sales: bool,
     can_edit_production_instructions: bool = False,
@@ -983,6 +1082,7 @@ def update_customer_row_notes(
         payload,
         can_edit_sales=can_edit_sales,
         can_edit_production_instructions=can_edit_production_instructions,
+        user=user,
     )
     if changed:
         _require_read_confirmation(row.ordine_cliente)
@@ -1154,6 +1254,10 @@ def confirm_customer_order_read(
         _actor_id, actor_name = _actor(user)
         customer.confermato_il = _now_rome_dt().isoformat(timespec="seconds")
         customer.confermato_da_nome = actor_name
+        _log_customer_change(
+            customer, user, event="CONFERMA", field="lettura",
+            current=customer.confermato_il,
+        )
         for row in customer.righe:
             row.campi_modificati = []
         db.session.flush()
@@ -1164,6 +1268,7 @@ def confirm_customer_order_read(
 
 def delete_customer_order(
     order_id: int,
+    user=None,
     *,
     commit: bool = False,
 ) -> VenditeOrdineCliente:
@@ -1175,6 +1280,10 @@ def delete_customer_order(
     for row in customer.righe:
         if row.odp_matricola:
             _save_machine_production_note(row.odp_matricola, row.note_produzione or "")
+    _log_customer_change(
+        customer, user, event="ELIMINAZIONE", field="ordine",
+        previous=customer.numero_ordine,
+    )
     db.session.delete(customer)
     db.session.flush()
     if commit:
@@ -1185,6 +1294,7 @@ def delete_customer_order(
 def update_customer_order_details(
     order_id: int,
     payload,
+    user=None,
     *,
     commit: bool = False,
 ) -> VenditeOrdineCliente:
@@ -1207,8 +1317,17 @@ def update_customer_order_details(
             if not current_note or current_note == old_default:
                 value = new_default or None
                 if row.note_spedizione != value:
+                    previous = row.note_spedizione
                     row.note_spedizione = value
                     _mark_row_changed(row, "shipping_note")
+                    _log_customer_change(
+                        customer, user, field="shipping_note",
+                        previous=previous, current=value, row=row,
+                    )
+        _log_customer_change(
+            customer, user, field="internal_reference",
+            previous=old_reference, current=new_reference,
+        )
         _require_read_confirmation(customer)
 
     customer.riferimento_interno = new_reference
@@ -1221,6 +1340,7 @@ def update_customer_order_details(
 def update_customer_row_dates(
     row_id: int,
     payload,
+    user=None,
     *,
     can_edit_delivery: bool,
     can_edit_available: bool,
@@ -1236,6 +1356,7 @@ def update_customer_row_dates(
     updated = False
     changed = False
     if can_edit_delivery and "delivery_date" in payload:
+        previous = row.data_consegna
         value = _delivery_date(
             payload.get("delivery_date"),
             "La data di consegna",
@@ -1245,8 +1366,13 @@ def update_customer_row_dates(
         row.data_consegna = value
         if field_changed:
             _mark_row_changed(row, "delivery_date")
+            _log_customer_change(
+                row.ordine_cliente, user, field="delivery_date",
+                previous=previous, current=value, row=row,
+            )
         updated = True
     if can_edit_available and "available_date" in payload:
+        previous = row.data_disponibile
         value = _optional_date(
             payload.get("available_date"),
             "La data disponibile",
@@ -1256,6 +1382,10 @@ def update_customer_row_dates(
         row.data_disponibile = value
         if field_changed:
             _mark_row_changed(row, "available_date")
+            _log_customer_change(
+                row.ordine_cliente, user, field="available_date",
+                previous=previous, current=value, row=row,
+            )
         updated = True
     if not updated:
         raise VenditeAssegnazioniError("Nessuna data modificabile ricevuta.")
@@ -1301,6 +1431,7 @@ def update_customer_row(
         row = update_customer_row_dates(
             row_id,
             work_payload,
+            user,
             can_edit_delivery=can_edit_sales,
             can_edit_available=can_edit_production,
         )
@@ -1318,6 +1449,7 @@ def update_customer_row(
         row = update_customer_row_notes(
             row_id,
             work_payload,
+            user,
             can_edit_sales=can_edit_sales,
             can_edit_production_instructions=can_edit_production_instructions,
         )
@@ -1362,6 +1494,11 @@ def update_packaging_notes(
             if item is not None
             else VENDITE_DEFAULT_PACKAGING_NOTES[reference]
         )
+        if old_default != note:
+            _log_customer_change(
+                None, user, field=f"packaging_note_{reference}",
+                previous=old_default, current=note, entity="CONFIGURAZIONE",
+            )
         for row in (
             VenditeOrdineClienteRiga.query.join(VenditeOrdineCliente)
             .filter(VenditeOrdineCliente.riferimento_interno == reference)
@@ -1663,6 +1800,33 @@ def build_assignment_dashboard(*, include_planned: bool = True) -> dict:
         )
         .all()
     )
+    customer_row_ids = [
+        row.id for customer in customer_orders for row in customer.righe
+    ]
+    latest_field_logs = {}
+    if customer_row_ids:
+        latest_ids = (
+            db.session.query(func.max(VenditeOrdineClienteLog.id))
+            .filter(
+                VenditeOrdineClienteLog.ordine_cliente_riga_id.in_(
+                    customer_row_ids
+                )
+            )
+            .group_by(
+                VenditeOrdineClienteLog.ordine_cliente_riga_id,
+                VenditeOrdineClienteLog.campo,
+            )
+        )
+        latest_field_logs = {
+            (item.ordine_cliente_riga_id, item.campo): {
+                "event": item.evento,
+                "changed_at": item.modificata_il,
+                "changed_by_name": item.modificata_da_nome,
+            }
+            for item in VenditeOrdineClienteLog.query.filter(
+                VenditeOrdineClienteLog.id.in_(latest_ids)
+            ).all()
+        }
     missing_components = _missing_components_for_orders(
         (row.odp_id_documento, row.odp_id_riga)
         for customer in customer_orders
@@ -1785,6 +1949,14 @@ def build_assignment_dashboard(*, include_planned: bool = True) -> dict:
                     "description": row.modello_descrizione or "",
                     "sales_note": row.note or "",
                     "commercial_note": row.note_commerciali or "",
+                    "field_audit": {
+                        field: latest_field_logs.get((row.id, field))
+                        for field in (
+                            "sales_note", "commercial_note",
+                            "production_instructions", "shipping_note",
+                            "delivery_date", "available_date", "assignment",
+                        )
+                    },
                     "production_note": row.note_produzione or "",
                     "missing_components": row_missing_components,
                     "production_instructions": row.note_per_produzione or "",

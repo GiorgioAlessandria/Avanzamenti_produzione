@@ -41,6 +41,7 @@ from app_odp.vendite_models import (
     VenditeImballoMacchina,
     VenditeSensoriMacchina,
     VenditeMacchinaSpedibile,
+    VenditeOrdineClienteLog,
     VenditeNotaProduzioneMacchina,
     VenditeOpzioneMacchina,
     VenditeOrdineCliente,
@@ -407,6 +408,100 @@ def test_commercial_notes_remain_separate_and_follow_sales_permissions(app):
             ACTOR, can_edit_sales=True, can_edit_production=False, can_assign=False,
         )
         assert second_row.note_commerciali == "Solo note"
+
+
+def test_customer_order_operator_changes_are_audited_with_user(app):
+    with app.app_context():
+        _add_machine()
+        payload = _payload(model_key=_model_key())
+        payload["lines"][0]["commercial_note"] = "Accordo iniziale"
+        customer = create_customer_order(payload, ACTOR, commit=True)
+        row = customer.righe[0]
+
+        created = VenditeOrdineClienteLog.query.all()
+        assert any(
+            item.entita == "ORDINE" and item.evento == "CREAZIONE"
+            and item.modificata_da_nome == "commerciale"
+            for item in created
+        )
+        assert {
+            (item.campo, item.evento)
+            for item in created
+            if item.ordine_cliente_riga_id == row.id
+        } >= {
+            ("sales_note", "INSERIMENTO"),
+            ("commercial_note", "INSERIMENTO"),
+            ("delivery_date", "INSERIMENTO"),
+        }
+
+        editor = SimpleNamespace(id=None, username="ambra.pirotti")
+        update_customer_row_notes(
+            row.id,
+            {
+                "version": row.versione,
+                "sales_note": "Nota aggiornata",
+                "commercial_note": "",
+            },
+            editor,
+            can_edit_sales=True,
+            commit=True,
+        )
+        logs = VenditeOrdineClienteLog.query.order_by(
+            VenditeOrdineClienteLog.id
+        ).all()
+        assert [(item.campo, item.evento) for item in logs[-2:]] == [
+            ("commercial_note", "CANCELLAZIONE"),
+            ("sales_note", "MODIFICA"),
+        ]
+        assert logs[-1].valore_precedente == "Con accessorio speciale"
+        assert logs[-1].valore_nuovo == "Nota aggiornata"
+        assert {item.modificata_da_nome for item in logs[-2:]} == {"ambra.pirotti"}
+
+        dashboard_row = build_assignment_dashboard()["customer_orders"][0]["rows"][0]
+        assert dashboard_row["field_audit"]["sales_note"]["changed_by_name"] == (
+            "ambra.pirotti"
+        )
+        assert dashboard_row["field_audit"]["commercial_note"]["event"] == (
+            "CANCELLAZIONE"
+        )
+
+        unchanged_count = VenditeOrdineClienteLog.query.count()
+        update_customer_row_notes(
+            row.id,
+            {
+                "version": row.versione,
+                "sales_note": "Nota aggiornata",
+                "commercial_note": "",
+            },
+            editor,
+            can_edit_sales=True,
+        )
+        assert VenditeOrdineClienteLog.query.count() == unchanged_count
+
+        update_customer_row_dates(
+            row.id,
+            {"version": row.versione, "delivery_date": "2026-07-21"},
+            editor,
+            can_edit_delivery=True,
+            can_edit_available=False,
+        )
+        update_customer_order_details(
+            customer.id, {"internal_reference": "ESTERO"}, editor
+        )
+        confirm_customer_order_read(customer.id, editor)
+        delete_customer_order(customer.id, editor, commit=True)
+
+        final_logs = VenditeOrdineClienteLog.query.order_by(
+            VenditeOrdineClienteLog.id
+        ).all()
+        editor_logs = [
+            item for item in final_logs
+            if item.modificata_da_nome == "ambra.pirotti"
+        ]
+        assert {item.campo for item in editor_logs} >= {
+            "delivery_date", "internal_reference", "lettura", "ordine"
+        }
+        assert final_logs[-1].evento == "ELIMINAZIONE"
 
 
 @pytest.mark.parametrize("save_with_assignment", [False, True])
