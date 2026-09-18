@@ -1398,6 +1398,21 @@ def _synced_date(value) -> date | None:
             return None
 
 
+def _synced_row_retention_key(row: VenditeOrdineClienteRiga) -> tuple:
+    notes = (
+        row.note,
+        row.note_commerciali,
+        row.note_produzione,
+        row.note_per_produzione,
+        row.note_spedizione,
+    )
+    return (
+        bool(_norm_text(row.odp_matricola)),
+        sum(bool(_norm_text(note)) for note in notes),
+        -(row.gestionale_unita or 0),
+    )
+
+
 def _sync_open_customer_orders() -> None:
     packaging_notes = _packaging_notes_by_reference()
     machine_model_codes = {
@@ -1504,8 +1519,48 @@ def _sync_open_customer_orders() -> None:
             )
             for _delivery_date, item, unit in expanded_rows
         ]
+
+        # Se la quantità ERP diminuisce, conserva prima le unità già assegnate
+        # o annotate e rinumerale invece di eliminare sempre quella più alta.
+        for _delivery_date, item, quantity in source_rows:
+            document = _norm_text(item.IdDocumento)
+            source_row = _norm_text(item.IdRigaDoc)
+            current = [
+                (key, row)
+                for key, row in existing.items()
+                if key[:2] == (document, source_row)
+            ]
+            if len(current) <= quantity:
+                continue
+            survivors = sorted(
+                current,
+                key=lambda value: _synced_row_retention_key(value[1]),
+                reverse=True,
+            )[:quantity]
+            expected = {
+                (document, source_row, unit)
+                for unit in range(1, quantity + 1)
+            }
+            survivor_keys = {key for key, _row in survivors}
+            if survivor_keys == expected:
+                continue
+
+            for key, row in current:
+                existing.pop(key)
+                if key not in survivor_keys:
+                    customer.righe.remove(row)
+            db.session.flush()
+            for temporary_unit, (_key, row) in enumerate(survivors, start=1):
+                row.gestionale_unita = -temporary_unit
+            db.session.flush()
+            for unit, (_key, row) in enumerate(survivors, start=1):
+                row.gestionale_unita = unit
+                existing[(document, source_row, unit)] = row
+            db.session.flush()
+            changed = True
+
         for key in set(existing) - set(desired_keys):
-            db.session.delete(existing.pop(key))
+            customer.righe.remove(existing.pop(key))
             changed = True
         if changed:
             db.session.flush()

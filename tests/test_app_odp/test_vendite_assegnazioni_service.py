@@ -151,6 +151,61 @@ def test_synced_customer_orders_are_grouped_expanded_and_assignable(app):
         )
 
 
+def test_synced_open_order_quantity_reduction_keeps_assigned_row_notes(app):
+    with app.app_context():
+        _add_known_model(variant="")
+        db.session.add(AcqClienteFornitore(
+            TipoAnagrafica="1", CodCliFor="CLI-OPEN",
+            RagioneSociale="Cliente aperto", CodStato="IT",
+        ))
+        source = AcqOrdineClienteAperto(
+            IdDocumento="DOC-OPEN", IdRigaDoc="1", CodCliFor="CLI-OPEN",
+            CodArt="MODELLO-1", DesArt="Macchina aperta",
+            DataConsegna="2026-09-30", QTA_ORD=2,
+        )
+        db.session.add(source)
+        machine = _add_machine(
+            document="ODP-OPEN", serial="MAT-OPEN", variant=""
+        )
+        db.session.commit()
+
+        build_assignment_dashboard()
+        rows = VenditeOrdineClienteRiga.query.order_by(
+            VenditeOrdineClienteRiga.gestionale_unita
+        ).all()
+        noted_row = rows[1]
+        _assign_test_machine(noted_row, machine)
+        noted_row.note = "Nota vendita"
+        noted_row.note_commerciali = "Nota commerciale"
+        machine.StatoOrdine = "Chiusa"
+        db.session.flush()
+
+        confirm_machine_packaging({
+            "id_documento": machine.IdDocumento,
+            "id_riga": machine.IdRiga,
+            "serial_number": machine.CodMatricola,
+        }, ACTOR)
+        packaged = build_assignment_dashboard()["customer_orders"][0]
+        packaged_row = next(
+            item for item in packaged["rows"] if item["id"] == noted_row.id
+        )
+        assert packaged_row["sales_note"] == "Nota vendita"
+        assert packaged_row["commercial_note"] == "Nota commerciale"
+
+        source.QTA_ORD = 1
+        db.session.commit()
+        build_assignment_dashboard()
+        db.session.commit()
+        db.session.expire_all()
+        still_open = build_assignment_dashboard()["customer_orders"][0]
+        assert still_open["managed"] is True
+        assert len(still_open["rows"]) == 1
+        assert still_open["rows"][0]["id"] == noted_row.id
+        assert still_open["rows"][0]["sales_note"] == "Nota vendita"
+        assert still_open["rows"][0]["commercial_note"] == "Nota commerciale"
+        assert still_open["rows"][0]["assignment"]["serial_number"] == "MAT-OPEN"
+
+
 def test_planned_visibility_filters_all_customer_lists_and_counts(app):
     with app.app_context():
         planned = _add_machine()
