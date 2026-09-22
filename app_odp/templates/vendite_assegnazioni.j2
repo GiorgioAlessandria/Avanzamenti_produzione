@@ -1202,7 +1202,7 @@
                             <td>${esc(machine.order)}</td>
                             <td>${esc(machine.state === "Imballata"
                                 ? "Imballata" : window.phaseLabel(machine.phase))}</td>
-                            <td class="vendite-note-cell" style="white-space: pre-wrap">${esc(machine.production_note || "—")}</td>
+                            <td class="vendite-note-cell">${productionNoteCell(machine)}</td>
                         </tr>`;
                 }).join("");
                 applyMachineFilter();

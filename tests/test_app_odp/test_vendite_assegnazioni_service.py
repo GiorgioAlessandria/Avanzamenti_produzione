@@ -27,6 +27,7 @@ from app_odp.services.vendite_assegnazioni_service import (
     confirm_machine_packaging,
     create_customer_order,
     delete_customer_order,
+    delete_customer_order_row,
     set_machine_assignment,
     sync_shippable_machines,
     update_customer_order_details,
@@ -1085,6 +1086,30 @@ def test_delete_customer_order_releases_assigned_machines(app):
         assert dashboard["summary"]["assigned_demand"] == 0
         assert dashboard["machines"][0]["serial_number"] == "MAT-001"
         assert dashboard["assignment_machines"][0]["assigned"] is False
+
+
+def test_delete_customer_order_row_renumbers_and_keeps_empty_order(app):
+    with app.app_context():
+        _add_known_model()
+        customer = create_customer_order(
+            _payload(model_key=_model_key(), quantity=2),
+            ACTOR,
+        )
+        customer_id = customer.id
+        first_id, second_id = (row.id for row in customer.righe)
+
+        delete_customer_order_row(first_id, ACTOR)
+
+        remaining = db.session.get(VenditeOrdineClienteRiga, second_id)
+        assert db.session.get(VenditeOrdineClienteRiga, first_id) is None
+        assert remaining.posizione == 1
+        assert db.session.get(VenditeOrdineCliente, customer_id) is customer
+
+        delete_customer_order_row(second_id, ACTOR)
+
+        assert db.session.get(VenditeOrdineClienteRiga, second_id) is None
+        assert VenditeOrdineClienteRiga.query.count() == 0
+        assert db.session.get(VenditeOrdineCliente, customer_id) is customer
 
 
 def test_optional_machine_requires_one_unit_and_becomes_unavailable(app):

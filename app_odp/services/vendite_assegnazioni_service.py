@@ -1314,9 +1314,6 @@ def delete_customer_order_row(
     customer = row.ordine_cliente
     _require_manual_order(customer)
 
-    if len(customer.righe) == 1:
-        return delete_customer_order(customer.id, user, commit=commit)
-
     if row.odp_matricola:
         _save_machine_production_note(row.odp_matricola, row.note_produzione or "")
     removed_position = row.posizione
