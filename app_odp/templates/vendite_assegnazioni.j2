@@ -789,12 +789,12 @@
                 return String(value);
             }
 
-            function formatDateTime(value) {
+            function formatDateTime(value, timeStyle = "medium") {
                 const date = new Date(value);
                 if (Number.isNaN(date.getTime())) return String(value || "");
                 return new Intl.DateTimeFormat("it-IT", {
                     dateStyle: "short",
-                    timeStyle: "medium",
+                    timeStyle,
                 }).format(date);
             }
 
@@ -1035,14 +1035,9 @@
             function auditLine(row, field) {
                 const audit = row.field_audit?.[field];
                 if (!audit) return "";
-                const auditAction = {
-                    INSERIMENTO: "Inserita",
-                    MODIFICA: "Modificata",
-                    CANCELLAZIONE: "Cancellata",
-                }[audit.event] || "Modificata";
                 return `<div class="small text-muted mt-1">
-                    ${esc(auditAction)} da <strong>${esc(audit.changed_by_name)}</strong>
-                    · ${esc(formatDateTime(audit.changed_at))}
+                    <strong>${esc(audit.changed_by_name)}</strong>
+                    · ${esc(formatDateTime(audit.changed_at, "short"))}
                 </div>`;
             }
 
@@ -1061,7 +1056,7 @@
             }
 
             function productionNoteCell(row) {
-                const completion = row.assignment?.completed
+                const completion = row.assignment?.completed && !row.packaged
                     ? `Macchina completata: ${window.phaseLabel(2)} — chiusa.`
                     : "";
                 const note = [String(row.production_note || ""), completion]
@@ -1121,7 +1116,7 @@
                            Elimina
                        </button>`
                     : "";
-                return `<div class="d-flex flex-column align-items-start gap-2">${save}${deleteRow}${packaging}</div>`;
+                return `<div class="d-flex flex-wrap align-items-center gap-2">${save}${packaging}${deleteRow}</div>`;
             }
 
             function syncRowVersion(data, rowId) {
