@@ -955,11 +955,14 @@
                 }
                 const optionButton = event.target.closest("[data-machine-option]");
                 if (optionButton) {
-                    if (optionInFlight || !canOptionMachines || !canChangeMachineView()) return;
+                    const savingOptionNote = optionButton.hasAttribute(
+                        "data-save-machine-option-note"
+                    );
+                    if (optionInFlight || !canOptionMachines
+                        || (!savingOptionNote && !canChangeMachineView())) return;
                     const optioned = optionButton.dataset.machineOption === "true";
-                    const savingNote = optionButton.hasAttribute("data-save-machine-option-note");
                     const action = optioned ? "opzionare" : "rimuovere l'opzione dalla";
-                    if (!savingNote && !window.confirm(`Confermare di ${action} matricola ${optionButton.dataset.serial}?`)) return;
+                    if (!savingOptionNote && !window.confirm(`Confermare di ${action} matricola ${optionButton.dataset.serial}?`)) return;
                     const noteField = optionButton.closest("td")?.querySelector("[data-machine-option-note]");
                     optionInFlight = true;
                     optionButton.disabled = true;

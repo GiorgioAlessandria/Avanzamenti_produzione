@@ -1844,9 +1844,14 @@ def build_assignment_dashboard(*, include_planned: bool = True) -> dict:
     }
     completed_missing_keys = _phase_two_closed_keys(missing_assigned_keys)
     packaging_by_serial = _packaging_confirmations(
-        row.odp_matricola
-        for customer in customer_orders
-        for row in customer.righe
+        {
+            row.odp_matricola
+            for customer in customer_orders
+            for row in customer.righe
+        }
+        | {
+            _machine_serial(machine) for machine in all_machines
+        }
     )
     options_by_serial = _machine_options(
         _machine_serial(machine) for machine in all_machines
@@ -1912,6 +1917,8 @@ def build_assignment_dashboard(*, include_planned: bool = True) -> dict:
             packaging = packaging_by_serial.get(_normalized_key(row.odp_matricola))
             packaged = packaging is not None
             if packaged:
+                if assignment is not None:
+                    assignment["state"] = "Imballata"
                 customer_packaged += 1
             row_missing_components = []
             if assignment is not None:
@@ -2033,7 +2040,11 @@ def build_assignment_dashboard(*, include_planned: bool = True) -> dict:
                 or "Non assegnata",
                 "has_serial": bool(_norm_text(machine.CodMatricola)),
                 "phase": _phase_label(machine.FaseAttiva),
-                "state": _canonical_state(machine.StatoOrdine),
+                "state": (
+                    "Imballata"
+                    if _normalized_key(_machine_serial(machine)) in packaging_by_serial
+                    else _canonical_state(machine.StatoOrdine)
+                ),
                 "production_note": production_notes_by_serial.get(
                     _normalized_key(_machine_serial(machine)),
                     "",

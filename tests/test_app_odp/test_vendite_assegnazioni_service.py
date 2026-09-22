@@ -1302,13 +1302,16 @@ def test_packaging_confirmation_follows_serial_into_customer_order(app):
         )
         assert confirmation.matricola == "mat-001"
         assert confirmation.confermata_da_nome == "commerciale"
-        assert build_assignment_dashboard()["customer_orders"][0]["packaged"] is False
+        dashboard = build_assignment_dashboard()
+        assert dashboard["customer_orders"][0]["packaged"] is False
+        assert dashboard["assignment_machines"][0]["state"] == "Imballata"
 
         _assign_test_machine(customer_row, machine)
         dashboard = build_assignment_dashboard()
         dashboard_row = dashboard["customer_orders"][0]["rows"][0]
         assert dashboard_row["packaged"] is True
         assert dashboard_row["packaging"]["confirmed_at"] == confirmation.confermata_il
+        assert dashboard_row["assignment"]["state"] == "Imballata"
         assert dashboard["customer_orders"][0]["packaged"] is True
         assert dashboard["customer_orders"][0]["packaged_rows"] == 1
         from app_odp.services.vendite_service import build_vendite_payload

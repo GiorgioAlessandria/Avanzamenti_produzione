@@ -30,6 +30,7 @@ class VenditeTabsTest(unittest.TestCase):
                     self.assertIn('aria-label="Ordina per Note per imballo"', html)
                     self.assertIn('aria-label="Ordina per Opzione"', html)
                     self.assertIn('data-machine-sort="shipping_date"', html)
+                    self.assertIn("(!savingOptionNote && !canChangeMachineView())", html)
                     self.assertIn('colspan="13"', html)
                 else:
                     self.assertRegex(html, r'Note di produzione</th>\s*<th[^>]*>Note per produzione</th>')
@@ -76,6 +77,16 @@ class VenditeTabsTest(unittest.TestCase):
         self.assertNotIn('data-priority-position', html)
         self.assertNotIn('Priorità / posizione', html)
         self.assertIn('data-can-manage-sales-priorities="true"', html)
+
+    def test_packaging_user_can_view_customer_orders(self):
+        from app_odp.routes_modules.vendite import _can_view_customer_orders
+
+        policy = SimpleNamespace(
+            has_direct_admin_role=False,
+            can=lambda permission: permission == "utente_imballi",
+        )
+
+        self.assertTrue(_can_view_customer_orders(policy))
 
 
 if __name__ == "__main__":

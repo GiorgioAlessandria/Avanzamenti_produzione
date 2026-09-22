@@ -53,6 +53,7 @@ def _can_view_customer_orders(policy) -> bool:
         policy.has_direct_admin_role
         or policy.can("utente_produzione")
         or not policy.can("utente_imballi")
+        or policy.can("utente_imballi")
     )
 
 
