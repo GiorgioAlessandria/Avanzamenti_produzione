@@ -425,6 +425,18 @@ def _available_model_catalog(open_machines) -> dict[str, dict]:
     return catalog
 
 
+def _next_manual_order_number() -> str:
+    values = (
+        VenditeOrdineCliente.query.with_entities(VenditeOrdineCliente.numero_ordine)
+        .filter(VenditeOrdineCliente.gestionale_cod_cliente.is_(None))
+        .all()
+    )
+    numbers = [
+        int(value) for value, in values if _norm_text(value).isdigit()
+    ]
+    return str(max(numbers, default=0) + 1)
+
+
 def create_customer_order(payload, user, *, commit: bool = False):
     if not isinstance(payload, dict):
         raise VenditeAssegnazioniError("Dati dell'ordine cliente non validi.")
@@ -435,7 +447,8 @@ def create_customer_order(payload, user, *, commit: bool = False):
         MAX_CUSTOMER_NAME,
     )
     customer_order = _required_text(
-        payload.get("customer_order"),
+        _norm_text(payload.get("customer_order"))
+        or _next_manual_order_number(),
         "L'ordine cliente",
         MAX_CUSTOMER_ORDER,
     )

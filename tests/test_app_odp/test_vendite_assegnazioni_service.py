@@ -761,6 +761,21 @@ def test_quantity_three_expands_rows_preserving_note_and_delivery_date(app):
         assert {row.data_disponibile for row in customer_order.righe} == {None}
 
 
+def test_manual_order_number_is_generated_progressively(app):
+    with app.app_context():
+        _add_known_model()
+        first_payload = _payload(model_key=_model_key())
+        second_payload = _payload(model_key=_model_key())
+        first_payload.pop("customer_order")
+        second_payload.pop("customer_order")
+
+        first = create_customer_order(first_payload, ACTOR)
+        second = create_customer_order(second_payload, ACTOR)
+
+        assert first.numero_ordine == "1"
+        assert second.numero_ordine == "2"
+
+
 def test_customer_order_can_be_created_before_machine_order_exists(app):
     with app.app_context():
         _add_known_model()

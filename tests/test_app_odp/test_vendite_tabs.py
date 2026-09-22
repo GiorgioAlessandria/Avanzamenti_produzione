@@ -35,6 +35,11 @@ class VenditeTabsTest(unittest.TestCase):
                 else:
                     self.assertIn("const orderClass = order.packaged", html)
                     self.assertIn("const rowClass = row.packaged", html)
+                    self.assertIn('id="vendite-inline-customer-data"', html)
+                    self.assertIn("vendite-inline-customer-view", html)
+                    self.assertIn("productionNoteCell(row)", html)
+                    self.assertNotIn('id="vendite-customer-order"', html)
+                    self.assertNotIn("customer_order: customerOrder.value", html)
                     self.assertRegex(html, r'Note di produzione</th>\s*<th[^>]*>Note per produzione</th>')
                     self.assertIn('colspan="10"', html)
                 nav = re.search(r'<ul class="nav nav-tabs[^>]*>(.*?)</ul>', html, re.S)[1]

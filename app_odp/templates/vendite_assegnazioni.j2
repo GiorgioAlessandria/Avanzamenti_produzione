@@ -36,8 +36,8 @@
         }
 
         #vendite-customer-orders-table > :not(caption) > * > * {
-            padding-top: .1rem;
-            padding-bottom: .1rem;
+            padding-top: 0;
+            padding-bottom: 0;
         }
 
         #vendite-assegnazioni-page .vendite-customer-heading-grouped td {
@@ -120,6 +120,28 @@
             color: #0f5132;
             background-color: #e8f5ee;
             border-color: #75b798;
+        }
+
+        #vendite-assegnazioni-page.vendite-inline-customer-view
+        .vendite-customer-heading {
+            display: none;
+        }
+
+        #vendite-assegnazioni-page.vendite-inline-customer-view
+        .vendite-inline-customer-column {
+            display: table-cell !important;
+        }
+
+        #vendite-assegnazioni-page .vendite-production-note > summary {
+            max-width: 16rem;
+            overflow: hidden;
+            cursor: pointer;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+        }
+
+        #vendite-assegnazioni-page .vendite-production-note[open] > summary {
+            margin-bottom: .25rem;
         }
 
         .vendite-suplex-stage { position: fixed; left: calc(100vw + 1rem); width: 13rem; height: 8rem; z-index: 1090; pointer-events: none; animation: vendite-suplex-stage 5s linear forwards; }
@@ -244,7 +266,7 @@
                         <form id="vendite-customer-order-form">
                             <div class="card-body">
                                 <div class="row g-3 mb-3">
-                                    <div class="col-12 col-md-6 col-xl-3">
+                                    <div class="col-12 col-md-6 col-xl-4">
                                         <label class="form-label fw-semibold"
                                                for="vendite-customer-name">
                                             Nome cliente
@@ -253,17 +275,6 @@
                                                id="vendite-customer-name"
                                                maxlength="160"
                                                autocomplete="organization"
-                                               required>
-                                    </div>
-                                    <div class="col-12 col-md-6 col-xl-3">
-                                        <label class="form-label fw-semibold"
-                                               for="vendite-customer-order">
-                                            Ordine cliente
-                                        </label>
-                                        <input class="form-control"
-                                               id="vendite-customer-order"
-                                               maxlength="120"
-                                               autocomplete="off"
                                                required>
                                     </div>
                                     <div class="col-12 col-md-6 col-xl-2">
@@ -351,6 +362,14 @@
                                 <span>Nuovo ordine manuale</span>
                             </button>
                         {% endif %}
+                        <div class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox"
+                                   role="switch" id="vendite-inline-customer-data">
+                            <label class="form-check-label small"
+                                   for="vendite-inline-customer-data">
+                                Cliente nelle righe (prova)
+                            </label>
+                        </div>
                         <button class="btn btn-outline-secondary btn-sm"
                                 type="button"
                                 id="vendite-assignments-refresh">
@@ -389,7 +408,7 @@
                                         <th>Modello</th>
                                         <th>Matricola</th>
                                         <th>Ordine</th>
-                                        <th>Fase / stato</th>
+                                        <th>Fase</th>
                                         <th>Note di produzione</th>
                                     </tr>
                                     </thead>
@@ -469,6 +488,8 @@
                                     <thead class="table-light">
                                     <tr>
                                         <th>#</th>
+                                        <th class="vendite-inline-customer-column d-none">Cliente</th>
+                                        <th class="vendite-inline-customer-column d-none">Tipologia</th>
                                         <th>Modello</th>
                                         <th id="vendite-delivery-sort-heading" aria-sort="none">
                                             <button class="btn btn-sm border-0 p-0 fw-semibold text-body"
@@ -615,7 +636,6 @@
             const createOrderPanelToggle = document.getElementById("vendite-create-order-panel-toggle");
             const createForm = document.getElementById("vendite-customer-order-form");
             const customerName = document.getElementById("vendite-customer-name");
-            const customerOrder = document.getElementById("vendite-customer-order");
             const customerReference = document.getElementById("vendite-customer-reference");
             const createLines = document.getElementById("vendite-customer-lines");
             const createLineTemplate = document.getElementById("vendite-customer-line-template");
@@ -631,6 +651,7 @@
             const machineFilter = document.getElementById("vendite-machine-filter");
             const demandFilter = document.getElementById("vendite-demand-filter");
             const groupByCustomerToggle = document.getElementById("vendite-group-by-customer");
+            const inlineCustomerToggle = document.getElementById("vendite-inline-customer-data");
             const groupingDescription = document.getElementById("vendite-customer-grouping-description");
             const firstSectionControl = document.getElementById("vendite-first-section-control");
             const firstSectionSelect = document.getElementById("vendite-first-section");
@@ -650,6 +671,7 @@
             let currentGrouping = {groups: [], families: []};
             let currentCustomerOrders = [];
             let groupCustomerOrders = false;
+            let inlineCustomerData = false;
             let customerOrderDeliverySort = "asc";
             let formDirty = false;
             let loadInFlight = false;
@@ -1011,10 +1033,24 @@
                               data-note-field="${esc(field)}"
                               data-original-value="${esc(row[field] || "")}"
                               maxlength="1000"
-                              rows="2"
+                              rows="1"
                               aria-label="${esc(label)} riga ${esc(row.position)}"
                               ${editable ? "" : "readonly"}>${esc(row[field] || "")}</textarea>
                     ${auditLine(row, field)}`;
+            }
+
+            function productionNoteCell(row) {
+                const note = String(row.production_note || "");
+                if (!note) return (row.missing_components || []).length ? "" : "—";
+                if (note.length <= 45 && !note.includes("\n")) {
+                    return `<div style="white-space: pre-wrap">${esc(note)}</div>`;
+                }
+                const preview = note.split(/\r?\n/, 1)[0];
+                return `
+                    <details class="vendite-production-note">
+                        <summary title="Espandi note di produzione">${esc(preview)}</summary>
+                        <div style="white-space: pre-wrap">${esc(note)}</div>
+                    </details>`;
             }
 
             function dateInput(row, field, label, editable) {
@@ -1124,10 +1160,8 @@
                             <td class="vendite-model-cell">${modelLabel(machine)}</td>
                             <td class="fw-semibold">${esc(machine.serial_number || "-")}</td>
                             <td>${esc(machine.order)}</td>
-                            <td>
-                                <div>${esc(window.phaseLabel(machine.phase))}</div>
-                                ${stateBadge(machine.state)}
-                            </td>
+                            <td>${esc(machine.state === "Imballata"
+                                ? "Imballata" : window.phaseLabel(machine.phase))}</td>
                             <td class="vendite-note-cell" style="white-space: pre-wrap">${esc(machine.production_note || "—")}</td>
                         </tr>`;
                 }).join("");
@@ -1254,11 +1288,11 @@
             }
 
             function renderCustomerOrders(customerOrders) {
+                const columnCount = inlineCustomerData ? 12 : 10;
                 if (!customerOrders.length) {
                     firstSectionControl.classList.add("d-none");
                     customerOrdersBody.innerHTML = `
-                        <tr>
-                            <td colspan="10" class="text-center text-muted py-4">
+                        <tr><td colspan="${columnCount}" class="text-center text-muted py-4">
                                 Nessun ordine cliente inserito.
                             </td>
                         </tr>`;
@@ -1278,7 +1312,7 @@
                         html.push(`
                             <tr class="table-secondary" data-customer-group-heading
                                 data-customer-group-key="${esc(section.key)}">
-                                <th colspan="10" scope="rowgroup" class="fw-semibold">
+                                <th colspan="${columnCount}" scope="rowgroup" class="fw-semibold">
                                     <button type="button" class="btn text-start fw-semibold w-100 p-0"
                                             data-toggle-customer-group="${esc(section.key)}"
                                             aria-expanded="${expanded}"
@@ -1396,6 +1430,10 @@
                                 data-managed="${order.managed ? "true" : "false"}"
                                 data-version="${esc(row.version)}">
                                 <td class="fw-semibold">${esc(row.position)}</td>
+                                <td class="vendite-inline-customer-column d-none fw-semibold">${esc(order.customer_name)}</td>
+                                <td class="vendite-inline-customer-column d-none">
+                                    <span class="badge text-bg-light border">${esc(order.internal_reference || "ITALIA")}</span>
+                                </td>
                                 <td class="vendite-model-cell${(row.modified_fields || []).includes("model") ? " vendite-field-modified" : ""}">${modelLabel(row)}</td>
                                 <td>${dateInput(row, "delivery_date", "Data di spedizione", !order.managed && canEditSalesNotes)}</td>
                                 <td class="vendite-note-cell">
@@ -1413,7 +1451,7 @@
                                                 <li><strong>${esc(component.code)} — ${esc(component.description)}</strong></li>
                                             `).join("")}</ul>
                                         </div>` : ""}
-                                    <div style="white-space: pre-wrap">${esc(row.production_note || ((row.missing_components || []).length ? "" : "—"))}</div>
+                                    ${productionNoteCell(row)}
                                 </td>
                                 <td class="vendite-note-cell">
                                     ${noteTextarea(row, "production_instructions", "Note per produzione", canEditProductionInstructions)}
@@ -1589,7 +1627,6 @@
                         headers: {"Content-Type": "application/json"},
                         body: JSON.stringify({
                             customer_name: customerName.value.trim(),
-                            customer_order: customerOrder.value.trim(),
                             internal_reference: customerReference.value,
                             lines,
                         }),
@@ -2113,6 +2150,12 @@
                 groupingDescription.textContent = groupCustomerOrders
                     ? "Gli ordini sono suddivisi per cliente."
                     : "Gli ordini sono suddivisi usando i raggruppamenti per famiglia configurati nella situazione per matricola.";
+                renderCustomerOrders(currentCustomerOrders);
+            });
+            inlineCustomerToggle.addEventListener("change", () => {
+                inlineCustomerData = inlineCustomerToggle.checked;
+                page.classList.toggle("vendite-inline-customer-view", inlineCustomerData);
+                if (inlineCustomerData) collapsedOrders.clear();
                 renderCustomerOrders(currentCustomerOrders);
             });
             firstSectionSelect.addEventListener("change", () => {
