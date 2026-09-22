@@ -133,11 +133,32 @@
         }
 
         #vendite-assegnazioni-page .vendite-production-note > summary {
+            cursor: pointer;
+            list-style: none;
+            display: flex;
+            align-items: center;
+            gap: .35rem;
+        }
+
+        #vendite-assegnazioni-page .vendite-production-note > summary::-webkit-details-marker {
+            display: none;
+        }
+
+        #vendite-assegnazioni-page .vendite-production-note-preview {
+            min-width: 0;
             max-width: 16rem;
             overflow: hidden;
-            cursor: pointer;
             white-space: nowrap;
             text-overflow: ellipsis;
+        }
+
+        #vendite-assegnazioni-page .vendite-production-note .vendite-note-collapse-label,
+        #vendite-assegnazioni-page .vendite-production-note[open] .vendite-note-expand-label {
+            display: none;
+        }
+
+        #vendite-assegnazioni-page .vendite-production-note[open] .vendite-note-collapse-label {
+            display: inline;
         }
 
         #vendite-assegnazioni-page .vendite-production-note[open] > summary {
@@ -177,6 +198,7 @@
           data-row-save-url-template="{{ operator_url_for('main.api_vendite_riga_salva', row_id=0) }}"
           data-confirm-url-template="{{ operator_url_for('main.api_vendite_ordine_cliente_conferma_lettura', order_id=0) }}"
           data-delete-url-template="{{ operator_url_for('main.api_vendite_ordine_cliente_delete', order_id=0) }}"
+          data-delete-row-url-template="{{ operator_url_for('main.api_vendite_riga_cliente_delete', row_id=0) }}"
           data-order-details-url-template="{{ operator_url_for('main.api_vendite_ordine_cliente_dati', order_id=0) }}"
           data-packaging-notes-url="{{ operator_url_for('main.api_vendite_note_imballaggio') }}"
           data-can-assign-machines="{{ 'true' if can_assign_machines else 'false' }}"
@@ -1003,9 +1025,8 @@
                             ${options.join("")}
                         </select>
                     </div>
-                    ${row.assignment?.completed
-                    ? `<div class="small text-success mt-1">Macchina completata: ${esc(window.phaseLabel(2))} — chiusa.</div>`
-                    : row.assignment && row.assignment.open === false
+                    ${row.assignment && !row.assignment.completed
+                    && row.assignment.open === false
                         ? '<div class="small text-danger mt-1">Matricola non più presente tra quelle disponibili.</div>'
                         : ""}
                     ${auditLine(row, "assignment")}`;
@@ -1040,15 +1061,24 @@
             }
 
             function productionNoteCell(row) {
-                const note = String(row.production_note || "");
+                const completion = row.assignment?.completed
+                    ? `Macchina completata: ${window.phaseLabel(2)} — chiusa.`
+                    : "";
+                const note = [String(row.production_note || ""), completion]
+                    .filter(Boolean)
+                    .join("\n");
                 if (!note) return (row.missing_components || []).length ? "" : "—";
-                if (note.length <= 45 && !note.includes("\n")) {
+                const lines = note.split(/\r?\n/);
+                if (note.length <= 80 && lines.length <= 2) {
                     return `<div style="white-space: pre-wrap">${esc(note)}</div>`;
                 }
-                const preview = note.split(/\r?\n/, 1)[0];
                 return `
                     <details class="vendite-production-note">
-                        <summary title="Espandi note di produzione">${esc(preview)}</summary>
+                        <summary title="Espandi o riduci note di produzione">
+                            <span class="vendite-production-note-preview">${esc(lines.slice(0, 2).join(" "))}</span>
+                            <span class="badge text-bg-light border vendite-note-expand-label">Espandi</span>
+                            <span class="badge text-bg-light border vendite-note-collapse-label">Riduci</span>
+                        </summary>
                         <div style="white-space: pre-wrap">${esc(note)}</div>
                     </details>`;
             }
@@ -1067,7 +1097,7 @@
                     ${auditLine(row, field)}`;
             }
 
-            function rowActions(row) {
+            function rowActions(row, order) {
                 const save = canAssignMachines || canEditSalesNotes || canEditProductionInstructions
                     ? `<button class="btn btn-sm btn-outline-primary text-nowrap"
                                type="button"
@@ -1081,7 +1111,17 @@
                             ${esc(formatDateTime(row.packaging?.confirmed_at))}
                             ${row.packaging?.confirmed_by_name ? ` · ${esc(row.packaging.confirmed_by_name)}` : ""}
                         </div>` : "";
-                return `<div class="d-flex flex-column align-items-start gap-2">${save}${packaging}</div>`;
+                const deleteRow = inlineCustomerData && canDeleteOrders && !order.managed
+                    ? `<button class="btn btn-sm btn-outline-danger text-nowrap"
+                               type="button"
+                               data-choose-delete-row="${esc(row.id)}"
+                               data-order-id="${esc(order.id)}"
+                               data-customer-name="${esc(order.customer_name)}"
+                               data-customer-order="${esc(order.customer_order)}">
+                           Elimina
+                       </button>`
+                    : "";
+                return `<div class="d-flex flex-column align-items-start gap-2">${save}${deleteRow}${packaging}</div>`;
             }
 
             function syncRowVersion(data, rowId) {
@@ -1459,7 +1499,7 @@
                                 <td class="vendite-note-cell">
                                     ${noteTextarea(row, "shipping_note", "Note per imballo", canEditSalesNotes)}
                                 </td>
-                                <td>${rowActions(row)}</td>
+                                <td>${rowActions(row, order)}</td>
                             </tr>`);
                     });
                     });
@@ -1844,7 +1884,7 @@
                 return payload;
             }
 
-            async function deleteCustomerOrder(orderId, button) {
+            async function deleteCustomerOrder(orderId, button, confirmed = false) {
                 if (mutationInFlight) return;
                 if (hasUnsavedChanges()) {
                     showAlert(
@@ -1857,7 +1897,7 @@
                     button.dataset.customerName,
                     button.dataset.customerOrder,
                 ].filter(Boolean).join(" / ");
-                if (!window.confirm(
+                if (!confirmed && !window.confirm(
                     `Eliminare l'ordine cliente ${label}? Verranno eliminate anche righe, note ed eventuali conferme di spedizione; le matricole torneranno disponibili.`
                 )) return;
 
@@ -1885,6 +1925,44 @@
                     button.disabled = false;
                 } finally {
                     mutationInFlight = false;
+                }
+            }
+
+            async function deleteCustomerRow(rowId, button) {
+                mutationInFlight = true;
+                button.disabled = true;
+                try {
+                    const url = page.dataset.deleteRowUrlTemplate.replace(
+                        "/0/",
+                        `/${encodeURIComponent(rowId)}/`
+                    );
+                    const response = await window.avpFetch(url, {method: "DELETE"});
+                    const payload = await response.json().catch(() => ({}));
+                    if (!response.ok || !payload.ok) {
+                        throw new Error(payload.error || `Errore server (${response.status})`);
+                    }
+                    render(payload.data || {});
+                    showAlert("success", payload.message || "Riga cliente eliminata.");
+                    alertBox.dataset.source = "mutation";
+                } catch (error) {
+                    console.error("Errore eliminazione riga cliente:", error);
+                    showAlert("danger", error.message || "Impossibile eliminare la riga cliente.");
+                    alertBox.dataset.source = "mutation";
+                    button.disabled = false;
+                } finally {
+                    mutationInFlight = false;
+                }
+            }
+
+            function chooseDeletion(button) {
+                if (mutationInFlight || hasUnsavedChanges()) {
+                    showAlert("warning", "Salvare o annullare le modifiche prima di eliminare.");
+                    return;
+                }
+                if (window.confirm("Premere OK per eliminare l'intero ordine. Premere Annulla per scegliere la sola riga.")) {
+                    deleteCustomerOrder(button.dataset.orderId, button, true);
+                } else if (window.confirm("Eliminare solamente questa riga?")) {
+                    deleteCustomerRow(button.dataset.chooseDeleteRow, button);
                 }
             }
 
@@ -2118,6 +2196,11 @@
                         detailsButton.dataset.saveOrderDetails,
                         detailsButton
                     );
+                    return;
+                }
+                const chooseDeleteButton = event.target.closest("[data-choose-delete-row]");
+                if (chooseDeleteButton) {
+                    chooseDeletion(chooseDeleteButton);
                     return;
                 }
                 const deleteButton = event.target.closest("[data-delete-customer-order]");

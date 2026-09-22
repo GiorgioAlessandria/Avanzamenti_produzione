@@ -1304,6 +1304,41 @@ def delete_customer_order(
     return customer
 
 
+def delete_customer_order_row(
+    row_id: int,
+    user=None,
+    *,
+    commit: bool = False,
+) -> VenditeOrdineCliente:
+    row = _customer_row(row_id)
+    customer = row.ordine_cliente
+    _require_manual_order(customer)
+
+    if len(customer.righe) == 1:
+        return delete_customer_order(customer.id, user, commit=commit)
+
+    if row.odp_matricola:
+        _save_machine_production_note(row.odp_matricola, row.note_produzione or "")
+    removed_position = row.posizione
+    _log_customer_change(
+        customer,
+        user,
+        event="ELIMINAZIONE",
+        field="riga",
+        previous=str(removed_position),
+        row=row,
+    )
+    db.session.delete(row)
+    for remaining in customer.righe:
+        if remaining is not row and remaining.posizione > removed_position:
+            remaining.posizione -= 1
+    _require_read_confirmation(customer)
+    db.session.flush()
+    if commit:
+        db.session.commit()
+    return customer
+
+
 def update_customer_order_details(
     order_id: int,
     payload,

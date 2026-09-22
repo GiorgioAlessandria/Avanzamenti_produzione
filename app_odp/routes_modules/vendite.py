@@ -25,6 +25,7 @@ from app_odp.services.vendite_assegnazioni_service import (
     confirm_machine_packaging,
     create_customer_order,
     delete_customer_order,
+    delete_customer_order_row,
     set_machine_assignment,
     update_customer_order_details,
     update_customer_row,
@@ -475,4 +476,14 @@ def api_vendite_ordine_cliente_delete(order_id: int):
     return _assignment_mutation(
         lambda: delete_customer_order(order_id, active_user()),
         "Ordine cliente eliminato e matricole rese disponibili.",
+    )
+
+
+@main_bp.delete("/api/vendite/ordini-cliente/righe/<int:row_id>/elimina")
+@require_active_perm("vendite")
+@require_active_perm("utente_vendite")
+def api_vendite_riga_cliente_delete(row_id: int):
+    return _assignment_mutation(
+        lambda: delete_customer_order_row(row_id, active_user()),
+        "Riga cliente eliminata e matricola resa disponibile.",
     )
