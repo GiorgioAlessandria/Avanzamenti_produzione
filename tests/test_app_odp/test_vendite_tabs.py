@@ -33,6 +33,8 @@ class VenditeTabsTest(unittest.TestCase):
                     self.assertIn("(!savingOptionNote && !canChangeMachineView())", html)
                     self.assertIn('colspan="13"', html)
                 else:
+                    self.assertIn("const orderClass = order.packaged", html)
+                    self.assertIn("const rowClass = row.packaged", html)
                     self.assertRegex(html, r'Note di produzione</th>\s*<th[^>]*>Note per produzione</th>')
                     self.assertIn('colspan="10"', html)
                 nav = re.search(r'<ul class="nav nav-tabs[^>]*>(.*?)</ul>', html, re.S)[1]

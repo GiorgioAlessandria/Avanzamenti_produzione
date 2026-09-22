@@ -35,6 +35,11 @@
             outline-offset: -1px;
         }
 
+        #vendite-customer-orders-table > :not(caption) > * > * {
+            padding-top: .1rem;
+            padding-bottom: .1rem;
+        }
+
         #vendite-assegnazioni-page .vendite-customer-heading-grouped td {
             outline: 0;
         }
@@ -1114,7 +1119,8 @@
                         machine.production_note,
                     ].join(" ").toLocaleLowerCase("it");
                     return `
-                        <tr data-machine-search="${esc(search)}">
+                        <tr class="${machine.state === "Imballata" ? "vendite-machine-completed" : ""}"
+                            data-machine-search="${esc(search)}">
                             <td class="vendite-model-cell">${modelLabel(machine)}</td>
                             <td class="fw-semibold">${esc(machine.serial_number || "-")}</td>
                             <td>${esc(machine.order)}</td>
@@ -1287,10 +1293,10 @@
                     const primaryHeading = !renderedHeadings.has(String(order.id));
                     renderedHeadings.add(String(order.id));
                     const neutralClass = referenceClass(order.internal_reference);
-                    const orderClass = !order.read_confirmed
-                        ? "vendite-order-unread"
-                        : order.packaged
-                            ? "vendite-machine-completed"
+                    const orderClass = order.packaged
+                        ? "vendite-machine-completed"
+                        : !order.read_confirmed
+                            ? "vendite-order-unread"
                             : neutralClass;
                     const confirmButton = primaryHeading && canConfirmOrderRead && !order.read_confirmed
                         ? `<button class="btn btn-sm btn-warning text-nowrap"
@@ -1375,10 +1381,10 @@
                             row.assignment?.order,
                             row.assignment?.serial_number,
                         ].join(" ").toLocaleLowerCase("it");
-                        const rowClass = !order.read_confirmed
-                            ? "vendite-order-unread"
-                            : row.packaged
-                                ? "vendite-machine-completed"
+                        const rowClass = row.packaged
+                            ? "vendite-machine-completed"
+                            : !order.read_confirmed
+                                ? "vendite-order-unread"
                                 : neutralClass;
                         html.push(`
                             <tr class="${rowClass}"
