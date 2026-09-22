@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import pytest
 from flask import Flask
 
-from app_odp.models import LottiGeneratiLog, LottiUsatiLog, db
+from app_odp.models import GiacenzaLotti, LottiGeneratiLog, LottiUsatiLog, db
 from app_odp.services import storico_ordini_service as service
 
 
@@ -19,6 +19,7 @@ def storico_app():
     )
     db.init_app(app)
     with app.app_context():
+        GiacenzaLotti.__table__.create(db.engine)
         LottiUsatiLog.__table__.create(db.engines["log"])
         LottiGeneratiLog.__table__.create(db.engines["log"])
     yield app
@@ -26,6 +27,7 @@ def storico_app():
         db.session.remove()
         LottiGeneratiLog.__table__.drop(db.engines["log"])
         LottiUsatiLog.__table__.drop(db.engines["log"])
+        GiacenzaLotti.__table__.drop(db.engine)
 
 
 def test_parse_date_returns_day_boundaries_or_none():
@@ -270,7 +272,6 @@ def test_lot_history_search_returns_used_and_generated_order_assignments(storico
         "IdRiga": "10",
         "RifRegistraz": "2026.123",
         "CodArt": "ART-1",
-        "Quantita": "2",
         "ClosedBy": "mario",
         "Fase": "20",
     }
@@ -279,29 +280,46 @@ def test_lot_history_search_returns_used_and_generated_order_assignments(storico
             [
                 LottiUsatiLog(
                     **common,
-                    RifLottoAlfa="LOTTO-ABC",
+                    RifLottoAlfa="20260918",
+                    Quantita="4",
                     ClosedAt="2026-09-18T10:00:00",
                 ),
                 LottiGeneratiLog(
                     **common,
-                    RifLottoAlfa="LOTTO-ABC-PF",
+                    RifLottoAlfa="20260918",
+                    Quantita="10",
                     ClosedAt="2026-09-18T11:00:00",
                 ),
                 LottiUsatiLog(
                     **common,
                     RifLottoAlfa="ALTRO",
+                    Quantita="2",
                     ClosedAt="2026-09-18T12:00:00",
+                ),
+                GiacenzaLotti(
+                    CodArt="ART-1", RifLottoAlfa="20260918",
+                    CodMag="A", Giacenza="3",
+                ),
+                GiacenzaLotti(
+                    CodArt="ART-1", RifLottoAlfa="20260918",
+                    CodMag="B", Giacenza="2",
                 ),
             ]
         )
         db.session.commit()
 
-        result = service.build_storico_lotti_search({"lotto": "abc"})
+        result = service.build_storico_lotti_search({"lotto": "20260918"})
 
         assert result["ok"] is True
         assert result["total"] == 2
         assert [(row["kind"], row["lotto"]) for row in result["rows"]] == [
-            ("generated", "LOTTO-ABC-PF"),
-            ("used", "LOTTO-ABC"),
+            ("generated", "20260918"),
+            ("used", "20260918"),
         ]
         assert {row["ordine"] for row in result["rows"]} == {"2026.123"}
+        assert result["quantity_summary"] == {
+            "original_quantity": "10",
+            "available_quantity": "5",
+            "used_quantity": "4",
+            "original_source": "generated",
+        }

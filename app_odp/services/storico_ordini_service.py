@@ -6,6 +6,7 @@ import json
 from sqlalchemy import and_, desc, or_
 
 from app_odp.models import (
+    GiacenzaLotti,
     InputOdpLog,
     LottiGeneratiLog,
     LottiUsatiLog,
@@ -13,7 +14,12 @@ from app_odp.models import (
     OdpWorkGroup,
     OdpWorkGroupMember,
 )
-from app_odp.services.order_helpers import _json_safe, _norm_text
+from app_odp.services.order_helpers import (
+    _decimal_to_text,
+    _json_safe,
+    _norm_text,
+    _parse_qty_decimal,
+)
 
 
 PAGE_SIZE_DEFAULT = 50
@@ -831,6 +837,35 @@ def _lotto_search_row(row, kind: str) -> dict:
     }
 
 
+def _lot_quantity_summary(lotto: str) -> dict | None:
+    if len(lotto) != 8 or not lotto.isdigit():
+        return None
+
+    stock_rows = GiacenzaLotti.query.filter_by(RifLottoAlfa=lotto).all()
+    used_rows = LottiUsatiLog.query.filter_by(RifLottoAlfa=lotto).all()
+    generated_rows = LottiGeneratiLog.query.filter_by(RifLottoAlfa=lotto).all()
+
+    def total(rows, field):
+        value = 0
+        for row in rows:
+            try:
+                value += _parse_qty_decimal(getattr(row, field, 0))
+            except ValueError:
+                continue
+        return value
+
+    available = total(stock_rows, "Giacenza")
+    used = total(used_rows, "Quantita")
+    generated = total(generated_rows, "Quantita")
+    original = generated if generated_rows else available + used
+    return {
+        "original_quantity": _decimal_to_text(original),
+        "available_quantity": _decimal_to_text(available),
+        "used_quantity": _decimal_to_text(used),
+        "original_source": "generated" if generated_rows else "reconstructed",
+    }
+
+
 def build_storico_lotti_search(params) -> dict:
     lotto = _norm_text(params.get("lotto"))
     if len(lotto) < 2:
@@ -859,6 +894,7 @@ def build_storico_lotti_search(params) -> dict:
             "rows": rows[:LOT_SEARCH_LIMIT],
             "total": min(len(rows), LOT_SEARCH_LIMIT),
             "limit_reached": limited,
+            "quantity_summary": _lot_quantity_summary(lotto),
         }
     )
 

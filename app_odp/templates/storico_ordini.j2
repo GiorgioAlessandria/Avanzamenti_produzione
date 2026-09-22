@@ -76,6 +76,23 @@
                             Cerca lotto
                         </button>
                     </div>
+                    <div class="col-12 col-md-5 d-none" id="storico-lotti-summary">
+                        <div class="border rounded px-3 py-2 d-flex justify-content-around gap-3">
+                            <div>
+                                <div class="small text-muted">Quantità originale</div>
+                                <div class="fw-semibold" id="storico-lotti-original">-</div>
+                            </div>
+                            <div>
+                                <div class="small text-muted">Ancora disponibile</div>
+                                <div class="fw-semibold text-success" id="storico-lotti-available">-</div>
+                            </div>
+                            <div>
+                                <div class="small text-muted">Utilizzata</div>
+                                <div class="fw-semibold" id="storico-lotti-used">-</div>
+                            </div>
+                        </div>
+                        <div class="small text-muted mt-1" id="storico-lotti-summary-note"></div>
+                    </div>
                 </form>
             </div>
             <div class="table-responsive d-none" id="storico-lotti-results">
@@ -277,6 +294,7 @@
             const lotsBody = document.getElementById("storico-lotti-body");
             const lotsCount = document.getElementById("storico-lotti-count");
             const lotsResults = document.getElementById("storico-lotti-results");
+            const lotsSummary = document.getElementById("storico-lotti-summary");
             const detailModalEl = document.getElementById("storico-detail-modal");
             const detailTitle = document.getElementById("storico-detail-title");
             const detailSubtitle = document.getElementById("storico-detail-subtitle");
@@ -392,6 +410,7 @@
             async function loadLots() {
                 const lotto = value("storico-lotto");
                 lotsResults.classList.remove("d-none");
+                lotsSummary.classList.add("d-none");
                 lotsCount.textContent = "";
                 lotsBody.innerHTML = `<tr><td colspan="10" class="text-center text-muted py-3">Ricerca...</td></tr>`;
                 const sep = page.dataset.lottiUrl.includes("?") ? "&" : "?";
@@ -412,6 +431,17 @@
                     lotsCount.textContent = data.limit_reached
                         ? `${data.total} risultati mostrati (limite raggiunto)`
                         : `${data.total} risultati`;
+                    if (data.quantity_summary) {
+                        const summary = data.quantity_summary;
+                        document.getElementById("storico-lotti-original").textContent = summary.original_quantity;
+                        document.getElementById("storico-lotti-available").textContent = summary.available_quantity;
+                        document.getElementById("storico-lotti-used").textContent = summary.used_quantity;
+                        document.getElementById("storico-lotti-summary-note").textContent =
+                            summary.original_source === "generated"
+                                ? "Quantità originale rilevata dai lotti generati."
+                                : "Quantità originale ricostruita da disponibilità e consumi registrati.";
+                        lotsSummary.classList.remove("d-none");
+                    }
                     if (!data.rows.length) {
                         lotsBody.innerHTML = `<tr><td colspan="10" class="text-center text-muted py-3">Nessuna assegnazione trovata.</td></tr>`;
                         return;
