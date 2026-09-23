@@ -462,10 +462,6 @@
                             <div class="card-header d-flex flex-wrap justify-content-between align-items-start gap-2">
                                 <div>
                                     <div class="fw-semibold">Righe ordini cliente</div>
-                                    <div class="small text-muted">
-                                        Ogni riga corrisponde a una singola macchina richiesta.
-                                        <span id="vendite-customer-grouping-description">Gli ordini sono suddivisi usando i raggruppamenti per famiglia configurati nella situazione per matricola.</span>
-                                    </div>
                                     <div class="small d-flex flex-wrap gap-2 mt-1" aria-label="Legenda colori ordini">
                                         <span class="badge border text-dark" style="background:#dff3fb">ITALIA</span>
                                         <span class="badge border text-dark" style="background:#f9e1e7">ESTERO</span>
@@ -510,6 +506,7 @@
                                     <thead class="table-light">
                                     <tr>
                                         <th>#</th>
+                                        <th class="vendite-inline-customer-column d-none">N. ordine</th>
                                         <th class="vendite-inline-customer-column d-none">Cliente</th>
                                         <th class="vendite-inline-customer-column d-none">Tipologia</th>
                                         <th>Modello</th>
@@ -674,7 +671,6 @@
             const demandFilter = document.getElementById("vendite-demand-filter");
             const groupByCustomerToggle = document.getElementById("vendite-group-by-customer");
             const inlineCustomerToggle = document.getElementById("vendite-inline-customer-data");
-            const groupingDescription = document.getElementById("vendite-customer-grouping-description");
             const firstSectionControl = document.getElementById("vendite-first-section-control");
             const firstSectionSelect = document.getElementById("vendite-first-section");
             const packagingNotesBody = document.getElementById("vendite-packaging-notes-body");
@@ -1056,12 +1052,7 @@
             }
 
             function productionNoteCell(row) {
-                const completion = row.assignment?.completed && !row.packaged
-                    ? `Macchina completata: ${window.phaseLabel(2)} — chiusa.`
-                    : "";
-                const note = [String(row.production_note || ""), completion]
-                    .filter(Boolean)
-                    .join("\n");
+                const note = String(row.production_note || "");
                 if (!note) return (row.missing_components || []).length ? "" : "—";
                 const lines = note.split(/\r?\n/);
                 if (note.length <= 80 && lines.length <= 2) {
@@ -1101,11 +1092,13 @@
                        </button>`
                     : "";
                 const packaging = row.packaged ? `
+                    <div class="d-flex flex-column align-items-start">
                         <span class="badge text-bg-success">Macchina imballata</span>
                         <div class="small text-muted mt-1">
-                            ${esc(formatDateTime(row.packaging?.confirmed_at))}
-                            ${row.packaging?.confirmed_by_name ? ` · ${esc(row.packaging.confirmed_by_name)}` : ""}
-                        </div>` : "";
+                            ${esc(formatDateTime(row.packaging?.confirmed_at, "short"))}
+                        </div>
+                        ${row.packaging?.confirmed_by_name ? `<div class="small text-muted">${esc(row.packaging.confirmed_by_name)}</div>` : ""}
+                    </div>` : "";
                 const deleteRow = inlineCustomerData && canDeleteOrders && !order.managed
                     ? `<button class="btn btn-sm btn-outline-danger text-nowrap"
                                type="button"
@@ -1116,7 +1109,10 @@
                            Elimina
                        </button>`
                     : "";
-                return `<div class="d-flex flex-wrap align-items-center gap-2">${save}${packaging}${deleteRow}</div>`;
+                const controls = save || deleteRow
+                    ? `<div class="d-flex flex-column align-items-start gap-2">${save}${deleteRow}</div>`
+                    : "";
+                return `<div class="d-flex flex-nowrap align-items-start gap-2">${controls}<div class="flex-grow-1">${packaging}</div></div>`;
             }
 
             function syncRowVersion(data, rowId) {
@@ -1323,7 +1319,7 @@
             }
 
             function renderCustomerOrders(customerOrders) {
-                const columnCount = inlineCustomerData ? 12 : 10;
+                const columnCount = inlineCustomerData ? 13 : 10;
                 if (!customerOrders.length) {
                     firstSectionControl.classList.add("d-none");
                     customerOrdersBody.innerHTML = `
@@ -1465,6 +1461,10 @@
                                 data-managed="${order.managed ? "true" : "false"}"
                                 data-version="${esc(row.version)}">
                                 <td class="fw-semibold">${esc(row.position)}</td>
+                                <td class="vendite-inline-customer-column d-none">
+                                    <div class="fw-semibold">${esc(order.customer_order || "-")}</div>
+                                    <span class="badge ${order.managed ? "text-bg-primary" : "text-bg-secondary"}">${order.managed ? "Gestionale" : "Manuale"}</span>
+                                </td>
                                 <td class="vendite-inline-customer-column d-none fw-semibold">${esc(order.customer_name)}</td>
                                 <td class="vendite-inline-customer-column d-none">
                                     <span class="badge text-bg-light border">${esc(order.internal_reference || "ITALIA")}</span>
@@ -2225,9 +2225,6 @@
             });
             groupByCustomerToggle.addEventListener("change", () => {
                 groupCustomerOrders = groupByCustomerToggle.checked;
-                groupingDescription.textContent = groupCustomerOrders
-                    ? "Gli ordini sono suddivisi per cliente."
-                    : "Gli ordini sono suddivisi usando i raggruppamenti per famiglia configurati nella situazione per matricola.";
                 renderCustomerOrders(currentCustomerOrders);
             });
             inlineCustomerToggle.addEventListener("change", () => {

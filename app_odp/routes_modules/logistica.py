@@ -15,6 +15,8 @@ from flask import (
     url_for,
 )
 
+from sqlalchemy import func
+
 from app_odp.logistica_models import (
     ClientePackingList,
     ImpostazioniPackingList,
@@ -25,9 +27,14 @@ from app_odp.logistica_models import (
     VettoreTrasporto,
 )
 from app_odp.models import db
-from app_odp.services.vendite_assegnazioni_service import sync_shippable_machines
+from app_odp.services.vendite_assegnazioni_service import (
+    delete_customer_order_row,
+    sync_shippable_machines,
+)
 from app_odp.vendite_models import (
     VenditeMacchinaSpedibile,
+    VenditeOrdineCliente,
+    VenditeOrdineClienteRiga,
     VenditeSensoreAntiribaltamentoLog,
     VenditeSensoriMacchina,
 )
@@ -714,5 +721,14 @@ def logistica_movimento_conferma(movimento_id: int):
                 VenditeMacchinaSpedibile.spedita_il.is_(None),
             ).all():
                 machine.spedita_il = now
+            manual_rows = VenditeOrdineClienteRiga.query.join(
+                VenditeOrdineCliente
+            ).filter(
+                VenditeOrdineCliente.gestionale_cod_cliente.is_(None),
+                func.lower(VenditeOrdineClienteRiga.odp_matricola).in_(keys),
+            ).all()
+            actor = active_user()
+            for row in manual_rows:
+                delete_customer_order_row(row.id, actor)
 
     return _save(action, "Movimentazione confermata.")
