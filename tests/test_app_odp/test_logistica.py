@@ -20,7 +20,14 @@ from app_odp.logistica_models import (
     VettoreTrasporto,
 )
 from app_odp.models import db
-from app_odp.vendite_models import VenditeMacchinaSpedibile, VenditeSensoriMacchina
+from app_odp.vendite_models import (
+    VenditeMacchinaSpedibile,
+    VenditeNotaProduzioneMacchina,
+    VenditeOrdineCliente,
+    VenditeOrdineClienteLog,
+    VenditeOrdineClienteRiga,
+    VenditeSensoriMacchina,
+)
 from app_odp.policy import decorator as policy_decorator
 from app_odp.routes_modules import logistica as logistica_routes
 from app_odp.routes_modules.logistica import (
@@ -199,6 +206,99 @@ def test_machine_shipment_groups_rows_and_consumes_them_on_confirmation(app, mon
             db.session.remove()
             VenditeSensoriMacchina.__table__.drop(db.engine)
             VenditeMacchinaSpedibile.__table__.drop(db.engine)
+
+
+def test_machine_shipment_deletes_only_the_matching_manual_order_row(app, monkeypatch):
+    sales_tables = [
+        VenditeNotaProduzioneMacchina.__table__,
+        VenditeOrdineCliente.__table__,
+        VenditeOrdineClienteRiga.__table__,
+        VenditeOrdineClienteLog.__table__,
+        VenditeMacchinaSpedibile.__table__,
+    ]
+    with app.app_context():
+        for table in sales_tables:
+            table.create(db.engine)
+        try:
+            manual_order = VenditeOrdineCliente(
+                cliente_nome="Cliente manuale",
+                cliente_chiave="cliente manuale",
+                numero_ordine="1",
+                numero_ordine_chiave="1",
+                creato_da_nome="vendite",
+            )
+            manual_row = VenditeOrdineClienteRiga(
+                posizione=1,
+                modello_codice="MODELLO-1",
+                data_consegna=date(2026, 7, 28),
+                odp_matricola="MAT-001",
+            )
+            manual_order.righe.append(manual_row)
+            managed_order = VenditeOrdineCliente(
+                cliente_nome="Cliente gestionale",
+                cliente_chiave="cliente gestionale",
+                numero_ordine="ORD-GEST",
+                numero_ordine_chiave="ord-gest",
+                creato_da_nome="sincronizzazione",
+                gestionale_cod_cliente="CLI-001",
+            )
+            managed_row = VenditeOrdineClienteRiga(
+                posizione=1,
+                modello_codice="MODELLO-1",
+                data_consegna=date(2026, 7, 28),
+                odp_matricola="MAT-001",
+            )
+            managed_order.righe.append(managed_row)
+            movement = MovimentoLogistico(
+                vettore=VettoreTrasporto(nome="Trasporti Rossi"),
+                movimento="SCARICO",
+                tipologia="CLIENTE",
+                controparte="Clienti macchine",
+                data=date(2026, 7, 28),
+                materiale="1 macchina",
+                spedizione_macchine=True,
+                creato_da_nome="operatore",
+                macchine=[MovimentoLogisticoMacchina(
+                    matricola="MAT-001",
+                    modello="MODELLO-1",
+                    cliente="Cliente manuale",
+                )],
+            )
+            db.session.add_all([
+                manual_order,
+                managed_order,
+                movement,
+                VenditeMacchinaSpedibile(
+                    matricola_chiave="mat-001",
+                    matricola="MAT-001",
+                    modello="MODELLO-1",
+                    cliente="Cliente manuale",
+                    motivo="IMBALLATA",
+                ),
+            ])
+            db.session.commit()
+            movement_id = movement.id
+            manual_order_id = manual_order.id
+            manual_row_id = manual_row.id
+            managed_row_id = managed_row.id
+            monkeypatch.setattr(logistica_routes, "_redirect_logistica", lambda: None)
+            monkeypatch.setattr(logistica_routes, "flash", lambda *_args: None)
+            monkeypatch.setattr(
+                logistica_routes,
+                "active_user",
+                lambda: SimpleNamespace(id=None, username="operatore"),
+            )
+
+            with app.test_request_context(method="POST"):
+                logistica_routes.logistica_movimento_conferma.__wrapped__(movement_id)
+
+            assert db.session.get(VenditeOrdineClienteRiga, manual_row_id) is None
+            assert db.session.get(VenditeOrdineClienteRiga, managed_row_id) is not None
+            assert db.session.get(VenditeOrdineCliente, manual_order_id) is not None
+        finally:
+            db.session.remove()
+            for table in reversed(sales_tables):
+                table.drop(db.engine)
 
 
 def test_note_update_requires_carica_permission(app, monkeypatch):
