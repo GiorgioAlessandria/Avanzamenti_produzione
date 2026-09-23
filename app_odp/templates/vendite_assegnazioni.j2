@@ -122,6 +122,12 @@
             border-color: #75b798;
         }
 
+        #vendite-assegnazioni-page tr.vendite-machine-optioned > td {
+            color: #664d03 !important;
+            background-color: #fff3cd !important;
+            box-shadow: none !important;
+        }
+
         #vendite-assegnazioni-page .vendite-customer-heading {
             display: none;
         }
@@ -422,11 +428,12 @@
                                         <th>Ordine</th>
                                         <th>Fase</th>
                                         <th>Note di produzione</th>
+                                        <th>Opzionamento</th>
                                     </tr>
                                     </thead>
                                     <tbody id="vendite-machines-body">
                                     <tr>
-                                        <td colspan="4"
+                                        <td colspan="6"
                                             class="text-center text-muted py-4">
                                             Caricamento...
                                         </td>
@@ -1025,8 +1032,29 @@
                 </div>`;
             }
 
+            function noteContent(value, emptyValue = "—") {
+                const note = String(value || "");
+                if (!note) return emptyValue;
+                const lines = note.split(/\r?\n/);
+                if (note.length <= 80 && lines.length <= 2) {
+                    return `<div style="white-space: pre-wrap">${esc(note)}</div>`;
+                }
+                return `
+                    <details class="vendite-production-note">
+                        <summary title="Espandi o riduci il testo">
+                            <span class="vendite-production-note-preview">${esc(lines.slice(0, 2).join(" "))}</span>
+                            <span class="badge text-bg-light border vendite-note-expand-label">Espandi</span>
+                            <span class="badge text-bg-light border vendite-note-collapse-label">Riduci</span>
+                        </summary>
+                        <div style="white-space: pre-wrap">${esc(note)}</div>
+                    </details>`;
+            }
+
             function noteTextarea(row, field, label, editable) {
                 const modified = (row.modified_fields || []).includes(field);
+                if (!editable) {
+                    return `${noteContent(row[field])}${auditLine(row, field)}`;
+                }
                 return `
                     <textarea class="form-control form-control-sm vendite-row-note${modified ? " vendite-field-modified" : ""}"
                               data-note-row-id="${esc(row.id)}"
@@ -1040,25 +1068,17 @@
             }
 
             function productionNoteCell(row) {
-                const note = String(row.production_note || "");
-                if (!note) return (row.missing_components || []).length ? "" : "—";
-                const lines = note.split(/\r?\n/);
-                if (note.length <= 80 && lines.length <= 2) {
-                    return `<div style="white-space: pre-wrap">${esc(note)}</div>`;
-                }
-                return `
-                    <details class="vendite-production-note">
-                        <summary title="Espandi o riduci note di produzione">
-                            <span class="vendite-production-note-preview">${esc(lines.slice(0, 2).join(" "))}</span>
-                            <span class="badge text-bg-light border vendite-note-expand-label">Espandi</span>
-                            <span class="badge text-bg-light border vendite-note-collapse-label">Riduci</span>
-                        </summary>
-                        <div style="white-space: pre-wrap">${esc(note)}</div>
-                    </details>`;
+                return noteContent(
+                    row.production_note,
+                    (row.missing_components || []).length ? "" : "—"
+                );
             }
 
             function dateInput(row, field, label, editable) {
                 const modified = (row.modified_fields || []).includes(field);
+                if (!editable) {
+                    return `<div>${esc(formatDate(row[field]))}</div>${auditLine(row, field)}`;
+                }
                 return `
                     <input class="form-control form-control-sm${modified ? " vendite-field-modified" : ""}"
                            data-date-row-id="${esc(row.id)}"
@@ -1137,12 +1157,12 @@
                         return `
                             <tr>
                                 <td class="fw-semibold">${reference}</td>
-                                <td>
+                                <td>${canEditOrderDetails ? `
                                     <textarea class="form-control"
                                               data-packaging-reference="${reference}"
                                               maxlength="1000"
-                                              rows="2"
-                                              ${canEditOrderDetails ? "" : "readonly"}>${esc(item.note || "")}</textarea>
+                                              rows="2">${esc(item.note || "")}</textarea>
+                                    ` : noteContent(item.note)}
                                 </td>
                                 <td class="small text-muted">${esc(modified)}</td>
                             </tr>`;
@@ -1154,7 +1174,7 @@
                 if (!machines.length) {
                     machinesBody.innerHTML = `
                         <tr>
-                            <td colspan="5" class="text-center text-muted py-4">
+                            <td colspan="6" class="text-center text-muted py-4">
                                 Nessuna matricola disponibile.
                             </td>
                         </tr>`;
@@ -1172,9 +1192,14 @@
                         window.phaseLabel(machine.phase),
                         machine.state,
                         machine.production_note,
+                        machine.option?.optioned_by_name,
+                        machine.option?.note,
                     ].join(" ").toLocaleLowerCase("it");
+                    const rowClass = machine.option
+                        ? "vendite-machine-optioned"
+                        : machine.state === "Imballata" ? "vendite-machine-completed" : "";
                     return `
-                        <tr class="${machine.state === "Imballata" ? "vendite-machine-completed" : ""}"
+                        <tr class="${rowClass}"
                             data-machine-search="${esc(search)}">
                             <td class="vendite-model-cell">${modelLabel(machine)}</td>
                             <td class="fw-semibold">${esc(machine.serial_number || "-")}</td>
@@ -1182,6 +1207,10 @@
                             <td>${esc(machine.state === "Imballata"
                                 ? "Imballata" : window.phaseLabel(machine.phase))}</td>
                             <td class="vendite-note-cell">${productionNoteCell(machine)}</td>
+                            <td class="vendite-note-cell">${machine.option ? `
+                                <div class="fw-semibold">${esc(machine.option.optioned_by_name || "-")}</div>
+                                ${noteContent(machine.option.note, "")}
+                            ` : "—"}</td>
                         </tr>`;
                 }).join("");
                 applyMachineFilter();
