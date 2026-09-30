@@ -165,6 +165,37 @@ const assignments = template("vendite_assegnazioni.j2");
 const labelContext = vm.createContext({machine: {serial_number: "M1", option: {optioned_by_name: "Alice"}}});
 vm.runInContext(namedFunction(assignments, "machineOptionLabel"), labelContext);
 assert.equal(vm.runInContext("machineOptionLabel(machine)", labelContext), "M1 · Opzionata da Alice");
+const assignmentContext = vm.createContext({
+    esc: context.esc,
+    canAssignMachines: true,
+    auditLine: () => "",
+    assignmentMachines: [{
+        id_documento: "NEW",
+        id_riga: "1",
+        model_key: "MODELLO",
+        serial_number: "M1",
+        has_serial: true,
+        assigned: true,
+        assigned_row_id: 7,
+    }],
+});
+vm.runInContext(namedFunction(assignments, "machineIdentity") + "\n" +
+                namedFunction(assignments, "assignmentIdentity") + "\n" +
+                namedFunction(assignments, "machineOptionLabel") + "\n" +
+                namedFunction(assignments, "assignmentSelect"), assignmentContext);
+assignmentContext.row = {
+    id: 7, position: 1, version: 1, model_key: "MODELLO", modified_fields: [],
+    assignment: {
+        id_documento: "OLD", id_riga: "9", serial_number: " m1 ",
+        completed: false, open: true,
+    },
+};
+const assignmentHtml = vm.runInContext("assignmentSelect(row)", assignmentContext);
+assert.equal((assignmentHtml.match(/<option/g) || []).length, 2);
+assert.ok(assignmentHtml.includes("M1 · Attualmente assegnata!"));
+assert.ok(assignmentHtml.includes("vendite-machine-current"));
+assert.ok(assignmentHtml.includes("vendite-assignment-current"));
+assert.ok(assignments.includes("option.vendite-machine-current"));
 const noteContext = vm.createContext({
     esc: context.esc, CSS: {escape: String},
     canEditSalesNotes: true, canEditProductionInstructions: true,

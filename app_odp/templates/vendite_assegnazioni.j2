@@ -100,6 +100,19 @@
             border: 2px solid #dc3545 !important;
         }
 
+        #vendite-assegnazioni-page [data-customer-row-id] .vendite-assignment-current {
+            color: #0f5132 !important;
+            background-color: #d1e7dd !important;
+            border-color: #75b798 !important;
+            font-weight: 600;
+        }
+
+        #vendite-assegnazioni-page option.vendite-machine-current {
+            color: #0f5132;
+            background-color: #d1e7dd;
+            font-weight: 600;
+        }
+
         #vendite-assegnazioni-page [data-customer-row-id] .text-danger,
         #vendite-assegnazioni-page [data-customer-row-id] .text-danger * {
             color: var(--bs-danger) !important;
@@ -965,53 +978,64 @@
                         </div>`;
                 }
                 const currentIdentity = assignmentIdentity(row.assignment);
+                const currentSerial = String(
+                    row.assignment?.serial_number || ""
+                ).trim().toLocaleLowerCase("it");
                 const compatible = assignmentMachines.filter(machine => (
                     machine.has_serial
                     && String(machine.model_key) === String(row.model_key)
                 ));
-                const currentAvailable = compatible.some(machine => (
+                const currentMachine = compatible.find(machine => (
                     machineIdentity(machine) === currentIdentity
+                    || (currentSerial && String(machine.serial_number || "")
+                        .trim().toLocaleLowerCase("it") === currentSerial)
                 ));
+                const selectedIdentity = currentMachine
+                    ? machineIdentity(currentMachine) : currentIdentity;
 
                 const options = ['<option value="">Non assegnata</option>'];
                 compatible.forEach(machine => {
                     const identity = machineIdentity(machine);
+                    const isCurrent = identity === selectedIdentity;
                     const assignedElsewhere = (
                         machine.assigned
                         && String(machine.assigned_row_id) !== String(row.id)
                     );
-                    const label = assignedElsewhere
-                        ? `⚠ ${machineOptionLabel(machine)} · Cliente: ${machine.assigned_customer_name || "-"}`
-                        : machineOptionLabel(machine);
+                    const label = isCurrent
+                        ? `${machineOptionLabel(machine)} · Attualmente assegnata!`
+                        : assignedElsewhere
+                            ? `⚠ ${machineOptionLabel(machine)} · Cliente: ${machine.assigned_customer_name || "-"}`
+                            : machineOptionLabel(machine);
                     options.push(`
                         <option value="${esc(identity)}"
-                                class="${assignedElsewhere ? "vendite-machine-assigned" : ""}"
+                                class="${isCurrent ? "vendite-machine-current" : assignedElsewhere ? "vendite-machine-assigned" : ""}"
                                 data-id-documento="${esc(machine.id_documento)}"
                                 data-id-riga="${esc(machine.id_riga)}"
                                 data-assigned-customer-name="${esc(machine.assigned_customer_name || "")}"
                                 title="${esc(label)}"
-                                ${identity === currentIdentity ? "selected" : ""}>
+                                ${isCurrent ? "selected" : ""}>
                             ${esc(label)}
                         </option>`);
                 });
 
-                if (row.assignment && !currentAvailable) {
+                if (row.assignment && !currentMachine) {
                     options.push(`
                         <option value="${esc(currentIdentity)}"
+                                class="vendite-machine-current"
                                 data-id-documento="${esc(row.assignment.id_documento)}"
                                 data-id-riga="${esc(row.assignment.id_riga)}"
                                 selected>
-                            ${esc(row.assignment.serial_number || "Senza matricola")}
+                            ${esc(row.assignment.serial_number || "Senza matricola")} · Attualmente assegnata!
                         </option>`);
                 }
 
                 return `
                     <div class="d-flex align-items-start gap-2">
                         ${automaticMarker}
-                        <select class="form-select form-select-sm vendite-assignment-select${(row.modified_fields || []).includes("assignment") ? " vendite-field-modified" : ""}"
+                        <select class="form-select form-select-sm vendite-assignment-select${row.assignment ? " vendite-assignment-current" : ""}${(row.modified_fields || []).includes("assignment") ? " vendite-field-modified" : ""}"
                                 data-assignment-row-id="${esc(row.id)}"
                                 data-version="${esc(row.version)}"
-                                data-original-value="${esc(currentIdentity)}"
+                                data-original-value="${esc(selectedIdentity)}"
                                 aria-label="Matricola per riga ${esc(row.position)}">
                             ${options.join("")}
                         </select>
