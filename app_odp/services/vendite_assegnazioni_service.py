@@ -41,6 +41,8 @@ from app_odp.vendite_models import (
     VenditeImballoMacchina,
     VenditeMacchinaSpedibile,
     VenditeNotaImballaggio,
+    VenditeNotaOrdiniCliente,
+    VenditeNotaOrdiniClienteLettura,
     VenditeNotaProduzioneMacchina,
     VenditeOpzioneMacchina,
     VenditeOrdineCliente,
@@ -1253,6 +1255,71 @@ def update_machine_option(payload, user, *, commit: bool = False):
     return option
 
 
+def update_customer_orders_note(
+    payload,
+    user,
+    *,
+    commit: bool = False,
+) -> VenditeNotaOrdiniCliente:
+    if not isinstance(payload, dict):
+        raise VenditeAssegnazioniError("Dati della nota non validi.")
+
+    text = _optional_text(payload.get("note"), "La nota", MAX_NOTE)
+    note = db.session.get(VenditeNotaOrdiniCliente, 1)
+    actor_id, actor_name = _actor(user)
+    if note is None:
+        note = VenditeNotaOrdiniCliente(
+            id=1,
+            note=text,
+            aggiornata_il=_now_rome_dt().isoformat(timespec="seconds"),
+            aggiornata_da_id=actor_id,
+            aggiornata_da_nome=actor_name,
+        )
+        db.session.add(note)
+    elif note.note != text:
+        note.note = text
+        note.aggiornata_il = _now_rome_dt().isoformat(timespec="seconds")
+        note.aggiornata_da_id = actor_id
+        note.aggiornata_da_nome = actor_name
+
+    db.session.flush()
+    if commit:
+        db.session.commit()
+    return note
+
+
+def confirm_customer_orders_note_read(
+    user,
+    *,
+    commit: bool = False,
+) -> VenditeNotaOrdiniClienteLettura:
+    note = db.session.get(VenditeNotaOrdiniCliente, 1)
+    if note is None or not _norm_text(note.note):
+        raise VenditeAssegnazioniError("Non ci sono note da confermare.")
+
+    actor_id, _actor_name = _actor(user)
+    if actor_id is None:
+        raise VenditeAssegnazioniError("Utente non valido.")
+
+    reading = db.session.get(VenditeNotaOrdiniClienteLettura, actor_id)
+    read_at = _now_rome_dt().isoformat(timespec="seconds")
+    if reading is None:
+        reading = VenditeNotaOrdiniClienteLettura(
+            operatore_id=actor_id,
+            versione_letta=note.versione,
+            letta_il=read_at,
+        )
+        db.session.add(reading)
+    else:
+        reading.versione_letta = note.versione
+        reading.letta_il = read_at
+
+    db.session.flush()
+    if commit:
+        db.session.commit()
+    return reading
+
+
 def confirm_customer_order_read(
     order_id: int,
     user,
@@ -1806,7 +1873,7 @@ def _sync_open_customer_orders() -> None:
         db.session.flush()
 
 
-def build_assignment_dashboard(*, include_planned: bool = True) -> dict:
+def build_assignment_dashboard(*, include_planned: bool = True, viewer=None) -> dict:
     sync_shippable_machines()
     _sync_open_customer_orders()
     production_machines = load_machine_orders(include_closed=True)
@@ -2133,6 +2200,17 @@ def build_assignment_dashboard(*, include_planned: bool = True) -> dict:
         item.riferimento_interno: item
         for item in VenditeNotaImballaggio.query.all()
     }
+    page_note = db.session.get(VenditeNotaOrdiniCliente, 1)
+    page_note_reading = (
+        db.session.get(
+            VenditeNotaOrdiniClienteLettura,
+            getattr(viewer, "id", None),
+        )
+        if getattr(viewer, "id", None) is not None
+        else None
+    )
+    page_note_text = page_note.note if page_note is not None else ""
+    page_note_version = page_note.versione if page_note is not None else 0
 
     return {
         "generated_at": _now_rome_dt().isoformat(timespec="seconds"),
@@ -2146,6 +2224,24 @@ def build_assignment_dashboard(*, include_planned: bool = True) -> dict:
         "machines": machines_payload,
         "assignment_machines": assignment_machines_payload,
         "customer_orders": customer_payload,
+        "customer_orders_note": {
+            "note": page_note_text,
+            "version": page_note_version,
+            "updated_at": (
+                page_note.aggiornata_il if page_note is not None else ""
+            ),
+            "updated_by_name": (
+                page_note.aggiornata_da_nome if page_note is not None else ""
+            ),
+            "read_confirmed": (
+                not _norm_text(page_note_text)
+                or (
+                    page_note_reading is not None
+                    and page_note_reading.versione_letta == page_note_version
+                )
+            ),
+            "read_at": page_note_reading.letta_il if page_note_reading else "",
+        },
         "packaging_notes": [
             {
                 "reference": reference,

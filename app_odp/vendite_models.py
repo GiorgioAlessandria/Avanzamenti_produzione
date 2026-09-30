@@ -41,6 +41,39 @@ class VenditeClienteGeocodifica(db.Model):
     aggiornato_il = db.Column(db.Text, nullable=False, default=_rome_iso_now)
 
 
+class VenditeNotaOrdiniCliente(db.Model):
+    __tablename__ = "vendite_nota_ordini_cliente"
+
+    id = db.Column(db.Integer, primary_key=True, default=1)
+    note = db.Column(db.String(1000), nullable=False, default="")
+    versione = db.Column(db.Integer, nullable=False, default=1)
+    aggiornata_il = db.Column(db.Text, nullable=False, default=_rome_iso_now)
+    aggiornata_da_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    aggiornata_da_nome = db.Column(db.String(120), nullable=False)
+
+    __mapper_args__ = {"version_id_col": versione}
+
+
+class VenditeNotaOrdiniClienteLettura(db.Model):
+    __tablename__ = "vendite_nota_ordini_cliente_letture"
+
+    operatore_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    versione_letta = db.Column(db.Integer, nullable=False)
+    letta_il = db.Column(
+        db.Text,
+        nullable=False,
+        default=_rome_iso_now,
+    )
+
+
 class VenditeNotaProduzioneMacchina(db.Model):
     __tablename__ = "vendite_note_produzione_macchina"
 

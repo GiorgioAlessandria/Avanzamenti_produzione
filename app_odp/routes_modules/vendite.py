@@ -21,6 +21,7 @@ from app_odp.services.vendite_assegnazioni_service import (
     VenditeAssegnazioniConflictError,
     VenditeAssegnazioniError,
     build_assignment_dashboard,
+    confirm_customer_orders_note_read,
     confirm_customer_order_read,
     confirm_machine_packaging,
     create_customer_order,
@@ -31,6 +32,7 @@ from app_odp.services.vendite_assegnazioni_service import (
     update_customer_row,
     update_customer_row_dates,
     update_customer_row_notes,
+    update_customer_orders_note,
     update_packaging_notes,
     update_machine_production_note,
     update_machine_tilt_sensors,
@@ -66,7 +68,8 @@ def _visible_assignment_dashboard():
         **build_assignment_dashboard(
             include_planned=(
                 policy.can("visualizza_pianificati") or policy.can("utente_produzione")
-            )
+            ),
+            viewer=active_user(),
         ),
         "grouping": build_machine_grouping(),
     }
@@ -154,6 +157,10 @@ def vendite_assegnazioni_page():
             can_create_customer_orders or policy.can("utente_amministrazione")
         ),
         can_view_packaging_notes=admin or not policy.can("utente_imballi"),
+        can_edit_customer_orders_note=admin or policy.can("utente_produzione"),
+        can_confirm_customer_orders_note=(
+            admin or policy.can("utente_vendite")
+        ),
         can_view_model_summary=_can_view_customer_orders(policy),
         can_confirm_order_read=admin or policy.can("utente_produzione"),
         section_preference_user=getattr(user, "id", "anonymous"),
@@ -456,6 +463,28 @@ def api_vendite_riga_note(row_id: int):
             ),
         ),
         "Note aggiornate.",
+    )
+
+
+@main_bp.post("/api/vendite/ordini-cliente/note-intestazione")
+@require_active_perm("vendite")
+@require_active_perm("utente_produzione")
+def api_vendite_ordini_cliente_note_intestazione():
+    return _assignment_mutation(
+        lambda: update_customer_orders_note(
+            request.get_json(silent=True), active_user()
+        ),
+        "Nota ordini cliente aggiornata.",
+    )
+
+
+@main_bp.post("/api/vendite/ordini-cliente/note-intestazione/conferma-lettura")
+@require_active_perm("vendite")
+@require_active_perm("utente_vendite")
+def api_vendite_ordini_cliente_note_intestazione_conferma():
+    return _assignment_mutation(
+        lambda: confirm_customer_orders_note_read(active_user()),
+        "Lettura della nota confermata.",
     )
 
 

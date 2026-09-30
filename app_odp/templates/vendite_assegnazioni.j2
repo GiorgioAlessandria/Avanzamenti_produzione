@@ -238,6 +238,8 @@
           data-delete-url-template="{{ operator_url_for('main.api_vendite_ordine_cliente_delete', order_id=0) }}"
           data-delete-row-url-template="{{ operator_url_for('main.api_vendite_riga_cliente_delete', row_id=0) }}"
           data-order-details-url-template="{{ operator_url_for('main.api_vendite_ordine_cliente_dati', order_id=0) }}"
+          data-customer-orders-note-url="{{ operator_url_for('main.api_vendite_ordini_cliente_note_intestazione') }}"
+          data-customer-orders-note-confirm-url="{{ operator_url_for('main.api_vendite_ordini_cliente_note_intestazione_conferma') }}"
           data-packaging-notes-url="{{ operator_url_for('main.api_vendite_note_imballaggio') }}"
           data-can-assign-machines="{{ 'true' if can_assign_machines else 'false' }}"
           data-can-edit-sales-notes="{{ 'true' if can_edit_sales_notes else 'false' }}"
@@ -245,6 +247,7 @@
           data-can-delete-orders="{{ 'true' if can_create_customer_orders else 'false' }}"
           data-can-edit-order-details="{{ 'true' if can_create_customer_orders else 'false' }}"
           data-section-preference-user="{{ section_preference_user }}"
+          data-can-edit-customer-orders-note="{{ 'true' if can_edit_customer_orders_note else 'false' }}"
           data-can-confirm-order-read="{{ 'true' if can_confirm_order_read else 'false' }}"
           data-horse-save-animation="{{ 'true' if horse_save_animation else 'false' }}">
         <div class="alert d-none"
@@ -502,6 +505,39 @@
                                         <span class="badge border text-dark" style="background:#d1e7dd">Macchina imballata</span>
                                     </div>
                                 </div>
+                                <div class="flex-grow-1 px-lg-3" style="min-width:18rem;">
+                                    <label class="form-label small fw-semibold mb-1"
+                                           for="vendite-customer-orders-note">
+                                        Note
+                                    </label>
+                                    <div class="d-flex align-items-start gap-2">
+                                        {% if can_edit_customer_orders_note %}
+                                            <textarea class="form-control form-control-sm"
+                                                      id="vendite-customer-orders-note"
+                                                      maxlength="1000"
+                                                      rows="2"></textarea>
+                                            <button class="btn btn-sm btn-primary text-nowrap"
+                                                    type="button"
+                                                    id="vendite-save-customer-orders-note">
+                                                Salva
+                                            </button>
+                                        {% else %}
+                                            <div class="small text-break flex-grow-1"
+                                                 id="vendite-customer-orders-note"
+                                                 style="white-space:pre-wrap;"
+                                                 aria-live="polite">—</div>
+                                        {% endif %}
+                                        {% if can_confirm_customer_orders_note %}
+                                            <button class="btn btn-sm btn-warning text-nowrap d-none"
+                                                    type="button"
+                                                    id="vendite-confirm-customer-orders-note">
+                                                Conferma lettura
+                                            </button>
+                                        {% endif %}
+                                    </div>
+                                    <div class="small text-muted mt-1"
+                                         id="vendite-customer-orders-note-meta"></div>
+                                </div>
                                 <div class="d-flex flex-wrap align-items-end gap-3">
                                     <div id="vendite-first-section-control" class="d-none">
                                         <label class="form-label small mb-1" for="vendite-first-section">
@@ -705,6 +741,11 @@
             const firstSectionSelect = document.getElementById("vendite-first-section");
             const packagingNotesBody = document.getElementById("vendite-packaging-notes-body");
             const savePackagingNotesButton = document.getElementById("vendite-save-packaging-notes");
+            const customerOrdersNote = document.getElementById("vendite-customer-orders-note");
+            const customerOrdersNoteMeta = document.getElementById("vendite-customer-orders-note-meta");
+            const saveCustomerOrdersNoteButton = document.getElementById("vendite-save-customer-orders-note");
+            const confirmCustomerOrdersNoteButton = document.getElementById("vendite-confirm-customer-orders-note");
+            const canEditCustomerOrdersNote = page.dataset.canEditCustomerOrdersNote === "true";
             const canAssignMachines = page.dataset.canAssignMachines === "true";
             const canEditSalesNotes = page.dataset.canEditSalesNotes === "true";
             const canEditProductionInstructions = page.dataset.canEditProductionInstructions === "true";
@@ -730,6 +771,7 @@
             const collapsedOrders = new Set();
             const collapsedCustomerGroups = new Set();
             let packagingNotesDirty = false;
+            let customerOrdersNoteDirty = false;
 
             function esc(value) {
                 return String(value ?? "").replace(/[&<>"']/g, character => ({
@@ -1231,6 +1273,26 @@
                 packagingNotesDirty = false;
             }
 
+            function renderCustomerOrdersNote(item = {}) {
+                const text = item.note || "";
+                if (canEditCustomerOrdersNote) {
+                    if (!customerOrdersNoteDirty) customerOrdersNote.value = text;
+                } else {
+                    customerOrdersNote.textContent = text || "—";
+                }
+                customerOrdersNoteMeta.textContent = item.updated_at
+                    ? `Ultima modifica: ${formatDateTime(item.updated_at, "short")}${item.updated_by_name ? ` · ${item.updated_by_name}` : ""}`
+                    : "";
+                if (!confirmCustomerOrdersNoteButton) return;
+                confirmCustomerOrdersNoteButton.classList.toggle("d-none", !text);
+                confirmCustomerOrdersNoteButton.disabled = Boolean(item.read_confirmed);
+                confirmCustomerOrdersNoteButton.classList.toggle("btn-warning", !item.read_confirmed);
+                confirmCustomerOrdersNoteButton.classList.toggle("btn-success", Boolean(item.read_confirmed));
+                confirmCustomerOrdersNoteButton.textContent = item.read_confirmed
+                    ? "Lettura confermata"
+                    : "Conferma lettura";
+            }
+
             function renderMachines() {
                 if (!machines.length) {
                     machinesBody.innerHTML = `
@@ -1592,6 +1654,7 @@
                 renderMachines();
                 renderCustomerOrders(currentCustomerOrders);
                 renderPackagingNotes(Array.isArray(data.packaging_notes) ? data.packaging_notes : []);
+                renderCustomerOrdersNote(data.customer_orders_note || {});
                 statusBox.textContent = `Ultimo aggiornamento: ${formatDateTime(data.generated_at)}`;
             }
 
@@ -1666,7 +1729,8 @@
                     || dirtyNotes.size > 0
                     || dirtyDates.size > 0
                     || dirtyOrderDetails.size > 0
-                    || packagingNotesDirty;
+                    || packagingNotesDirty
+                    || customerOrdersNoteDirty;
             }
 
             async function refresh({force = false} = {}) {
@@ -1927,6 +1991,60 @@
                     button.disabled = false;
                 }
                 if (!hasUnsavedChanges()) await refresh({force: true});
+            }
+
+            async function saveCustomerOrdersNote(button) {
+                if (mutationInFlight) return;
+                mutationInFlight = true;
+                button.disabled = true;
+                try {
+                    const response = await window.avpFetch(page.dataset.customerOrdersNoteUrl, {
+                        method: "POST",
+                        headers: {"Content-Type": "application/json"},
+                        body: JSON.stringify({note: customerOrdersNote.value.trim()}),
+                    });
+                    const payload = await response.json().catch(() => ({}));
+                    if (!response.ok || !payload.ok) {
+                        throw new Error(payload.error || `Errore server (${response.status})`);
+                    }
+                    customerOrdersNoteDirty = false;
+                    render(payload.data || {});
+                    showAlert("success", payload.message || "Nota aggiornata.");
+                    alertBox.dataset.source = "mutation";
+                } catch (error) {
+                    console.error("Errore aggiornamento nota ordini cliente:", error);
+                    showAlert("danger", error.message || "Impossibile aggiornare la nota.");
+                    alertBox.dataset.source = "mutation";
+                } finally {
+                    mutationInFlight = false;
+                    button.disabled = false;
+                }
+            }
+
+            async function confirmCustomerOrdersNoteRead(button) {
+                if (mutationInFlight || button.disabled) return;
+                mutationInFlight = true;
+                button.disabled = true;
+                try {
+                    const response = await window.avpFetch(
+                        page.dataset.customerOrdersNoteConfirmUrl,
+                        {method: "POST"}
+                    );
+                    const payload = await response.json().catch(() => ({}));
+                    if (!response.ok || !payload.ok) {
+                        throw new Error(payload.error || `Errore server (${response.status})`);
+                    }
+                    render(payload.data || {});
+                    showAlert("success", payload.message || "Lettura confermata.");
+                    alertBox.dataset.source = "mutation";
+                } catch (error) {
+                    console.error("Errore conferma lettura nota ordini cliente:", error);
+                    showAlert("danger", error.message || "Impossibile confermare la lettura.");
+                    alertBox.dataset.source = "mutation";
+                    button.disabled = false;
+                } finally {
+                    mutationInFlight = false;
+                }
             }
 
             function rowNotesPayload(rowId) {
@@ -2328,6 +2446,15 @@
                 if (event.target.matches("[data-packaging-reference]")) {
                     packagingNotesDirty = true;
                 }
+            });
+            customerOrdersNote?.addEventListener("input", () => {
+                customerOrdersNoteDirty = true;
+            });
+            saveCustomerOrdersNoteButton?.addEventListener("click", () => {
+                saveCustomerOrdersNote(saveCustomerOrdersNoteButton);
+            });
+            confirmCustomerOrdersNoteButton?.addEventListener("click", () => {
+                confirmCustomerOrdersNoteRead(confirmCustomerOrdersNoteButton);
             });
             savePackagingNotesButton?.addEventListener("click", () => {
                 savePackagingNotes(savePackagingNotesButton);

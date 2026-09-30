@@ -23,6 +23,7 @@ from app_odp.services.vendite_assegnazioni_service import (
     VenditeAssegnazioniError,
     _internal_reference_for_country,
     build_assignment_dashboard,
+    confirm_customer_orders_note_read,
     confirm_customer_order_read,
     confirm_machine_packaging,
     create_customer_order,
@@ -35,6 +36,7 @@ from app_odp.services.vendite_assegnazioni_service import (
     update_customer_row_dates,
     update_customer_row_notes,
     update_packaging_notes,
+    update_customer_orders_note,
     update_machine_production_note,
     update_machine_option,
 )
@@ -43,6 +45,8 @@ from app_odp.vendite_models import (
     VenditeSensoriMacchina,
     VenditeMacchinaSpedibile,
     VenditeOrdineClienteLog,
+    VenditeNotaOrdiniCliente,
+    VenditeNotaOrdiniClienteLettura,
     VenditeNotaProduzioneMacchina,
     VenditeOpzioneMacchina,
     VenditeOrdineCliente,
@@ -61,6 +65,40 @@ ACTOR = SimpleNamespace(id=None, username="commerciale")
 )
 def test_internal_reference_is_derived_from_country(country_code, expected):
     assert _internal_reference_for_country(country_code) == expected
+
+
+def test_customer_orders_note_requires_confirmation_from_each_user_after_changes(app):
+    first_user = SimpleNamespace(id=101, username="commerciale uno")
+    second_user = SimpleNamespace(id=102, username="commerciale due")
+    production_user = SimpleNamespace(id=None, username="produzione")
+
+    with app.app_context():
+        note = update_customer_orders_note(
+            {"note": "Prima comunicazione"}, production_user
+        )
+        first_version = note.versione
+        assert build_assignment_dashboard(viewer=first_user)[
+            "customer_orders_note"
+        ]["read_confirmed"] is False
+
+        confirm_customer_orders_note_read(first_user)
+        assert build_assignment_dashboard(viewer=first_user)[
+            "customer_orders_note"
+        ]["read_confirmed"] is True
+        assert build_assignment_dashboard(viewer=second_user)[
+            "customer_orders_note"
+        ]["read_confirmed"] is False
+
+        update_customer_orders_note(
+            {"note": "Comunicazione modificata"}, production_user
+        )
+        assert db.session.get(VenditeNotaOrdiniCliente, 1).versione > first_version
+        assert build_assignment_dashboard(viewer=first_user)[
+            "customer_orders_note"
+        ]["read_confirmed"] is False
+        assert db.session.get(
+            VenditeNotaOrdiniClienteLettura, first_user.id
+        ).versione_letta == first_version
 
 
 def test_synced_customer_orders_are_grouped_expanded_and_assignable(app):
