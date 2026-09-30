@@ -16,7 +16,6 @@ import tomllib
 from pathlib import Path
 import pandas as pd
 import sqlalchemy as sa
-from sqlalchemy.orm import Session
 from sqlalchemy import create_engine
 from zoneinfo import ZoneInfo
 from datetime import datetime, time, timedelta, date
@@ -741,16 +740,14 @@ def build_matricole_macchine(df_matricole: pd.DataFrame) -> pd.DataFrame:
         lambda value: None if not _norm_text(value) else _norm_text(value)
     )
 
-    df = df[
-        (df["CodArt"] != "")
-        & (df["CodMatricola"] != "")
-        & (df["CodMag"] != "")
-    ]
+    df = df[(df["CodArt"] != "") & (df["CodMatricola"] != "") & (df["CodMag"] != "")]
 
     # La matricola deve essere univoca: non nascondiamo eventuali anomalie ERP.
     duplicate_mask = df["CodMatricola"].duplicated(keep=False)
     if duplicate_mask.any():
-        duplicate_values = sorted(df.loc[duplicate_mask, "CodMatricola"].unique().tolist())
+        duplicate_values = sorted(
+            df.loc[duplicate_mask, "CodMatricola"].unique().tolist()
+        )
         raise ValueError(
             "CodMatricola duplicata in vwESMatricole: "
             + ", ".join(duplicate_values[:20])
@@ -910,6 +907,7 @@ def build_ordini_for_clav_aperti(df_ordini: pd.DataFrame) -> pd.DataFrame:
 
     # Normalizziamo le date come ISO YYYY-MM-DD[THH:MM:SS] per SQLite.
     for col in ["DataRegistrazione", "DataOriginale", "DataConsegna"]:
+
         def _date_to_iso(value):
             if value is None:
                 return None
@@ -930,7 +928,9 @@ def build_ordini_for_clav_aperti(df_ordini: pd.DataFrame) -> pd.DataFrame:
         df[col] = df[col].apply(_date_to_iso)
 
     for col in ["QTA_ORD", "QTA_CONS", "QTA_SALDO_DOC"]:
-        df[col] = df[col].apply(lambda value: None if pd.isna(value) else _safe_float(value))
+        df[col] = df[col].apply(
+            lambda value: None if pd.isna(value) else _safe_float(value)
+        )
 
     duplicate_mask = df.duplicated(
         subset=["IdDocumento", "IdRigaDoc"],
@@ -1015,6 +1015,7 @@ def build_ordini_cliente_aperti(df_ordini: pd.DataFrame) -> pd.DataFrame:
 
     # Normalizziamo le date come ISO YYYY-MM-DD[THH:MM:SS] per SQLite.
     for col in ["DataRegistrazione", "DataOriginale", "DataConsegna"]:
+
         def _date_to_iso(value):
             if value is None:
                 return None
@@ -1262,8 +1263,13 @@ def _record_removed_matricole(engine, current: pd.DataFrame) -> None:
                     "VALUES (:serial, :model, :exited_at)"
                 ),
                 [
-                    {"serial": str(row[0]), "model": str(row[1]),
-                     "exited_at": datetime.now(ZoneInfo(TIMEZONE or "Europe/Rome")).isoformat(timespec="seconds")}
+                    {
+                        "serial": str(row[0]),
+                        "model": str(row[1]),
+                        "exited_at": datetime.now(
+                            ZoneInfo(TIMEZONE or "Europe/Rome")
+                        ).isoformat(timespec="seconds"),
+                    }
                     for row in removed
                 ],
             )
@@ -1304,7 +1310,9 @@ def elaborazione_dati_acq():
     _record_removed_matricole(sqlite_engine_acq, df_matricole_macchine)
     _replace_table(sqlite_engine_acq, "matricole_macchine", df_matricole_macchine)
     _replace_table(sqlite_engine_acq, "clienti_fornitori", df_clienti_fornitori_cache)
-    _replace_table(sqlite_engine_acq, "ordini_for_clav_aperti", df_ordini_for_clav_cache)
+    _replace_table(
+        sqlite_engine_acq, "ordini_for_clav_aperti", df_ordini_for_clav_cache
+    )
     _replace_table(sqlite_engine_acq, "ordini_cliente_aperti", df_ordini_cliente_cache)
     _replace_table(sqlite_engine_acq, "acq_fabbisogno_odp", df_acq_fabbisogno_odp)
     _replace_table(sqlite_engine_acq, "acq_riepilogo_materiali", df_acq_riepilogo)

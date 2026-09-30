@@ -10,6 +10,9 @@
       <excludeFolder url="file://$MODULE_DIR$/.idea/dataSources" />
       <excludeFolder url="file://$MODULE_DIR$/.venv" />
       <excludeFolder url="file://$MODULE_DIR$/temp" />
+      <excludeFolder url="file://$MODULE_DIR$/app_odp/backup" />
+      <excludeFolder url="file://$MODULE_DIR$/app_odp/instance" />
+      <excludeFolder url="file://$MODULE_DIR$/app_odp/scripts" />
     </content>
     <orderEntry type="jdk" jdkName="Python 3.13 (Avanzamenti_produzione)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />

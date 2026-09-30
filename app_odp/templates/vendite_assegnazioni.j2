@@ -1091,12 +1091,19 @@
                     ${auditLine(row, field)}`;
             }
 
-            function rowActions(row, order) {
+            function rowActions(row, order, showConfirmation) {
                 const save = canAssignMachines || canEditSalesNotes || canEditProductionInstructions
                     ? `<button class="btn btn-sm btn-outline-primary text-nowrap"
                                type="button"
                                data-save-row="${esc(row.id)}">
                            Salva
+                       </button>`
+                    : "";
+                const confirm = showConfirmation && canConfirmOrderRead && !order.read_confirmed
+                    ? `<button class="btn btn-sm btn-warning text-nowrap"
+                               type="button"
+                               data-confirm-order-read="${esc(order.id)}">
+                           Conferma lettura
                        </button>`
                     : "";
                 const packaging = row.packaged ? `
@@ -1117,8 +1124,11 @@
                            Elimina
                        </button>`
                     : "";
-                const controls = save || deleteRow
-                    ? `<div class="d-flex flex-column align-items-start gap-2">${save}${deleteRow}</div>`
+                const primaryControls = save || confirm
+                    ? `<div class="d-flex flex-nowrap gap-2">${save}${confirm}</div>`
+                    : "";
+                const controls = primaryControls || deleteRow
+                    ? `<div class="d-flex flex-column align-items-start gap-2">${primaryControls}${deleteRow}</div>`
                     : "";
                 return `<div class="d-flex flex-nowrap align-items-start gap-2">${controls}<div class="flex-grow-1">${packaging}</div></div>`;
             }
@@ -1380,13 +1390,6 @@
                         : !order.read_confirmed
                             ? "vendite-order-unread"
                             : neutralClass;
-                    const confirmButton = primaryHeading && canConfirmOrderRead && !order.read_confirmed
-                        ? `<button class="btn btn-sm btn-warning text-nowrap"
-                                   type="button"
-                                   data-confirm-order-read="${esc(order.id)}">
-                               Conferma lettura
-                           </button>`
-                        : "";
                     const deleteButton = primaryHeading && !order.managed && canDeleteOrders
                         ? `<button class="btn btn-sm btn-outline-danger text-nowrap"
                                    type="button"
@@ -1436,14 +1439,13 @@
                                             ${order.created_at ? ` · ${esc(formatDateTime(order.created_at))}` : ""}
                                             ${order.created_by_name ? ` · ${esc(order.created_by_name)}` : ""}
                                         </div>
-                                        ${confirmButton}
                                         ${deleteButton}
                                     </div>
                                 </div>
                             </td>
                         </tr>`);
 
-                    (order.rows || []).forEach(row => {
+                    (order.rows || []).forEach((row, rowIndex) => {
                         const search = [
                             order.customer_name,
                             order.customer_order,
@@ -1511,7 +1513,7 @@
                                 <td class="vendite-note-cell">
                                     ${noteTextarea(row, "shipping_note", "Note per imballo", canEditSalesNotes)}
                                 </td>
-                                <td>${rowActions(row, order)}</td>
+                                <td>${rowActions(row, order, primaryHeading && rowIndex === 0)}</td>
                             </tr>`);
                     });
                     });

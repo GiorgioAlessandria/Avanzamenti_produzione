@@ -184,7 +184,8 @@ assert.ok(!assignments.includes('noteTextarea(row, "production_note"'));
 assert.ok(assignments.includes('esc(row.production_note || "—")'));
 const customerContext = vm.createContext({
     esc: context.esc, customerOrdersBody: {innerHTML: ""},
-    canEditSalesNotes: true, canEditProductionInstructions: true, canConfirmOrderRead: false, canConfirmShipment: false,
+    canAssignMachines: true, canEditSalesNotes: true, canEditProductionInstructions: true,
+    canConfirmOrderRead: false, canConfirmShipment: false,
     canDeleteOrders: false, collapsedOrders: new Set(), collapsedCustomerGroups: new Set(),
     groupCustomerOrders: false,
     currentGrouping: {groups: [
@@ -194,9 +195,10 @@ const customerContext = vm.createContext({
     dirtyAssignments: new Set(), dirtyNotes: new Set(), dirtyDates: new Set(), dirtyOrderDetails: new Set(),
     referenceClass: () => "", orderDetails: () => "", formatDateTime: String,
     modelLabel: () => "Modello", dateInput: () => "", assignmentSelect: () => "",
-    rowActions: () => "", applyDemandFilter() {},
+    applyDemandFilter() {},
 });
 vm.runInContext(namedFunction(assignments, "noteTextarea") + "\n" +
+                namedFunction(assignments, "rowActions") + "\n" +
                 namedFunction(assignments, "customerOrderSections") + "\n" +
                 namedFunction(assignments, "renderCustomerOrders"), customerContext);
 customerContext.orders = [{id: 1, managed: true, customer_name: "Cliente", customer_order: "OC1", rows: [
