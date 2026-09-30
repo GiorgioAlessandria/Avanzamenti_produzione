@@ -203,6 +203,25 @@
             margin-bottom: .25rem;
         }
 
+        #vendite-assegnazioni-page .vendite-orders-legend {
+            display: grid !important;
+            grid-auto-flow: column;
+            grid-template-rows: repeat(2, auto);
+            gap: .25rem .4rem !important;
+            justify-content: start;
+        }
+
+        #vendite-assegnazioni-page .vendite-customer-orders-note-panel {
+            flex: 1 1 30rem;
+            min-width: 18rem;
+            border: 2px solid transparent;
+        }
+
+        #vendite-assegnazioni-page .vendite-customer-orders-note-unread {
+            background-color: #ffd9a8;
+            border-color: #dc3545;
+        }
+
         .vendite-suplex-stage { position: fixed; left: calc(100vw + 1rem); width: 13rem; height: 8rem; z-index: 1090; pointer-events: none; animation: vendite-suplex-stage 5s linear forwards; }
         .vendite-suplex-fighter { position: absolute; bottom: 1.1rem; font-size: 3.2rem; line-height: 1; transform-origin: center bottom; filter: drop-shadow(0 .2rem .12rem rgba(0, 0, 0, .25)); }
         .vendite-suplex-attacker { left: 1rem; animation: vendite-suplex-attacker 5s ease-in-out forwards; }
@@ -494,9 +513,9 @@
                         </button>
                         <div class="card shadow-sm h-100">
                             <div class="card-header d-flex flex-wrap justify-content-between align-items-start gap-2">
-                                <div>
+                                <div class="flex-shrink-0">
                                     <div class="fw-semibold">Righe ordini cliente</div>
-                                    <div class="small d-flex flex-wrap gap-2 mt-1" aria-label="Legenda colori ordini">
+                                    <div class="small vendite-orders-legend mt-1" aria-label="Legenda colori ordini">
                                         <span class="badge border text-dark" style="background:#dff3fb">ITALIA</span>
                                         <span class="badge border text-dark" style="background:#f9e1e7">ESTERO</span>
                                         <span class="badge border text-dark" style="background:#eee5ff">EXTRACEE</span>
@@ -505,7 +524,8 @@
                                         <span class="badge border text-dark" style="background:#d1e7dd">Macchina imballata</span>
                                     </div>
                                 </div>
-                                <div class="flex-grow-1 px-lg-3" style="min-width:18rem;">
+                                <div class="vendite-customer-orders-note-panel rounded px-2 py-1"
+                                     id="vendite-customer-orders-note-panel">
                                     <label class="form-label small fw-semibold mb-1"
                                            for="vendite-customer-orders-note">
                                         Note
@@ -741,6 +761,7 @@
             const firstSectionSelect = document.getElementById("vendite-first-section");
             const packagingNotesBody = document.getElementById("vendite-packaging-notes-body");
             const savePackagingNotesButton = document.getElementById("vendite-save-packaging-notes");
+            const customerOrdersNotePanel = document.getElementById("vendite-customer-orders-note-panel");
             const customerOrdersNote = document.getElementById("vendite-customer-orders-note");
             const customerOrdersNoteMeta = document.getElementById("vendite-customer-orders-note-meta");
             const saveCustomerOrdersNoteButton = document.getElementById("vendite-save-customer-orders-note");
@@ -772,6 +793,7 @@
             const collapsedCustomerGroups = new Set();
             let packagingNotesDirty = false;
             let customerOrdersNoteDirty = false;
+            let alertTimeoutId = null;
 
             function esc(value) {
                 return String(value ?? "").replace(/[&<>"']/g, character => ({
@@ -784,12 +806,18 @@
             }
 
             function showAlert(type, message) {
+                if (alertTimeoutId !== null) window.clearTimeout(alertTimeoutId);
                 alertBox.className = `alert alert-${type}`;
                 alertBox.textContent = window.phaseText(message);
                 alertBox.classList.remove("d-none");
+                alertTimeoutId = type === "success"
+                    ? window.setTimeout(clearAlert, 15000)
+                    : null;
             }
 
             function clearAlert() {
+                if (alertTimeoutId !== null) window.clearTimeout(alertTimeoutId);
+                alertTimeoutId = null;
                 alertBox.classList.add("d-none");
                 alertBox.textContent = "";
             }
@@ -1283,6 +1311,10 @@
                 customerOrdersNoteMeta.textContent = item.updated_at
                     ? `Ultima modifica: ${formatDateTime(item.updated_at, "short")}${item.updated_by_name ? ` · ${item.updated_by_name}` : ""}`
                     : "";
+                customerOrdersNotePanel.classList.toggle(
+                    "vendite-customer-orders-note-unread",
+                    Boolean(text && confirmCustomerOrdersNoteButton && !item.read_confirmed)
+                );
                 if (!confirmCustomerOrdersNoteButton) return;
                 confirmCustomerOrdersNoteButton.classList.toggle("d-none", !text);
                 confirmCustomerOrdersNoteButton.disabled = Boolean(item.read_confirmed);

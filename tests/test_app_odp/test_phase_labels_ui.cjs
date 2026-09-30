@@ -162,6 +162,62 @@ vm.runInContext("renderMachines(machines)", context);
 assert.ok(context.machinesBody.innerHTML.includes("Senza raggruppamento"));
 assert.ok(context.machinesBody.innerHTML.includes("M-other"));
 const assignments = template("vendite_assegnazioni.j2");
+let scheduledAlertDelay = null;
+let clearedAlertTimer = null;
+const alertClasses = new Set(["d-none"]);
+const alertContext = vm.createContext({
+    alertTimeoutId: null,
+    alertBox: {
+        className: "",
+        textContent: "",
+        classList: {
+            add: name => alertClasses.add(name),
+            remove: name => alertClasses.delete(name),
+        },
+    },
+    window: {
+        phaseText: String,
+        setTimeout: (_callback, delay) => { scheduledAlertDelay = delay; return 7; },
+        clearTimeout: timer => { clearedAlertTimer = timer; },
+    },
+});
+vm.runInContext(namedFunction(assignments, "clearAlert") + "\n" +
+                namedFunction(assignments, "showAlert"), alertContext);
+vm.runInContext('showAlert("success", "Salvato")', alertContext);
+assert.equal(scheduledAlertDelay, 15000);
+assert.ok(!alertClasses.has("d-none"));
+vm.runInContext('showAlert("danger", "Errore")', alertContext);
+assert.equal(clearedAlertTimer, 7);
+const notePanelClasses = {};
+const noteButtonClasses = {};
+const noteStatusContext = vm.createContext({
+    canEditCustomerOrdersNote: false,
+    customerOrdersNoteDirty: false,
+    customerOrdersNote: {textContent: ""},
+    customerOrdersNoteMeta: {textContent: ""},
+    customerOrdersNotePanel: {
+        classList: {toggle: (name, enabled) => { notePanelClasses[name] = enabled; }},
+    },
+    confirmCustomerOrdersNoteButton: {
+        classList: {toggle: (name, enabled) => { noteButtonClasses[name] = enabled; }},
+        disabled: false,
+        textContent: "",
+    },
+    formatDateTime: String,
+});
+vm.runInContext(namedFunction(assignments, "renderCustomerOrdersNote"), noteStatusContext);
+noteStatusContext.note = {note: "Nuova nota", updated_at: "", read_confirmed: false};
+vm.runInContext("renderCustomerOrdersNote(note)", noteStatusContext);
+assert.equal(
+    notePanelClasses["vendite-customer-orders-note-unread"],
+    true
+);
+noteStatusContext.note.read_confirmed = true;
+vm.runInContext("renderCustomerOrdersNote(note)", noteStatusContext);
+assert.equal(
+    notePanelClasses["vendite-customer-orders-note-unread"],
+    false
+);
 const labelContext = vm.createContext({machine: {serial_number: "M1", option: {optioned_by_name: "Alice"}}});
 vm.runInContext(namedFunction(assignments, "machineOptionLabel"), labelContext);
 assert.equal(vm.runInContext("machineOptionLabel(machine)", labelContext), "M1 · Opzionata da Alice");
