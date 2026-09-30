@@ -192,10 +192,13 @@ assignmentContext.row = {
 };
 const assignmentHtml = vm.runInContext("assignmentSelect(row)", assignmentContext);
 assert.equal((assignmentHtml.match(/<option/g) || []).length, 2);
-assert.ok(assignmentHtml.includes("M1 · Attualmente assegnata!"));
+assert.ok(assignmentHtml.includes("M1 · Attualmente assegnata"));
 assert.ok(assignmentHtml.includes("vendite-machine-current"));
 assert.ok(assignmentHtml.includes("vendite-assignment-current"));
+assert.ok(assignmentHtml.includes('class="position-relative flex-grow-1"'));
+assert.ok(assignmentHtml.includes('vendite-assignment-current-value" aria-hidden="true">M1</span>'));
 assert.ok(assignments.includes("option.vendite-machine-current"));
+assert.ok(assignments.includes("color: transparent !important;"));
 const noteContext = vm.createContext({
     esc: context.esc, CSS: {escape: String},
     canEditSalesNotes: true, canEditProductionInstructions: true,
