@@ -379,13 +379,7 @@ def _build_materiale_image_key(
     if not cod_art:
         return ""
 
-    if variante_art and indice_modifica:
-        return f"{cod_art}.{variante_art}.{indice_modifica}"
-    if variante_art:
-        return f"{cod_art}.{variante_art}"
-    if indice_modifica:
-        return f"{cod_art}..{indice_modifica}"
-    return cod_art
+    return f"{cod_art}.{variante_art}.{indice_modifica}"
 
 
 def _get_materiale_image_dir() -> Path | None:
