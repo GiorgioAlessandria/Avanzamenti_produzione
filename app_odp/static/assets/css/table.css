@@ -15,12 +15,29 @@
     min-width: max-content;
 }
 
-#vendite-page #vendite-machines-table th:nth-child(2) { min-width: 9rem; }
-#vendite-page #vendite-machines-table th:nth-child(3) { min-width: 11rem; }
-#vendite-page #vendite-machines-table th:nth-child(4) { min-width: 14rem; }
-#vendite-page #vendite-machines-table th:nth-child(5) { min-width: 9rem; }
-#vendite-page #vendite-machines-table th:nth-child(6) { min-width: 7rem; }
-#vendite-page #vendite-machines-table th:nth-child(7) { min-width: 9rem; }
+#vendite-page #vendite-machines-table th:nth-child(2) {
+    min-width: 9rem;
+}
+
+#vendite-page #vendite-machines-table th:nth-child(3) {
+    min-width: 11rem;
+}
+
+#vendite-page #vendite-machines-table th:nth-child(4) {
+    min-width: 14rem;
+}
+
+#vendite-page #vendite-machines-table th:nth-child(5) {
+    min-width: 9rem;
+}
+
+#vendite-page #vendite-machines-table th:nth-child(6) {
+    min-width: 7rem;
+}
+
+#vendite-page #vendite-machines-table th:nth-child(7) {
+    min-width: 9rem;
+}
 
 #vendite-page #vendite-machines-table > :is(thead, tbody) > tr > :is(th, td) {
     vertical-align: middle;
@@ -194,6 +211,7 @@
 #vendite-page .vendite-summary-table .vendite-count-empty {
     color: #adb5bd;
 }
+
 @media screen {
     /* Le altezze specifiche delle singole pagine hanno la precedenza. */
     :where(div:has(> table > thead)) {
@@ -433,24 +451,22 @@ table.table-state-rowcolor tbody tr.row-state-sospeso {
 }
 
 .js-acq-section-btn[data-section="scorte"].acq-scorte-alert::before {
-    background:
-        radial-gradient(circle at var(--acq-scorte-sparkle-1-x, 8%) var(--acq-scorte-sparkle-1-y, 22%), #fff 0 2px, transparent 3px),
-        radial-gradient(circle at var(--acq-scorte-sparkle-2-x, 31%) var(--acq-scorte-sparkle-2-y, 9%), #fff4aa 0 1.8px, transparent 3px),
-        radial-gradient(circle at var(--acq-scorte-sparkle-3-x, 58%) var(--acq-scorte-sparkle-3-y, 34%), #fff 0 1.7px, transparent 2.8px),
-        radial-gradient(circle at var(--acq-scorte-sparkle-4-x, 82%) var(--acq-scorte-sparkle-4-y, 17%), #fff4aa 0 2px, transparent 3.2px),
-        radial-gradient(circle at var(--acq-scorte-sparkle-5-x, 73%) var(--acq-scorte-sparkle-5-y, 72%), #fff 0 1.6px, transparent 2.8px),
-        linear-gradient(117deg, transparent 42%, rgba(255, 255, 255, 0.42) 50%, transparent 59%);
+    background: radial-gradient(circle at var(--acq-scorte-sparkle-1-x, 8%) var(--acq-scorte-sparkle-1-y, 22%), #fff 0 2px, transparent 3px),
+    radial-gradient(circle at var(--acq-scorte-sparkle-2-x, 31%) var(--acq-scorte-sparkle-2-y, 9%), #fff4aa 0 1.8px, transparent 3px),
+    radial-gradient(circle at var(--acq-scorte-sparkle-3-x, 58%) var(--acq-scorte-sparkle-3-y, 34%), #fff 0 1.7px, transparent 2.8px),
+    radial-gradient(circle at var(--acq-scorte-sparkle-4-x, 82%) var(--acq-scorte-sparkle-4-y, 17%), #fff4aa 0 2px, transparent 3.2px),
+    radial-gradient(circle at var(--acq-scorte-sparkle-5-x, 73%) var(--acq-scorte-sparkle-5-y, 72%), #fff 0 1.6px, transparent 2.8px),
+    linear-gradient(117deg, transparent 42%, rgba(255, 255, 255, 0.42) 50%, transparent 59%);
     filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.95));
     animation: acqScorteSparkleDriftA 1.47s ease-in-out infinite;
 }
 
 .js-acq-section-btn[data-section="scorte"].acq-scorte-alert::after {
-    background:
-        radial-gradient(circle at var(--acq-scorte-sparkle-6-x, 18%) var(--acq-scorte-sparkle-6-y, 64%), #fff 0 1.7px, transparent 2.8px),
-        radial-gradient(circle at var(--acq-scorte-sparkle-7-x, 44%) var(--acq-scorte-sparkle-7-y, 78%), #fff4aa 0 2px, transparent 3px),
-        radial-gradient(circle at var(--acq-scorte-sparkle-8-x, 69%) var(--acq-scorte-sparkle-8-y, 46%), #fff 0 2.2px, transparent 3.4px),
-        radial-gradient(circle at var(--acq-scorte-sparkle-9-x, 91%) var(--acq-scorte-sparkle-9-y, 58%), #fff4aa 0 1.6px, transparent 2.7px),
-        radial-gradient(circle at var(--acq-scorte-sparkle-10-x, 37%) var(--acq-scorte-sparkle-10-y, 41%), #fff 0 1.7px, transparent 2.9px);
+    background: radial-gradient(circle at var(--acq-scorte-sparkle-6-x, 18%) var(--acq-scorte-sparkle-6-y, 64%), #fff 0 1.7px, transparent 2.8px),
+    radial-gradient(circle at var(--acq-scorte-sparkle-7-x, 44%) var(--acq-scorte-sparkle-7-y, 78%), #fff4aa 0 2px, transparent 3px),
+    radial-gradient(circle at var(--acq-scorte-sparkle-8-x, 69%) var(--acq-scorte-sparkle-8-y, 46%), #fff 0 2.2px, transparent 3.4px),
+    radial-gradient(circle at var(--acq-scorte-sparkle-9-x, 91%) var(--acq-scorte-sparkle-9-y, 58%), #fff4aa 0 1.6px, transparent 2.7px),
+    radial-gradient(circle at var(--acq-scorte-sparkle-10-x, 37%) var(--acq-scorte-sparkle-10-y, 41%), #fff 0 1.7px, transparent 2.9px);
     filter: drop-shadow(0 0 4px rgba(255, 244, 170, 0.95));
     animation: acqScorteSparkleDriftB 1.91s ease-in-out -0.54s infinite;
 }
@@ -644,4 +660,8 @@ table.table-state-rowcolor tbody tr.row-state-sospeso {
 #acquisti_scorte_table tbody tr[data-scorta-overdue="1"]:nth-child(7n) {
     --acq-scorte-row-pulse-duration: 0.76s;
     --acq-scorte-row-pulse-delay: -0.41s;
+}
+
+.table-warning {
+    --bs-table-bg: #fff3cd;
 }

@@ -2,7 +2,8 @@
 
 from decimal import Decimal
 from pathlib import Path
-
+import os
+from tempfile import NamedTemporaryFile
 from flask import abort, current_app, jsonify, request, send_file, url_for
 from sqlalchemy import func, select
 
@@ -428,15 +429,18 @@ def _save_uploaded_document(upload, kind, method_variant, directory):
         raise ValueError("Il contenuto del file non è PDF.")
 
     target = directory / filename
-    created = False
+    temporary = None
     try:
-        with target.open("xb") as output:
-            created = True
+        with NamedTemporaryFile(
+            dir=directory, prefix="upload_", suffix=".tmp", delete=False
+        ) as output:
+            temporary = Path(output.name)
             output.write(payload)
-    except OSError:
-        if created:
-            target.unlink(missing_ok=True)
-        raise
+
+        os.replace(temporary, target)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
 
     return filename
 
@@ -506,11 +510,27 @@ def carica_documenti():
                         result["message"] = "Già presente: non sovrascritto."
                     except ValueError as exc:
                         result["message"] = str(exc)
-                    except OSError:
+                    except OSError as exc:
                         current_app.logger.exception(
-                            "Salvataggio documento non riuscito"
+                            "Salvataggio documento non riuscito: cartella=%s file=%s",
+                            directory,
+                            upload.filename,
                         )
-                        result["message"] = "Salvataggio non riuscito. Riprova."
+
+                        error_code = getattr(exc, "winerror", None) or exc.errno
+                        if isinstance(exc, PermissionError):
+                            message = "Il server non ha i permessi per scrivere nella cartella."
+                        elif isinstance(exc, FileNotFoundError):
+                            message = (
+                                "La cartella di destinazione non è più disponibile."
+                            )
+                        else:
+                            message = "Errore del filesystem durante il salvataggio."
+
+                        result["message"] = (
+                            f"{message} Tipo: {type(exc).__name__}, "
+                            f"codice: {error_code}."
+                        )
                     else:
                         result.update(ok=True, message="Caricato.")
                     results.append(result)
