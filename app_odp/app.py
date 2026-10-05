@@ -108,9 +108,7 @@ def _ensure_priorita_schema() -> None:
             )
 
         cursor.execute("DROP TABLE odp_priorita")
-        cursor.execute(
-            "ALTER TABLE odp_priorita_migration RENAME TO odp_priorita"
-        )
+        cursor.execute("ALTER TABLE odp_priorita_migration RENAME TO odp_priorita")
         for column in ("operatore_id", "IdDocumento", "IdRiga", "Fase", "Priorita"):
             cursor.execute(
                 f"CREATE INDEX ix_odp_priorita_{column} ON odp_priorita ({column})"
@@ -135,17 +133,13 @@ def _ensure_rifiuti_schema() -> None:
     connection = engine.raw_connection()
     cursor = connection.cursor()
     try:
-        indexes = cursor.execute(
-            "PRAGMA index_list('rifiuti_cer')"
-        ).fetchall()
+        indexes = cursor.execute("PRAGMA index_list('rifiuti_cer')").fetchall()
         unique_columns = set()
         for index in indexes:
             if not index[2]:
                 continue
             index_name = str(index[1]).replace('"', '""')
-            columns = cursor.execute(
-                f'PRAGMA index_info("{index_name}")'
-            ).fetchall()
+            columns = cursor.execute(f'PRAGMA index_info("{index_name}")').fetchall()
             unique_columns.add(tuple(column[2] for column in columns))
 
         if ("codice",) not in unique_columns:
@@ -178,20 +172,12 @@ def _ensure_rifiuti_schema() -> None:
             """
         )
         cursor.execute("DROP TABLE rifiuti_cer")
-        cursor.execute(
-            "ALTER TABLE rifiuti_cer_migration RENAME TO rifiuti_cer"
-        )
-        cursor.execute(
-            "CREATE INDEX ix_rifiuti_cer_codice ON rifiuti_cer (codice)"
-        )
-        cursor.execute(
-            "CREATE INDEX ix_rifiuti_cer_attivo ON rifiuti_cer (attivo)"
-        )
+        cursor.execute("ALTER TABLE rifiuti_cer_migration RENAME TO rifiuti_cer")
+        cursor.execute("CREATE INDEX ix_rifiuti_cer_codice ON rifiuti_cer (codice)")
+        cursor.execute("CREATE INDEX ix_rifiuti_cer_attivo ON rifiuti_cer (attivo)")
         violations = cursor.execute("PRAGMA foreign_key_check").fetchall()
         if violations:
-            raise RuntimeError(
-                "Migrazione CER interrotta: riferimenti non validi."
-            )
+            raise RuntimeError("Migrazione CER interrotta: riferimenti non validi.")
         connection.commit()
     except Exception:
         connection.rollback()
@@ -206,9 +192,7 @@ def _ensure_manutenzioni_schema() -> None:
     engine = db.engines["manutenzioni"]
     columns = {
         column["name"]
-        for column in inspect(engine).get_columns(
-            "manutenzioni_ricorrenti"
-        )
+        for column in inspect(engine).get_columns("manutenzioni_ricorrenti")
     }
 
     if "archiviata" not in columns:
@@ -220,9 +204,7 @@ def _ensure_manutenzioni_schema() -> None:
 
     straordinarie_columns = {
         column["name"]
-        for column in inspect(engine).get_columns(
-            "manutenzioni_straordinarie"
-        )
+        for column in inspect(engine).get_columns("manutenzioni_straordinarie")
     }
 
     with engine.begin() as connection:
@@ -241,8 +223,7 @@ def _ensure_manutenzioni_schema() -> None:
         )
 
     strumenti_columns = {
-        column["name"]
-        for column in inspect(engine).get_columns("strumenti_misura")
+        column["name"] for column in inspect(engine).get_columns("strumenti_misura")
     }
     if "costruttore" not in strumenti_columns:
         with engine.begin() as connection:
@@ -257,8 +238,7 @@ def _ensure_manutenzioni_schema() -> None:
             )
 
     tipologie_columns = {
-        column["name"]
-        for column in inspect(engine).get_columns("tipologie_strumento")
+        column["name"] for column in inspect(engine).get_columns("tipologie_strumento")
     }
     if "taratura_esterna_attiva" not in tipologie_columns:
         with engine.begin() as connection:
@@ -268,19 +248,16 @@ def _ensure_manutenzioni_schema() -> None:
             )
 
     eventi_taratura_columns = {
-        column["name"]
-        for column in inspect(engine).get_columns("eventi_taratura")
+        column["name"] for column in inspect(engine).get_columns("eventi_taratura")
     }
     with engine.begin() as connection:
         if "certificato_nome" not in eventi_taratura_columns:
             connection.exec_driver_sql(
-                "ALTER TABLE eventi_taratura "
-                "ADD COLUMN certificato_nome TEXT"
+                "ALTER TABLE eventi_taratura ADD COLUMN certificato_nome TEXT"
             )
         if "certificato_file" not in eventi_taratura_columns:
             connection.exec_driver_sql(
-                "ALTER TABLE eventi_taratura "
-                "ADD COLUMN certificato_file TEXT"
+                "ALTER TABLE eventi_taratura ADD COLUMN certificato_file TEXT"
             )
 
 
@@ -293,8 +270,7 @@ def _ensure_logistica_schema() -> None:
     additions = []
     if "packing_lists" in tables:
         columns = {
-            column["name"]
-            for column in inspect(engine).get_columns("packing_lists")
+            column["name"] for column in inspect(engine).get_columns("packing_lists")
         }
         for name, column_type in (
             ("delivery_nome", "VARCHAR(160)"),
@@ -336,8 +312,7 @@ def _ensure_logistica_schema() -> None:
         }
         if "numero_seriale" not in columns:
             additions.append(
-                "ALTER TABLE packing_list_righe "
-                "ADD COLUMN numero_seriale VARCHAR(200)"
+                "ALTER TABLE packing_list_righe ADD COLUMN numero_seriale VARCHAR(200)"
             )
 
     if additions:
@@ -435,8 +410,7 @@ def _ensure_vendite_schema() -> None:
             )
         if "data_spedizione" not in columns:
             additions.append(
-                "ALTER TABLE vendite_ordini_cliente "
-                "ADD COLUMN data_spedizione DATE"
+                "ALTER TABLE vendite_ordini_cliente ADD COLUMN data_spedizione DATE"
             )
         if "gestionale_cod_cliente" not in columns:
             additions.append(
@@ -448,9 +422,7 @@ def _ensure_vendite_schema() -> None:
     if "vendite_ordini_cliente_righe" in tables:
         columns = {
             column["name"]
-            for column in inspect(engine).get_columns(
-                "vendite_ordini_cliente_righe"
-            )
+            for column in inspect(engine).get_columns("vendite_ordini_cliente_righe")
         }
         if "assegnazione_automatica" not in columns:
             additions.append(
@@ -502,9 +474,7 @@ def _ensure_vendite_schema() -> None:
     if "vendite_spedizioni_confermate" in tables:
         columns = {
             column["name"]
-            for column in inspect(engine).get_columns(
-                "vendite_spedizioni_confermate"
-            )
+            for column in inspect(engine).get_columns("vendite_spedizioni_confermate")
         }
         if "riferimento_interno" not in columns:
             additions.append(
@@ -625,9 +595,10 @@ def _ensure_vendite_schema() -> None:
     if "vendite_note_imballaggio" in tables:
         now = datetime.now(ZoneInfo("Europe/Rome")).isoformat(timespec="seconds")
         with engine.begin() as connection:
-            for reference, note in (
-                vendite_models.VENDITE_DEFAULT_PACKAGING_NOTES.items()
-            ):
+            for (
+                reference,
+                note,
+            ) in vendite_models.VENDITE_DEFAULT_PACKAGING_NOTES.items():
                 connection.exec_driver_sql(
                     "INSERT OR IGNORE INTO vendite_note_imballaggio "
                     "(riferimento_interno, note, aggiornato_il, aggiornato_da_nome) "
@@ -648,6 +619,7 @@ def load_config(config: Path) -> dict:
 
 
 configurazione = load_config(CONFIG_PATH)
+
 
 def _resolve_logistica_db_path(paths: dict) -> str:
     return paths.get("percorso_db_logistica") or str(
@@ -697,19 +669,13 @@ def _ensure_builtin_permissions() -> None:
         "storico_ordini": "Storico ordini",
         "scorte_segnalazione_libera": ("Segnalazione scorte con testo libero"),
         # Rifiuti
-        "rifiuti_carica": (
-            "Caricamento dei rifiuti nello stock virtuale"
-        ),
+        "rifiuti_carica": ("Caricamento dei rifiuti nello stock virtuale"),
         "rifiuti_elimina": (
             "Registrazione dello smaltimento dei rifiuti dallo stock virtuale"
         ),
         # Carichi e scarichi
-        "carica": (
-            "Gestione dei vettori e delle movimentazioni logistiche attese"
-        ),
-        "ricezione": (
-            "Conferma delle movimentazioni logistiche avvenute"
-        ),
+        "carica": ("Gestione dei vettori e delle movimentazioni logistiche attese"),
+        "ricezione": ("Conferma delle movimentazioni logistiche avvenute"),
         # Manutenzioni
         "manutenzioni_visualizza": ("Accesso alla gestione delle manutenzioni"),
         "manutenzioni_gestisci_macchinari": (
@@ -728,6 +694,7 @@ def _ensure_builtin_permissions() -> None:
         "manutenzioni_amministrazione": ("Amministrazione completa delle manutenzioni"),
         # Tarature
         "tarature": ("Gestione delle tarature degli strumenti di misura"),
+        "carica_documenti": "Caricamento fotografie e metodi di produzione",
     }
     existing = {
         row.Codice
@@ -751,11 +718,15 @@ def _ensure_builtin_permissions() -> None:
     for legacy_code, replacement_code in replacements.items():
         replacement = (
             Permissions.query.filter_by(Codice=replacement_code).first()
-            if replacement_code else None
+            if replacement_code
+            else None
         )
         for legacy in Permissions.query.filter_by(Codice=legacy_code).all():
             for role in legacy.roles.all():
-                if replacement and role.permissions.filter_by(id=replacement.id).first() is None:
+                if (
+                    replacement
+                    and role.permissions.filter_by(id=replacement.id).first() is None
+                ):
                     role.permissions.append(replacement)
                 role.permissions.remove(legacy)
             db.session.delete(legacy)

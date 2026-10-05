@@ -1,0 +1,131 @@
+{% extends "base.j2" %}
+{% block title %}Carica documenti{% endblock %}
+{% block content %}
+{% autoescape true %}
+<div class="container py-4"
+     style="max-width: 900px;">
+    <h2>Carica documenti</h2>
+    <p>Ogni file viene controllato rispetto all'anagrafica:
+       devono esistere codice, variante e revisione nella stessa combinazione.</p>
+
+    {% if upload_error %}
+        <div class="alert alert-danger"
+             role="alert">{{ upload_error }}</div>
+    {% endif %}
+
+    <form method="post"
+          enctype="multipart/form-data"
+          action="{{ operator_url_for('main.carica_documenti') }}">
+        <input type="hidden"
+               name="csrf_token"
+               value="{{ upload_csrf }}">
+
+        <label for="upload-tipo"
+               class="form-label">Tipo di documento</label>
+        <select id="upload-tipo"
+                name="tipo"
+                class="form-select mb-3">
+            {% for value, settings in upload_types.items() %}
+                <option value="{{ value }}"
+                        {% if selected_type == value %}selected{% endif %}>
+                    {{ settings[0] }}
+                </option>
+            {% endfor %}
+        </select>
+
+        <div id="upload-png-help"
+             class="mb-3">
+            <p>Nome delle fotografie:
+                <code>codice.variante.revisione.png</code>.</p>
+            <ul>
+                <li><code>BE03-358-0101...png</code>: nessuna variante o revisione.</li>
+                <li><code>BE03-358-0101.V1..png</code>: solo variante.</li>
+                <li><code>BE03-358-0101..R2.png</code>: solo revisione.</li>
+                <li><code>BE03-358-0101.V1.R2.png</code>: entrambe.</li>
+            </ul>
+        </div>
+
+        <div id="upload-pdf-help"
+             class="mb-3">
+            <p>Nome dei metodi:
+                <code>BE03-358-0101.R2.pdf</code>, oppure
+                <code>BE03-358-0101.pdf</code> senza revisione.</p>
+            <label for="upload-variante"
+                   class="form-label">
+                Variante degli articoli nei PDF selezionati
+            </label>
+            <input id="upload-variante"
+                   name="variante_metodi"
+                   class="form-control"
+                   type="text"
+                   value="{{ method_variant }}"
+                   maxlength="100">
+            <p class="small text-muted mt-2">
+                Lascia vuoto per articoli senza variante.
+                La variante viene verificata per ogni PDF.
+                Il metodo è condiviso tra varianti dello stesso codice e revisione.
+            </p>
+        </div>
+
+        <label for="upload-files"
+               class="form-label">Documenti</label>
+        <input id="upload-files"
+               class="form-control mb-3"
+               type="file"
+               name="documenti"
+               multiple
+               required>
+
+        <p class="small text-muted">
+            Massimo 100 file, 20 MB per file e 100 MB complessivi.
+            I documenti esistenti non vengono sovrascritti.
+        </p>
+        <button class="btn btn-primary"
+                type="submit">Carica documenti
+        </button>
+    </form>
+
+    {% if upload_results %}
+        <h3 class="h5 mt-4">Esito caricamento</h3>
+        <div class="table-responsive">
+            <table class="table table-sm">
+                <thead>
+                <tr>
+                    <th scope="col">File</th>
+                    <th scope="col">Esito</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for result in upload_results %}
+                    <tr class="{{ 'table-success' if result.ok else 'table-warning' }}">
+                        <td>{{ result.name }}</td>
+                        <td>{{ result.message }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% endif %}
+</div>
+
+<script>
+    (() => {
+        const selector = document.getElementById("upload-tipo");
+        const files = document.getElementById("upload-files");
+        const variant = document.getElementById("upload-variante");
+
+        function updateType() {
+            const png = selector.value === "immagini";
+            files.accept = png ? ".png,image/png" : ".pdf,application/pdf";
+            files.value = "";
+            document.getElementById("upload-png-help").hidden = !png;
+            document.getElementById("upload-pdf-help").hidden = png;
+            variant.disabled = png;
+        }
+
+        selector.addEventListener("change", updateType);
+        updateType();
+    })();
+</script>
+{% endautoescape %}
+{% endblock %}
