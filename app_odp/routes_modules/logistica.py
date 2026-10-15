@@ -144,9 +144,7 @@ def _packing_rows() -> list[tuple[str, str, str, Decimal]]:
         serial_number = str(
             serial_numbers[index] if index < len(serial_numbers) else ""
         ).strip()
-        raw_quantity = str(
-            quantities[index] if index < len(quantities) else ""
-        ).strip()
+        raw_quantity = str(quantities[index] if index < len(quantities) else "").strip()
 
         if not any((code, description, serial_number, raw_quantity)):
             continue
@@ -158,13 +156,9 @@ def _packing_rows() -> list[tuple[str, str, str, Decimal]]:
         if len(code) > 120:
             raise ValueError(f"Riga {index + 1}: Code massimo 120 caratteri.")
         if len(description) > 500:
-            raise ValueError(
-                f"Riga {index + 1}: Description massimo 500 caratteri."
-            )
+            raise ValueError(f"Riga {index + 1}: Description massimo 500 caratteri.")
         if len(serial_number) > 200:
-            raise ValueError(
-                f"Riga {index + 1}: Serial number massimo 200 caratteri."
-            )
+            raise ValueError(f"Riga {index + 1}: Serial number massimo 200 caratteri.")
 
         rows.append(
             (
@@ -387,11 +381,11 @@ def logistica_page():
     busy_serials = {
         item.matricola.casefold()
         for item in MovimentoLogisticoMacchina.query.join(MovimentoLogistico)
-        .filter(MovimentoLogistico.completato_il.is_(None)).all()
+        .filter(MovimentoLogistico.completato_il.is_(None))
+        .all()
     }
     macchine_spedibili = [
-        item for item in macchine_spedibili
-        if item.matricola_chiave not in busy_serials
+        item for item in macchine_spedibili if item.matricola_chiave not in busy_serials
     ]
     sensors_by_serial = {
         item.matricola: item.sensori
@@ -500,9 +494,7 @@ def packing_list_cliente_update(cliente_id: int):
     )
 
 
-@main_bp.post(
-    "/carichi-scarichi/packing-list/clienti/<int:cliente_id>/elimina"
-)
+@main_bp.post("/carichi-scarichi/packing-list/clienti/<int:cliente_id>/elimina")
 @require_active_perm("carica")
 def packing_list_cliente_delete(cliente_id: int):
     def action():
@@ -539,10 +531,7 @@ def packing_list_pdf(packing_list_id: int):
         packing_list,
         company_header=_company_header(),
         logo_path=(
-            Path(current_app.static_folder)
-            / "assets"
-            / "img"
-            / "logo_completo.jpg"
+            Path(current_app.static_folder) / "assets" / "img" / "logo_completo.jpg"
         ),
         font_path=current_app.config.get("FONT_PATH"),
     )
@@ -580,7 +569,8 @@ def logistica_movimento_create():
             raise ValueError("Selezionare un vettore valido.")
 
         selected_machine_keys = [
-            str(value or "").strip() for value in request.form.getlist("macchina")
+            str(value or "").strip()
+            for value in request.form.getlist("macchina")
             if str(value or "").strip()
         ]
         machine_keys = list(dict.fromkeys(selected_machine_keys))
@@ -604,7 +594,8 @@ def logistica_movimento_create():
                         [machine.matricola for machine in machines]
                     ),
                     MovimentoLogistico.completato_il.is_(None),
-                ).all()
+                )
+                .all()
             }
             if busy:
                 raise ValueError(
@@ -617,39 +608,39 @@ def logistica_movimento_create():
                 ).all()
             }
 
-        movimento = "SCARICO" if is_machine_shipment else str(
-            request.form.get("movimento") or ""
-        ).strip().upper()
+        movimento = str(request.form.get("movimento") or "").strip().upper()
         if movimento not in {"CARICO", "SCARICO"}:
             raise ValueError("Selezionare carico o scarico.")
 
-        tipologia = "CLIENTE" if is_machine_shipment else str(
-            request.form.get("tipologia") or ""
-        ).strip().upper()
+        tipologia = (
+            "CLIENTE"
+            if is_machine_shipment
+            else str(request.form.get("tipologia") or "").strip().upper()
+        )
         if tipologia not in {"CLIENTE", "FORNITORE"}:
             raise ValueError("Selezionare cliente o fornitore.")
 
         user_id, username = _actor()
         movement = MovimentoLogistico(
-                vettore_id=vettore.id,
-                movimento=movimento,
-                tipologia=tipologia,
-                controparte=(
-                    "Clienti macchine"
-                    if is_machine_shipment
-                    else _required_text("controparte", "Controparte", 160)
-                ),
-                data=_parse_date(request.form.get("data")),
-                materiale=(
-                    f"{len(machines)} macchine"
-                    if is_machine_shipment
-                    else _required_text("materiale", "Materiale", 300)
-                ),
-                spedizione_macchine=is_machine_shipment,
-                note=_optional_text("note", 1000),
-                creato_da_id=user_id,
-                creato_da_nome=username,
-            )
+            vettore_id=vettore.id,
+            movimento=movimento,
+            tipologia=tipologia,
+            controparte=(
+                "Clienti macchine"
+                if is_machine_shipment
+                else _required_text("controparte", "Controparte", 160)
+            ),
+            data=_parse_date(request.form.get("data")),
+            materiale=(
+                f"{len(machines)} macchine"
+                if is_machine_shipment
+                else _required_text("materiale", "Materiale", 300)
+            ),
+            spedizione_macchine=is_machine_shipment,
+            note=_optional_text("note", 1000),
+            creato_da_id=user_id,
+            creato_da_nome=username,
+        )
         if is_machine_shipment:
             movement.macchine = [
                 MovimentoLogisticoMacchina(
@@ -721,12 +712,14 @@ def logistica_movimento_conferma(movimento_id: int):
                 VenditeMacchinaSpedibile.spedita_il.is_(None),
             ).all():
                 machine.spedita_il = now
-            manual_rows = VenditeOrdineClienteRiga.query.join(
-                VenditeOrdineCliente
-            ).filter(
-                VenditeOrdineCliente.gestionale_cod_cliente.is_(None),
-                func.lower(VenditeOrdineClienteRiga.odp_matricola).in_(keys),
-            ).all()
+            manual_rows = (
+                VenditeOrdineClienteRiga.query.join(VenditeOrdineCliente)
+                .filter(
+                    VenditeOrdineCliente.gestionale_cod_cliente.is_(None),
+                    func.lower(VenditeOrdineClienteRiga.odp_matricola).in_(keys),
+                )
+                .all()
+            )
             actor = active_user()
             for row in manual_rows:
                 delete_customer_order_row(row.id, actor)
