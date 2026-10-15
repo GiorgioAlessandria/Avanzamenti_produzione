@@ -424,6 +424,12 @@ def _ensure_vendite_schema() -> None:
             column["name"]
             for column in inspect(engine).get_columns("vendite_ordini_cliente_righe")
         }
+        if "revisioni_lettura" not in columns:
+            additions.append(
+                "ALTER TABLE vendite_ordini_cliente_righe "
+                "ADD COLUMN revisioni_lettura JSON NOT NULL "
+                "DEFAULT '{\"utente_produzione\": 1}'"
+            )
         if "assegnazione_automatica" not in columns:
             additions.append(
                 "ALTER TABLE vendite_ordini_cliente_righe "

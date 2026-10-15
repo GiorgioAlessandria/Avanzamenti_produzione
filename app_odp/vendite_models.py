@@ -120,9 +120,7 @@ class VenditeOrdineCliente(db.Model):
     creato_da_nome = db.Column(db.String(120), nullable=False)
     confermato_il = db.Column(db.Text, nullable=True)
     confermato_da_nome = db.Column(db.String(120), nullable=True)
-    gestionale_cod_cliente = db.Column(
-        db.String(120), nullable=True, index=True
-    )
+    gestionale_cod_cliente = db.Column(db.String(120), nullable=True, index=True)
 
     righe = db.relationship(
         "VenditeOrdineClienteRiga",
@@ -169,6 +167,7 @@ class VenditeOrdineClienteRiga(db.Model):
     data_disponibile = db.Column(db.Date, nullable=True, index=True)
     data_consegna = db.Column(db.Date, nullable=False, index=True)
     versione = db.Column(db.Integer, nullable=False, default=1)
+    revisioni_lettura = db.Column(db.JSON, nullable=False, default=dict)
 
     # Snapshot dell'ODP: nessuna FK, perché la sincronizzazione elimina gli ODP chiusi.
     odp_id_documento = db.Column(db.Text, nullable=True)
@@ -238,6 +237,24 @@ class VenditeOrdineClienteRiga(db.Model):
     __mapper_args__ = {"version_id_col": versione}
 
 
+class VenditeRigaLettura(db.Model):
+    __tablename__ = "vendite_righe_letture"
+
+    riga_id = db.Column(
+        db.Integer,
+        db.ForeignKey("vendite_ordini_cliente_righe.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    operatore_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    permesso = db.Column(db.String(30), primary_key=True)
+    versione_letta = db.Column(db.Integer, nullable=False)
+    letta_il = db.Column(db.Text, nullable=False, default=_rome_iso_now)
+
+
 class VenditeOrdineClienteLog(db.Model):
     __tablename__ = "vendite_ordini_cliente_log"
 
@@ -253,7 +270,9 @@ class VenditeOrdineClienteLog(db.Model):
     campo = db.Column(db.String(50), nullable=True, index=True)
     valore_precedente = db.Column(db.String(1000), nullable=True)
     valore_nuovo = db.Column(db.String(1000), nullable=True)
-    modificata_il = db.Column(db.Text, nullable=False, default=_rome_iso_now, index=True)
+    modificata_il = db.Column(
+        db.Text, nullable=False, default=_rome_iso_now, index=True
+    )
     modificata_da_id = db.Column(
         db.Integer,
         db.ForeignKey("users.id", ondelete="SET NULL"),
@@ -272,6 +291,7 @@ class VenditeMacchinaSpedibile(db.Model):
     rilevata_il = db.Column(db.Text, nullable=False, default=_rome_iso_now)
     motivo = db.Column(db.String(20), nullable=False)
     spedita_il = db.Column(db.Text, nullable=True, index=True)
+
 
 class VenditeNotaImballoLettura(db.Model):
     __tablename__ = "vendite_note_imballo_letture"

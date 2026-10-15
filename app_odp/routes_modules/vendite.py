@@ -23,6 +23,7 @@ from app_odp.services.vendite_assegnazioni_service import (
     build_assignment_dashboard,
     confirm_customer_orders_note_read,
     confirm_customer_order_read,
+    confirm_customer_row_read,
     confirm_machine_packaging,
     create_customer_order,
     delete_customer_order,
@@ -158,11 +159,11 @@ def vendite_assegnazioni_page():
         ),
         can_view_packaging_notes=admin or not policy.can("utente_imballi"),
         can_edit_customer_orders_note=admin or policy.can("utente_produzione"),
-        can_confirm_customer_orders_note=(
-            admin or policy.can("utente_vendite")
-        ),
+        can_confirm_customer_orders_note=(admin or policy.can("utente_vendite")),
         can_view_model_summary=_can_view_customer_orders(policy),
-        can_confirm_order_read=admin or policy.can("utente_produzione"),
+        can_confirm_order_read=(
+            policy.can("utente_produzione") or policy.can("utente_vendite")
+        ),
         section_preference_user=getattr(user, "id", "anonymous"),
         horse_save_animation=admin
         or str(getattr(user, "username", "")).strip().casefold() == "pirotti ambra",
@@ -311,7 +312,7 @@ def api_vendite_raggruppamenti_delete(group_id):
 def api_vendite_macchina_note_produzione():
     payload = request.get_json(silent=True)
     return _assignment_mutation(
-        lambda: update_machine_production_note(payload),
+        lambda: update_machine_production_note(payload, active_user()),
         "Note di produzione salvate.",
         dashboard_builder=_visible_production_dashboard,
     )
@@ -490,11 +491,15 @@ def api_vendite_ordini_cliente_note_intestazione_conferma():
 
 @main_bp.post("/api/vendite/ordini-cliente/<int:order_id>/conferma-lettura")
 @require_active_perm("vendite")
-@require_active_perm("utente_produzione")
+@require_active_any_perm("utente_produzione", "utente_vendite")
 def api_vendite_ordine_cliente_conferma_lettura(order_id: int):
     return _assignment_mutation(
-        lambda: confirm_customer_order_read(order_id, active_user()),
-        "Lettura dell'ordine cliente confermata.",
+        lambda: confirm_customer_row_read(
+            order_id,
+            request.get_json(silent=True),
+            active_user(),
+        ),
+        "Lettura della riga confermata.",
     )
 
 

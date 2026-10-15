@@ -222,28 +222,187 @@
             border-color: #dc3545;
         }
 
-        .vendite-suplex-stage { position: fixed; left: calc(100vw + 1rem); width: 13rem; height: 8rem; z-index: 1090; pointer-events: none; animation: vendite-suplex-stage 5s linear forwards; }
-        .vendite-suplex-fighter { position: absolute; bottom: 1.1rem; font-size: 3.2rem; line-height: 1; transform-origin: center bottom; filter: drop-shadow(0 .2rem .12rem rgba(0, 0, 0, .25)); }
-        .vendite-suplex-attacker { left: 1rem; animation: vendite-suplex-attacker 5s ease-in-out forwards; }
-        .vendite-suplex-victim { left: 5rem; animation: vendite-suplex-victim 5s ease-in-out forwards; }
-        .vendite-suplex-impact { position: absolute; left: 1.2rem; bottom: .3rem; font-size: 3.4rem; opacity: 0; animation: vendite-suplex-impact 5s ease-out forwards; }
-        @keyframes vendite-suplex-stage { 0% { transform: translateX(0); } 14%, 82% { transform: translateX(-16rem); } 100% { transform: translateX(2rem); } }
-        @keyframes vendite-suplex-attacker { 0%, 28% { transform: translate(0, 0) rotate(0); } 36% { transform: translateX(1.5rem) rotate(5deg); } 42% { transform: translate(2rem, .2rem) rotate(12deg) scaleY(.94); } 50% { transform: translate(1.2rem, .5rem) rotate(-25deg); } 58% { transform: translate(.4rem, .3rem) rotate(-42deg); } 64% { transform: translate(.2rem, 0) rotate(-12deg); } 72% { transform: translate(1.2rem, .4rem) rotate(38deg); } 80%, 100% { transform: translate(0, 0) rotate(0); } }
-        @keyframes vendite-suplex-victim { 0%, 30% { transform: translate(0, 0) rotate(0); } 38% { transform: translate(-1.2rem, 0) rotate(-6deg); } 46% { transform: translate(-2rem, -1.2rem) rotate(-20deg); } 54% { transform: translate(-3.2rem, -2.8rem) rotate(-55deg); } 60% { transform: translate(-5rem, .9rem) rotate(-105deg); } 70% { transform: translate(-5rem, 1.2rem) rotate(-105deg); } 78%, 100% { transform: translate(-3.2rem, -.8rem) rotate(-90deg) scale(.72); } }
-        @keyframes vendite-suplex-impact { 0%, 58% { opacity: 0; transform: scale(.2); } 60% { opacity: 1; transform: scale(1.35); } 66%, 100% { opacity: 0; transform: scale(2); } }
-
-        .vendite-horse-stage { position: fixed; height: 5rem; z-index: 1090; pointer-events: none; overflow: visible; }
-        .vendite-horse { position: absolute; left: -3rem; bottom: .15rem; font-size: 2.8rem; line-height: 1; filter: drop-shadow(0 .2rem .12rem rgba(0, 0, 0, .25)); animation: vendite-horse-run 3s linear forwards; }
-        .vendite-horse-obstacle { position: absolute; left: 68%; bottom: 0; font-size: 2.2rem; line-height: 1; opacity: 0; animation: vendite-horse-obstacle 3s linear forwards; }
-        @keyframes vendite-horse-run {
-            0% { left: -3rem; transform: translateY(0) scaleX(-1) rotate(0); }
-            20% { transform: translateY(-.18rem) scaleX(-1) rotate(-3deg); }
-            48% { left: 52%; transform: translateY(0) scaleX(-1) rotate(0); }
-            64% { left: 65%; transform: translateY(-3.6rem) scaleX(-1) rotate(-10deg); }
-            74% { left: 76%; transform: translateY(0) scaleX(-1) rotate(4deg); }
-            100% { left: calc(100% + 3rem); transform: translateY(0) scaleX(-1) rotate(0); }
+        .vendite-suplex-stage {
+            position: fixed;
+            left: calc(100vw + 1rem);
+            width: 13rem;
+            height: 8rem;
+            z-index: 1090;
+            pointer-events: none;
+            animation: vendite-suplex-stage 5s linear forwards;
         }
-        @keyframes vendite-horse-obstacle { 0%, 35% { opacity: 0; } 42%, 85% { opacity: 1; } 100% { opacity: 0; } }
+
+        .vendite-suplex-fighter {
+            position: absolute;
+            bottom: 1.1rem;
+            font-size: 3.2rem;
+            line-height: 1;
+            transform-origin: center bottom;
+            filter: drop-shadow(0 .2rem .12rem rgba(0, 0, 0, .25));
+        }
+
+        .vendite-suplex-attacker {
+            left: 1rem;
+            animation: vendite-suplex-attacker 5s ease-in-out forwards;
+        }
+
+        .vendite-suplex-victim {
+            left: 5rem;
+            animation: vendite-suplex-victim 5s ease-in-out forwards;
+        }
+
+        .vendite-suplex-impact {
+            position: absolute;
+            left: 1.2rem;
+            bottom: .3rem;
+            font-size: 3.4rem;
+            opacity: 0;
+            animation: vendite-suplex-impact 5s ease-out forwards;
+        }
+
+        @keyframes vendite-suplex-stage {
+            0% {
+                transform: translateX(0);
+            }
+            14%, 82% {
+                transform: translateX(-16rem);
+            }
+            100% {
+                transform: translateX(2rem);
+            }
+        }
+
+        @keyframes vendite-suplex-attacker {
+            0%, 28% {
+                transform: translate(0, 0) rotate(0);
+            }
+            36% {
+                transform: translateX(1.5rem) rotate(5deg);
+            }
+            42% {
+                transform: translate(2rem, .2rem) rotate(12deg) scaleY(.94);
+            }
+            50% {
+                transform: translate(1.2rem, .5rem) rotate(-25deg);
+            }
+            58% {
+                transform: translate(.4rem, .3rem) rotate(-42deg);
+            }
+            64% {
+                transform: translate(.2rem, 0) rotate(-12deg);
+            }
+            72% {
+                transform: translate(1.2rem, .4rem) rotate(38deg);
+            }
+            80%, 100% {
+                transform: translate(0, 0) rotate(0);
+            }
+        }
+
+        @keyframes vendite-suplex-victim {
+            0%, 30% {
+                transform: translate(0, 0) rotate(0);
+            }
+            38% {
+                transform: translate(-1.2rem, 0) rotate(-6deg);
+            }
+            46% {
+                transform: translate(-2rem, -1.2rem) rotate(-20deg);
+            }
+            54% {
+                transform: translate(-3.2rem, -2.8rem) rotate(-55deg);
+            }
+            60% {
+                transform: translate(-5rem, .9rem) rotate(-105deg);
+            }
+            70% {
+                transform: translate(-5rem, 1.2rem) rotate(-105deg);
+            }
+            78%, 100% {
+                transform: translate(-3.2rem, -.8rem) rotate(-90deg) scale(.72);
+            }
+        }
+
+        @keyframes vendite-suplex-impact {
+            0%, 58% {
+                opacity: 0;
+                transform: scale(.2);
+            }
+            60% {
+                opacity: 1;
+                transform: scale(1.35);
+            }
+            66%, 100% {
+                opacity: 0;
+                transform: scale(2);
+            }
+        }
+
+        .vendite-horse-stage {
+            position: fixed;
+            height: 5rem;
+            z-index: 1090;
+            pointer-events: none;
+            overflow: visible;
+        }
+
+        .vendite-horse {
+            position: absolute;
+            left: -3rem;
+            bottom: .15rem;
+            font-size: 2.8rem;
+            line-height: 1;
+            filter: drop-shadow(0 .2rem .12rem rgba(0, 0, 0, .25));
+            animation: vendite-horse-run 3s linear forwards;
+        }
+
+        .vendite-horse-obstacle {
+            position: absolute;
+            left: 68%;
+            bottom: 0;
+            font-size: 2.2rem;
+            line-height: 1;
+            opacity: 0;
+            animation: vendite-horse-obstacle 3s linear forwards;
+        }
+
+        @keyframes vendite-horse-run {
+            0% {
+                left: -3rem;
+                transform: translateY(0) scaleX(-1) rotate(0);
+            }
+            20% {
+                transform: translateY(-.18rem) scaleX(-1) rotate(-3deg);
+            }
+            48% {
+                left: 52%;
+                transform: translateY(0) scaleX(-1) rotate(0);
+            }
+            64% {
+                left: 65%;
+                transform: translateY(-3.6rem) scaleX(-1) rotate(-10deg);
+            }
+            74% {
+                left: 76%;
+                transform: translateY(0) scaleX(-1) rotate(4deg);
+            }
+            100% {
+                left: calc(100% + 3rem);
+                transform: translateY(0) scaleX(-1) rotate(0);
+            }
+        }
+
+        @keyframes vendite-horse-obstacle {
+            0%, 35% {
+                opacity: 0;
+            }
+            42%, 85% {
+                opacity: 1;
+            }
+            100% {
+                opacity: 0;
+            }
+        }
     </style>
 {% endblock %}
 
@@ -295,7 +454,8 @@
                     Situazione produzione per matricola
                 </a>
             </li>
-            <li class="nav-item" role="presentation">
+            <li class="nav-item"
+                role="presentation">
                 <a class="nav-link"
                    href="{{ operator_url_for('main.vendite_localizzazione_page') }}">
                     Localizzazione ordini
@@ -334,7 +494,7 @@
                  aria-labelledby="vendite-orders-tab-button">
 
                 <div{% if not can_create_customer_orders %} class="d-none"{% endif %}
-                     id="vendite-create-order-shell">
+                                                            id="vendite-create-order-shell">
                     <section class="card shadow-sm d-none mb-3"
                              id="vendite-create-order-panel">
                         <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
@@ -515,13 +675,20 @@
                             <div class="card-header d-flex flex-wrap justify-content-between align-items-start gap-2">
                                 <div class="flex-shrink-0">
                                     <div class="fw-semibold">Righe ordini cliente</div>
-                                    <div class="small vendite-orders-legend mt-1" aria-label="Legenda colori ordini">
-                                        <span class="badge border text-dark" style="background:#dff3fb">ITALIA</span>
-                                        <span class="badge border text-dark" style="background:#f9e1e7">ESTERO</span>
-                                        <span class="badge border text-dark" style="background:#eee5ff">EXTRACEE</span>
-                                        <span class="badge border text-dark" style="background:#fff3cd">Lettura da confermare</span>
-                                        <span class="badge border border-danger text-dark" style="background:#ffd9a8">Campo modificato</span>
-                                        <span class="badge border text-dark" style="background:#d1e7dd">Macchina imballata</span>
+                                    <div class="small vendite-orders-legend mt-1"
+                                         aria-label="Legenda colori ordini">
+                                        <span class="badge border text-dark"
+                                              style="background:#dff3fb">ITALIA</span>
+                                        <span class="badge border text-dark"
+                                              style="background:#f9e1e7">ESTERO</span>
+                                        <span class="badge border text-dark"
+                                              style="background:#eee5ff">EXTRACEE</span>
+                                        <span class="badge border text-dark"
+                                              style="background:#fff3cd">Lettura da confermare</span>
+                                        <span class="badge border border-danger text-dark"
+                                              style="background:#ffd9a8">Campo modificato</span>
+                                        <span class="badge border text-dark"
+                                              style="background:#d1e7dd">Macchina imballata</span>
                                     </div>
                                 </div>
                                 <div class="vendite-customer-orders-note-panel rounded px-2 py-1"
@@ -545,7 +712,8 @@
                                             <div class="small text-break flex-grow-1"
                                                  id="vendite-customer-orders-note"
                                                  style="white-space:pre-wrap;"
-                                                 aria-live="polite">—</div>
+                                                 aria-live="polite">—
+                                            </div>
                                         {% endif %}
                                         {% if can_confirm_customer_orders_note %}
                                             <button class="btn btn-sm btn-warning text-nowrap d-none"
@@ -559,18 +727,24 @@
                                          id="vendite-customer-orders-note-meta"></div>
                                 </div>
                                 <div class="d-flex flex-wrap align-items-end gap-3">
-                                    <div id="vendite-first-section-control" class="d-none">
-                                        <label class="form-label small mb-1" for="vendite-first-section">
+                                    <div id="vendite-first-section-control"
+                                         class="d-none">
+                                        <label class="form-label small mb-1"
+                                               for="vendite-first-section">
                                             Prima sezione
                                         </label>
-                                        <select class="form-select form-select-sm" id="vendite-first-section">
+                                        <select class="form-select form-select-sm"
+                                                id="vendite-first-section">
                                             <option value="">Ordine predefinito</option>
                                         </select>
                                     </div>
                                     <div class="form-check form-switch mb-1">
-                                        <input class="form-check-input" type="checkbox"
-                                               role="switch" id="vendite-group-by-customer">
-                                        <label class="form-check-label" for="vendite-group-by-customer">
+                                        <input class="form-check-input"
+                                               type="checkbox"
+                                               role="switch"
+                                               id="vendite-group-by-customer">
+                                        <label class="form-check-label"
+                                               for="vendite-group-by-customer">
                                             Raggruppa per cliente
                                         </label>
                                     </div>
@@ -597,12 +771,14 @@
                                         <th class="vendite-inline-customer-column d-none">Cliente</th>
                                         <th class="vendite-inline-customer-column d-none">Tipologia</th>
                                         <th>Modello</th>
-                                        <th id="vendite-delivery-sort-heading" aria-sort="none">
+                                        <th id="vendite-delivery-sort-heading"
+                                            aria-sort="none">
                                             <button class="btn btn-sm border-0 p-0 fw-semibold text-body"
                                                     type="button"
                                                     id="vendite-delivery-sort"
                                                     title="Ordina per data di consegna">
-                                                Spedizione <span id="vendite-delivery-sort-indicator" aria-hidden="true">↕</span>
+                                                Spedizione <span id="vendite-delivery-sort-indicator"
+                                                                 aria-hidden="true">↕</span>
                                             </button>
                                         </th>
                                         <th>Note di vendita</th>
@@ -1138,9 +1314,9 @@
                         </div>
                     </div>
                     ${row.assignment && !row.assignment.completed
-                    && row.assignment.open === false
-                        ? '<div class="small text-danger mt-1">Matricola non più presente tra quelle disponibili.</div>'
-                        : ""}
+                && row.assignment.open === false
+                    ? '<div class="small text-danger mt-1">Matricola non più presente tra quelle disponibili.</div>'
+                    : ""}
                     ${auditLine(row, "assignment")}`;
             }
 
@@ -1220,10 +1396,14 @@
                            Salva
                        </button>`
                     : "";
-                const confirm = showConfirmation && canConfirmOrderRead && !order.read_confirmed
+                const confirm = canConfirmOrderRead && !row.read_confirmed
                     ? `<button class="btn btn-sm btn-warning text-nowrap"
                                type="button"
-                               data-confirm-order-read="${esc(order.id)}">
+                               data-confirm-order-read="${esc(order.id)}"
+                               data-confirm-row-id="${esc(row.id)}"
+                               data-read-revisions="${esc(JSON.stringify(
+                        row.pending_read_revisions || {}
+                    ))}">
                            Conferma lettura
                        </button>`
                     : "";
@@ -1360,7 +1540,7 @@
                             <td class="fw-semibold">${esc(machine.serial_number || "-")}</td>
                             <td>${esc(machine.order)}</td>
                             <td>${esc(machine.state === "Imballata"
-                                ? "Imballata" : window.phaseLabel(machine.phase))}</td>
+                        ? "Imballata" : window.phaseLabel(machine.phase))}</td>
                             <td class="vendite-note-cell">${productionNoteCell(machine)}</td>
                             <td class="vendite-note-cell">${machine.option ? `
                                 <div class="fw-semibold">${esc(machine.option.optioned_by_name || "-")}</div>
@@ -1527,37 +1707,37 @@
                             </tr>`);
                     }
                     sectionOrders.forEach(order => {
-                    const primaryHeading = !renderedHeadings.has(String(order.id));
-                    renderedHeadings.add(String(order.id));
-                    const neutralClass = referenceClass(order.internal_reference);
-                    const orderClass = order.packaged
-                        ? "vendite-machine-completed"
-                        : !order.read_confirmed
+                        const primaryHeading = !renderedHeadings.has(String(order.id));
+                        renderedHeadings.add(String(order.id));
+                        const neutralClass = referenceClass(order.internal_reference);
+                        const orderClass = !order.read_confirmed
                             ? "vendite-order-unread"
-                            : neutralClass;
-                    const deleteButton = primaryHeading && !order.managed && canDeleteOrders
-                        ? `<button class="btn btn-sm btn-outline-danger text-nowrap"
+                            : order.packaged
+                                ? "vendite-machine-completed"
+                                : neutralClass;
+                        const deleteButton = primaryHeading && !order.managed && canDeleteOrders
+                            ? `<button class="btn btn-sm btn-outline-danger text-nowrap"
                                    type="button"
                                    data-delete-customer-order="${esc(order.id)}"
                                    data-customer-name="${esc(order.customer_name)}"
                                    data-customer-order="${esc(order.customer_order)}">
                                Elimina
                            </button>`
-                        : "";
-                    const orderSearch = [
-                        order.customer_name,
-                        order.customer_order,
-                        order.internal_reference,
-                        order.created_by_name,
-                    ].join(" ").toLocaleLowerCase("it");
-                    const collapseKey = `${section.key}:${order.id}`;
-                    const rowsExpanded = !collapsedOrders.has(collapseKey);
-                    const details = primaryHeading
-                        ? orderDetails(order)
-                        : `<span class="badge text-bg-light border">${esc(
-                            order.internal_reference || "ITALIA"
-                        )}</span>`;
-                    html.push(`
+                            : "";
+                        const orderSearch = [
+                            order.customer_name,
+                            order.customer_order,
+                            order.internal_reference,
+                            order.created_by_name,
+                        ].join(" ").toLocaleLowerCase("it");
+                        const collapseKey = `${section.key}:${order.id}`;
+                        const rowsExpanded = !collapsedOrders.has(collapseKey);
+                        const details = primaryHeading
+                            ? orderDetails(order)
+                            : `<span class="badge text-bg-light border">${esc(
+                                order.internal_reference || "ITALIA"
+                            )}</span>`;
+                        html.push(`
                         <tr class="${orderClass} vendite-customer-heading${groupCustomerOrders ? " vendite-customer-heading-grouped" : ""}"
                             data-demand-search="${esc(orderSearch)}"
                             data-customer-order-id="${esc(order.id)}"
@@ -1590,32 +1770,32 @@
                             </td>
                         </tr>`);
 
-                    (order.rows || []).forEach((row, rowIndex) => {
-                        const search = [
-                            order.customer_name,
-                            order.customer_order,
-                            order.internal_reference,
-                            row.model_code,
-                            row.variant,
-                            row.description,
-                            row.sales_note,
-                            row.commercial_note,
-                            row.production_note,
-                            ...(row.missing_components || []).map(component => [
-                                component.code, component.description,
-                            ].filter(Boolean).join(" ")),
-                            row.production_instructions,
-                            row.shipping_note,
-                            row.delivery_date,
-                            row.assignment?.order,
-                            row.assignment?.serial_number,
-                        ].join(" ").toLocaleLowerCase("it");
-                        const rowClass = row.packaged
-                            ? "vendite-machine-completed"
-                            : !order.read_confirmed
+                        (order.rows || []).forEach((row, rowIndex) => {
+                            const search = [
+                                order.customer_name,
+                                order.customer_order,
+                                order.internal_reference,
+                                row.model_code,
+                                row.variant,
+                                row.description,
+                                row.sales_note,
+                                row.commercial_note,
+                                row.production_note,
+                                ...(row.missing_components || []).map(component => [
+                                    component.code, component.description,
+                                ].filter(Boolean).join(" ")),
+                                row.production_instructions,
+                                row.shipping_note,
+                                row.delivery_date,
+                                row.assignment?.order,
+                                row.assignment?.serial_number,
+                            ].join(" ").toLocaleLowerCase("it");
+                            const rowClass = !row.read_confirmed
                                 ? "vendite-order-unread"
-                                : neutralClass;
-                        html.push(`
+                                : row.packaged
+                                    ? "vendite-machine-completed"
+                                    : neutralClass;
+                            html.push(`
                             <tr class="${rowClass}"
                                 data-demand-search="${esc(search)}"
                                 data-customer-order-id="${esc(order.id)}"
@@ -1660,7 +1840,7 @@
                                 </td>
                                 <td>${rowActions(row, order, primaryHeading && rowIndex === 0)}</td>
                             </tr>`);
-                    });
+                        });
                     });
                 });
 
@@ -1741,7 +1921,9 @@
                     }
                     heading.hidden = !hasVisibleContent;
                     if (collapsedCustomerGroups.has(heading.dataset.customerGroupKey)) {
-                        rows.forEach(item => { item.hidden = true; });
+                        rows.forEach(item => {
+                            item.hidden = true;
+                        });
                     }
                 });
             }
@@ -2225,7 +2407,10 @@
                     const response = await window.avpFetch(url, {
                         method: "POST",
                         headers: {"Content-Type": "application/json"},
-                        body: "{}",
+                        body: JSON.stringify({
+                            row_id: Number(button.dataset.confirmRowId),
+                            revisions: JSON.parse(button.dataset.readRevisions),
+                        }),
                     });
                     const payload = await response.json().catch(() => ({}));
                     if (!response.ok || !payload.ok) {
@@ -2233,28 +2418,11 @@
                             payload.error || `Errore server (${response.status})`
                         );
                     }
-                    const selector = `[data-customer-order-id="${CSS.escape(String(orderId))}"]`;
-                    const orderRows = [...customerOrdersBody.querySelectorAll(selector)];
-                    const updatedOrder = (payload.data?.customer_orders || []).find(order => (
-                        String(order.id) === String(orderId)
-                    ));
                     await playReadConfirmationAnimation(button, () => {
-                        orderRows.forEach(row => {
-                            if (!row.classList.contains("vendite-order-unread")) return;
-                            row.classList.remove("vendite-order-unread");
-                            const packaged = row.dataset.customerRowId
-                                ? updatedOrder?.rows?.find(item => (
-                                    String(item.id) === row.dataset.customerRowId
-                                ))?.packaged
-                                : updatedOrder?.packaged;
-                            if (packaged) {
-                                row.classList.add("vendite-machine-completed");
-                            } else if (row.dataset.referenceClass) {
-                                row.classList.add(row.dataset.referenceClass);
-                            }
-                        });
-                        button.remove();
                     });
+                    if (!hasUnsavedChanges() && !hasFocusedEditor()) {
+                        render(payload.data);
+                    }
                     showAlert("success", payload.message || "Lettura confermata.");
                     alertBox.dataset.source = "mutation";
                 } catch (error) {
