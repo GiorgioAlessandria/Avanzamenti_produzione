@@ -14,20 +14,100 @@ from app_odp.operator_session import (
 
 auth_bp = Blueprint("auth", __name__)
 
+LOGIN_START_PAGES = {
+    "produzione": ("Produzione", "main.home", ("home",)),
+    "acquisti": ("Acquisti", "main.home_acquisti", ("home_acquisti",)),
+    "vendite_ordini": (
+        "Vendite — Ordini cliente",
+        "main.vendite_assegnazioni_page",
+        ("vendite",),
+    ),
+    "vendite_macchine": (
+        "Vendite — Macchine",
+        "main.vendite_page",
+        ("vendite",),
+    ),
+    "logistica": (
+        "Carichi e scarichi",
+        "main.logistica_page",
+        ("carica", "ricezione"),
+    ),
+    "rifiuti": (
+        "Rifiuti",
+        "main.rifiuti_page",
+        ("rifiuti_carica", "rifiuti_elimina"),
+    ),
+    "manutenzioni": (
+        "Manutenzioni",
+        "main.manutenzioni_home",
+        ("manutenzioni_visualizza", "manutenzioni_amministrazione"),
+    ),
+    "tarature": ("Tarature", "main.tarature_home", ("tarature",)),
+    "dashboard": (
+        "Dashboard produzione",
+        "main.dashboard_produzione",
+        ("dashboard_produzione", "kpi_produzione"),
+    ),
+    "priorita": ("Priorità", "main.priorita", ("priorita_view",)),
+    "impostazioni": (
+        "Impostazioni",
+        "main.impostazioni",
+        ("impostazioni_utente",),
+    ),
+}
+
+
+def login_start_page_options(user):
+    policy = RbacPolicy(user)
+    return {
+        key: label
+        for key, (label, endpoint, permissions) in LOGIN_START_PAGES.items()
+        if any(policy.can(permission) for permission in permissions)
+    }
+
+
+def _configured_login_redirect(user, *, authenticate=False):
+    preferences = getattr(user, "preferences", {})
+    if not isinstance(preferences, dict):
+        return None
+
+    selected = preferences.get("login_start_page")
+    if not isinstance(selected, str):
+        return None
+
+    page = LOGIN_START_PAGES.get(selected)
+    if page is None:
+        return None
+
+    label, endpoint, permissions = page
+    policy = RbacPolicy(user)
+    if not any(policy.can(permission) for permission in permissions):
+        return None
+
+    if authenticate and endpoint in {
+        "main.home_acquisti",
+        "main.rifiuti_page",
+        "main.manutenzioni_home",
+        "main.tarature_home",
+    }:
+        login_user(user)
+
+    token = create_operator_session(user)
+    return url_for(endpoint, tab_session=token)
+
 
 def _get_post_login_redirect(user):
+    configured = _configured_login_redirect(user)
+    if configured:
+        return configured
     policy = RbacPolicy(user)
 
     has_acquisti = policy.can("home_acquisti")
     has_produzione = policy.can("home")
     has_vendite = policy.can("vendite")
-    has_rifiuti = (
-        policy.can("rifiuti_carica")
-        or policy.can("rifiuti_elimina")
-    )
-    has_manutenzioni = (
-        policy.can("manutenzioni_visualizza")
-        or policy.can("manutenzioni_amministrazione")
+    has_rifiuti = policy.can("rifiuti_carica") or policy.can("rifiuti_elimina")
+    has_manutenzioni = policy.can("manutenzioni_visualizza") or policy.can(
+        "manutenzioni_amministrazione"
     )
     has_tarature = policy.can("tarature")
     has_carica = policy.can("carica")
@@ -95,20 +175,18 @@ def login():
                 "login.j2",
                 error="Codice di accesso non valido.",
             ), 401
-
+        configured = _configured_login_redirect(user, authenticate=True)
+        if configured:
+            return redirect(configured)
         policy = RbacPolicy(user)
 
         # Login normale: acquisti / amministrazione
         has_acquisti = policy.can("home_acquisti")
         has_produzione = policy.can("home")
         has_vendite = policy.can("vendite")
-        has_rifiuti = (
-            policy.can("rifiuti_carica")
-            or policy.can("rifiuti_elimina")
-        )
-        has_manutenzioni = (
-            policy.can("manutenzioni_visualizza")
-            or policy.can("manutenzioni_amministrazione")
+        has_rifiuti = policy.can("rifiuti_carica") or policy.can("rifiuti_elimina")
+        has_manutenzioni = policy.can("manutenzioni_visualizza") or policy.can(
+            "manutenzioni_amministrazione"
         )
         has_tarature = policy.can("tarature")
         has_carica = policy.can("carica")

@@ -6,6 +6,79 @@
 
 {% block content %}
     <main class="container-fluid mt-4 mb-4">
+        {% if start_page_csrf %}
+            <section class="card shadow-sm mb-4">
+                <div class="card-header">
+                    <h3 class="mb-0">Pagina iniziale degli utenti</h3>
+                </div>
+                <div class="card-body">
+                    {% for category, message in get_flashed_messages(
+                        with_categories=true,
+                        category_filter=['start-page-success', 'start-page-error']
+                    ) %}
+                        <div class="alert alert-{{ 'success' if category == 'start-page-success' else 'danger' }}"
+                             role="status">
+                            {{ message|e }}
+                        </div>
+                    {% endfor %}
+
+                    <p class="text-muted">
+                        Scegli la schermata da aprire al prossimo login.
+                        Automatico mantiene la scelta prevista dai permessi.
+                    </p>
+
+                    <div class="table-responsive">
+                        <table class="table align-middle">
+                            <thead>
+                            <tr>
+                                <th scope="col">Utente</th>
+                                <th scope="col">Pagina iniziale</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            {% for target in start_page_users %}
+                                <tr>
+                                    <th scope="row">{{ target.username|e }}</th>
+                                    <td>
+                                        <form method="post"
+                                              action="{{ operator_url_for('main.impostazioni_pagina_iniziale') }}"
+                                              class="d-flex flex-wrap gap-2">
+                                            <input type="hidden"
+                                                   name="csrf_token"
+                                                   value="{{ start_page_csrf }}">
+                                            <input type="hidden"
+                                                   name="user_id"
+                                                   value="{{ target.id }}">
+
+                                            <select name="login_start_page"
+                                                    class="form-select w-auto"
+                                                    aria-label="Pagina iniziale di {{ target.username|e }}">
+                                                <option value=""
+                                                        {% if target.selected not in target.options %}selected{% endif %}>
+                                                    Automatico
+                                                </option>
+                                                {% for key, label in target.options.items() %}
+                                                    <option value="{{ key }}"
+                                                            {% if target.selected == key %}selected{% endif %}>
+                                                        {{ label }}
+                                                    </option>
+                                                {% endfor %}
+                                            </select>
+
+                                            <button type="submit"
+                                                    class="btn btn-primary">
+                                                Salva
+                                            </button>
+                                        </form>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        {% endif %}
 
         {% if show_user_abac_section %}
             {% include "partials/_impostazioni_abac.j2" %}

@@ -75,6 +75,12 @@ from app_odp.services.impostazioni_service import (
     _home_visibility_rule_to_dict,
     _parse_home_rule_phase_values,
 )
+import secrets
+
+from flask import abort, flash, redirect, session, url_for
+from sqlalchemy.exc import SQLAlchemyError
+from app_odp.auth import login_start_page_options
+from app_odp.operator_session import active_token, get_operator_token
 
 
 @main_bp.route("/impostazioni")
@@ -386,6 +392,29 @@ def impostazioni():
                 }
                 for utente in utenti_anagrafica
             ]
+    start_page_users = []
+    start_page_csrf = None
+
+    if policy.has_direct_admin_role:
+        start_page_csrf = session.setdefault(
+            "login_start_page_csrf",
+            secrets.token_urlsafe(32),
+        )
+        for target in User.query.order_by(User.username.asc()).all():
+            preferences = target.preferences
+            selected = (
+                preferences.get("login_start_page", "")
+                if isinstance(preferences, dict)
+                else ""
+            )
+            start_page_users.append(
+                {
+                    "id": target.id,
+                    "username": target.username,
+                    "selected": selected if isinstance(selected, str) else "",
+                    "options": login_start_page_options(target),
+                }
+            )
     return render_template(
         "impostazioni.j2",
         ruolo_options=ruolo_options,
@@ -414,6 +443,73 @@ def impostazioni():
         show_home_config_section=show_home_config_section,
         home_config_payload=home_config_payload,
         show_capacity_config_section=show_capacity_config_section,
+        start_page_users=start_page_users,
+        start_page_csrf=start_page_csrf,
+    )
+
+
+@main_bp.post("/impostazioni/pagina-iniziale")
+@require_active_perm("impostazioni_utente")
+def impostazioni_pagina_iniziale():
+    if get_operator_token() and get_operator_token() != active_token():
+        abort(403)
+
+    if not active_policy().has_direct_admin_role:
+        abort(403)
+
+    csrf = session.get("login_start_page_csrf", "")
+    submitted = request.form.get("csrf_token", "")
+    if not csrf or not secrets.compare_digest(csrf.encode(), submitted.encode()):
+        abort(400)
+
+    try:
+        user_id = int(request.form.get("user_id", ""))
+    except ValueError:
+        abort(400)
+
+    target = db.session.get(User, user_id)
+    if target is None:
+        abort(404)
+
+    selected = request.form.get("login_start_page", "")
+    options = login_start_page_options(target)
+    preferences = target.preferences
+
+    if selected and selected not in options:
+        flash(
+            "La pagina scelta non è consentita per questo utente.",
+            "start-page-error",
+        )
+    elif not isinstance(preferences, dict):
+        flash(
+            "Le preferenze esistenti dell'utente non sono valide.",
+            "start-page-error",
+        )
+    else:
+        preferences = dict(preferences)
+        if selected:
+            preferences["login_start_page"] = selected
+        else:
+            preferences.pop("login_start_page", None)
+
+        try:
+            target.preferences = preferences
+            db.session.commit()
+        except SQLAlchemyError:
+            db.session.rollback()
+            current_app.logger.exception(
+                "Salvataggio pagina iniziale utente non riuscito"
+            )
+            flash("Salvataggio non riuscito. Riprova.", "start-page-error")
+        else:
+            flash(
+                f"Pagina iniziale aggiornata per {target.username}.",
+                "start-page-success",
+            )
+
+    return redirect(
+        url_for("main.impostazioni", tab_session=active_token()),
+        code=303,
     )
 
 
@@ -1148,10 +1244,7 @@ def api_modifica_utente():
             )
             revoke_operator_sessions_for_user(utente.id, commit=False)
 
-        if (
-            old_username != values["username"]
-            or old_public_id != values["public_id"]
-        ):
+        if old_username != values["username"] or old_public_id != values["public_id"]:
             MacchinarioOperatore.query.filter(
                 MacchinarioOperatore.operatore_public_id == old_public_id
             ).update(
@@ -1195,9 +1288,7 @@ def api_modifica_utente():
                 "reparto_princ": utente.RepartoPrinc or "",
                 "current_role_id": ruolo.id if ruolo else None,
                 "current_role_name": ruolo.name if ruolo else "",
-                "current_role_description": (
-                    ruolo.description or ruolo.name
-                )
+                "current_role_description": (ruolo.description or ruolo.name)
                 if ruolo
                 else "",
             },
