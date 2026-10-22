@@ -1189,6 +1189,10 @@
                                          id="dashboard-evento-titolo">
                                     </div>
 
+                                    <div class="mt-2"
+                                         id="dashboard-evento-descrizione-manutenzione"
+                                         style="white-space: pre-wrap; overflow-wrap: anywhere;">
+                                    </div>
                                     <div class="small text-muted"
                                          id="dashboard-evento-data-programmata">
                                     </div>
@@ -2815,6 +2819,9 @@
                         item.titolo
                         || "Manutenzione"
                     );
+                    eventFields.descrizioneManutenzione.textContent = (
+                        item.descrizione || "Nessuna descrizione disponibile."
+                    );
 
                     let dateText = (
                         `Data programmata: ${
@@ -2976,6 +2983,9 @@
                     ),
                     titolo: document.getElementById(
                         "dashboard-evento-titolo"
+                    ),
+                    descrizioneManutenzione: document.getElementById(
+                        "dashboard-evento-descrizione-manutenzione"
                     ),
                     dataProgrammata: document.getElementById(
                         "dashboard-evento-data-programmata"

@@ -2603,8 +2603,8 @@
                         document.querySelectorAll("#modal-workgroup-body input[type='checkbox']:checked")
                     ).map(input => currentOrders[Number(input.value)]).filter(Boolean);
 
-                    if (selected.length < 2 || selected.length > 3) {
-                        showFeedback("Seleziona da 2 a 3 ordini.");
+                    if (selected.length < 2 || selected.length > 4) {
+                        showFeedback("Seleziona da 2 a 4 ordini.");
                         return;
                     }
 

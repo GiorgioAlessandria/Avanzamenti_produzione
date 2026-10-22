@@ -136,11 +136,13 @@
         </div>
 
         {% if request.args.get("operatori_salvati") == "1" %}
-            <div class="alert alert-success" role="alert">
+            <div class="alert alert-success"
+                 role="alert">
                 Operatori assegnati correttamente.
             </div>
         {% elif request.args.get("operatori_errore") %}
-            <div class="alert alert-danger" role="alert">
+            <div class="alert alert-danger"
+                 role="alert">
                 {{ request.args.get("operatori_errore") }}
             </div>
         {% endif %}
@@ -189,7 +191,8 @@
                             </p>
                         {% endif %}
 
-                        <button type="submit" class="btn btn-primary">
+                        <button type="submit"
+                                class="btn btn-primary">
                             <i class="bi bi-save"></i>
                             Salva assegnazioni
                         </button>
@@ -360,37 +363,37 @@
                                         {{ evento.esito or "-" }}
                                     </td>
                                     {% if can_execute_events %}
-                                <td class="text-end">
-                                    {% if evento.straordinaria_id %}
-                                        <a href="{{ operator_url_for(
+                                        <td class="text-end">
+                                            {% if evento.straordinaria_id %}
+                                                <a href="{{ operator_url_for(
                                                 'main.manutenzioni_macchinario_detail',
                                                 macchinario_id=macchinario.id,
                                                 view='straordinarie',
                                                 intervento_id=evento.straordinaria_id
                                             ) }}"
-                                           class="btn btn-sm btn-warning">
-                                            <i class="bi bi-tools"></i>
-                                            Apri intervento
-                                        </a>
-                                    {% elif evento.stato == "PROGRAMMATA" %}
-                                        <div class="d-inline-flex gap-1">
-                                            <button type="button"
-                                                        class="btn btn-sm btn-primary btn-gestisci-evento"
-                                                        data-evento-id="{{ evento.id }}">
-                                                    <i class="bi bi-check2-square"></i>
-                                                    Registra
-                                            </button>
+                                                   class="btn btn-sm btn-warning">
+                                                    <i class="bi bi-tools"></i>
+                                                    Apri intervento
+                                                </a>
+                                            {% elif evento.stato == "PROGRAMMATA" %}
+                                                <div class="d-inline-flex gap-1">
+                                                    <button type="button"
+                                                            class="btn btn-sm btn-primary btn-gestisci-evento"
+                                                            data-evento-id="{{ evento.id }}">
+                                                        <i class="bi bi-check2-square"></i>
+                                                        Registra
+                                                    </button>
 
-                                            {% if can_admin %}
-                                                <button type="button"
-                                                        class="btn btn-sm btn-outline-danger btn-elimina-evento"
-                                                        data-evento-id="{{ evento.id }}"
-                                                        data-evento-titolo="{{ evento.titolo }}">
-                                                    <i class="bi bi-trash"></i>
-                                                    Elimina
-                                                </button>
-                                            {% endif %}
-                                        </div>
+                                                    {% if can_admin %}
+                                                        <button type="button"
+                                                                class="btn btn-sm btn-outline-danger btn-elimina-evento"
+                                                                data-evento-id="{{ evento.id }}"
+                                                                data-evento-titolo="{{ evento.titolo }}">
+                                                            <i class="bi bi-trash"></i>
+                                                            Elimina
+                                                        </button>
+                                                    {% endif %}
+                                                </div>
                                             {% else %}
                                                 <span class="text-muted">
                                         -
@@ -927,6 +930,11 @@
                                     <div class="alert alert-light border">
                                         <div class="fw-semibold"
                                              id="evento-titolo">
+                                        </div>
+                                        <div class="mt-2"
+                                             id="evento-descrizione-manutenzione"
+                                             style="white-space: pre-wrap; overflow-wrap: anywhere;">
+
                                         </div>
 
                                         <div class="small text-muted"
@@ -1933,6 +1941,9 @@
                     dataProgrammata: document.getElementById(
                         "evento-data-programmata"
                     ),
+                    descrizioneManutenzione: document.getElementById(
+                        "evento-descrizione-manutenzione"
+                    ),
                     action: document.getElementById("evento-action"),
                     dataEsecuzione: document.getElementById(
                         "evento-data-esecuzione"
@@ -2103,6 +2114,9 @@
                         fields.id.value = item.id || "";
                         fields.titolo.textContent = (
                             item.titolo || "Manutenzione"
+                        );
+                        fields.descrizioneManutenzione.textContent = (
+                            item.descrizione || "Nessuna descrizione disponibile."
                         );
                         fields.dataProgrammata.textContent = (
                             `Data programmata: ${
@@ -2686,7 +2700,7 @@
 
                     const requestedInterventoId = (
                         new URL(window.location.href)
-                        .searchParams.get("intervento_id")
+                            .searchParams.get("intervento_id")
                     );
 
                     if (requestedInterventoId) {

@@ -400,8 +400,8 @@ def _append_group_state_log(
 def create_multiplo_group(order_keys: list[dict], policy) -> OdpWorkGroup:
     if not isinstance(order_keys, list) or len(order_keys) < 2:
         raise ValueError("Selezionare almeno 2 ordini per un gruppo multiplo.")
-    if len(order_keys) > 3:
-        raise ValueError("Un gruppo multiplo può contenere massimo 3 ordini.")
+    if len(order_keys) > 4:
+        raise ValueError("Un gruppo multiplo può contenere massimo 4 ordini.")
 
     ordini = [
         _get_visible_odp_by_key(
@@ -469,9 +469,7 @@ def create_multiplo_group(order_keys: list[dict], policy) -> OdpWorkGroup:
     return group
 
 
-def create_misto_group(
-    shared_keys: list[dict], masked_keys, policy
-) -> OdpWorkGroup:
+def create_misto_group(shared_keys: list[dict], masked_keys, policy) -> OdpWorkGroup:
     if not isinstance(shared_keys, list) or len(shared_keys) != 2:
         raise ValueError(
             "Selezionare esattamente 2 ordini con tempo condiviso per il gruppo misto."
@@ -665,6 +663,7 @@ def create_mascherato_group(main_key: dict, masked_keys, policy) -> OdpWorkGroup
 
     db.session.flush()
     return group
+
 
 def _assigned_seconds_for_member(
     group: OdpWorkGroup, member: OdpWorkGroupMember, elapsed_seconds: int
@@ -924,7 +923,9 @@ def dissolve_group_for_single_member_close(
         rt = _runtime_for_member(member)
         ordine = _order_for_member(member)
 
-        stato_pre = _norm_text(getattr(ordine, "StatoOrdine", "")) if ordine is not None else ""
+        stato_pre = (
+            _norm_text(getattr(ordine, "StatoOrdine", "")) if ordine is not None else ""
+        )
         qty_pre = _qty_da_lavorare_text(ordine, stato=rt) if ordine is not None else ""
 
         if member.id == target.id:
@@ -974,7 +975,6 @@ def dissolve_group_for_single_member_close(
     return group
 
 
-
 def prepare_group_member_for_single_closure(
     group_uid: str,
     *,
@@ -1021,12 +1021,16 @@ def prepare_group_member_for_single_closure(
     return group, target
 
 
-def _set_open_member_state(member: OdpWorkGroupMember, status: str, *, activation_iso: str | None) -> None:
+def _set_open_member_state(
+    member: OdpWorkGroupMember, status: str, *, activation_iso: str | None
+) -> None:
     member.Status = status
     rt = _runtime_for_member(member)
     if rt is not None:
         rt.Stato_odp = status
-        rt.data_ultima_attivazione = activation_iso if status == GROUP_STATUS_ATTIVO else None
+        rt.data_ultima_attivazione = (
+            activation_iso if status == GROUP_STATUS_ATTIVO else None
+        )
         rt.Utente_operazione = _current_username()
     ordine = _order_for_member(member)
     if ordine is not None:
@@ -1040,7 +1044,7 @@ def finalize_group_after_single_member_closure(
     now_iso = _now_iso()
     open_members = [
         member
-        for member in sorted(group.members, key=lambda item: (item.id or 0))
+        for member in sorted(group.members, key=lambda item: item.id or 0)
         if _norm_text(member.Status) in {GROUP_STATUS_ATTIVO, GROUP_STATUS_SOSPESO}
     ]
 
@@ -1056,8 +1060,14 @@ def finalize_group_after_single_member_closure(
             member.DissolvedAt = now_iso
             rt = _runtime_for_member(member)
             ordine = _order_for_member(member)
-            stato_pre = _norm_text(getattr(ordine, "StatoOrdine", "")) if ordine is not None else ""
-            qty_pre = _qty_da_lavorare_text(ordine, stato=rt) if ordine is not None else ""
+            stato_pre = (
+                _norm_text(getattr(ordine, "StatoOrdine", ""))
+                if ordine is not None
+                else ""
+            )
+            qty_pre = (
+                _qty_da_lavorare_text(ordine, stato=rt) if ordine is not None else ""
+            )
             if rt is not None:
                 rt.Stato_odp = GROUP_STATUS_SOSPESO
                 rt.data_ultima_attivazione = None
@@ -1096,7 +1106,9 @@ def finalize_group_after_single_member_closure(
         main_member = timed_members[0]
         group.GroupType = GROUP_TYPE_MASCHERATO
         group.InitialMemberCount = len(open_members)
-        group.Fase = _norm_text(_fase_corrente_for_export(_order_for_member(main_member)))
+        group.Fase = _norm_text(
+            _fase_corrente_for_export(_order_for_member(main_member))
+        )
         main_member.Role = ROLE_MAIN
         main_member.TimeShareMode = SHARE_FULL
         for masked_member in zero_members:
@@ -1110,7 +1122,9 @@ def finalize_group_after_single_member_closure(
             member.Role = ROLE_MEMBER
             member.TimeShareMode = SHARE_SPLIT
 
-    should_reactivate = any(_norm_text(member.Status) == GROUP_STATUS_ATTIVO for member in open_members)
+    should_reactivate = any(
+        _norm_text(member.Status) == GROUP_STATUS_ATTIVO for member in open_members
+    )
     if should_reactivate:
         group.Status = GROUP_STATUS_ATTIVO
         group.LastActivationAt = now_iso
@@ -1126,6 +1140,7 @@ def finalize_group_after_single_member_closure(
             _set_open_member_state(member, GROUP_STATUS_SOSPESO, activation_iso=None)
 
     return group
+
 
 def _members_for_closure(group: OdpWorkGroup) -> list[OdpWorkGroupMember]:
     return [
@@ -1409,7 +1424,9 @@ class WorkGroupHomeRow:
             _norm_text(getattr(m, "TimeShareMode", "")).upper() == SHARE_ZERO
             for m in self._members
         )
-        self.WorkGroupDisplayType = "MISTO" if self.IsMixedWorkGroup else self.WorkGroupType
+        self.WorkGroupDisplayType = (
+            "MISTO" if self.IsMixedWorkGroup else self.WorkGroupType
+        )
         self.WorkGroupTypeLabel = (
             "Misto"
             if self.IsMixedWorkGroup
