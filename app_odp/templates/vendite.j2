@@ -224,7 +224,7 @@
                         </thead>
                         <tbody id="vendite-machines-body">
                         <tr>
-                            <td colspan="13"
+                            <td colspan="{{ 11 + (1 if can_view_options else 0) + (1 if can_view_production_instructions else 0) }}"
                                 class="text-center text-muted py-4">Caricamento...</td>
                         </tr>
                         </tbody>
@@ -737,6 +737,8 @@
                 machinesTable.querySelectorAll(".vendite-priority-only").forEach(cell => {
                     cell.classList.toggle("d-none", !priorityMode);
                 });
+                const columnCount = [...machinesTable.querySelectorAll("thead th")]
+                    .filter(cell => !cell.classList.contains("d-none")).length;
                 groupFilters.classList.toggle("d-none", priorityMode);
 
                 const searchQuery = machineSearchInput.value.trim().toLocaleLowerCase("it");
@@ -752,7 +754,7 @@
                         return machine ? [machineRow(machine, item)] : [];
                     });
                     machinesBody.innerHTML = rows.join("") || `
-                        <tr><td colspan="12" class="text-center text-muted py-4">
+                        <tr><td colspan="${columnCount}" class="text-center text-muted py-4">
                             ${searchQuery ? "Nessuna macchina corrisponde alla ricerca." : priorityOperator?.value ? "Nessun ordine prioritizzabile assegnato al montaggio per questo operatore." : "Seleziona un operatore di montaggio."}
                         </td></tr>`;
                     if (typeof window.applyRowColors === "function") window.applyRowColors();
@@ -767,7 +769,7 @@
                     const expanded = Boolean(searchQuery) || section.name === null || !collapsedGroups.has(section.key);
                     const header = section.name === null ? "" : `
                         <tr class="table-secondary" data-group-heading>
-                            <th colspan="13" scope="rowgroup">
+                            <th colspan="${columnCount}" scope="rowgroup">
                                 <button type="button" class="btn text-start fw-semibold w-100 p-0"
                                         data-toggle-machine-group="${esc(section.key)}"
                                         aria-expanded="${expanded}"
@@ -779,10 +781,10 @@
                         </tr>`;
                     if (!expanded) return header;
                     const rows = sortedMachines(section.machines, sortKey, sortDirection);
-                    return header + (rows.length ? rows.map(machine => machineRow(machine)).join("") : '<tr><td colspan="13" class="text-center text-muted py-4">Nessuna macchina presente.</td></tr>');
+                    return header + (rows.length ? rows.map(machine => machineRow(machine)).join("") : `<tr><td colspan="${columnCount}" class="text-center text-muted py-4">Nessuna macchina presente.</td></tr>`);
                 }).join("");
                 machinesBody.innerHTML = rowsHtml || `
-                    <tr><td colspan="13" class="text-center text-muted py-4">
+                    <tr><td colspan="${columnCount}" class="text-center text-muted py-4">
                         Nessuna macchina corrisponde alla ricerca.
                     </td></tr>`;
 

@@ -1,10 +1,13 @@
 from datetime import datetime, time
+import json
 from types import SimpleNamespace
 
 import pytest
 from flask import Flask
+from sqlalchemy.schema import CreateTable
 
 from app_odp.models import GiacenzaLotti, LottiGeneratiLog, LottiUsatiLog, db
+from app_odp.models import InputOdpLog, OdpRuntimeLog, OdpWorkGroup, OdpWorkGroupMember
 from app_odp.services import storico_ordini_service as service
 
 
@@ -224,7 +227,7 @@ def test_event_description_formats_sections_and_omits_empty_ones():
     )
 
     assert service._event_description(row, {}) == (
-        "mario - Sospensione | stato Attivo -> Sospeso | "
+        "mario - Lavorazione sospesa | stato Attivo -> Sospeso | "
         "OK 3 / KO 0 | Cambio utensile"
     )
 
@@ -242,7 +245,7 @@ def test_event_description_formats_sections_and_omits_empty_ones():
     )
 
     assert service._event_description(minimal, {"utente": "luigi"}) == (
-        "luigi - Riattivazione"
+        "luigi - Lavorazione ripresa"
     )
 
 
@@ -323,3 +326,149 @@ def test_lot_history_search_returns_used_and_generated_order_assignments(storico
             "used_quantity": "4",
             "original_source": "generated",
         }
+
+
+@pytest.fixture()
+def history_app(storico_app):
+    tables = [InputOdpLog, OdpRuntimeLog, OdpWorkGroup, OdpWorkGroupMember]
+    with storico_app.app_context():
+        for model in tables:
+            engine = db.engines[getattr(model, "__bind_key__", None)]
+            # Gli indici legacy di Scope differiscono solo per maiuscole in SQLite.
+            with engine.begin() as connection:
+                connection.execute(CreateTable(model.__table__))
+    yield storico_app
+    with storico_app.app_context():
+        for model in reversed(tables):
+            model.__table__.drop(db.engines[getattr(model, "__bind_key__", None)])
+
+
+def runtime_event(action, hour, user="mario", row="1", phase="20", **payload):
+    return OdpRuntimeLog(
+        IdDocumento="DOC", IdRiga=row, RifRegistraz="2026.123", CodArt="ART",
+        Azione=action, EventAt=f"2026-10-30T{hour}:00:00", UtenteOperazione=user,
+        OperationGroupId=f"{action}-{hour}-{row}", FasePre=phase, FasePost=phase,
+        StatoOrdinePre="Attivo", StatoOrdinePost="Attivo",
+        PayloadJson=json.dumps({"fase": phase, **payload}),
+    )
+
+
+@pytest.mark.parametrize("action,state,payload,expected", [
+    ("chiusura_finale", "Pianificata", {"fase_successiva": "30"}, "Fase completata"),
+    ("chiusura_finale", "Chiusa", {}, "Ordine completato"),
+    ("chiusura_macchina", "", {"is_last_phase": True}, "Ordine completato"),
+    ("chiusura_parziale_macchina", "In Sospeso", {}, "Avanzamento parziale"),
+])
+def test_completion_labels_follow_actual_outcome(action, state, payload, expected):
+    assert service._event_label(action, state, payload) == expected
+
+
+@pytest.mark.parametrize("note,state_pre,expected", [
+    ("Riattivazione ordine macchina | Matricola: 123", "In Sospeso", "Lavorazione ripresa"),
+    ("", "In Sospeso", "Lavorazione ripresa"),
+    ("Presa in carico ordine", "Pianificata", "Presa in carico"),
+    ("Presa in carico bloccata: distinta materiali assente", "Attivo", "Presa in carico bloccata: distinta materiali assente"),
+])
+def test_legacy_logs_keep_resume_and_block_distinct_from_takeover(note, state_pre, expected):
+    row = InputOdpLog(NoteChiusura=note, StatoOrdinePre=state_pre, StatoOrdinePost="Attivo")
+    assert service._input_event_label(row) == expected
+
+
+def test_history_separates_event_author_owner_phase_and_documents(history_app):
+    with history_app.app_context():
+        take = runtime_event("presa_in_carico", "08")
+        suspend = runtime_event("sospensione", "09", "admin", operatore_in_carico="mario", causale="Materiale mancante")
+        suspend.StatoOrdinePost = "In Sospeso"
+        resume = runtime_event("riattivazione", "10", "luigi")
+        close = runtime_event("chiusura_finale", "11", "admin", fase_successiva="30")
+        close.FasePost, close.StatoOrdinePost, close.TempoFunzionamentoPost = "30", "Pianificata", "0"
+        close.QuantitaConforme = "5"
+        document = InputOdpLog(
+            IdDocumento="DOC", IdRiga="1", RifRegistraz="2026.123",
+            OperationGroupId=close.OperationGroupId, ClosedAt=close.EventAt,
+            FaseConsuntivata="20", FaseAttiva="30", TempoFunzionamentoFinale="1.5",
+            QuantitaConforme="5", StatoOrdinePost="Pianificata", ClosedBy="admin",
+        )
+        db.session.add_all([take, suspend, resume, close, document])
+        db.session.commit()
+        result = service.build_storico_ordini_detail({"id_documento": "DOC", "id_riga": "1"})
+        assert len(result["timeline"]) == 4  # Il documento non duplica la chiusura.
+        paused, closed = result["timeline"][1], result["timeline"][-1]
+        assert paused["utente"] == "admin"
+        assert paused["operatore_in_carico"] == "mario"
+        assert paused["causale"] == "Materiale mancante"
+        assert closed["utente"] == "admin"
+        assert closed["operatore_in_carico"] == "luigi"
+        assert closed["presa_in_carico_ricostruita"] is True
+        assert closed["fase"] == "20"
+        assert closed["fase_successiva"] == "30"
+        assert closed["tempo_lavorazione_ore"] == "1.5"
+        assert closed["azione_label"] == "Fase completata"
+        assert closed["documenti"][0]["fase"] == "20"
+        assert result["header"]["title"] == "2026.123"
+
+
+def test_event_filters_match_runtime_and_legacy_using_same_categories(history_app):
+    with history_app.app_context():
+        runtime = runtime_event("riattivazione_macchina", "10")
+        legacy = InputOdpLog(
+            IdDocumento="OLD", IdRiga="1", RifRegistraz="2026.100", CodArt="OLD-ART",
+            OperationGroupId="",
+            ClosedAt="2026-10-30T09:00:00", NoteChiusura="Riattivazione ordine",
+            StatoOrdinePre="In Sospeso", StatoOrdinePost="Attivo", ClosedBy="luigi",
+        )
+        db.session.add_all([runtime, legacy])
+        db.session.commit()
+        result = service.build_storico_ordini_list({"evento": "riattivazione"})
+        assert result["total"] == 2
+        assert {row["last_event"] for row in result["rows"]} == {"Lavorazione ripresa"}
+        assert service.build_storico_ordini_list({"evento": "presa_in_carico"})["total"] == 0
+
+
+def test_group_passages_combine_orders_but_keep_causes_and_time_records(history_app):
+    with history_app.app_context():
+        rows = [runtime_event("sospensione_gruppo", "09", row=str(n), group_uid="GROUP", causale=f"Causale {n}") for n in (1, 2)]
+        rows.append(runtime_event("runtime_gruppo", "09", group_uid="GROUP"))
+        db.session.add_all(rows)
+        db.session.commit()
+        timeline = [service._runtime_to_dict(row) for row in rows]
+        service._prepare_timeline(timeline, [], [], [])
+        steps = service._timeline_steps(timeline)
+        assert len(steps) == 1
+        assert len(steps[0]["eventi"]) == 2
+        assert {e["causale"] for e in steps[0]["eventi"]} == {"Causale 1", "Causale 2"}
+        assert all(e["operatore_in_carico"] == "" for e in timeline)
+        assert timeline[-1]["tecnico"] is True
+        assert len(service._timeline_steps(timeline[:1] * 2)) == 2
+
+
+def test_latest_passage_does_not_get_replaced_by_technical_time_record(history_app):
+    with history_app.app_context():
+        db.session.add_all([runtime_event("sospensione", "09"), runtime_event("runtime_gruppo", "10")])
+        db.session.commit()
+        row = service.build_storico_ordini_list({})["rows"][0]
+        assert row["last_event"] == "Lavorazione sospesa"
+        assert row["last_operator"] == "mario"
+        assert row["last_phase"] == "20"
+
+
+def test_group_window_does_not_import_events_or_documents_of_next_group(history_app):
+    with history_app.app_context():
+        group = OdpWorkGroup(GroupUid="OLD", GroupType="MULTIPLO", CreatedAt="2026-10-30T08:00:00", ClosedAt="2026-10-30T10:00:00")
+        member = OdpWorkGroupMember(GroupUid="OLD", IdDocumento="DOC", IdRiga="1", CreatedAt=group.CreatedAt)
+        own = runtime_event("sospensione_gruppo", "09", group_uid="OLD")
+        following = runtime_event("presa_in_carico_gruppo", "10", group_uid="NEW")
+        following.EventAt = "2026-10-30T10:03:00"
+        foreign_document = InputOdpLog(IdDocumento="DOC", IdRiga="1", OperationGroupId=following.OperationGroupId, ClosedAt=following.EventAt, StatoOrdinePost="Attivo")
+        foreign_lot = LottiGeneratiLog(IdDocumento="DOC", IdRiga="1", OperationGroupId=following.OperationGroupId, ClosedAt=following.EventAt, RifLottoAlfa="NEW-LOT", CodArt="ART", Quantita="1", Fase="20")
+        db.session.add_all([group, member, own, following, foreign_document, foreign_lot])
+        db.session.commit()
+        result = service.build_storico_ordini_detail({"kind": "group", "group_uid": "OLD"})
+        assert [event["operation_group_id"] for event in result["timeline"]] == [own.OperationGroupId]
+        assert result["input_logs"] == []
+        assert result["lotti_generati"] == []
+
+
+def test_legacy_suspension_cause_is_visible_without_opening_technical_data():
+    row = InputOdpLog(IdDocumento="DOC", IdRiga="1", StatoOrdinePost="In Sospeso", NoteChiusura="Sospensione ordine | Causale: Materiale mancante")
+    assert service._input_timeline_to_dict(row)["causale"] == "Materiale mancante"

@@ -31,7 +31,7 @@ class VenditeTabsTest(unittest.TestCase):
                     self.assertIn('aria-label="Ordina per Opzione"', html)
                     self.assertIn('data-machine-sort="shipping_date"', html)
                     self.assertIn("(!savingOptionNote && !canChangeMachineView())", html)
-                    self.assertIn('colspan="13"', html)
+                    self.assertIn('colspan="11"', html)
                 else:
                     self.assertIn("const orderClass = order.packaged", html)
                     self.assertIn("const rowClass = row.packaged", html)
@@ -40,7 +40,7 @@ class VenditeTabsTest(unittest.TestCase):
                     self.assertNotIn("inlineCustomerData", html)
                     self.assertIn('>N. ordine</th>', html)
                     self.assertIn('order.managed ? "Gestionale" : "Manuale"', html)
-                    self.assertIn("const columnCount = 13", html)
+                    self.assertIn("const columnCount = 10", html)
                     self.assertIn("productionNoteCell(row)", html)
                     self.assertIn("productionNoteCell(machine)", html)
                     self.assertIn('formatDateTime(audit.changed_at, "short")', html)
@@ -108,6 +108,27 @@ class VenditeTabsTest(unittest.TestCase):
         self.assertNotIn('data-priority-position', html)
         self.assertNotIn('Priorità / posizione', html)
         self.assertIn('data-can-manage-sales-priorities="true"', html)
+
+    def test_machine_loading_row_matches_visible_headers(self):
+        templates = Path(__file__).resolve().parents[2] / "app_odp/templates"
+        env = Environment(loader=ChoiceLoader([
+            DictLoader({"base.j2": "{% block content %}{% endblock %}"}),
+            FileSystemLoader(templates),
+        ]))
+        env.globals["operator_url_for"] = lambda *args, **kwargs: "/"
+        for options in (False, True):
+            for instructions in (False, True):
+                with self.subTest(options=options, instructions=instructions):
+                    html = env.get_template("vendite.j2").render(
+                        request=SimpleNamespace(args={"vista": "matricola"}),
+                        can_view_options=options,
+                        can_view_production_instructions=instructions,
+                    )
+                    table = html.split('id="vendite-machines-table"', 1)[1].split("</table>", 1)[0]
+                    headers = re.findall(r"<th\b([^>]*)>", table)
+                    visible_count = sum("d-none" not in attrs for attrs in headers)
+                    span = int(re.search(r'colspan="(\d+)"', table)[1])
+                    self.assertEqual(span, visible_count)
 
     def test_packaging_user_can_view_customer_orders(self):
         from app_odp.routes_modules.vendite import _can_view_customer_orders

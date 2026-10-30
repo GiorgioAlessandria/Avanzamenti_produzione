@@ -298,6 +298,8 @@ def _append_group_runtime_log(
         "group_uid": group_uid,
         "azione": action,
         "utente": _current_username(),
+        "operatore_in_carico": _current_username()
+        if action.startswith(("presa_in_carico", "riattivazione")) else "",
     }
     if extra_payload:
         payload.update(extra_payload)
@@ -352,6 +354,7 @@ def _append_group_state_log(
     causale: str = "",
     minuti_non_funzionamento: int | None = None,
     secondi_non_funzionamento: int | None = None,
+    operatore_in_carico: str = "",
 ):
     operation_group_id = _group_operation_group_id(ordine, action, event_at)
     stato_post_norm = _norm_text(stato_post)
@@ -394,6 +397,13 @@ def _append_group_state_log(
         qty_pre=qty_pre,
         qty_post=qty_post,
         note=note,
+        extra_payload={
+            "causale": causale,
+            "tempo_non_funzionamento_minuti": minuti_non_funzionamento,
+            "operatore_in_carico": operatore_in_carico or (
+                _current_username() if action.startswith(("presa_in_carico", "riattivazione")) else ""
+            ),
+        },
     )
 
 
@@ -798,6 +808,7 @@ def suspend_group(
     stop_seconds = max(0, int(minuti_non_funzionamento or 0)) * 60
     for member in _group_active_members(group):
         rt = _runtime_for_member(member)
+        operatore_in_carico = _norm_text(getattr(rt, "Utente_operazione", ""))
         ordine = _order_for_member(member)
         stato_pre = _norm_text(getattr(ordine, "StatoOrdine", ""))
         qty_pre = _qty_da_lavorare_text(ordine, stato=rt) if ordine is not None else ""
@@ -821,6 +832,7 @@ def suspend_group(
                 causale=_norm_text(causale),
                 minuti_non_funzionamento=minuti_non_funzionamento,
                 secondi_non_funzionamento=stop_seconds,
+                operatore_in_carico=operatore_in_carico,
             )
 
     group.Status = GROUP_STATUS_SOSPESO

@@ -6,6 +6,7 @@ from app_odp.operator_session import active_token
 from app_odp.policy.decorator import require_active_perm
 from app_odp.routes_blueprint import main_bp
 from app_odp.services.storico_ordini_service import (
+    EVENT_FILTERS,
     build_storico_ordini_detail,
     build_storico_ordini_list,
     build_storico_lotti_search,
@@ -22,6 +23,7 @@ def storico_ordini_page():
         default_date_from=date_from,
         default_date_to=date_to,
         tab_session=active_token(),
+        event_filters=EVENT_FILTERS,
     )
 
 

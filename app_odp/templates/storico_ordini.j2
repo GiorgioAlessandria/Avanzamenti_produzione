@@ -53,16 +53,16 @@
         <div class="d-flex justify-content-between align-items-start mb-3">
             <div>
                 <h1 class="h4 mb-1">Storico ordini</h1>
-                <div class="text-muted small">Log operativi, chiusure, gruppi, lotti e matricole</div>
+                <div class="text-muted small">Passaggi per fase, prese in carico ed esiti della lavorazione</div>
             </div>
         </div>
 
-        <div class="card shadow-sm mb-3 storico-filter-card">
-            <div class="card-header d-flex justify-content-between align-items-center">
+        <details class="card shadow-sm mb-3 storico-filter-card">
+            <summary class="card-header">
                 <span class="fw-semibold">Ricerca storico lotti</span>
                 <span class="small text-muted" id="storico-lotti-count"
                       role="status" aria-live="polite"></span>
-            </div>
+            </summary>
             <div class="card-body">
                 <form class="row g-2 align-items-end" id="storico-lotti-form">
                     <div class="col-12 col-md-5">
@@ -114,7 +114,7 @@
                     <tbody id="storico-lotti-body"></tbody>
                 </table>
             </div>
-        </div>
+        </details>
 
         <div class="card shadow-sm mb-3 storico-filter-card">
             <div class="card-body">
@@ -157,7 +157,7 @@
                     </div>
                     <div class="col-12 col-md-2">
                         <label class="form-label"
-                               for="storico-operatore">Operatore</label>
+                               for="storico-operatore">Autore evento</label>
                         <input class="form-control"
                                id="storico-operatore">
                     </div>
@@ -170,8 +170,12 @@
                     <div class="col-12 col-md-2">
                         <label class="form-label"
                                for="storico-evento">Evento</label>
-                        <input class="form-control"
-                               id="storico-evento">
+                        <select class="form-select" id="storico-evento">
+                            <option value="">Tutti</option>
+                            {% for code, label in event_filters.items() %}
+                            <option value="{{ code }}">{{ label }}</option>
+                            {% endfor %}
+                        </select>
                     </div>
                     <div class="col-12 col-md-2">
                         <label class="form-label"
@@ -204,7 +208,7 @@
 
         <div class="card shadow-sm">
             <div class="card-header d-flex justify-content-between align-items-center">
-                <span class="fw-semibold">Risultati</span>
+                <span class="fw-semibold">Passaggi nel periodo e nei filtri selezionati</span>
                 <span class="small text-muted"
                       id="storico-count"
                       role="status"
@@ -214,15 +218,15 @@
                 <table class="table table-sm table-hover align-middle mb-0">
                     <thead class="table-light">
                     <tr>
-                        <th>Ultimo evento</th>
+                        <th>Data ultimo passaggio</th>
                         <th>Tipo</th>
                         <th>Ordine / gruppo</th>
                         <th>N. riga ERP</th>
                         <th>Articoli</th>
                         <th>Risorse</th>
-                        <th>Operatori</th>
-                        <th>Eventi</th>
-                        <th class="text-end">Operazioni</th>
+                        <th>Autore ultimo passaggio</th>
+                        <th>Ultimo passaggio</th>
+                        <th>Fase</th>
                         <th></th>
                     </tr>
                     </thead>
@@ -260,7 +264,7 @@
                 <div class="modal-header">
                     <div>
                         <h2 class="modal-title h5"
-                            id="storico-detail-title">Dettaglio log</h2>
+                            id="storico-detail-title">Storico lavorazione</h2>
                         <div class="small text-muted"
                              id="storico-detail-subtitle"></div>
                     </div>
@@ -391,16 +395,16 @@
                         <td>${shortList(row.num_progr_righe)}</td>
                         <td>${shortList(row.articles)}</td>
                         <td>${shortList(row.risorse)}</td>
-                        <td>${shortList(row.operatori)}</td>
-                        <td class="storico-events">${shortList(row.eventi)}</td>
-                        <td class="text-end">${esc(row.count)}</td>
+                        <td>${esc(row.last_operator || "Non disponibile")}</td>
+                        <td class="storico-events">${esc(row.last_event)}</td>
+                        <td>${esc(row.last_phase ? window.phaseLabel(row.last_phase) : "Non disponibile")}</td>
                         <td class="text-end">
                             <button type="button"
                                     class="btn btn-sm btn-outline-primary js-storico-detail"
                                     data-kind="${esc(row.kind)}"
                                     data-group-uid="${esc(row.group_uid || "")}"
                                     data-key="${esc(row.key)}">
-                                Dettaglio log
+                                Storico lavorazione
                             </button>
                         </td>
                     </tr>
@@ -500,10 +504,43 @@
                 `;
             }
 
+            function eventDetails(ev) {
+                const hasQuantity = ev.q_ok !== "" || ev.q_ko !== "";
+                const lots = (title, rows) => rows.length ? `<h4 class="h6 mt-2">${title}</h4>${table(
+                    ["Lotto / matricola", "Articolo", "Quantità", "Fase"], rows, row => `
+                        <tr><td>${esc(row.lotto)}</td><td>${esc(row.articolo)}</td>
+                        <td>${esc(row.quantita)}</td><td>${esc(window.phaseLabel(row.fase))}</td></tr>`
+                )}` : "";
+                return `<div class="border-top pt-2 mt-2">
+                    <div class="small text-muted mb-2">Ordine ${esc(ev.ordine)} · ${esc(ev.articolo || "Articolo non disponibile")}${ev.num_progr_riga ? ` · Riga ERP ${esc(ev.num_progr_riga)}` : ev.id_riga ? ` · Riga ${esc(ev.id_riga)}` : ""}</div>
+                    <div class="row g-2 small mb-2">
+                        <div class="col-12 col-md-6">Registrato da: <strong>${esc(ev.utente || "Non disponibile")}</strong></div>
+                        <div class="col-12 col-md-6">Operatore della presa in carico: <strong>${esc(ev.operatore_in_carico || "Non disponibile")}</strong>${ev.presa_in_carico_ricostruita ? ' <span class="text-muted">(ricostruito)</span>' : ""}</div>
+                    </div>
+                    ${ev.causale ? `<div class="border-start border-warning border-3 ps-2 mb-2"><strong>Causale:</strong> ${esc(ev.causale)}</div>` : ""}
+                    ${ev.stato_pre || ev.stato_post ? `<div class="small">Stato: ${esc(ev.stato_pre || "Non disponibile")} → ${esc(ev.stato_post || "Non disponibile")}</div>` : ""}
+                    ${hasQuantity ? `<div class="small">Conformi: <strong>${esc(ev.q_ok || "0")}</strong> · Non conformi: <strong>${esc(ev.q_ko || "0")}</strong>${ev.quantita_residua !== "" ? ` · Quantità residua: ${esc(ev.quantita_residua)}` : ""}</div>` : ""}
+                    ${ev.fase_successiva && ev.categoria === "fase_completata" ? `<div class="small text-primary">Fase successiva: ${esc(window.phaseLabel(ev.fase_successiva))}</div>` : ""}
+                    ${ev.tempo_lavorazione_ore ? `<div class="small">Tempo registrato nella fase: ${esc(ev.tempo_lavorazione_ore)} ore</div>` : ""}
+                    ${ev.tempo_non_funzionamento_minuti ? `<div class="small">Non funzionamento: ${esc(ev.tempo_non_funzionamento_minuti)} min</div>` : ""}
+                    ${ev.note ? `<div class="small mt-1" style="white-space: pre-wrap"><strong>Note:</strong> ${esc(ev.note)}</div>` : ""}
+                    ${(ev.documenti || []).length || (ev.lotti_usati || []).length || (ev.lotti_generati || []).length ? `
+                        <details class="mt-2"><summary class="small">Documenti e lotti collegati</summary>
+                            ${table(["Data", "Risorsa", "Matricola", "Note"], ev.documenti || [], row => `
+                                <tr><td>${esc(row.closed_at_display)}</td><td>${esc(row.risorsa)}</td><td>${esc(row.matricola)}</td><td style="white-space: pre-wrap">${esc(row.note)}</td></tr>`)}
+                            ${lots("Lotti usati", ev.lotti_usati || [])}
+                            ${lots("Lotti generati / matricole", ev.lotti_generati || [])}
+                        </details>` : ""}
+                    <details class="mt-2"><summary class="small text-muted">Dettagli tecnici</summary>
+                        <div class="small mt-1">${esc(ev.descrizione)}</div>
+                        <pre class="bg-light border rounded p-2 mt-1 storico-payload">${esc(ev.payload_pretty || "Nessun dato aggiuntivo")}</pre>
+                    </details>
+                </div>`;
+            }
+
             function renderDetail(data) {
-                const timeline = data.timeline || [];
                 const header = data.header || {};
-                detailTitle.textContent = header.title || "Dettaglio log";
+                detailTitle.textContent = header.title || "Storico lavorazione";
                 detailSubtitle.textContent = header.kind === "group"
                     ? `${header.group_type || ""} ${header.status ? "- " + header.status : ""}`
                     : "Ordine singolo";
@@ -522,33 +559,26 @@
                     `)}
                 ` : "";
 
-                const timelineHtml = timeline.length ? timeline.map(ev => `
-                    <div class="storico-timeline-item">
-                        <div class="d-flex justify-content-between gap-2">
-                            <div>
-                                <div class="fw-semibold">${esc(ev.azione_label)}</div>
-                                <div>${esc(ev.descrizione)}</div>
-                                <div class="small text-muted">${esc(ev.ordine)} - ${esc(ev.articolo || "")}</div>
-                                ${ev.num_progr_riga ? `
-                                    <div class="small">N. riga ERP: ${esc(ev.num_progr_riga)}</div>
-                                ` : ""}
-                                ${ev.tempo_lavorazione_ore ? `
-                                    <div class="small">Tempo lavorazione: ${esc(ev.tempo_lavorazione_ore)} ore</div>
-                                ` : ""}
-                                ${ev.tempo_non_funzionamento_minuti ? `
-                                    <div class="small">Non funzionamento: ${esc(ev.tempo_non_funzionamento_minuti)} min</div>
-                                ` : ""}
-                            </div>
-                            <div class="text-muted small text-end">${esc(ev.event_at_display)}</div>
+                let previousPhase = null;
+                const timelineHtml = (data.passaggi || []).map(step => {
+                    const phaseHeading = step.fase !== previousPhase
+                        ? `<h3 class="h6 border-bottom pb-2 mt-3">Fase: ${esc(step.fase ? window.phaseLabel(step.fase) : "Non disponibile")}</h3>`
+                        : "";
+                    previousPhase = step.fase;
+                    return `${phaseHeading}<div class="storico-timeline-item">
+                        <div class="d-flex flex-wrap justify-content-between gap-2 mb-2">
+                            <div class="fw-semibold">${esc(step.azione_label)}</div>
+                            <div class="text-muted small">${esc(step.event_at_display)}</div>
                         </div>
-                        ${ev.payload_pretty ? `
-                            <details class="mt-2">
-                                <summary class="small">Payload tecnico</summary>
-                                <pre class="bg-light border rounded p-2 mt-1 storico-payload">${esc(ev.payload_pretty)}</pre>
+                        ${step.eventi.length > 1 ? `
+                            <div class="small mb-2">Registrato da: <strong>${esc(step.utente || "Non disponibile")}</strong> · Operatore della presa in carico: <strong>${[...new Set(step.eventi.map(ev => ev.operatore_in_carico || "Non disponibile"))].map(esc).join(", ")}</strong></div>
+                            <details class="border rounded p-2">
+                                <summary>${step.eventi.length} ordini coinvolti — mostra esiti e prese in carico</summary>
+                                ${step.eventi.map(eventDetails).join("")}
                             </details>
-                        ` : ""}
-                    </div>
-                `).join("") : `<div class="text-muted">Nessun evento runtime.</div>`;
+                        ` : eventDetails(step.eventi[0])}
+                    </div>`;
+                }).join("") || '<p class="text-muted">Nessun passaggio operativo registrato.</p>';
 
                 const inputHtml = table(
                     ["Data", "Ordine", "N. riga ERP", "Articolo", "Fase", "Risorsa", "OK", "KO", "Lavorazione (ore)", "Non funzionamento (min)", "Utente", "Matricola", "Note"],
@@ -607,20 +637,32 @@
                 );
 
                 detailContent.innerHTML = `
-                    ${membersHtml}
-                    <h3 class="h6">Timeline eventi</h3>
+                    <p class="small text-muted">Sequenza cronologica completa. La presa in carico ricostruita deriva dagli eventi precedenti della stessa fase.</p>
+                    <h3 class="h6">Passaggi della lavorazione</h3>
                     <div class="storico-timeline mb-3">${timelineHtml}</div>
-                    <h3 class="h6">Snapshot e documenti di avanzamento</h3>
-                    ${inputHtml}
-                    <h3 class="h6">Lotti usati</h3>
-                    ${usedLotsHtml}
-                    <h3 class="h6">Lotti generati / matricole</h3>
-                    ${generatedLotsHtml}
+                    ${(data.registrazioni_tempi || []).length ? `
+                        <details class="border rounded p-3 mb-3">
+                            <summary class="fw-semibold">Registrazioni dei tempi (${data.registrazioni_tempi.length})</summary>
+                            ${data.registrazioni_tempi.map(ev => `
+                                <div class="border-bottom py-2">
+                                    <div class="fw-semibold">${esc(ev.azione_label)}</div>
+                                    <div class="small text-muted">${esc(ev.event_at_display)} · Fase ${esc(ev.fase ? window.phaseLabel(ev.fase) : "Non disponibile")}</div>
+                                    ${ev.elapsed_seconds !== "" ? `<div>Tempo attribuito: ${esc((Number(ev.elapsed_seconds) / 60).toLocaleString("it-IT", {maximumFractionDigits: 2}))} min</div>` : ""}
+                                    ${eventDetails(ev)}
+                                </div>`).join("")}
+                        </details>` : ""}
+                    <details class="border rounded p-3">
+                        <summary class="fw-semibold">Documenti originali, lotti e composizione del gruppo</summary>
+                        <div class="mt-3">${membersHtml}</div>
+                        <h3 class="h6">Registrazioni originali</h3>${inputHtml}
+                        <h3 class="h6">Lotti usati</h3>${usedLotsHtml}
+                        <h3 class="h6">Lotti generati / matricole</h3>${generatedLotsHtml}
+                    </details>
                 `;
             }
 
             async function openDetail(btn) {
-                detailTitle.textContent = "Dettaglio log";
+                detailTitle.textContent = "Storico lavorazione";
                 detailSubtitle.textContent = "";
                 detailContent.innerHTML = "Caricamento...";
                 const detailModal = bootstrap.Modal.getOrCreateInstance(detailModalEl);

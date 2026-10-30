@@ -320,6 +320,13 @@ def _append_operazione_log(
             default="",
         ),
         "tempo_funzionamento": _norm_text(runtime_post.get("tempo_funzionamento")),
+        "operatore_pre": _norm_text(runtime_pre.get("utente_operazione")),
+        "operatore_post": _norm_text(runtime_post.get("utente_operazione")),
+        "operatore_in_carico": _norm_text(
+            runtime_post.get("utente_operazione")
+            if action.startswith(("presa_in_carico", "riattivazione"))
+            else runtime_pre.get("utente_operazione")
+        ),
     }
     if q_ok not in (None, ""):
         payload["quantita_conforme"] = _norm_text(q_ok)
