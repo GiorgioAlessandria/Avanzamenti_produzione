@@ -166,10 +166,6 @@
             display: none;
         }
 
-        #vendite-assegnazioni-page .vendite-inline-customer-column {
-            display: table-cell !important;
-        }
-
         #vendite-assegnazioni-page .vendite-production-note > summary {
             cursor: pointer;
             list-style: none;
@@ -767,9 +763,9 @@
                                     <thead class="table-light">
                                     <tr>
                                         <th>#</th>
-                                        <th class="vendite-inline-customer-column d-none">N. ordine</th>
-                                        <th class="vendite-inline-customer-column d-none">Cliente</th>
-                                        <th class="vendite-inline-customer-column d-none">Tipologia</th>
+                                        <th class="vendite-inline-customer-column">N. ordine</th>
+                                        <th class="vendite-inline-customer-column">Cliente</th>
+                                        <th class="vendite-inline-customer-column">Tipologia</th>
                                         <th>Modello</th>
                                         <th id="vendite-delivery-sort-heading"
                                             aria-sort="none">
@@ -792,7 +788,7 @@
                                     </thead>
                                     <tbody id="vendite-customer-orders-body">
                                     <tr>
-                                        <td colspan="10"
+                                        <td colspan="13"
                                             class="text-center text-muted py-4">
                                             Caricamento...
                                         </td>
@@ -1390,14 +1386,14 @@
 
             function rowActions(row, order, showConfirmation) {
                 const save = canAssignMachines || canEditSalesNotes || canEditProductionInstructions
-                    ? `<button class="btn btn-sm btn-outline-primary text-nowrap"
+                    ? `<button class="btn btn-sm btn-outline-primary"
                                type="button"
                                data-save-row="${esc(row.id)}">
                            Salva
                        </button>`
                     : "";
                 const confirm = canConfirmOrderRead && !row.read_confirmed
-                    ? `<button class="btn btn-sm btn-warning text-nowrap"
+                    ? `<button class="btn btn-sm btn-warning"
                                type="button"
                                data-confirm-order-read="${esc(order.id)}"
                                data-confirm-row-id="${esc(row.id)}"
@@ -1416,7 +1412,7 @@
                         ${row.packaging?.confirmed_by_name ? `<div class="small text-muted">${esc(row.packaging.confirmed_by_name)}</div>` : ""}
                     </div>` : "";
                 const deleteRow = canDeleteOrders && !order.managed
-                    ? `<button class="btn btn-sm btn-outline-danger text-nowrap"
+                    ? `<button class="btn btn-sm btn-outline-danger"
                                type="button"
                                data-choose-delete-row="${esc(row.id)}"
                                data-order-id="${esc(order.id)}"
@@ -1426,12 +1422,12 @@
                        </button>`
                     : "";
                 const primaryControls = save || confirm
-                    ? `<div class="d-flex flex-nowrap gap-2">${save}${confirm}</div>`
+                    ? `<div class="d-flex flex-wrap gap-2 mw-100">${save}${confirm}</div>`
                     : "";
                 const controls = primaryControls || deleteRow
-                    ? `<div class="d-flex flex-column align-items-start gap-2">${primaryControls}${deleteRow}</div>`
+                    ? `<div class="d-flex flex-column align-items-start gap-2 mw-100">${primaryControls}${deleteRow}</div>`
                     : "";
-                return `<div class="d-flex flex-nowrap align-items-start gap-2">${controls}<div class="flex-grow-1">${packaging}</div></div>`;
+                return `<div class="d-flex flex-wrap align-items-start gap-2">${controls}<div class="flex-grow-1">${packaging}</div></div>`;
             }
 
             function syncRowVersion(data, rowId) {
@@ -1671,7 +1667,8 @@
             }
 
             function renderCustomerOrders(customerOrders) {
-                const columnCount = 10;
+                const columnCount = [...customerOrdersBody.closest("table").tHead.rows[0].cells]
+                    .filter(cell => getComputedStyle(cell).display !== "none").length;
                 if (!customerOrders.length) {
                     firstSectionControl.classList.add("d-none");
                     customerOrdersBody.innerHTML = `
@@ -1743,7 +1740,7 @@
                             data-customer-order-id="${esc(order.id)}"
                             data-collapse-key="${esc(collapseKey)}"
                             data-reference-class="${neutralClass}">
-                            <td colspan="10">
+                            <td colspan="${columnCount}">
                                 <div class="d-flex flex-wrap justify-content-between gap-2">
                                     <div class="d-flex flex-wrap align-items-center gap-2">
                                         <button class="btn btn-sm btn-outline-secondary"
@@ -1805,12 +1802,12 @@
                                 data-managed="${order.managed ? "true" : "false"}"
                                 data-version="${esc(row.version)}">
                                 <td class="fw-semibold">${esc(row.position)}</td>
-                                <td class="vendite-inline-customer-column d-none">
+                                <td class="vendite-inline-customer-column">
                                     <div class="fw-semibold">${esc(order.customer_order || "-")}</div>
                                     <span class="badge ${order.managed ? "text-bg-primary" : "text-bg-secondary"}">${order.managed ? "Gestionale" : "Manuale"}</span>
                                 </td>
-                                <td class="vendite-inline-customer-column d-none fw-semibold">${esc(order.customer_name)}</td>
-                                <td class="vendite-inline-customer-column d-none">
+                                <td class="vendite-inline-customer-column fw-semibold">${esc(order.customer_name)}</td>
+                                <td class="vendite-inline-customer-column">
                                     <span class="badge text-bg-light border">${esc(order.internal_reference || "ITALIA")}</span>
                                 </td>
                                 <td class="vendite-model-cell${(row.modified_fields || []).includes("model") ? " vendite-field-modified" : ""}">${modelLabel(row)}</td>

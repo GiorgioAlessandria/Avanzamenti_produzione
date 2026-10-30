@@ -126,6 +126,7 @@
 }
 
 #vendite-assegnazioni-page #vendite-customer-orders-table th:last-child {
+    width: 14rem;
     min-width: 8rem;
 }
 

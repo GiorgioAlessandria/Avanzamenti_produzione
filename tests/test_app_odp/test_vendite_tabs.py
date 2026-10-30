@@ -40,7 +40,7 @@ class VenditeTabsTest(unittest.TestCase):
                     self.assertNotIn("inlineCustomerData", html)
                     self.assertIn('>N. ordine</th>', html)
                     self.assertIn('order.managed ? "Gestionale" : "Manuale"', html)
-                    self.assertIn("const columnCount = 10", html)
+                    self.assertIn('getComputedStyle(cell).display !== "none"', html)
                     self.assertIn("productionNoteCell(row)", html)
                     self.assertIn("productionNoteCell(machine)", html)
                     self.assertIn('formatDateTime(audit.changed_at, "short")', html)
@@ -51,7 +51,7 @@ class VenditeTabsTest(unittest.TestCase):
                     self.assertIn("if (!editable)", html)
                     self.assertIn("noteContent(row[field])", html)
                     self.assertIn("canEditOrderDetails ?", html)
-                    self.assertIn("d-flex flex-nowrap align-items-start gap-2", html)
+                    self.assertIn("d-flex flex-wrap align-items-start gap-2", html)
                     self.assertIn('${save}${confirm}', html)
                     self.assertIn("rowActions(row, order, primaryHeading && rowIndex === 0)", html)
                     self.assertIn('class="flex-grow-1">${packaging}', html)
@@ -65,7 +65,7 @@ class VenditeTabsTest(unittest.TestCase):
                     self.assertNotIn("Ogni riga corrisponde", html)
                     self.assertNotIn("vendite-customer-grouping-description", html)
                     self.assertIn('formatDateTime(row.packaging?.confirmed_at, "short")', html)
-                    self.assertIn('colspan="10"', html)
+                    self.assertIn('colspan="13"', html)
                 nav = re.search(r'<ul class="nav nav-tabs[^>]*>(.*?)</ul>', html, re.S)[1]
                 labels = re.findall(r'<(?:button|a)\b[^>]*>(.*?)</(?:button|a)>', nav, re.S)
                 self.assertEqual([label.strip() for label in labels], expected)
@@ -129,6 +129,22 @@ class VenditeTabsTest(unittest.TestCase):
                     visible_count = sum("d-none" not in attrs for attrs in headers)
                     span = int(re.search(r'colspan="(\d+)"', table)[1])
                     self.assertEqual(span, visible_count)
+
+    def test_customer_order_loading_row_matches_headers(self):
+        templates = Path(__file__).resolve().parents[2] / "app_odp/templates"
+        env = Environment(loader=ChoiceLoader([
+            DictLoader({"base.j2": "{% block styles %}{% endblock %}{% block content %}{% endblock %}"}),
+            FileSystemLoader(templates),
+        ]))
+        env.globals["operator_url_for"] = lambda *args, **kwargs: "/"
+        html = env.get_template("vendite_assegnazioni.j2").render(
+            request=SimpleNamespace(args={"vista": "ordini"}),
+        )
+        table = html.split('id="vendite-customer-orders-table"', 1)[1].split("</table>", 1)[0]
+        headers = re.findall(r"<th\b([^>]*)>", table)
+        self.assertEqual(len(headers), 13)
+        self.assertTrue(all("d-none" not in attrs for attrs in headers))
+        self.assertEqual(int(re.search(r'colspan="(\d+)"', table)[1]), len(headers))
 
     def test_packaging_user_can_view_customer_orders(self):
         from app_odp.routes_modules.vendite import _can_view_customer_orders
