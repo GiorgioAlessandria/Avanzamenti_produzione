@@ -6,7 +6,10 @@ import json
 from sqlalchemy import and_, desc, or_
 
 from app_odp.models import (
+    AcqArticoli,
+    AcqArticoliLookup,
     GiacenzaLotti,
+    GiacenzaMateriale,
     InputOdpLog,
     LottiGeneratiLog,
     LottiUsatiLog,
@@ -1017,13 +1020,45 @@ def _lotto_search_row(row, kind: str) -> dict:
     }
 
 
-def _lot_quantity_summary(lotto: str) -> dict | None:
-    if len(lotto) != 8 or not lotto.isdigit():
-        return None
+def _lot_materials(lotto: str) -> list[dict]:
+    codes = set()
+    for model in (GiacenzaLotti, LottiUsatiLog, LottiGeneratiLog):
+        codes.update(_norm_text(code) for (code,) in model.query.with_entities(
+            model.CodArt
+        ).filter_by(RifLottoAlfa=lotto).distinct().all() if _norm_text(code))
+    if not codes:
+        return []
 
-    stock_rows = GiacenzaLotti.query.filter_by(RifLottoAlfa=lotto).all()
-    used_rows = LottiUsatiLog.query.filter_by(RifLottoAlfa=lotto).all()
-    generated_rows = LottiGeneratiLog.query.filter_by(RifLottoAlfa=lotto).all()
+    descriptions = {}
+    for model in (AcqArticoli, AcqArticoliLookup, GiacenzaMateriale):
+        missing = codes - descriptions.keys()
+        if not missing:
+            break
+        query = model.query.with_entities(model.CodArt, model.DesArt).filter(model.CodArt.in_(missing))
+        if model is AcqArticoliLookup:
+            query = query.order_by(model.synced_at.desc(), model.IndiceModifica.desc(), model.VarianteArt)
+        else:
+            query = query.order_by(model.CodArt, model.DesArt)
+        for row in query:
+            if _norm_text(row.DesArt):
+                descriptions.setdefault(_norm_text(row.CodArt), _norm_text(row.DesArt))
+    missing = codes - descriptions.keys()
+    if missing:
+        for row in InputOdpLog.query.with_entities(InputOdpLog.CodArt, InputOdpLog.DesArt).filter(
+            InputOdpLog.CodArt.in_(missing)
+        ).order_by(
+            InputOdpLog.log_id.desc()
+        ):
+            if _norm_text(row.DesArt):
+                descriptions.setdefault(_norm_text(row.CodArt), _norm_text(row.DesArt))
+    return [{"codice": code, "descrizione": descriptions.get(code, "")} for code in sorted(codes)]
+
+
+def _lot_quantity_summary(lotto: str, articolo: str) -> dict:
+
+    stock_rows = GiacenzaLotti.query.filter_by(RifLottoAlfa=lotto, CodArt=articolo).all()
+    used_rows = LottiUsatiLog.query.filter_by(RifLottoAlfa=lotto, CodArt=articolo).all()
+    generated_rows = LottiGeneratiLog.query.filter_by(RifLottoAlfa=lotto, CodArt=articolo).all()
 
     def total(rows, field):
         value = 0
@@ -1048,17 +1083,25 @@ def _lot_quantity_summary(lotto: str) -> dict | None:
 
 def build_storico_lotti_search(params) -> dict:
     lotto = _norm_text(params.get("lotto"))
-    if len(lotto) < 2:
-        return {"ok": False, "error": "Inserire almeno 2 caratteri del lotto."}
+    articolo = _norm_text(params.get("articolo"))
+    if not lotto:
+        return {"ok": False, "error": "Inserire il lotto completo."}
 
-    like = f"%{lotto}%"
+    materials = _lot_materials(lotto)
+    if not articolo:
+        return {"ok": True, "lotto": lotto, "materiali": materials,
+                "rows": [], "total": 0, "limit_reached": False, "quantity_summary": None}
+    selected = next((item for item in materials if item["codice"] == articolo), None)
+    if selected is None:
+        return {"ok": False, "error": "Il codice materiale non risulta associato al lotto indicato."}
+
     rows = []
     for model, kind in (
         (LottiUsatiLog, "used"),
         (LottiGeneratiLog, "generated"),
     ):
         matches = (
-            model.query.filter(model.RifLottoAlfa.ilike(like))
+            model.query.filter_by(RifLottoAlfa=lotto, CodArt=articolo)
             .order_by(desc(model.ClosedAt), desc(model.logged_at), desc(model.log_id))
             .limit(LOT_SEARCH_LIMIT + 1)
             .all()
@@ -1071,10 +1114,13 @@ def build_storico_lotti_search(params) -> dict:
         {
             "ok": True,
             "lotto": lotto,
+            "articolo": articolo,
+            "descrizione": selected["descrizione"],
+            "materiali": materials,
             "rows": rows[:LOT_SEARCH_LIMIT],
             "total": min(len(rows), LOT_SEARCH_LIMIT),
             "limit_reached": limited,
-            "quantity_summary": _lot_quantity_summary(lotto),
+            "quantity_summary": _lot_quantity_summary(lotto, articolo),
         }
     )
 

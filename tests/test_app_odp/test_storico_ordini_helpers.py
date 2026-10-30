@@ -6,7 +6,7 @@ import pytest
 from flask import Flask
 from sqlalchemy.schema import CreateTable
 
-from app_odp.models import GiacenzaLotti, LottiGeneratiLog, LottiUsatiLog, db
+from app_odp.models import AcqArticoli, AcqArticoliLookup, GiacenzaLotti, GiacenzaMateriale, LottiGeneratiLog, LottiUsatiLog, db
 from app_odp.models import InputOdpLog, OdpRuntimeLog, OdpWorkGroup, OdpWorkGroupMember
 from app_odp.services import storico_ordini_service as service
 
@@ -17,12 +17,16 @@ def storico_app():
     app.config.update(
         TESTING=True,
         SQLALCHEMY_DATABASE_URI="sqlite://",
-        SQLALCHEMY_BINDS={"log": "sqlite://"},
+        SQLALCHEMY_BINDS={"log": "sqlite://", "acq": "sqlite://"},
         SQLALCHEMY_TRACK_MODIFICATIONS=False,
     )
     db.init_app(app)
     with app.app_context():
         GiacenzaLotti.__table__.create(db.engine)
+        GiacenzaMateriale.__table__.create(db.engine)
+        AcqArticoli.__table__.create(db.engines["acq"])
+        AcqArticoliLookup.__table__.create(db.engines["acq"])
+        InputOdpLog.__table__.create(db.engines["log"])
         LottiUsatiLog.__table__.create(db.engines["log"])
         LottiGeneratiLog.__table__.create(db.engines["log"])
     yield app
@@ -30,6 +34,10 @@ def storico_app():
         db.session.remove()
         LottiGeneratiLog.__table__.drop(db.engines["log"])
         LottiUsatiLog.__table__.drop(db.engines["log"])
+        InputOdpLog.__table__.drop(db.engines["log"])
+        GiacenzaMateriale.__table__.drop(db.engine)
+        AcqArticoliLookup.__table__.drop(db.engines["acq"])
+        AcqArticoli.__table__.drop(db.engines["acq"])
         GiacenzaLotti.__table__.drop(db.engine)
 
 
@@ -311,7 +319,7 @@ def test_lot_history_search_returns_used_and_generated_order_assignments(storico
         )
         db.session.commit()
 
-        result = service.build_storico_lotti_search({"lotto": "20260918"})
+        result = service.build_storico_lotti_search({"lotto": "20260918", "articolo": "ART-1"})
 
         assert result["ok"] is True
         assert result["total"] == 2
@@ -330,7 +338,7 @@ def test_lot_history_search_returns_used_and_generated_order_assignments(storico
 
 @pytest.fixture()
 def history_app(storico_app):
-    tables = [InputOdpLog, OdpRuntimeLog, OdpWorkGroup, OdpWorkGroupMember]
+    tables = [OdpRuntimeLog, OdpWorkGroup, OdpWorkGroupMember]
     with storico_app.app_context():
         for model in tables:
             engine = db.engines[getattr(model, "__bind_key__", None)]
@@ -472,3 +480,141 @@ def test_group_window_does_not_import_events_or_documents_of_next_group(history_
 def test_legacy_suspension_cause_is_visible_without_opening_technical_data():
     row = InputOdpLog(IdDocumento="DOC", IdRiga="1", StatoOrdinePost="In Sospeso", NoteChiusura="Sospensione ordine | Causale: Materiale mancante")
     assert service._input_timeline_to_dict(row)["causale"] == "Materiale mancante"
+
+
+def test_lot_search_lists_materials_before_showing_history(storico_app):
+    with storico_app.app_context():
+        db.session.add_all([
+            GiacenzaLotti(CodArt="ART-A", RifLottoAlfa="LOT-1", CodMag="A", Giacenza="2"),
+            GiacenzaLotti(CodArt="ART-A", RifLottoAlfa="LOT-1", CodMag="B", Giacenza="3"),
+            GiacenzaMateriale(CodArt="ART-A", CodMag="A", Giacenza="5", RifLottoAlfa="", DesArt="Materiale A"),
+            LottiUsatiLog(OperationGroupId="used-b", IdDocumento="DOC", IdRiga="1", CodArt="ART-B", RifLottoAlfa="LOT-1", Quantita="4"),
+            InputOdpLog(OperationGroupId="old-b", IdDocumento="DOC", IdRiga="2", CodArt="ART-B", DesArt="Materiale B archiviato", ClosedAt="2026-10-30T09:00:00"),
+            LottiGeneratiLog(OperationGroupId="generated-c", IdDocumento="DOC", IdRiga="3", CodArt="ART-C", RifLottoAlfa="LOT-1", Quantita="10"),
+            GiacenzaLotti(CodArt="OTHER", RifLottoAlfa="LOT-10", CodMag="A", Giacenza="100"),
+        ])
+        db.session.commit()
+        result = service.build_storico_lotti_search({"lotto": "LOT-1"})
+        assert result["materiali"] == [
+            {"codice": "ART-A", "descrizione": "Materiale A"},
+            {"codice": "ART-B", "descrizione": "Materiale B archiviato"},
+            {"codice": "ART-C", "descrizione": ""},
+        ]
+        assert result["rows"] == []
+        assert result["quantity_summary"] is None
+        assert service.build_storico_lotti_search({"lotto": "LOT"})["materiali"] == []
+
+
+def test_same_lot_multiple_codes_keeps_history_and_quantities_separate(storico_app):
+    with storico_app.app_context():
+        for code, used, generated, available in [("A", "4", "10", "5"), ("B", "40", "100", "50")]:
+            db.session.add_all([
+                GiacenzaLotti(CodArt=code, RifLottoAlfa="20261030", CodMag="A", Giacenza=available),
+                LottiUsatiLog(OperationGroupId=f"used-{code}", IdDocumento="DOC", IdRiga=code, CodArt=code, RifLottoAlfa="20261030", Quantita=used),
+                LottiGeneratiLog(OperationGroupId=f"generated-{code}", IdDocumento="DOC", IdRiga=code, CodArt=code, RifLottoAlfa="20261030", Quantita=generated),
+            ])
+        db.session.commit()
+        for code, quantities in [("A", ("10", "5", "4")), ("B", ("100", "50", "40"))]:
+            result = service.build_storico_lotti_search({"lotto": "20261030", "articolo": code})
+            assert result["articolo"] == code
+            assert len(result["rows"]) == 2
+            assert all(row["articolo"] == code and row["lotto"] == "20261030" for row in result["rows"])
+            assert result["quantity_summary"] == dict(zip(
+                ("original_quantity", "available_quantity", "used_quantity", "original_source"),
+                (*quantities, "generated"),
+            ))
+
+
+def test_alphanumeric_lot_stock_only_is_selectable_and_summed_across_warehouses(storico_app):
+    with storico_app.app_context():
+        db.session.add_all([
+            GiacenzaLotti(CodArt="A", RifLottoAlfa="L_%", CodMag="A", Giacenza="2.5"),
+            GiacenzaLotti(CodArt="A", RifLottoAlfa="L_%", CodMag="B", Giacenza="3"),
+            GiacenzaLotti(CodArt="A", RifLottoAlfa="L_OTHER", CodMag="A", Giacenza="100"),
+        ])
+        db.session.commit()
+        result = service.build_storico_lotti_search({"lotto": "L_%", "articolo": "A"})
+        assert result["rows"] == []
+        assert result["quantity_summary"] == {
+            "original_quantity": "5.5", "available_quantity": "5.5",
+            "used_quantity": "0", "original_source": "reconstructed",
+        }
+
+
+def test_lot_search_rejects_a_code_from_another_lot(storico_app):
+    with storico_app.app_context():
+        db.session.add(GiacenzaLotti(CodArt="A", RifLottoAlfa="LOT-A", CodMag="A", Giacenza="1"))
+        db.session.commit()
+        assert service.build_storico_lotti_search({"lotto": "LOT-A", "articolo": "B"})["ok"] is False
+        assert service.build_storico_lotti_search({"lotto": ""})["ok"] is False
+        assert service.build_storico_lotti_search({"lotto": "UNKNOWN"})["materiali"] == []
+
+
+def test_material_choices_are_not_truncated_by_the_history_limit(storico_app, monkeypatch):
+    monkeypatch.setattr(service, "LOT_SEARCH_LIMIT", 2)
+    with storico_app.app_context():
+        for n, code in enumerate(["B", "A", "A", "A"]):
+            db.session.add(LottiUsatiLog(OperationGroupId=f"op-{n}", IdDocumento="DOC", IdRiga=str(n), CodArt=code, RifLottoAlfa="LOT", Quantita="1", ClosedAt=f"2026-10-30T0{n}:00:00"))
+        db.session.commit()
+        choices = service.build_storico_lotti_search({"lotto": "LOT"})["materiali"]
+        assert [item["codice"] for item in choices] == ["A", "B"]
+        result = service.build_storico_lotti_search({"lotto": "LOT", "articolo": "A"})
+        assert result["limit_reached"] is True
+        assert len(result["rows"]) == 2
+        assert result["quantity_summary"]["used_quantity"] == "3"
+
+
+def test_used_material_does_not_inherit_the_parent_order_description(storico_app):
+    with storico_app.app_context():
+        db.session.add_all([
+            LottiUsatiLog(OperationGroupId="op", IdDocumento="DOC", IdRiga="1", CodArt="COMPONENT", RifLottoAlfa="LOT", Quantita="1"),
+            InputOdpLog(OperationGroupId="op", IdDocumento="DOC", IdRiga="1", CodArt="PARENT", DesArt="Macchina completa", ClosedAt="2026-10-30T09:00:00"),
+        ])
+        db.session.commit()
+        assert service.build_storico_lotti_search({"lotto": "LOT"})["materiali"] == [{"codice": "COMPONENT", "descrizione": ""}]
+
+
+def test_lot_descriptions_come_from_article_master_when_material_stock_table_is_empty(storico_app):
+    with storico_app.app_context():
+        db.session.add_all([
+            GiacenzaLotti(CodArt="A", RifLottoAlfa="LOT", CodMag="A", Giacenza="2"),
+            GiacenzaLotti(CodArt="B", RifLottoAlfa="LOT", CodMag="A", Giacenza="3"),
+            AcqArticoli(CodArt="A", DesArt="Descrizione articolo A"),
+            AcqArticoliLookup(CodArt="B", VarianteArt="", IndiceModifica="", DesArt="Descrizione articolo B"),
+        ])
+        db.session.commit()
+        assert GiacenzaMateriale.query.count() == 0
+        assert service.build_storico_lotti_search({"lotto": "LOT"})["materiali"] == [
+            {"codice": "A", "descrizione": "Descrizione articolo A"},
+            {"codice": "B", "descrizione": "Descrizione articolo B"},
+        ]
+        selected = service.build_storico_lotti_search({"lotto": "LOT", "articolo": "B"})
+        assert selected["descrizione"] == "Descrizione articolo B"
+
+
+def test_article_master_description_takes_precedence_over_stock_and_old_snapshots(storico_app):
+    with storico_app.app_context():
+        db.session.add_all([
+            GiacenzaLotti(CodArt="A", RifLottoAlfa="LOT", CodMag="A", Giacenza="2"),
+            AcqArticoli(CodArt="A", DesArt="Descrizione corrente"),
+            AcqArticoliLookup(CodArt="A", VarianteArt="", IndiceModifica="", DesArt="Descrizione lookup"),
+            GiacenzaMateriale(CodArt="A", CodMag="A", RifLottoAlfa="", Giacenza="2", DesArt="Descrizione giacenza"),
+            InputOdpLog(OperationGroupId="old", IdDocumento="DOC", IdRiga="1", CodArt="A", DesArt="Descrizione storica", ClosedAt="2026-10-30T09:00:00"),
+        ])
+        db.session.commit()
+        assert service.build_storico_lotti_search({"lotto": "LOT"})["materiali"] == [
+            {"codice": "A", "descrizione": "Descrizione corrente"},
+        ]
+
+
+def test_empty_master_description_uses_latest_nonempty_lookup_description(storico_app):
+    with storico_app.app_context():
+        db.session.add_all([
+            GiacenzaLotti(CodArt="A", RifLottoAlfa="LOT", CodMag="A", Giacenza="2"),
+            AcqArticoli(CodArt="A", DesArt=" "),
+            AcqArticoliLookup(CodArt="A", VarianteArt="", IndiceModifica="1", DesArt="Descrizione precedente", synced_at="2026-09-01"),
+            AcqArticoliLookup(CodArt="A", VarianteArt="", IndiceModifica="2", DesArt="Descrizione aggiornata", synced_at="2026-10-01"),
+            AcqArticoliLookup(CodArt="A", VarianteArt="", IndiceModifica="3", DesArt="", synced_at="2026-10-30"),
+        ])
+        db.session.commit()
+        assert service.build_storico_lotti_search({"lotto": "LOT"})["materiali"][0]["descrizione"] == "Descrizione aggiornata"
