@@ -5,7 +5,7 @@ import re
 import json
 from statistics import median
 from flask import request
-from openpyxl.styles import Font
+from openpyxl.styles import Font, Alignment
 from openpyxl.utils import get_column_letter
 from sqlalchemy import func, and_
 from app_odp.policy.policy import RbacPolicy
@@ -28,10 +28,31 @@ from app_odp.services.order_helpers import (
     _safe_float,
     _fase_to_int,
     _first_code_from_cell,
-    _active_value_for_phase,
-    _parse_phase_list,
     _ordine_ref_label,
     _qty_da_lavorare_text,
+)
+
+from app_odp.services.kpi_service import (
+    _kpi_is_order_completed,
+    _kpi_macchine_prodotte,
+    _kpi_matricola_for_log,
+    _kpi_event_is_eligible,
+    _kpi_jsonish_list,
+    _kpi_active_value_from_list,
+    _kpi_reparto_for_log,
+    _kpi_risorsa_for_log,
+    _kpi_lavorazione_for_log,
+    _kpi_parse_datetime,
+    _kpi_tempo_previsto_ore,
+    _kpi_tempo_reale_ore,
+    _kpi_quantita_consuntivata,
+    _kpi_closed_at,
+    _kpi_lead_time_ore,
+    _kpi_data_fine_prevista,
+    _kpi_parse_date,
+    KPI_CLOSURE_ACTIONS,
+    _kpi_is_partial,
+    _kpi_history,
 )
 
 DASHBOARD_FILTER_KEYS = (
@@ -208,7 +229,8 @@ def _dashboard_capacity_hours_from_weekday(
     days: list[date] | None = None,
 ) -> float:
     """Somma le ore di capacità sulla finestra del cruscotto, da oggi in avanti."""
-    days = days or _dashboard_next_month_days()
+    if days is None:
+        days = _dashboard_next_month_days()
 
     return round(
         sum(float(capacity_by_weekday.get(day.weekday(), 0.0) or 0.0) for day in days),
@@ -339,10 +361,7 @@ def _dashboard_capacity_by_reparto_today_for_policy(
     reparto_labels = _dashboard_reparti_label_map()
 
     for user in _dashboard_capacity_users(policy, filters):
-        reparto = _norm_text(getattr(user, "RepartoPrinc", ""))
-
-        if not reparto:
-            continue
+        reparto = _norm_text(getattr(user, "RepartoPrinc", "")) or "-"
 
         capacity = _dashboard_capacity_for_operator(user)
         ore_oggi = _dashboard_capacity_hours_today(capacity)
@@ -461,18 +480,16 @@ def _dashboard_saturazione_risorse(
 
         if capacita > 0:
             saturazione = round((ore_totali / capacita) * 100, 2)
-        elif ore_totali > 0:
-            saturazione = 120.0
         else:
-            saturazione = 0.0
+            saturazione = None
 
         if capacita <= 0 and ore_totali > 0:
             livello = "senza_capacita"
-        elif saturazione > 100:
+        elif saturazione is not None and saturazione > 100:
             livello = "critico"
-        elif saturazione >= 80:
+        elif saturazione is not None and saturazione >= 80:
             livello = "attenzione"
-        elif saturazione >= 50:
+        elif saturazione is not None and saturazione >= 50:
             livello = "buono"
         else:
             livello = "sottocarico"
@@ -494,7 +511,7 @@ def _dashboard_saturazione_risorse(
             }
         )
 
-    return sorted(out, key=lambda x: (-x["saturazione"], x["label"].lower()))
+    return sorted(out, key=lambda x: (x["capacita"] > 0, -(x["saturazione"] or 0), x["label"].lower()))
 
 
 def _dashboard_colli_bottiglia_risorse(
@@ -503,8 +520,13 @@ def _dashboard_colli_bottiglia_risorse(
     filters: dict | None = None,
 ) -> list[dict]:
     carico = {}
+    seen_keys = set()
 
     for ordine in ordini or []:
+        key = _dashboard_order_key(ordine)
+        if key in seen_keys or _dashboard_is_chiusa(ordine):
+            continue
+        seen_keys.add(key)
         if not _dashboard_ordine_in_saturation_day(ordine):
             continue
 
@@ -512,7 +534,9 @@ def _dashboard_colli_bottiglia_risorse(
         if not risorsa:
             continue
 
-        carico[risorsa] = carico.get(risorsa, 0.0) + _dashboard_carico_ore(ordine)
+        ore = _dashboard_carico_ore(ordine)
+        if ore > 0:
+            carico[risorsa] = carico.get(risorsa, 0.0) + ore
 
     labels = _dashboard_model_label_map(Risorse)
     today_weekday = _dashboard_today().weekday()
@@ -530,7 +554,7 @@ def _dashboard_colli_bottiglia_risorse(
         )
         ore = round(float(ore or 0.0), 2)
         saturazione = (
-            round((ore / capacita) * 100, 2) if capacita > 0 else 120.0
+            round((ore / capacita) * 100, 2) if capacita > 0 else None
         )
 
         if capacita > 0 and saturazione <= 100:
@@ -549,7 +573,7 @@ def _dashboard_colli_bottiglia_risorse(
             }
         )
 
-    return sorted(out, key=lambda x: (-x["saturazione"], x["label"].lower()))
+    return sorted(out, key=lambda x: (not x["senza_capacita"], -(x["saturazione"] or 0), x["label"].lower()))
 
 
 def _dashboard_ordini_per_reparto(ordini: list[InputOdp]) -> list[dict]:
@@ -648,46 +672,23 @@ def _dashboard_is_collaudo(ordine: InputOdp) -> bool:
 
 def _dashboard_user_matches_capacity_filters(user: User, filters: dict | None) -> bool:
     filters = filters or {}
-
-    operatore_filter = _dashboard_text_filter(filters.get("operatore"))
-    reparto_filter = _dashboard_text_filter(filters.get("reparto"))
-    risorsa_filter = _dashboard_text_filter(filters.get("risorsa"))
-
-    username = _norm_text(getattr(user, "username", ""))
-    reparto_code = _norm_text(getattr(user, "RepartoPrinc", ""))
-
-    if operatore_filter and operatore_filter not in username.lower():
-        return False
-
-    if reparto_filter:
-        reparto_label = reparto_code
-
-        if reparto_code:
-            reparto = Reparti.query.filter(
-                func.lower(Reparti.Codice) == reparto_code.lower()
-            ).first()
-
-            if reparto is not None:
-                reparto_label = (
-                    f"{_norm_text(getattr(reparto, 'Codice', ''))} "
-                    f"{_norm_text(getattr(reparto, 'Descrizione', ''))}"
-                )
-
-        if reparto_filter not in reparto_label.lower():
+    for key, value in (("operatore", getattr(user, "username", "")),
+                       ("reparto", getattr(user, "RepartoPrinc", ""))):
+        expected = _dashboard_text_filter(filters.get(key))
+        if expected and expected != _dashboard_text_filter(value):
             return False
-
-    if risorsa_filter:
-        risorsa_labels = []
-
-        for risorsa in getattr(user, "risorse", []) or []:
-            risorsa_labels.append(
-                f"{_norm_text(getattr(risorsa, 'Codice', ''))} "
-                f"{_norm_text(getattr(risorsa, 'Descrizione', ''))}"
-            )
-
-        if not any(risorsa_filter in label.lower() for label in risorsa_labels):
+    for key, relationship in (("risorsa", "risorse"), ("lavorazione", "lavorazioni")):
+        expected = _dashboard_text_filter(filters.get(key))
+        if not expected:
+            continue
+        user_codes = {_dashboard_text_filter(getattr(item, "Codice", ""))
+                      for item in getattr(user, relationship, []) or []}
+        role_codes = {_dashboard_text_filter(getattr(item, "Codice", ""))
+                      for role in getattr(user, "_iter_roles", lambda: [])()
+                      for item in getattr(role, relationship, []) or []}
+        codes = role_codes & user_codes if role_codes and user_codes else role_codes or user_codes
+        if expected not in codes:
             return False
-
     return True
 
 
@@ -889,24 +890,10 @@ def _dashboard_cruscotto_filters_from_request() -> dict:
 
 
 def _dashboard_row_matches_filters(row: dict, filters: dict) -> bool:
-    for key in ("reparto", "risorsa", "lavorazione", "operatore", "articolo", "stato"):
+    for key in DASHBOARD_FILTER_KEYS:
         expected = _dashboard_text_filter(filters.get(key))
-        if not expected:
-            continue
-
-        if key == "articolo":
-            current = " ".join(
-                [
-                    _norm_text(row.get("cod_art")),
-                    _norm_text(row.get("descrizione")),
-                ]
-            ).lower()
-        else:
-            current = _norm_text(row.get(key)).lower()
-
-        if expected not in current:
+        if expected and expected != _dashboard_text_filter(row.get("cod_art" if key == "articolo" else key)):
             return False
-
     return True
 
 
@@ -1029,6 +1016,7 @@ def _dashboard_build_cruscotto_payload(policy: RbacPolicy) -> dict:
     criticita = []
     collaudo_rows = []
     filtered_ordini = []
+    seen_keys = set()
     filter_options = _dashboard_new_filter_options_bucket()
     filter_label_maps = _dashboard_filter_label_maps()
     _dashboard_seed_master_filter_options(filter_options)
@@ -1040,8 +1028,10 @@ def _dashboard_build_cruscotto_payload(policy: RbacPolicy) -> dict:
     }
 
     for ordine in ordini:
-        if _dashboard_is_chiusa(ordine):
+        key = _dashboard_order_key(ordine)
+        if key in seen_keys or _dashboard_is_chiusa(ordine):
             continue
+        seen_keys.add(key)
 
         stato_raw = _dashboard_stato_norm(ordine)
         stato = stato_raw.lower()
@@ -1142,32 +1132,20 @@ def _dashboard_build_cruscotto_payload(policy: RbacPolicy) -> dict:
 
         # Criticità: attivo da troppo tempo rispetto al previsto.
         if is_attivo and runtime is not None:
-            last_activation = getattr(runtime, "data_ultima_attivazione", None)
-            started_at = None
-
-            if last_activation:
-                try:
-                    started_at = datetime.fromisoformat(
-                        str(last_activation)
-                    ).astimezone(ROME_TZ)
-                except Exception:
-                    started_at = None
-
-            if started_at and ore > 0:
-                elapsed_hours = (
-                    datetime.now(ROME_TZ) - started_at
-                ).total_seconds() / 3600.0
-
-                if elapsed_hours > ore:
-                    record = _dashboard_order_payload(ordine, "Attivo oltre previsto")
-                    record["ore_attive_effettive"] = round(elapsed_hours, 2)
-                    criticita.append(record)
+            elapsed_hours = _dashboard_tempo_registrato_ore(ordine)
+            if ore > 0 and elapsed_hours > ore:
+                record = _dashboard_order_payload(ordine, "Tempo registrato oltre standard aperto")
+                record["ore_attive_effettive"] = round(elapsed_hours, 2)
+                criticita.append(record)
 
     payload["cards"]["tempo_previsto_residuo"] = round(
         payload["cards"]["tempo_previsto_residuo"],
         2,
     )
 
+    payload["cards"]["ordini_senza_scadenza"] = sum(
+        1 for ordine in filtered_ordini if _dashboard_data_fine_prevista(ordine) is None
+    )
     payload["cards"]["ore_previste_produzione"] = round(
         payload["cards"]["ore_previste_produzione"],
         2,
@@ -1281,6 +1259,9 @@ def _dashboard_build_cruscotto_payload(policy: RbacPolicy) -> dict:
             filters,
         )
     )
+    payload["cards"]["risorse_senza_capacita"] = sum(
+        1 for row in payload["charts"]["colli_bottiglia_risorse"] if row["senza_capacita"]
+    )
     payload["cards"]["risorse_collo_bottiglia"] = len(
         payload["charts"]["colli_bottiglia_risorse"]
     )
@@ -1299,7 +1280,7 @@ def _dashboard_build_cruscotto_payload(policy: RbacPolicy) -> dict:
     payload["cards"]["saturazione_totale"] = (
         round((ore_previste_oggi / ore_disponibili_oggi) * 100, 2)
         if ore_disponibili_oggi > 0
-        else 0.0
+        else None
     )
 
     payload["cards"]["reparti_sovraccarichi"] = sum(
@@ -1322,7 +1303,8 @@ def _dashboard_build_cruscotto_payload(policy: RbacPolicy) -> dict:
             x.get("data_fine_prevista") or "9999-12-31",
         ),
     )[:100]
-    payload["cards"]["ordini_critici"] = len(payload["criticita"])
+    payload["cards"]["ordini_critici"] = len({row["key"] for row in criticita})
+    payload["cards"]["criticita_totali"] = len(criticita)
     payload["filter_options"] = _dashboard_finalize_filter_options(filter_options)
 
     payload["collaudo"] = collaudo_rows[:100]
@@ -1389,48 +1371,6 @@ def _dashboard_kpi_empty_payload() -> dict:
         },
         "filter_options": _dashboard_empty_filter_options(),
     }
-
-
-def _kpi_is_order_completed(
-    rt: OdpRuntimeLog, il: InputOdpLog | None = None
-) -> bool:
-    stato = (
-        _norm_text(getattr(il, "StatoOrdinePost", "")) if il is not None else ""
-    ) or _norm_text(getattr(rt, "StatoOrdinePost", "")) or _norm_text(
-        getattr(rt, "StatoOdpPost", "")
-    )
-    stato = stato.lower()
-    return "chius" in stato or "terminat" in stato
-
-
-def _kpi_macchine_prodotte(rt: OdpRuntimeLog, il: InputOdpLog | None) -> float:
-    """
-    Numero macchine prodotte.
-
-    Conta una macchina solo quando un ordine con gestione matricola
-    raggiunge realmente lo stato finale.
-    """
-    if il is None or not _kpi_is_order_completed(rt, il):
-        return 0.0
-
-    gestione_matricola = _norm_text(getattr(il, "GestioneMatricola", "")).lower()
-    return 1.0 if gestione_matricola in {"1", "true", "si", "sì", "yes"} else 0.0
-
-
-def _kpi_parse_date(value) -> date | None:
-    raw = _norm_text(value)
-    if not raw:
-        return None
-
-    raw = raw[:19]
-
-    for fmt in ("%Y-%m-%d", "%Y-%m-%d %H:%M:%S", "%d/%m/%Y", "%d/%m/%Y %H:%M:%S"):
-        try:
-            return datetime.strptime(raw, fmt).date()
-        except ValueError:
-            pass
-
-    return None
 
 
 def _snapshot_int(value) -> int:
@@ -1513,7 +1453,7 @@ def _add_aggregate_sheet(wb, title: str, rows: list[dict]):
     headers = [
         ("key", "Voce"),
         ("fasi_consuntivate", "Fasi consuntivate"),
-        ("ordini", "Ordini completati"),
+        ("ordini", "Ordini conclusi"),
         ("ritardi", "Ordini in ritardo"),
         ("percentuale_ritardo", "% ritardo"),
         ("giorni_medi_ritardo", "Giorni medi ritardo"),
@@ -1526,139 +1466,6 @@ def _add_aggregate_sheet(wb, title: str, rows: list[dict]):
     _write_sheet_from_rows(ws, headers, rows)
 
 
-def _kpi_event_is_eligible(rt: OdpRuntimeLog, il: InputOdpLog | None = None) -> bool:
-    azione = _norm_text(getattr(rt, "Azione", "")).lower()
-    topic = _norm_text(getattr(rt, "Topic", "")).lower()
-    motivo = _norm_text(getattr(rt, "Motivo", "")).lower()
-    payload = _norm_text(getattr(rt, "PayloadJson", "")).lower()
-
-    if azione not in {"chiusura_finale", "chiusura_macchina"}:
-        return False
-
-    if "eliminato_gestionale" in azione:
-        return False
-
-    if "eliminato_gestionale" in topic:
-        return False
-
-    if "eliminato dal gestionale" in motivo:
-        return False
-
-    if "eliminato_gestionale" in payload:
-        return False
-
-    if il is not None:
-        chiusura_parziale = _norm_text(getattr(il, "ChiusuraParziale", "")).lower()
-        if chiusura_parziale in {"1", "true", "si", "sì", "yes"}:
-            return False
-
-    return True
-
-
-def _kpi_jsonish_list(value) -> list[str]:
-    raw = _norm_text(value)
-    if not raw:
-        return []
-
-    try:
-        parsed = json.loads(raw)
-    except Exception:
-        return [raw]
-
-    if not isinstance(parsed, list):
-        parsed = [parsed]
-
-    out = []
-    for item in parsed:
-        value = _norm_text(item)
-        if value:
-            out.append(value)
-
-    return out
-
-
-def _kpi_active_value_from_list(raw_values, raw_phases, fase: str) -> str:
-    values = _kpi_jsonish_list(raw_values)
-    phases = _parse_phase_list(raw_phases)
-    fase = _norm_text(fase)
-
-    if not values:
-        return ""
-
-    if phases and len(phases) == len(values):
-        for phase, value in zip(phases, values):
-            if _norm_text(phase) == fase:
-                return _norm_text(value)
-
-    fase_int = _fase_to_int(fase)
-    if fase_int is not None:
-        idx = fase_int - 1
-        if 0 <= idx < len(values):
-            return _norm_text(values[idx])
-
-    if len(values) == 1:
-        return _norm_text(values[0])
-
-    return ""
-
-
-def _kpi_reparto_for_log(rt: OdpRuntimeLog, il: InputOdpLog | None) -> str:
-    if il is not None:
-        fase = _norm_text(getattr(il, "FaseConsuntivata", "")) or _norm_text(
-            getattr(il, "FaseAttiva", "")
-        )
-        value = _kpi_active_value_from_list(
-            getattr(il, "CodReparto", ""),
-            getattr(il, "NumFase", ""),
-            fase,
-        )
-        return _first_code_from_cell(value) or _first_code_from_cell(
-            getattr(il, "CodReparto", "")
-        )
-
-    return _first_code_from_cell(getattr(rt, "CodReparto", ""))
-
-
-def _kpi_risorsa_for_log(il: InputOdpLog | None) -> str:
-    if il is None:
-        return ""
-
-    if _norm_text(getattr(il, "RisorsaAttiva", "")):
-        return _norm_text(getattr(il, "RisorsaAttiva", ""))
-
-    fase = _norm_text(getattr(il, "FaseConsuntivata", "")) or _norm_text(
-        getattr(il, "FaseAttiva", "")
-    )
-
-    value = _kpi_active_value_from_list(
-        getattr(il, "CodRisorsaProd", ""),
-        getattr(il, "NumFase", ""),
-        fase,
-    )
-
-    return _first_code_from_cell(value)
-
-
-def _kpi_lavorazione_for_log(il: InputOdpLog | None) -> str:
-    if il is None:
-        return ""
-
-    if _norm_text(getattr(il, "LavorazioneAttiva", "")):
-        return _norm_text(getattr(il, "LavorazioneAttiva", ""))
-
-    fase = _norm_text(getattr(il, "FaseConsuntivata", "")) or _norm_text(
-        getattr(il, "FaseAttiva", "")
-    )
-
-    value = _kpi_active_value_from_list(
-        getattr(il, "CodLavorazione", ""),
-        getattr(il, "NumFase", ""),
-        fase,
-    )
-
-    return _first_code_from_cell(value)
-
-
 def _kpi_matches_filters(row: dict, filters: dict) -> bool:
     for key in ("reparto", "risorsa", "lavorazione", "operatore", "articolo", "stato"):
         expected = _norm_text(filters.get(key)).lower()
@@ -1667,13 +1474,15 @@ def _kpi_matches_filters(row: dict, filters: dict) -> bool:
 
         current = _norm_text(row.get(key)).lower()
 
-        if expected not in current:
+        if expected != current:
             return False
 
     return True
 
 
 def _apply_kpi_group(bucket: dict, row: dict) -> None:
+    if row.get("is_partial"):
+        return
     bucket["fasi_consuntivate"] += 1
     bucket["tempo_previsto"] += float(row.get("tempo_previsto_ore") or 0.0)
     bucket["tempo_reale"] += float(row.get("tempo_reale_ore") or 0.0)
@@ -1769,7 +1578,7 @@ def _dashboard_reparti_label_map() -> dict[str, str]:
 def _dashboard_active_value(ordine: InputOdp, attr_name: str) -> str:
     fase_attiva = _dashboard_fase_attiva(ordine)
 
-    return _active_value_for_phase(
+    return _kpi_active_value_from_list(
         getattr(ordine, attr_name, ""),
         getattr(ordine, "NumFase", ""),
         fase_attiva,
@@ -1777,10 +1586,7 @@ def _dashboard_active_value(ordine: InputOdp, attr_name: str) -> str:
 
 
 def _dashboard_reparto_attivo(ordine: InputOdp) -> str:
-    raw = _dashboard_active_value(ordine, "CodReparto")
-    return _first_code_from_cell(raw) or _first_code_from_cell(
-        getattr(ordine, "CodReparto", "")
-    )
+    return _first_code_from_cell(_dashboard_active_value(ordine, "CodReparto"))
 
 
 def _dashboard_risorsa_attiva(ordine: InputOdp) -> str:
@@ -1794,17 +1600,9 @@ def _dashboard_risorsa_attiva(ordine: InputOdp) -> str:
 
 
 def _dashboard_data_fine_prevista(ordine: InputOdp):
-    raw_data_fine = getattr(ordine, "DataFinePrevista", "") or getattr(
-        ordine, "DataFineSched", ""
-    )
-
-    fase_attiva = getattr(ordine, "FaseAttiva", "1")
-    data_fine_attiva = InputOdp._active_value_from_phase_list(
-        raw_data_fine,
-        fase_attiva,
-    )
-
-    return _dashboard_parse_date(data_fine_attiva)
+    raw = getattr(ordine, "DataFinePrevista", "") or getattr(ordine, "DataFineSched", "")
+    value = _kpi_active_value_from_list(raw, getattr(ordine, "NumFase", ""), _dashboard_fase_attiva(ordine))
+    return _dashboard_parse_date(value)
 
 
 def _dashboard_parse_date(value) -> date | None:
@@ -2019,6 +1817,9 @@ def _dashboard_cruscotto_empty_payload() -> dict:
     return {
         "cards": {
             "ordini_totali": 0,
+            "ordini_senza_scadenza": 0,
+            "risorse_senza_capacita": 0,
+            "criticita_totali": 0,
             "ore_previste_produzione": 0.0,
             "ore_previste_oggi": 0.0,
             "ore_disponibili_oggi": 0.0,
@@ -2235,29 +2036,6 @@ def _dashboard_seed_master_filter_options(options: dict) -> None:
     _dashboard_seed_stato_filter_options(options)
 
 
-def _kpi_parse_datetime(value) -> datetime | None:
-    raw = _norm_text(value)
-    if not raw:
-        return None
-
-    try:
-        dt = datetime.fromisoformat(raw)
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=ROME_TZ)
-        return dt.astimezone(ROME_TZ)
-    except Exception:
-        pass
-
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%d/%m/%Y %H:%M:%S", "%Y-%m-%d", "%d/%m/%Y"):
-        try:
-            dt = datetime.strptime(raw[:19], fmt)
-            return dt.replace(tzinfo=ROME_TZ)
-        except ValueError:
-            pass
-
-    return None
-
-
 def _kpi_date_range_from_request() -> tuple[date, date]:
     today = _dashboard_today()
 
@@ -2271,97 +2049,6 @@ def _kpi_date_range_from_request() -> tuple[date, date]:
         date_from, date_to = date_to, date_from
 
     return date_from, date_to
-
-
-def _kpi_tempo_previsto_ore(il: InputOdpLog | None) -> float:
-    if il is None:
-        return 0.0
-
-    fase = _norm_text(getattr(il, "FaseConsuntivata", "")) or _norm_text(
-        getattr(il, "FaseAttiva", "")
-    )
-
-    raw = _kpi_active_value_from_list(
-        getattr(il, "TempoPrevistoLavoraz", ""),
-        getattr(il, "NumFase", ""),
-        fase,
-    )
-
-    value = _safe_float(raw)
-
-    if value > 0:
-        return value
-
-    return _safe_float(getattr(il, "TempoPrevistoLavoraz", ""))
-
-
-def _kpi_tempo_reale_ore(rt: OdpRuntimeLog, il: InputOdpLog | None) -> float:
-    if il is not None:
-        value = _safe_float(getattr(il, "TempoFunzionamentoFinale", ""))
-        if value > 0:
-            return value
-
-    value = _safe_float(getattr(rt, "TempoFunzionamentoPost", ""))
-    if value > 0:
-        return value
-
-    elapsed_seconds = _safe_float(getattr(rt, "ElapsedSeconds", ""))
-    if elapsed_seconds > 0:
-        return elapsed_seconds / 3600.0
-
-    return 0.0
-
-
-def _kpi_quantita_consuntivata(
-    il: InputOdpLog | None,
-) -> tuple[float, float]:
-    if il is None:
-        return 0.0, 0.0
-
-    conforme = max(_safe_float(getattr(il, "QuantitaConforme", "")), 0.0)
-    non_conforme = max(
-        _safe_float(getattr(il, "QuantitaNonConforme", "")),
-        0.0,
-    )
-    return conforme, non_conforme
-
-
-def _kpi_closed_at(rt: OdpRuntimeLog, il: InputOdpLog | None) -> datetime | None:
-    if il is not None:
-        dt = _kpi_parse_datetime(getattr(il, "ClosedAt", ""))
-        if dt is not None:
-            return dt
-
-    return _kpi_parse_datetime(getattr(rt, "EventAt", ""))
-
-
-def _kpi_lead_time_ore(
-    rt: OdpRuntimeLog,
-    closed_at: datetime,
-) -> float | None:
-    started_at = _kpi_parse_datetime(
-        getattr(rt, "DataInCaricoPre", "")
-    ) or _kpi_parse_datetime(getattr(rt, "DataInCaricoPost", ""))
-
-    if started_at is None or closed_at <= started_at:
-        return None
-
-    return (closed_at - started_at).total_seconds() / 3600.0
-
-
-def _kpi_data_fine_prevista(il: InputOdpLog | None) -> date | None:
-    if il is None:
-        return None
-
-    fase = _norm_text(getattr(il, "FaseConsuntivata", "")) or _norm_text(
-        getattr(il, "FaseAttiva", "")
-    )
-    raw = _kpi_active_value_from_list(
-        getattr(il, "DataFineSched", ""),
-        getattr(il, "NumFase", ""),
-        fase,
-    )
-    return _kpi_parse_date(raw)
 
 
 def _kpi_tempo_is_affidabile(
@@ -2429,11 +2116,12 @@ def _build_dashboard_kpi_payload(*, detail_limit: int | None = 500) -> dict:
                 InputOdpLog.IdRiga == OdpRuntimeLog.IdRiga,
             ),
         )
-        .filter(OdpRuntimeLog.Azione.in_(["chiusura_finale", "chiusura_macchina"]))
+        .filter(OdpRuntimeLog.Azione.in_(KPI_CLOSURE_ACTIONS))
         .order_by(OdpRuntimeLog.EventAt.desc(), OdpRuntimeLog.log_id.desc())
         .all()
     )
 
+    order_starts, phase_quantities = _kpi_history(rows)
     detail_rows = []
     today = _dashboard_today()
     filter_options = _dashboard_new_filter_options_bucket()
@@ -2448,6 +2136,7 @@ def _build_dashboard_kpi_payload(*, detail_limit: int | None = 500) -> dict:
         "articoli": {},
     }
 
+    matricole_prodotte = set()
     collaudo_tempi = []
     collaudi_chiusi_oggi = 0
     for rt, il in rows:
@@ -2467,13 +2156,18 @@ def _build_dashboard_kpi_payload(*, detail_limit: int | None = 500) -> dict:
         is_order_completed = _kpi_is_order_completed(rt, il)
         macchine_prodotte = _kpi_macchine_prodotte(rt, il)
 
-        tempo_previsto = _kpi_tempo_previsto_ore(il)
-        tempo_reale = _kpi_tempo_reale_ore(rt, il)
+        is_partial = _kpi_is_partial(rt, il)
+        order_key = (_norm_text(rt.IdDocumento), _norm_text(rt.IdRiga))
+        quantity_key = (_norm_text(rt.OperationGroupId), *order_key)
+        tempo_previsto = 0.0 if is_partial else _kpi_tempo_previsto_ore(
+            il, quantita=phase_quantities.get(quantity_key),
+        )
+        tempo_reale = 0.0 if is_partial else _kpi_tempo_reale_ore(rt, il)
         scostamento = tempo_reale - tempo_previsto
-        quantita_conforme, quantita_non_conforme = _kpi_quantita_consuntivata(il)
+        quantita_conforme, quantita_non_conforme = _kpi_quantita_consuntivata(il, rt)
         quantita_consuntivata = quantita_conforme + quantita_non_conforme
         lead_time_ore = (
-            _kpi_lead_time_ore(rt, closed_at) if is_order_completed else None
+            _kpi_lead_time_ore(rt, closed_at, order_starts.get(order_key)) if is_order_completed else None
         )
 
         data_fine_prevista = _kpi_data_fine_prevista(il)
@@ -2518,6 +2212,7 @@ def _build_dashboard_kpi_payload(*, detail_limit: int | None = 500) -> dict:
             "quantita_non_conforme": round(quantita_non_conforme, 2),
             "quantita_consuntivata": round(quantita_consuntivata, 2),
             "macchine_prodotte": round(macchine_prodotte, 2),
+            "matricola": _kpi_matricola_for_log(rt, il),
             "scostamento_ore": round(scostamento, 2),
             "scostamento_percentuale": round((scostamento / tempo_previsto) * 100, 2)
             if tempo_previsto > 0
@@ -2528,6 +2223,7 @@ def _build_dashboard_kpi_payload(*, detail_limit: int | None = 500) -> dict:
             "ritardo_giorni": ritardo_giorni,
             "is_ritardo": ritardo_giorni > 0,
             "is_order_completed": is_order_completed,
+            "is_partial": is_partial,
             "is_collaudo": _kpi_is_collaudo(reparto, risorsa, lavorazione),
             "lead_time_ore": round(lead_time_ore, 2)
             if lead_time_ore is not None
@@ -2547,7 +2243,13 @@ def _build_dashboard_kpi_payload(*, detail_limit: int | None = 500) -> dict:
         if not _kpi_matches_filters(row, filters):
             continue
 
+        if row["macchine_prodotte"]:
+            matricola = row["matricola"]
+            row["macchine_prodotte"] = float(matricola not in matricole_prodotte)
+            matricole_prodotte.add(matricola)
         detail_rows.append(row)
+        if is_partial:
+            continue
 
         for group_name, group_key in (
             ("reparti", reparto or "-"),
@@ -2559,18 +2261,17 @@ def _build_dashboard_kpi_payload(*, detail_limit: int | None = 500) -> dict:
             groups[group_name].setdefault(group_key, _new_kpi_group_bucket(group_key))
             _apply_kpi_group(groups[group_name][group_key], row)
 
-        if row["is_collaudo"]:
+        if row["is_collaudo"] and not is_partial:
             collaudo_tempi.append(tempo_reale)
             if row["is_order_completed"] and closed_at.date() == today:
                 collaudi_chiusi_oggi += 1
 
     completed_rows = [row for row in detail_rows if row["is_order_completed"]]
     ordini = len(completed_rows)
-    fasi = len(detail_rows)
+    phase_rows = [row for row in detail_rows if not row["is_partial"]]
+    fasi = len(phase_rows)
     ritardi = sum(1 for row in completed_rows if row["is_ritardo"])
-    macchine_prodotte = sum(
-        float(row.get("macchine_prodotte", 0.0) or 0.0) for row in completed_rows
-    )
+    macchine_prodotte = len(matricole_prodotte)
     quantita_conforme = sum(
         float(row.get("quantita_conforme") or 0.0) for row in detail_rows
     )
@@ -2593,7 +2294,7 @@ def _build_dashboard_kpi_payload(*, detail_limit: int | None = 500) -> dict:
     )
     lead_time_mediano = round(median(lead_times), 2) if lead_times else 0.0
     fasi_dati_completi = sum(
-        1 for row in detail_rows if row.get("dati_completi")
+        1 for row in phase_rows if row.get("dati_completi")
     )
     copertura_dati = (
         round((fasi_dati_completi / fasi) * 100, 2) if fasi else 0.0
@@ -2615,7 +2316,7 @@ def _build_dashboard_kpi_payload(*, detail_limit: int | None = 500) -> dict:
 
     rows_con_tempi_validi = [
         row
-        for row in detail_rows
+        for row in phase_rows
         if float(row.get("tempo_previsto_ore") or 0.0) > 0
         and float(row.get("tempo_reale_ore") or 0.0) > 0
     ]
@@ -2639,6 +2340,7 @@ def _build_dashboard_kpi_payload(*, detail_limit: int | None = 500) -> dict:
 
     payload["cards"] = {
         "ordini_chiusi": ordini,
+        "ordini_con_scadenza": sum(1 for row in completed_rows if row["data_fine_prevista"]),
         "ordini_in_ritardo": ritardi,
         "percentuale_ritardo": round((ritardi / ordini) * 100, 2) if ordini else 0.0,
         "giorni_medi_ritardo": round(giorni_ritardo_totali / ritardi, 2)
@@ -2694,7 +2396,7 @@ def _build_dashboard_kpi_payload(*, detail_limit: int | None = 500) -> dict:
         name: sorted(
             [_finalize_kpi_group(bucket) for bucket in group.values()],
             key=lambda x: (-x["fasi_consuntivate"], x["key"].lower()),
-        )[:50]
+        )
         for name, group in groups.items()
     }
 
@@ -2833,35 +2535,65 @@ def _write_kpi_summary_sheet(ws, data: dict):
         ("Filtro articolo", filters.get("articolo", "")),
         ("Filtro stato", filters.get("stato", "")),
         ("", ""),
-        ("Ordini completati", cards.get("ordini_chiusi", 0)),
-        ("Macchine prodotte", cards.get("macchine_prodotte", 0)),
+        ("Ordini conclusi", cards.get("ordini_chiusi", 0)),
+        ("Macchine lavorate (matricole uniche)", cards.get("macchine_prodotte", 0)),
         ("Ordini in ritardo", cards.get("ordini_in_ritardo", 0)),
-        ("% ritardo", cards.get("percentuale_ritardo", 0)),
-        ("Giorni medi ritardo", cards.get("giorni_medi_ritardo", 0)),
-        ("Tempo previsto totale", cards.get("tempo_previsto_totale", 0)),
-        ("Tempo reale totale", cards.get("tempo_reale_totale", 0)),
-        ("Scostamento totale", cards.get("scostamento_totale", 0)),
-        ("% scostamento", cards.get("scostamento_percentuale", 0)),
-        ("Scostamento medio", cards.get("scostamento_medio", 0)),
-        ("Tempo medio fase", cards.get("tempo_medio_fase", 0)),
+        ("Ordini conclusi in ritardo (%)", cards.get("percentuale_ritardo", 0)),
+        ("Giorni medi di ritardo dei soli ordini tardivi", cards.get("giorni_medi_ritardo", 0)),
+        ("Ore previste delle fasi chiuse", cards.get("tempo_previsto_totale", 0)),
+        ("Ore effettive delle fasi chiuse", cards.get("tempo_reale_totale", 0)),
+        ("Differenza ore effettive − previste (h)", cards.get("scostamento_totale", 0)),
+        ("Differenza ore effettive − previste (%)", cards.get("scostamento_percentuale", 0)),
+        ("Differenza media per fase (h)", cards.get("scostamento_medio", 0)),
+        ("Ore effettive medie per fase", cards.get("tempo_medio_fase", 0)),
         ("Tempo medio collaudo", cards.get("tempo_medio_collaudo", 0)),
         ("Collaudi chiusi oggi", cards.get("collaudi_chiusi_oggi", 0)),
-        ("Tasso non conformità", cards.get("tasso_non_conformita", 0)),
+        ("Quantità non conforme (%)", cards.get("tasso_non_conformita", 0)),
         ("Quantità conforme", cards.get("quantita_conforme", 0)),
         ("Quantità non conforme", cards.get("quantita_non_conforme", 0)),
-        ("Lead time medio ore", cards.get("lead_time_medio_ore", 0)),
-        ("Lead time mediano ore", cards.get("lead_time_mediano_ore", 0)),
-        ("Copertura dati", cards.get("copertura_dati", 0)),
-        ("Fasi con dati completi", cards.get("fasi_dati_completi", 0)),
-        ("Fasi totali", cards.get("fasi_totali", 0)),
+        ("Tempo medio di attraversamento (ore solari)", cards.get("lead_time_medio_ore", 0)),
+        ("Tempo mediano di attraversamento (ore solari)", cards.get("lead_time_mediano_ore", 0)),
+        ("Fasi con dati completi (%)", cards.get("copertura_dati", 0)),
+        ("Numero di fasi con dati completi", cards.get("fasi_dati_completi", 0)),
+        ("Numero di fasi chiuse", cards.get("fasi_totali", 0)),
     ]
 
+    explanations = {
+        "Macchine lavorate (matricole uniche)": "Matricole distinte con almeno una fase non parziale chiusa nel periodo; non equivale a macchine finite.",
+        "Ordini conclusi in ritardo (%)": "Ordini tardivi / tutti gli ordini conclusi × 100. Le scadenze mancanti possono sottostimare il risultato.",
+        "Giorni medi di ritardo dei soli ordini tardivi": "Giorni solari di ritardo / numero di ordini tardivi. Esclude gli ordini puntuali.",
+        "Differenza ore effettive − previste (%)": "(Ore effettive − previste) / previste × 100. Un valore positivo indica più ore del piano.",
+        "Quantità non conforme (%)": "Quantità non conforme / totale registrato nelle fasi × 100, incluse parziali. Lo stesso pezzo può comparire in più fasi.",
+        "Tempo medio di attraversamento (ore solari)": "Dalla prima presa in carico disponibile alla chiusura finale; include attese e sospensioni.",
+        "Tempo mediano di attraversamento (ore solari)": "Metà degli ordini con durata disponibile ha un tempo inferiore o uguale a questo valore.",
+        "Fasi con dati completi (%)": "Fasi con tempi positivi, quantità positiva e scadenza / fasi chiuse × 100. Misura completezza, non correttezza.",
+        "Fasi entro ±10% del tempo previsto (%)": "Fasi tra 90% e 110% del previsto / fasi con entrambi i tempi positivi × 100.",
+    }
+    rows.extend([
+        ("Ordini conclusi con scadenza disponibile", cards.get("ordini_con_scadenza", 0)),
+        ("Fasi entro ±10% del tempo previsto (%)", cards.get("affidabilita_tempi") if (cards.get("fasi_tempi_affidabili", 0) + cards.get("fasi_tempi_non_affidabili", 0)) else "Non disponibile"),
+        ("Fasi valutabili per il confronto tempi", cards.get("fasi_tempi_affidabili", 0) + cards.get("fasi_tempi_non_affidabili", 0)),
+        ("Ordini con tempo di attraversamento disponibile", cards.get("lead_time_copertura", 0)),
+    ])
+    denominators = {
+        "Ordini conclusi in ritardo (%)": cards.get("ordini_con_scadenza", 0),
+        "Giorni medi di ritardo dei soli ordini tardivi": cards.get("ordini_in_ritardo", 0),
+        "Differenza ore effettive − previste (%)": cards.get("tempo_previsto_totale", 0),
+        "Quantità non conforme (%)": cards.get("quantita_consuntivata", 0),
+        "Tempo medio di attraversamento (ore solari)": cards.get("lead_time_copertura", 0),
+        "Tempo mediano di attraversamento (ore solari)": cards.get("lead_time_copertura", 0),
+        "Fasi con dati completi (%)": cards.get("fasi_totali", 0),
+    }
+    rows = [(label, "Non disponibile" if label in denominators and not denominators[label] else value) for label, value in rows]
+    ws.cell(row=1, column=3, value="Come leggere il dato").font = Font(bold=True)
     ws.cell(row=1, column=1, value="Parametro").font = Font(bold=True)
     ws.cell(row=1, column=2, value="Valore").font = Font(bold=True)
 
     for idx, (label, value) in enumerate(rows, start=2):
         ws.cell(row=idx, column=1, value=label)
         ws.cell(row=idx, column=2, value=_excel_safe(value))
+        ws.cell(row=idx, column=3, value=explanations.get(label, ""))
+        ws.cell(row=idx, column=3).alignment = Alignment(wrap_text=True, vertical="top")
 
     ws.freeze_panes = "A2"
     _autosize_worksheet(ws)
@@ -3026,3 +2758,13 @@ def _build_kpi_snapshot_payload() -> dict:
         },
         "rows": data_rows,
     }
+
+
+def _dashboard_tempo_registrato_ore(ordine: InputOdp) -> float:
+    runtime = getattr(ordine, "runtime_row", None)
+    ore = max(_safe_float(getattr(runtime, "Tempo_funzionamento", "")), 0.0)
+    if "attiv" in _dashboard_stato_norm(ordine).lower():
+        started = _kpi_parse_datetime(getattr(runtime, "data_ultima_attivazione", ""))
+        if started is not None:
+            ore += max((datetime.now(ROME_TZ) - started).total_seconds(), 0.0) / 3600.0
+    return ore

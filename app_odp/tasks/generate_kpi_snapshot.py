@@ -15,6 +15,24 @@ from app_odp.models import (
     ProductionKpiSnapshot,
 )
 
+from app_odp.services.order_helpers import _parse_phase_list
+from app_odp.services.kpi_service import (
+    KPI_CLOSURE_ACTIONS, _kpi_history, _kpi_is_partial,
+    _kpi_is_order_completed as _is_order_completed,
+    _kpi_macchine_prodotte as _macchine_prodotte_for_log,
+    _kpi_matricola_for_log,
+    _kpi_event_is_eligible as _event_is_eligible,
+    _kpi_jsonish_list as _jsonish_list,
+    _kpi_active_value_from_list as _active_value_from_list,
+    _kpi_reparto_for_log as _reparto_for_log,
+    _kpi_risorsa_for_log as _risorsa_for_log,
+    _kpi_lavorazione_for_log as _lavorazione_for_log,
+    _kpi_tempo_previsto_ore as _tempo_previsto_ore,
+    _kpi_tempo_reale_ore as _tempo_reale_ore,
+    _kpi_closed_at as _closed_at,
+    _kpi_data_fine_prevista as _data_fine_prevista,
+)
+
 ROME_TZ = ZoneInfo("Europe/Rome")
 
 
@@ -35,30 +53,6 @@ def _safe_float(value) -> float:
 def _positive_float(value) -> float:
     out = _safe_float(value)
     return out if out > 0 else 0.0
-
-
-def _is_order_completed(rt: OdpRuntimeLog, il: InputOdpLog | None = None) -> bool:
-    stato = (
-        _norm_text(getattr(il, "StatoOrdinePost", "")) if il is not None else ""
-    ) or _norm_text(getattr(rt, "StatoOrdinePost", "")) or _norm_text(
-        getattr(rt, "StatoOdpPost", "")
-    )
-    stato = stato.lower()
-    return "chius" in stato or "terminat" in stato
-
-
-def _macchine_prodotte_for_log(rt: OdpRuntimeLog, il: InputOdpLog | None) -> float:
-    """
-    Numero macchine prodotte nello snapshot mensile.
-
-    Conta una macchina solo quando un ordine con gestione matricola
-    raggiunge realmente lo stato finale.
-    """
-    if il is None or not _is_order_completed(rt, il):
-        return 0.0
-
-    gestione_matricola = _norm_text(getattr(il, "GestioneMatricola", "")).lower()
-    return 1.0 if gestione_matricola in {"1", "true", "si", "sì", "yes"} else 0.0
 
 
 def _parse_date(value) -> date | None:
@@ -103,22 +97,6 @@ def _parse_datetime(value) -> datetime | None:
     return None
 
 
-def _jsonish_list(value) -> list[str]:
-    raw = _norm_text(value)
-    if not raw:
-        return []
-
-    try:
-        parsed = json.loads(raw)
-    except Exception:
-        return [raw]
-
-    if not isinstance(parsed, list):
-        parsed = [parsed]
-
-    return [_norm_text(x) for x in parsed if _norm_text(x)]
-
-
 def _fase_to_int(value) -> int | None:
     raw = _norm_text(value)
     if not raw:
@@ -128,43 +106,6 @@ def _fase_to_int(value) -> int | None:
         return int(float(raw))
     except (TypeError, ValueError):
         return None
-
-
-def _parse_phase_list(value) -> list[str]:
-    values = _jsonish_list(value)
-    if values:
-        return values
-
-    phase_int = _fase_to_int(value)
-    if phase_int is not None and phase_int > 0:
-        return [str(i) for i in range(1, phase_int + 1)]
-
-    return []
-
-
-def _active_value_from_list(raw_values, raw_phases, fase: str) -> str:
-    values = _jsonish_list(raw_values)
-    phases = _parse_phase_list(raw_phases)
-    fase = _norm_text(fase)
-
-    if not values:
-        return ""
-
-    if phases and len(phases) == len(values):
-        for phase, value in zip(phases, values):
-            if _norm_text(phase) == fase:
-                return _norm_text(value)
-
-    fase_int = _fase_to_int(fase)
-    if fase_int is not None:
-        idx = fase_int - 1
-        if 0 <= idx < len(values):
-            return _norm_text(values[idx])
-
-    if len(values) == 1:
-        return _norm_text(values[0])
-
-    return ""
 
 
 def _first_code_from_cell(value) -> str:
@@ -177,155 +118,6 @@ def _first_code_from_cell(value) -> str:
         return _norm_text(values[0])
 
     return raw
-
-
-def _event_is_eligible(rt: OdpRuntimeLog, il: InputOdpLog | None = None) -> bool:
-    azione = _norm_text(getattr(rt, "Azione", "")).lower()
-    topic = _norm_text(getattr(rt, "Topic", "")).lower()
-    motivo = _norm_text(getattr(rt, "Motivo", "")).lower()
-    payload = _norm_text(getattr(rt, "PayloadJson", "")).lower()
-
-    if azione not in {"chiusura_finale", "chiusura_macchina"}:
-        return False
-
-    if "eliminato_gestionale" in azione:
-        return False
-
-    if "eliminato_gestionale" in topic:
-        return False
-
-    if "eliminato dal gestionale" in motivo:
-        return False
-
-    if "eliminato_gestionale" in payload:
-        return False
-
-    if il is not None:
-        chiusura_parziale = _norm_text(getattr(il, "ChiusuraParziale", "")).lower()
-        if chiusura_parziale in {"1", "true", "si", "sì", "yes"}:
-            return False
-
-    return True
-
-
-def _reparto_for_log(rt: OdpRuntimeLog, il: InputOdpLog | None) -> str:
-    if il is not None:
-        fase = _norm_text(getattr(il, "FaseConsuntivata", "")) or _norm_text(
-            getattr(il, "FaseAttiva", "")
-        )
-        value = _active_value_from_list(
-            getattr(il, "CodReparto", ""),
-            getattr(il, "NumFase", ""),
-            fase,
-        )
-        return _first_code_from_cell(value) or _first_code_from_cell(
-            getattr(il, "CodReparto", "")
-        )
-
-    return _first_code_from_cell(getattr(rt, "CodReparto", ""))
-
-
-def _risorsa_for_log(il: InputOdpLog | None) -> str:
-    if il is None:
-        return ""
-
-    if _norm_text(getattr(il, "RisorsaAttiva", "")):
-        return _norm_text(getattr(il, "RisorsaAttiva", ""))
-
-    fase = _norm_text(getattr(il, "FaseConsuntivata", "")) or _norm_text(
-        getattr(il, "FaseAttiva", "")
-    )
-
-    value = _active_value_from_list(
-        getattr(il, "CodRisorsaProd", ""),
-        getattr(il, "NumFase", ""),
-        fase,
-    )
-
-    return _first_code_from_cell(value)
-
-
-def _lavorazione_for_log(il: InputOdpLog | None) -> str:
-    if il is None:
-        return ""
-
-    if _norm_text(getattr(il, "LavorazioneAttiva", "")):
-        return _norm_text(getattr(il, "LavorazioneAttiva", ""))
-
-    fase = _norm_text(getattr(il, "FaseConsuntivata", "")) or _norm_text(
-        getattr(il, "FaseAttiva", "")
-    )
-
-    value = _active_value_from_list(
-        getattr(il, "CodLavorazione", ""),
-        getattr(il, "NumFase", ""),
-        fase,
-    )
-
-    return _first_code_from_cell(value)
-
-
-def _tempo_previsto_ore(il: InputOdpLog | None) -> float:
-    if il is None:
-        return 0.0
-
-    fase = _norm_text(getattr(il, "FaseConsuntivata", "")) or _norm_text(
-        getattr(il, "FaseAttiva", "")
-    )
-
-    raw = _active_value_from_list(
-        getattr(il, "TempoPrevistoLavoraz", ""),
-        getattr(il, "NumFase", ""),
-        fase,
-    )
-
-    value = _safe_float(raw)
-
-    if value > 0:
-        return value
-
-    return _safe_float(getattr(il, "TempoPrevistoLavoraz", ""))
-
-
-def _tempo_reale_ore(rt: OdpRuntimeLog, il: InputOdpLog | None) -> float:
-    if il is not None:
-        value = _safe_float(getattr(il, "TempoFunzionamentoFinale", ""))
-        if value > 0:
-            return value
-
-    value = _safe_float(getattr(rt, "TempoFunzionamentoPost", ""))
-    if value > 0:
-        return value
-
-    elapsed_seconds = _safe_float(getattr(rt, "ElapsedSeconds", ""))
-    if elapsed_seconds > 0:
-        return elapsed_seconds / 3600.0
-
-    return 0.0
-
-
-def _closed_at(rt: OdpRuntimeLog, il: InputOdpLog | None) -> datetime | None:
-    if il is not None:
-        dt = _parse_datetime(getattr(il, "ClosedAt", ""))
-        if dt is not None:
-            return dt
-
-    return _parse_datetime(getattr(rt, "EventAt", ""))
-
-
-def _data_fine_prevista(il: InputOdpLog | None) -> date | None:
-    if il is None:
-        return None
-
-    fase = _norm_text(getattr(il, "FaseConsuntivata", "")) or _norm_text(
-        getattr(il, "FaseAttiva", "")
-    )
-    raw = _active_value_from_list(
-        getattr(il, "DataFineSched", ""),
-        getattr(il, "NumFase", ""),
-        fase,
-    )
-    return _parse_date(raw)
 
 
 def _month_bounds(month: str) -> tuple[date, date]:
@@ -361,6 +153,7 @@ def _new_bucket(scope_type: str, scope_code: str) -> dict:
         "tempo_medio_ordine": 0.0,
         "tempo_medio_fase": 0.0,
         "macchine_prodotte": 0.0,
+        "matricole_prodotte": set(),
         "rows": [],
     }
 
@@ -371,11 +164,15 @@ def _apply_to_bucket(bucket: dict, row: dict) -> None:
     bucket["tempo_reale_totale"] += row["tempo_reale_ore"]
     bucket["rows"].append(row)
 
+    matricola = row.get("matricola")
+    if row.get("macchine_prodotte") and matricola:
+        bucket["matricole_prodotte"].add(matricola)
+        bucket["macchine_prodotte"] = float(len(bucket["matricole_prodotte"]))
+
     if not row.get("is_order_completed"):
         return
 
     bucket["ordini_chiusi"] += 1
-    bucket["macchine_prodotte"] += float(row.get("macchine_prodotte", 0.0) or 0.0)
 
     if row["ritardo_giorni"] > 0:
         bucket["ordini_in_ritardo"] += 1
@@ -480,11 +277,12 @@ def generate_snapshot_for_month(
                 InputOdpLog.IdRiga == OdpRuntimeLog.IdRiga,
             ),
         )
-        .filter(OdpRuntimeLog.Azione.in_(["chiusura_finale", "chiusura_macchina"]))
+        .filter(OdpRuntimeLog.Azione.in_(KPI_CLOSURE_ACTIONS))
         .order_by(OdpRuntimeLog.EventAt.asc(), OdpRuntimeLog.log_id.asc())
         .all()
     )
 
+    _order_starts, phase_quantities = _kpi_history(rows)
     buckets: dict[tuple[str, str], dict] = {}
 
     def bucket(scope_type: str, scope_code: str) -> dict:
@@ -498,7 +296,7 @@ def generate_snapshot_for_month(
     eligible_count = 0
 
     for rt, il in rows:
-        if not _event_is_eligible(rt, il):
+        if not _event_is_eligible(rt, il) or _kpi_is_partial(rt, il):
             continue
 
         closed_at = _closed_at(rt, il)
@@ -518,7 +316,8 @@ def generate_snapshot_for_month(
             else _norm_text(getattr(rt, "CodArt", ""))
         )
 
-        tempo_previsto = _tempo_previsto_ore(il)
+        quantity_key = (_norm_text(rt.OperationGroupId), _norm_text(rt.IdDocumento), _norm_text(rt.IdRiga))
+        tempo_previsto = _tempo_previsto_ore(il, quantita=phase_quantities.get(quantity_key))
         tempo_reale = _tempo_reale_ore(rt, il)
         is_order_completed = _is_order_completed(rt, il)
         macchine_prodotte = _macchine_prodotte_for_log(rt, il)
@@ -540,6 +339,7 @@ def generate_snapshot_for_month(
             "operatore": operatore,
             "articolo": articolo,
             "macchine_prodotte": macchine_prodotte,
+            "matricola": _kpi_matricola_for_log(rt, il),
             "tempo_previsto_ore": tempo_previsto,
             "tempo_reale_ore": tempo_reale,
             "ritardo_giorni": ritardo_giorni,

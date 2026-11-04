@@ -151,27 +151,33 @@
                         </div>
                     </div>
                 </div>
-                <!-- Sezione riepilogo sopra Carico prossimo mese + Stati ODP -->
+                <p class="small text-muted mb-3">
+                    Il cruscotto descrive gli ordini aperti visibili. Le ore sono standard della fase corrente, non ore effettive residue.
+                    I filtri articolo e stato restringono il carico, senza ridurre automaticamente la capacità degli operatori.
+                </p>
                 <div class="row g-3 mb-3">
                     <div class="col-12">
                         <div class="card shadow-sm">
-                            <div class="card-header">Riepilogo carico produzione</div>
+                            <div class="card-header">Situazione operativa · ordini, carico e capacità</div>
 
                             <div class="card-body">
-                                <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-xl-6 g-2">
+                                <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-xl-3 g-2">
 
                                     <div class="col">
-                                        <div class="dashboard-summary-card border rounded p-2 h-100 text-center d-flex flex-column justify-content-center align-items-center">
-                                            <div class="text-muted small">ODP aperti</div>
+                                        <div class="dashboard-summary-card border rounded p-3 h-100">
+                                            <div class="fw-semibold mb-2">Ordini aperti</div>
+                                            <p class="small text-muted mb-2">Ordini con fase attiva, sospesa o pianificata, nei filtri selezionati.</p>
                                             <div class="kpi-card-value"
                                                  data-dashboard-card="ordini_totali">0
                                             </div>
+                                            <div class="small text-muted" data-dashboard-card-sub="ordini_totali">Dati non caricati.</div>
                                         </div>
                                     </div>
 
                                     <div class="col">
-                                        <div class="dashboard-summary-card border rounded p-2 h-100 text-center d-flex flex-column justify-content-center align-items-center">
-                                            <div class="text-muted small">Attivi</div>
+                                        <div class="dashboard-summary-card border rounded p-3 h-100">
+                                            <div class="fw-semibold mb-2">Ordini in lavorazione</div>
+                                            <p class="small text-muted mb-2">Ordini attualmente attivi; il numero non equivale al numero di operatori.</p>
                                             <div class="kpi-card-value"
                                                  data-dashboard-card="ordini_attivi">0
                                             </div>
@@ -179,8 +185,9 @@
                                     </div>
 
                                     <div class="col">
-                                        <div class="dashboard-summary-card border rounded p-2 h-100 text-center d-flex flex-column justify-content-center align-items-center">
-                                            <div class="text-muted small">Sospesi</div>
+                                        <div class="dashboard-summary-card border rounded p-3 h-100">
+                                            <div class="fw-semibold mb-2">Ordini sospesi</div>
+                                            <p class="small text-muted mb-2">Ordini aperti con lavorazione in sospeso. Il loro carico resta da gestire.</p>
                                             <div class="kpi-card-value"
                                                  data-dashboard-card="ordini_sospesi">0
                                             </div>
@@ -188,17 +195,20 @@
                                     </div>
 
                                     <div class="col">
-                                        <div class="dashboard-summary-card border rounded p-2 h-100 text-center d-flex flex-column justify-content-center align-items-center">
-                                            <div class="text-muted small">Ore aperte complessive</div>
+                                        <div class="dashboard-summary-card border rounded p-3 h-100">
+                                            <div class="fw-semibold mb-2">Ore standard delle quantità aperte</div>
+                                            <p class="small text-muted mb-2">Minuti previsti per pezzo × quantità ancora aperta della fase / 60. Non sottrae il tempo già lavorato e non include attrezzaggi.</p>
                                             <div class="kpi-card-value"
                                                  data-dashboard-card="ore_previste_produzione">0 h
                                             </div>
+                                            <div class="small text-muted" data-dashboard-card-sub="ore_previste_produzione">Dati non caricati.</div>
                                         </div>
                                     </div>
 
                                     <div class="col">
-                                        <div class="dashboard-summary-card border rounded p-2 h-100 text-center d-flex flex-column justify-content-center align-items-center">
-                                            <div class="text-muted small">Ore disponibili oggi</div>
+                                        <div class="dashboard-summary-card border rounded p-3 h-100">
+                                            <div class="fw-semibold mb-2">Capacità teorica di oggi (ore)</div>
+                                            <p class="small text-muted mb-2">Somma dei calendari degli operatori coerenti con i filtri. Non rileva automaticamente assenze o indisponibilità reali.</p>
                                             <div class="kpi-card-value"
                                                  data-dashboard-card="ore_disponibili_oggi">0 h
                                             </div>
@@ -209,8 +219,9 @@
                                         </div>
                                     </div>
                                     <div class="col">
-                                        <div class="dashboard-summary-card border rounded p-2 h-100 text-center d-flex flex-column justify-content-center align-items-center">
-                                            <div class="text-muted small">Saturazione carico entro oggi</div>
+                                        <div class="dashboard-summary-card border rounded p-3 h-100">
+                                            <div class="fw-semibold mb-2">Carico da gestire / capacità di oggi</div>
+                                            <p class="small text-muted mb-2">Include scadenze di oggi, arretrato e ordini senza scadenza. 100% equivale alle ore disponibili; oltre 100% il carico le supera.</p>
 
                                             <div class="kpi-card-value"
                                                  data-dashboard-card="saturazione_totale">
@@ -224,8 +235,9 @@
                                     </div>
 
                                     <div class="col">
-                                        <div class="dashboard-summary-card border rounded p-2 h-100 text-center d-flex flex-column justify-content-center align-items-center">
-                                            <div class="text-muted small">Incidenza sospensioni</div>
+                                        <div class="dashboard-summary-card border rounded p-3 h-100">
+                                            <div class="fw-semibold mb-2">Ordini sospesi sul totale (%)</div>
+                                            <p class="small text-muted mb-2">Ordini sospesi / tutti gli ordini aperti. Misura il numero di ordini, non le ore di fermo.</p>
                                             <div class="kpi-card-value"
                                                  data-dashboard-card="incidenza_sospensioni">
                                                 0%
@@ -238,8 +250,9 @@
                                     </div>
 
                                     <div class="col">
-                                        <div class="dashboard-summary-card border rounded p-2 h-100 text-center d-flex flex-column justify-content-center align-items-center">
-                                            <div class="text-muted small">Gap capacità 7 giorni</div>
+                                        <div class="dashboard-summary-card border rounded p-3 h-100">
+                                            <div class="fw-semibold mb-2">Margine di capacità a 7 giorni</div>
+                                            <p class="small text-muted mb-2">Capacità − carico con scadenza entro 7 giorni, incluso oggi, arretrato e senza scadenza. Positivo: margine; negativo: ore mancanti.</p>
                                             <div class="kpi-card-value"
                                                  data-dashboard-card="gap_capacita_7_giorni">
                                                 0 h
@@ -252,14 +265,15 @@
                                     </div>
 
                                     <div class="col">
-                                        <div class="dashboard-summary-card border rounded p-2 h-100 text-center d-flex flex-column justify-content-center align-items-center">
-                                            <div class="text-muted small">Risorse collo di bottiglia</div>
+                                        <div class="dashboard-summary-card border rounded p-3 h-100">
+                                            <div class="fw-semibold mb-2">Risorse da verificare oggi</div>
+                                            <p class="small text-muted mb-2">Risorse con carico oltre la capacità teorica, oppure con carico ma capacità pari a zero. Gli operatori abilitati possono essere condivisi tra risorse.</p>
                                             <div class="kpi-card-value"
                                                  data-dashboard-card="risorse_collo_bottiglia">
                                                 0
                                             </div>
                                             <div class="small text-muted">
-                                                carico entro oggi &gt; capacità
+                                                <span data-dashboard-card-sub="risorse_collo_bottiglia">Base di calcolo non caricata</span>
                                             </div>
                                         </div>
                                     </div>
@@ -272,9 +286,10 @@
 
                 <!-- Grafici Carico prossimo mese + Stati ODP -->
                 <div class="row g-3 mb-3">
-                    <div class="col-12 col-xl-10">
+                    <div class="col-12 col-xl-8">
                         <div class="card shadow-sm h-100">
-                            <div class="card-header">Carico prossimo mese</div>
+                            <div class="card-header">Carico per scadenza · prossimi 31 giorni</div>
+                            <p class="small text-muted px-3 pt-3 mb-0">Le ore sono concentrate sulla scadenza della fase: non è una pianificazione giorno per giorno. Arretrato e ordini senza scadenza sono mostrati su oggi.</p>
                             <div class="card-body">
                                 <div class="dashboard-chart-box">
                                     <canvas id="chart-cruscotto-carico"></canvas>
@@ -287,9 +302,9 @@
                         </div>
                     </div>
 
-                    <div class="col-12 col-xl-2">
+                    <div class="col-12 col-xl-4">
                         <div class="card shadow-sm h-100">
-                            <div class="card-header">Stati ODP</div>
+                            <div class="card-header">Ordini aperti per stato</div>
                             <div class="card-body">
                                 <div class="dashboard-chart-box">
                                     <canvas id="chart-cruscotto-stati"></canvas>
@@ -306,7 +321,7 @@
                 <div class="row g-3 mb-3">
                     <div class="col-12 col-xl-6">
                         <div class="card shadow-sm h-100">
-                            <div class="card-header">Carico per reparto</div>
+                            <div class="card-header">Ore standard aperte per reparto</div>
                             <div class="card-body">
                                 <div class="dashboard-chart-box">
                                     <canvas id="chart-cruscotto-reparti"></canvas>
@@ -321,7 +336,7 @@
 
                     <div class="col-12 col-xl-6">
                         <div class="card shadow-sm h-100">
-                            <div class="card-header">ODP per reparto</div>
+                            <div class="card-header">Ordini aperti per reparto</div>
                             <div class="card-body">
                                 <div class="dashboard-chart-box">
                                     <canvas id="chart-cruscotto-ordini-reparto"></canvas>
@@ -338,7 +353,7 @@
                 <div class="row g-3 mb-3">
                     <div class="col-12 col-xl-6">
                         <div class="card shadow-sm h-100">
-                            <div class="card-header">Carico per risorsa</div>
+                            <div class="card-header">Ore standard aperte per risorsa</div>
                             <div class="card-body">
                                 <div class="dashboard-chart-box">
                                     <canvas id="chart-cruscotto-risorse"></canvas>
@@ -353,7 +368,7 @@
 
                     <div class="col-12 col-xl-6">
                         <div class="card shadow-sm h-100">
-                            <div class="card-header">ODP per risorsa</div>
+                            <div class="card-header">Ordini aperti per risorsa</div>
                             <div class="card-body">
                                 <div class="dashboard-chart-box">
                                     <canvas id="chart-cruscotto-ordini-risorsa"></canvas>
@@ -370,7 +385,7 @@
                 <div class="row g-3">
                     <div class="col-12 col-xl-6">
                         <div class="card shadow-sm h-100">
-                            <div class="card-header">Saturazione reparti (carico entro oggi)</div>
+                            <div class="card-header">Reparti · carico da gestire e capacità di oggi (ore)</div>
                             <div class="card-body">
                                 <div class="dashboard-chart-box">
                                     <canvas id="chart-cruscotto-saturazione"></canvas>
@@ -385,7 +400,9 @@
 
                     <div class="col-12 col-xl-6">
                         <div class="card shadow-sm h-100">
-                            <div class="card-header">Top criticità operative</div>
+                            <div class="card-header">Segnalazioni operative da verificare</div>
+                            <p class="small text-muted px-3 pt-3 mb-0" data-dashboard-card-sub="criticita">Dati non caricati.</p>
+                            <p class="small text-muted px-3 mb-0">Il confronto tra tempo registrato e standard aperto è un controllo da verificare, soprattutto dopo chiusure parziali: non è uno scostamento finale di fase.</p>
                             <div class="card-body">
                                 <div id="dashboard-criticita-list"
                                      class="dashboard-list">
@@ -399,13 +416,13 @@
                 <div class="row g-3 mt-1">
                     <div class="col-12">
                         <div class="card shadow-sm">
-                            <div class="card-header">Risorse collo di bottiglia</div>
+                            <div class="card-header">Risorse da verificare · carico e capacità di oggi (ore)</div>
                             <div class="card-body">
                                 <div class="dashboard-chart-box">
                                     <canvas id="chart-cruscotto-colli-risorsa"></canvas>
                                     <div class="dashboard-empty"
                                          data-empty-for="chart-cruscotto-colli-risorsa">
-                                        Nessuna risorsa oltre capacità.
+                                        Nessuna risorsa con carico oltre capacità o capacità pari a zero.
                                     </div>
                                 </div>
                             </div>
@@ -477,24 +494,31 @@
                     </div>
                 </div>
 
+                <p class="small text-muted mb-3">
+                    Gli indicatori si riferiscono alle date di chiusura e ai filtri selezionati.
+                    Un ordine può avere più fasi; una matricola può comparire in più fasi ma conta una sola volta.
+                    “Non disponibile” significa che manca una base di calcolo, non che il risultato sia zero.
+                </p>
                 <div class="row g-3 mb-3">
-                    <div class="col-12 col-md-2">
+                    <div class="col-12 col-md-6 col-xl-4">
                         <div class="card shadow-sm h-100">
                             <div class="card-body">
-                                <div class="text-muted small">Ordini completati</div>
+                                <div class="fw-semibold mb-2">Ordini conclusi</div>
+                                <p class="small text-muted mb-2">Chiusure finali degli ordini nel periodo selezionato.</p>
                                 <div class="kpi-card-value"
                                      data-kpi-card="ordini_chiusi">0
                                 </div>
-                                <div class="small text-muted kpi-card-subtitle">nel periodo</div>
+                                <div class="small text-muted kpi-card-subtitle">nel periodo e nei filtri selezionati</div>
                             </div>
                         </div>
                     </div>
-                    <div class="col-12 col-md-2">
+                    <div class="col-12 col-md-6 col-xl-4">
                         <div class="card shadow-sm h-100">
                             <div class="card-body">
-                                <div class="text-muted small">% ritardo</div>
+                                <div class="fw-semibold mb-2">Ordini conclusi in ritardo (%)</div>
+                                <p class="small text-muted mb-2">Ordini chiusi dopo la scadenza / tutti gli ordini conclusi. Più basso è meglio; le scadenze mancanti limitano il confronto.</p>
                                 <div class="kpi-card-value"
-                                     data-kpi-card="percentuale_ritardo">0%
+                                     data-kpi-card="percentuale_ritardo">—
                                 </div>
                                 <div class="small text-muted kpi-card-subtitle"
                                      data-kpi-card-sub="ordini_in_ritardo">0 ordini
@@ -502,93 +526,100 @@
                             </div>
                         </div>
                     </div>
-                    <div class="col-12 col-md-2">
+                    <div class="col-12 col-md-6 col-xl-4">
                         <div class="card shadow-sm h-100">
                             <div class="card-body">
-                                <div class="text-muted small">Ritardo medio</div>
+                                <div class="fw-semibold mb-2">Giorni di ritardo degli ordini tardivi</div>
+                                <p class="small text-muted mb-2">Media dei soli ordini conclusi in ritardo, in giorni solari. Gli ordini puntuali non entrano nella media.</p>
                                 <div class="kpi-card-value"
-                                     data-kpi-card="giorni_medi_ritardo">0 g
+                                     data-kpi-card="giorni_medi_ritardo">—
                                 </div>
-                                <div class="small text-muted kpi-card-subtitle">solo ordini completati in ritardo, giorni solari</div>
+                                <div class="small text-muted kpi-card-subtitle">solo ordini tardivi · giorni solari</div>
                             </div>
                         </div>
                     </div>
-                    <div class="col-12 col-md-2">
+                    <div class="col-12 col-md-6 col-xl-4">
                         <div class="card shadow-sm h-100">
                             <div class="card-body">
-                                <div class="text-muted small">Scostamento</div>
+                                <div class="fw-semibold mb-2">Ore lavorate rispetto al piano (%)</div>
+                                <p class="small text-muted mb-2">(Ore effettive − ore previste) / ore previste. +20% significa il 20% di ore in più; un valore negativo indica meno ore del previsto.</p>
                                 <div class="kpi-card-value"
-                                     data-kpi-card="scostamento_percentuale">0%
+                                     data-kpi-card="scostamento_percentuale">—
                                 </div>
                                 <div class="small text-muted kpi-card-subtitle"
-                                     data-kpi-card-sub="scostamento_totale">0 h
+                                     data-kpi-card-sub="scostamento_totale">—
                                 </div>
                             </div>
                         </div>
                     </div>
-                    <div class="col-12 col-md-2">
+                    <div class="col-12 col-md-6 col-xl-4">
                         <div class="card shadow-sm h-100">
                             <div class="card-body">
-                                <div class="text-muted small">Aderenza tempi</div>
+                                <div class="fw-semibold mb-2">Fasi entro ±10% del tempo previsto</div>
+                                <p class="small text-muted mb-2">Quota delle fasi con ore effettive comprese tra il 90% e il 110% delle ore previste. Sono considerate solo le fasi con entrambi i tempi maggiori di zero.</p>
                                 <div class="kpi-card-value"
-                                     data-kpi-card="affidabilita_tempi">0%
+                                     data-kpi-card="affidabilita_tempi">—
                                 </div>
-                                <div class="small text-muted kpi-card-subtitle">fasi entro ±10%</div>
+                                <div class="small text-muted kpi-card-subtitle" data-kpi-card-sub="affidabilita_tempi">Base di calcolo non caricata</div>
                             </div>
                         </div>
                     </div>
-                    <div class="col-12 col-md-2">
+                    <div class="col-12 col-md-6 col-xl-4">
                         <div class="card shadow-sm h-100">
                             <div class="card-body">
-                                <div class="text-muted small">Macchine prodotte</div>
+                                <div class="fw-semibold mb-2">Macchine lavorate · matricole uniche</div>
+                                <p class="small text-muted mb-2">Ogni matricola conta una volta nel periodo, dopo almeno una fase non parziale completata. Non indica necessariamente macchine finite.</p>
                                 <div class="kpi-card-value"
                                      data-kpi-card="macchine_prodotte">0
                                 </div>
-                                <div class="small text-muted kpi-card-subtitle">nel periodo</div>
+                                <div class="small text-muted kpi-card-subtitle">nel periodo e nei filtri selezionati</div>
                             </div>
                         </div>
                     </div>
                 </div>
 
                 <div class="row g-3 mb-3">
-                    <div class="col-12 col-md-4">
+                    <div class="col-12 col-md-6 col-xl-4">
                         <div class="card shadow-sm h-100">
                             <div class="card-body">
-                                <div class="text-muted small">Tasso non conformità</div>
+                                <div class="fw-semibold mb-2">Quantità non conforme (%)</div>
+                                <p class="small text-muted mb-2">Quantità non conforme / quantità totale registrata nelle fasi, comprese le parziali. È un dato di processo: lo stesso pezzo può comparire in più fasi.</p>
                                 <div class="kpi-card-value"
-                                     data-kpi-card="tasso_non_conformita">0%
+                                     data-kpi-card="tasso_non_conformita">—
                                 </div>
                                 <div class="small text-muted kpi-card-subtitle"
                                      data-kpi-card-sub="tasso_non_conformita">
-                                    0 NC / 0 consuntivati
+                                    Base di calcolo non caricata
                                 </div>
                             </div>
                         </div>
                     </div>
-                    <div class="col-12 col-md-4">
+                    <div class="col-12 col-md-6 col-xl-4">
                         <div class="card shadow-sm h-100">
                             <div class="card-body">
-                                <div class="text-muted small">Lead time medio</div>
+                                <div class="fw-semibold mb-2">Tempo medio di attraversamento</div>
+                                <p class="small text-muted mb-2">Ore solari dalla prima presa in carico disponibile alla chiusura finale dell’ordine. Include attese e sospensioni; non coincide con le ore lavorate.</p>
                                 <div class="kpi-card-value"
-                                     data-kpi-card="lead_time_medio_ore">0 h
+                                     data-kpi-card="lead_time_medio_ore">—
                                 </div>
                                 <div class="small text-muted kpi-card-subtitle"
                                      data-kpi-card-sub="lead_time">
-                                    mediana 0 h · 0 ODP
+                                    Base di calcolo non caricata
                                 </div>
                             </div>
                         </div>
                     </div>
-                    <div class="col-12 col-md-4">
+                    <div class="col-12 col-md-6 col-xl-4">
                         <div class="card shadow-sm h-100">
                             <div class="card-body">
-                                <div class="text-muted small">Copertura dati KPI</div>
+                                <div class="fw-semibold mb-2">Fasi con dati completi (%)</div>
+                                <p class="small text-muted mb-2">Fasi chiuse con tempi previsto ed effettivo positivi, quantità positiva e scadenza / tutte le fasi chiuse. Misura la disponibilità dei dati, non la loro correttezza.</p>
                                 <div class="kpi-card-value"
-                                     data-kpi-card="copertura_dati">0%
+                                     data-kpi-card="copertura_dati">—
                                 </div>
                                 <div class="small text-muted kpi-card-subtitle"
                                      data-kpi-card-sub="copertura_dati">
-                                    0 / 0 fasi complete
+                                    Base di calcolo non caricata
                                 </div>
                             </div>
                         </div>
@@ -598,7 +629,7 @@
                 <div class="row g-3 mb-3">
                     <div class="col-12 col-xl-4">
                         <div class="card shadow-sm h-100">
-                            <div class="card-header">Tempo fasi: reale vs previsto</div>
+                            <div class="card-header">Ore delle fasi chiuse · previste ed effettive</div>
                             <div class="card-body">
                                 <div class="dashboard-chart-box-sm">
                                     <canvas id="chart-kpi-tempi"></canvas>
@@ -611,7 +642,7 @@
                     </div>
                     <div class="col-12 col-xl-4">
                         <div class="card shadow-sm h-100">
-                            <div class="card-header">Aderenza tempi delle fasi</div>
+                            <div class="card-header">Fasi dentro e fuori la tolleranza del ±10%</div>
                             <div class="card-body">
                                 <div class="dashboard-chart-box-sm">
                                     <canvas id="chart-kpi-affidabilita"></canvas>
@@ -624,7 +655,7 @@
                     </div>
                     <div class="col-12 col-xl-4">
                         <div class="card shadow-sm h-100">
-                            <div class="card-header">Ritardo medio per reparto</div>
+                            <div class="card-header">Giorni medi di ritardo · soli ordini tardivi</div>
                             <div class="card-body">
                                 <div class="dashboard-chart-box-sm">
                                     <canvas id="chart-kpi-ritardo-reparto"></canvas>
@@ -640,7 +671,7 @@
                 <div class="row g-3 mb-3">
                     <div class="col-12 col-xl-6">
                         <div class="card shadow-sm h-100">
-                            <div class="card-header">Top risorse per scostamento fasi</div>
+                            <div class="card-header">Risorse con maggiore superamento del piano (%)</div>
                             <div class="card-body">
                                 <div class="dashboard-chart-box">
                                     <canvas id="chart-kpi-risorse-scostamento"></canvas>
@@ -653,7 +684,7 @@
                     </div>
                     <div class="col-12 col-xl-6">
                         <div class="card shadow-sm h-100">
-                            <div class="card-header">Top lavorazioni per scostamento fasi</div>
+                            <div class="card-header">Lavorazioni con maggiore superamento del piano (%)</div>
                             <div class="card-body">
                                 <div class="dashboard-chart-box">
                                     <canvas id="chart-kpi-lavorazioni-scostamento"></canvas>
@@ -669,19 +700,19 @@
                 <div class="card shadow-sm">
                     <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                         <div>
-                            <strong>Snapshot mensili KPI</strong>
-                            <div class="small text-muted">Storico generato dal task mensile</div>
+                            <strong>Storico mensile degli indicatori</strong>
+                            <div class="small text-muted">Valori salvati per mese e ambito. I filtri e le date della sezione precedente non si applicano a questo storico.</div>
                         </div>
                         <div class="d-flex gap-2 align-items-end">
                             <div>
-                                <label class="form-label small mb-1">Scope</label>
+                                <label class="form-label small mb-1" for="kpi-snapshot-scope">Ambito</label>
                                 <select class="form-select form-select-sm"
                                         id="kpi-snapshot-scope">
                                     <option value="global|*">Globale</option>
                                 </select>
                             </div>
                             <div>
-                                <label class="form-label small mb-1">Mesi</label>
+                                <label class="form-label small mb-1" for="kpi-snapshot-months">Mesi</label>
                                 <select class="form-select form-select-sm"
                                         id="kpi-snapshot-months">
                                     <option value="6">6</option>
@@ -699,10 +730,14 @@
                         </div>
                     </div>
                     <div class="card-body">
+                        <p class="small text-muted">
+                            La stessa matricola può comparire in mesi o reparti diversi: sommare i singoli valori non equivale al totale delle matricole uniche sull’intero periodo.
+                            Le differenze tra percentuali sono espresse in punti percentuali: dal 10% al 15% significa +5 punti.
+                        </p>
                         <div class="row g-3 mb-3">
                             <div class="col-12 col-md-3">
                                 <div class="border rounded p-2 h-100">
-                                    <div class="text-muted small">Ultimo mese</div>
+                                    <div class="text-muted small">Ultimo mese disponibile</div>
                                     <div class="fs-4 fw-bold"
                                          data-snapshot-card="snapshot_month">-
                                     </div>
@@ -710,7 +745,7 @@
                             </div>
                             <div class="col-12 col-md-3">
                                 <div class="border rounded p-2 h-100">
-                                    <div class="text-muted small">Macchine prodotte</div>
+                                    <div class="text-muted small">Matricole uniche nel mese</div>
                                     <div class="fs-4 fw-bold"
                                          data-snapshot-card="macchine_prodotte">0
                                     </div>
@@ -720,7 +755,7 @@
                             </div>
                             <div class="col-12 col-md-3">
                                 <div class="border rounded p-2 h-100">
-                                    <div class="text-muted small">% ritardo</div>
+                                    <div class="text-muted small">Ordini conclusi in ritardo (%)</div>
                                     <div class="fs-4 fw-bold"
                                          data-snapshot-card="percentuale_ritardo">0%
                                     </div>
@@ -730,7 +765,7 @@
                             </div>
                             <div class="col-12 col-md-3">
                                 <div class="border rounded p-2 h-100">
-                                    <div class="text-muted small">Scostamento totale</div>
+                                    <div class="text-muted small">Ore in più o in meno del previsto</div>
                                     <div class="fs-4 fw-bold"
                                          data-snapshot-card="scostamento_totale">0 h
                                     </div>
@@ -743,7 +778,7 @@
                         <div class="row g-3">
                             <div class="col-12 col-xl-6">
                                 <div class="border rounded p-2 h-100">
-                                    <div class="fw-semibold mb-2">Andamento produzione mensile</div>
+                                    <div class="fw-semibold mb-2">Macchine lavorate e ordini conclusi per mese</div>
                                     <div class="dashboard-chart-box-sm">
                                         <canvas id="chart-snapshot-ordini"></canvas>
                                         <div class="dashboard-empty"
@@ -754,7 +789,7 @@
                             </div>
                             <div class="col-12 col-xl-6">
                                 <div class="border rounded p-2 h-100">
-                                    <div class="fw-semibold mb-2">Andamento tempi</div>
+                                    <div class="fw-semibold mb-2">Ore delle fasi chiuse per mese</div>
                                     <div class="dashboard-chart-box-sm">
                                         <canvas id="chart-snapshot-tempi"></canvas>
                                         <div class="dashboard-empty"
@@ -767,11 +802,11 @@
                                             <thead class="table-light">
                                             <tr>
                                                 <th>Mese</th>
-                                                <th class="text-end">Tempo previsto</th>
-                                                <th class="text-end">Tempo reale</th>
-                                                <th class="text-end">Scostamento</th>
-                                                <th class="text-end">% scostamento</th>
-                                                <th class="text-end">Tempo medio fase</th>
+                                                <th class="text-end">Ore previste</th>
+                                                <th class="text-end">Ore effettive</th>
+                                                <th class="text-end">Differenza (h)</th>
+                                                <th class="text-end">Differenza (%)</th>
+                                                <th class="text-end">Ore medie per fase</th>
                                             </tr>
                                             </thead>
                                             <tbody id="tbody-snapshot-tempi">
@@ -1049,9 +1084,13 @@
                     data: {
                         labels: rows.map(x => x.label),
                         datasets: [{
-                            label: "Carico entro oggi / capacità odierna",
-                            data: rows.map(x => Number(x.saturazione || 0)),
-                            backgroundColor: rows.map(x => colorByPercent(x.saturazione)),
+                            label: "Carico da gestire (h)",
+                            data: rows.map(x => Number(x.ore_totali || 0)),
+                            backgroundColor: rows.map(x => Number(x.capacita || 0) <= 0 || Number(x.saturazione || 0) > 100 ? COLORS.red : COLORS.blue),
+                        }, {
+                            label: "Capacità teorica oggi (h)",
+                            data: rows.map(x => Number(x.capacita || 0)),
+                            backgroundColor: COLORS.green,
                         }],
                     },
                     options: baseOptions({
@@ -1059,21 +1098,21 @@
                         scales: {
                             x: {
                                 beginAtZero: true,
-                                title: {display: true, text: "% saturazione carico entro oggi"}
+                                title: {display: true, text: "Ore"}
                             }
                         },
                         plugins: {
-                            legend: {display: false},
+                            legend: {display: true},
                             tooltip: {
                                 callbacks: {
                                     label: (context) => {
                                         const row = rows[context.dataIndex] || {};
 
                                         return [
-                                            `Saturazione carico entro oggi: ${formatPercent(row.saturazione)}`,
+                                            `Saturazione carico entro oggi: ${row.saturazione == null ? "Non calcolabile: capacità 0 h" : formatPercent(row.saturazione)}`,
                                             `Ore da assorbire entro oggi: ${formatHours(row.ore_totali)}`,
                                             `Ore disponibili oggi: ${formatHours(row.capacita)}`,
-                                            `Scostamento oggi: ${formatHours(row.scostamento_ore)}`,
+                                            `Margine oggi: ${formatSignedHours(row.scostamento_ore)}`,
                                             `Operatori reparto: ${row.operatori_capacita ?? 0}`,
                                         ];
                                     }
@@ -1092,9 +1131,13 @@
                     data: {
                         labels: rows.map(x => x.label),
                         datasets: [{
-                            label: "Saturazione carico entro oggi",
-                            data: rows.map(x => Number(x.saturazione || 0)),
-                            backgroundColor: rows.map(x => colorByPercent(x.saturazione)),
+                            label: "Carico da gestire (h)",
+                            data: rows.map(x => Number(x.ore_totali || 0)),
+                            backgroundColor: rows.map(x => Number(x.capacita || 0) <= 0 || Number(x.saturazione || 0) > 100 ? COLORS.red : COLORS.blue),
+                        }, {
+                            label: "Capacità teorica oggi (h)",
+                            data: rows.map(x => Number(x.capacita || 0)),
+                            backgroundColor: COLORS.green,
                         }],
                     },
                     options: baseOptions({
@@ -1102,21 +1145,21 @@
                         scales: {
                             x: {
                                 beginAtZero: true,
-                                title: {display: true, text: "% saturazione"}
+                                title: {display: true, text: "Ore"}
                             }
                         },
                         plugins: {
-                            legend: {display: false},
+                            legend: {display: true},
                             tooltip: {
                                 callbacks: {
                                     label: (context) => {
                                         const row = rows[context.dataIndex] || {};
                                         const capacita = row.senza_capacita
-                                            ? "non configurata"
+                                            ? "0 h (verificare calendario e filtri)"
                                             : formatHours(row.capacita);
 
                                         return [
-                                            `Saturazione: ${formatPercent(row.saturazione)}`,
+                                            `Saturazione: ${row.saturazione == null ? "Non calcolabile: capacità 0 h" : formatPercent(row.saturazione)}`,
                                             `Carico entro oggi: ${formatHours(row.ore_totali)}`,
                                             `Capacità odierna: ${capacita}`,
                                             `Operatori abilitati: ${row.operatori_capacita ?? 0}`,
@@ -1414,23 +1457,23 @@
                 setCard(
                     "data-dashboard-card-sub",
                     "operatori_capacita",
-                    `${cards.operatori_capacita ?? 0} operatori`
+                    `${cards.operatori_capacita ?? 0} operatori con calendario settimanale`
                 );
                 setCard(
                     "data-dashboard-card",
                     "saturazione_totale",
-                    formatPercent(cards.saturazione_totale)
+                    cards.saturazione_totale == null ? "Non calcolabile: capacità 0 h" : formatPercent(cards.saturazione_totale)
                 );
 
                 setCard(
                     "data-dashboard-card-sub",
                     "saturazione_totale_ore",
-                    `${formatHours(cards.ore_previste_oggi)} / ${formatHours(cards.ore_disponibili_oggi)}`
+                    `${formatHours(cards.ore_previste_oggi)} da gestire / ${formatHours(cards.ore_disponibili_oggi)} disponibili · ${cards.ordini_senza_scadenza ?? 0} ordini senza scadenza`
                 );
                 setCard(
                     "data-dashboard-card",
                     "incidenza_sospensioni",
-                    formatPercent(cards.incidenza_sospensioni)
+                    Number(cards.ordini_totali || 0) > 0 ? formatPercent(cards.incidenza_sospensioni) : "Non disponibile"
                 );
                 setCard(
                     "data-dashboard-card-sub",
@@ -1445,7 +1488,7 @@
                 setCard(
                     "data-dashboard-card-sub",
                     "gap_capacita_7_giorni",
-                    `${formatHours(cards.carico_7_giorni)} / ${formatHours(cards.capacita_7_giorni)}`
+                    `${formatHours(cards.capacita_7_giorni)} di capacità − ${formatHours(cards.carico_7_giorni)} di carico`
                 );
                 setCard(
                     "data-dashboard-card",
@@ -1456,6 +1499,12 @@
                 setCard("data-dashboard-card", "ordini_critici", cards.ordini_critici ?? 0);
                 setCard("data-dashboard-card", "risorse_sovraccariche", cards.risorse_sovraccariche ?? 0);
 
+                setCard("data-dashboard-card-sub", "risorse_collo_bottiglia",
+                    `${Math.max(0, (cards.risorse_collo_bottiglia || 0) - (cards.risorse_senza_capacita || 0))} oltre capacità · ${cards.risorse_senza_capacita ?? 0} con capacità 0 h`);
+                setCard("data-dashboard-card-sub", "ordini_totali", `${cards.ordini_pianificati ?? 0} pianificati, oltre agli attivi e sospesi`);
+                setCard("data-dashboard-card-sub", "ore_previste_produzione", `${cards.ordini_senza_tempo_previsto ?? 0} ordini con stima nulla o non disponibile`);
+                setCard("data-dashboard-card-sub", "criticita",
+                    `${data.criticita?.length ?? 0} segnalazioni mostrate / ${cards.criticita_totali ?? 0} totali · ${cards.ordini_critici ?? 0} ordini coinvolti`);
                 renderCruscottoCarico(data.charts?.carico_prossimi_giorni || []);
                 renderCruscottoStati(data.charts?.stati_ordine || []);
                 renderCruscottoSaturazione(data.charts?.saturazione_risorse || []);
@@ -1535,7 +1584,7 @@
                         datasets: [{
                             label,
                             data: rows.map(x => Number(x.value || 0)),
-                            backgroundColor: rows.map(x => Number(x.value || 0) > 25 ? COLORS.red : Number(x.value || 0) > 10 ? COLORS.orange : COLORS.yellow),
+                            backgroundColor: COLORS.orange,
                         }],
                     },
                     options: baseOptions({
@@ -1590,32 +1639,34 @@
                 const cards = data.cards || {};
 
                 setCard("data-kpi-card", "ordini_chiusi", cards.ordini_chiusi ?? 0);
-                setCard("data-kpi-card", "percentuale_ritardo", formatPercent(cards.percentuale_ritardo));
-                setCard("data-kpi-card", "giorni_medi_ritardo", `${Number(cards.giorni_medi_ritardo || 0).toFixed(2)} g`);
-                setCard("data-kpi-card", "scostamento_percentuale", formatPercent(cards.scostamento_percentuale));
-                setCard("data-kpi-card", "affidabilita_tempi", formatPercent(cards.affidabilita_tempi));
-                setCard("data-kpi-card-sub", "ordini_in_ritardo", `${cards.ordini_in_ritardo ?? 0} ordini`);
-                setCard("data-kpi-card-sub", "scostamento_totale", formatHours(cards.scostamento_totale));
+                setCard("data-kpi-card", "percentuale_ritardo", Number(cards.ordini_con_scadenza || 0) > 0 ? formatPercent(cards.percentuale_ritardo) : "Non disponibile");
+                setCard("data-kpi-card", "giorni_medi_ritardo", Number(cards.ordini_in_ritardo || 0) > 0 ? `${Number(cards.giorni_medi_ritardo).toFixed(2)} giorni` : "Non disponibile");
+                setCard("data-kpi-card", "scostamento_percentuale", Number(cards.tempo_previsto_totale || 0) > 0 ? `${Number(cards.scostamento_percentuale) > 0 ? "+" : ""}${formatPercent(cards.scostamento_percentuale)}` : "Non disponibile");
+                setCard("data-kpi-card", "affidabilita_tempi", (cards.fasi_tempi_affidabili || 0) + (cards.fasi_tempi_non_affidabili || 0) > 0 ? formatPercent(cards.affidabilita_tempi) : "Non disponibile");
+                setCard("data-kpi-card-sub", "ordini_in_ritardo", `${cards.ordini_in_ritardo ?? 0} tardivi / ${cards.ordini_chiusi ?? 0} conclusi · ${cards.ordini_con_scadenza ?? 0} con scadenza`);
+                setCard("data-kpi-card-sub", "scostamento_totale", `${formatSignedHours(cards.scostamento_totale)} · ${formatHours(cards.tempo_reale_totale)} effettive / ${formatHours(cards.tempo_previsto_totale)} previste`);
                 setCard("data-kpi-card", "macchine_prodotte", Number(cards.macchine_prodotte || 0).toFixed(0));
-                setCard("data-kpi-card", "tasso_non_conformita", formatPercent(cards.tasso_non_conformita));
+                setCard("data-kpi-card", "tasso_non_conformita", Number(cards.quantita_consuntivata || 0) > 0 ? formatPercent(cards.tasso_non_conformita) : "Non disponibile");
                 setCard(
                     "data-kpi-card-sub",
                     "tasso_non_conformita",
-                    `${Number(cards.quantita_non_conforme || 0).toFixed(0)} NC / ${Number(cards.quantita_consuntivata || 0).toFixed(0)} consuntivati`
+                    `${Number(cards.quantita_non_conforme || 0).toLocaleString("it-IT", {maximumFractionDigits: 2})} non conformi / ${Number(cards.quantita_consuntivata || 0).toLocaleString("it-IT", {maximumFractionDigits: 2})} registrati`
                 );
-                setCard("data-kpi-card", "lead_time_medio_ore", formatHours(cards.lead_time_medio_ore));
+                setCard("data-kpi-card", "lead_time_medio_ore", Number(cards.lead_time_copertura || 0) > 0 ? formatHours(cards.lead_time_medio_ore) : "Non disponibile");
                 setCard(
                     "data-kpi-card-sub",
                     "lead_time",
-                    `mediana ${formatHours(cards.lead_time_mediano_ore)} · ${cards.lead_time_copertura ?? 0} ODP`
+                    `mediana ${Number(cards.lead_time_copertura || 0) > 0 ? formatHours(cards.lead_time_mediano_ore) : "—"} · ${cards.lead_time_copertura ?? 0} ordini con durata / ${cards.ordini_chiusi ?? 0} conclusi`
                 );
-                setCard("data-kpi-card", "copertura_dati", formatPercent(cards.copertura_dati));
+                setCard("data-kpi-card", "copertura_dati", Number(cards.fasi_totali || 0) > 0 ? formatPercent(cards.copertura_dati) : "Non disponibile");
                 setCard(
                     "data-kpi-card-sub",
                     "copertura_dati",
-                    `${cards.fasi_dati_completi ?? 0} / ${cards.fasi_totali ?? 0} fasi complete`
+                    `${cards.fasi_dati_completi ?? 0} con dati completi / ${cards.fasi_totali ?? 0} fasi chiuse`
                 );
 
+                setCard("data-kpi-card-sub", "affidabilita_tempi",
+                    `${cards.fasi_tempi_affidabili ?? 0} entro tolleranza / ${(cards.fasi_tempi_affidabili || 0) + (cards.fasi_tempi_non_affidabili || 0)} fasi valutabili · ${cards.fasi_totali ?? 0} chiuse`);
                 renderKpiTempoRealeVsPrevisto(data.charts?.tempo_reale_vs_previsto || []);
                 renderKpiAffidabilita(data.charts?.affidabilita_tempi || []);
                 renderKpiRitardoReparto((data.charts?.ritardo_medio_reparto || []).slice(0, 8));
@@ -1644,16 +1695,17 @@
                 if (el) el.textContent = value;
             }
 
-            function setSnapshotDelta(name, comparison, suffix = "", positiveIsGood = false) {
+            function setSnapshotDelta(name, comparison, suffix = "", positiveIsGood = false, previousMonth = "mese precedente disponibile") {
                 const el = document.querySelector(`[data-snapshot-delta="${name}"]`);
                 if (!el) return;
                 if (!comparison) {
-                    el.textContent = "";
+                    el.textContent = "Confronto non disponibile";
+                    el.classList.remove("text-danger", "text-success");
                     return;
                 }
                 const delta = Number(comparison.delta || 0);
                 const sign = delta > 0 ? "+" : "";
-                el.textContent = `${sign}${delta.toFixed(2)}${suffix} vs precedente`;
+                el.textContent = `${sign}${delta.toFixed(2)}${suffix} rispetto a ${previousMonth}`;
                 el.classList.toggle("text-danger", positiveIsGood ? delta < 0 : delta > 0);
                 el.classList.toggle("text-success", positiveIsGood ? delta > 0 : delta < 0);
             }
@@ -1661,10 +1713,11 @@
             function renderSnapshotScopeOptions(scopes, selectedValue) {
                 const select = document.getElementById("kpi-snapshot-scope");
                 if (!select) return;
-                const rows = scopes?.length ? scopes : [{scope_type: "global", scope_code: "*", label: "global: *"}];
+                const rows = scopes?.length ? scopes : [{scope_type: "global", scope_code: "*"}];
+                const scopeNames = {global: "Tutta la produzione", reparto: "Reparto", risorsa: "Risorsa", lavorazione: "Lavorazione", operatore: "Operatore", articolo: "Articolo"};
                 select.innerHTML = rows.map(row => {
                     const value = `${row.scope_type}|${row.scope_code}`;
-                    return `<option value="${escapeHtml(value)}">${escapeHtml(row.label || value)}</option>`;
+                    return `<option value="${escapeHtml(value)}">${escapeHtml(row.scope_type === "global" ? "Tutta la produzione" : `${scopeNames[row.scope_type] || row.scope_type}: ${row.scope_code}`)}</option>`;
                 }).join("");
                 if (selectedValue) select.value = selectedValue;
             }
@@ -1681,14 +1734,14 @@
                         labels,
                         datasets: [
                             {
-                                label: "Macchine prodotte",
+                                label: "Matricole uniche",
                                 data: rows.map(x => Number(x.macchine_prodotte || 0)),
                                 borderColor: BORDER_COLORS.green,
                                 backgroundColor: COLORS.green,
                                 tension: .25
                             },
                             {
-                                label: "Ordini completati",
+                                label: "Ordini conclusi",
                                 data: rows.map(x => Number(x.ordini_chiusi || 0)),
                                 borderColor: BORDER_COLORS.blue,
                                 backgroundColor: COLORS.blue,
@@ -1728,14 +1781,14 @@
                         labels,
                         datasets: [
                             {
-                                label: "Tempo previsto",
+                                label: "Ore previste",
                                 data: rows.map(x => Number(x.tempo_previsto_totale || 0)),
                                 borderColor: BORDER_COLORS.blue,
                                 backgroundColor: COLORS.blue,
                                 tension: .25
                             },
                             {
-                                label: "Tempo reale",
+                                label: "Ore effettive",
                                 data: rows.map(x => Number(x.tempo_reale_totale || 0)),
                                 borderColor: BORDER_COLORS.orange,
                                 backgroundColor: COLORS.orange,
@@ -1837,12 +1890,12 @@
                     Number(latest?.macchine_prodotte || 0).toFixed(0)
                 );
 
-                setSnapshotCard("percentuale_ritardo", formatPercent(latest?.percentuale_ritardo));
-                setSnapshotCard("scostamento_totale", formatHours(latest?.scostamento_totale));
-                setSnapshotDelta("ordini_chiusi", data.comparison?.ordini_chiusi, "", true);
-                setSnapshotDelta("macchine_prodotte", data.comparison?.macchine_prodotte, "", true);
-                setSnapshotDelta("percentuale_ritardo", data.comparison?.percentuale_ritardo, "%");
-                setSnapshotDelta("scostamento_totale", data.comparison?.scostamento_totale, " h");
+                setSnapshotCard("percentuale_ritardo", Number(latest?.ordini_chiusi || 0) > 0 ? formatPercent(latest?.percentuale_ritardo) : "Non disponibile");
+                setSnapshotCard("scostamento_totale", latest ? formatSignedHours(latest.scostamento_totale) : "Non disponibile");
+                setSnapshotDelta("ordini_chiusi", data.previous ? data.comparison?.ordini_chiusi : null, "", true, data.previous?.snapshot_month);
+                setSnapshotDelta("macchine_prodotte", data.previous ? data.comparison?.macchine_prodotte : null, "", true, data.previous?.snapshot_month);
+                setSnapshotDelta("percentuale_ritardo", data.previous ? data.comparison?.percentuale_ritardo : null, " punti percentuali", false, data.previous?.snapshot_month);
+                setSnapshotDelta("scostamento_totale", data.previous ? data.comparison?.scostamento_totale : null, " h", false, data.previous?.snapshot_month);
                 renderSnapshotCharts(rows);
                 renderSnapshotTempiTable(rows);
             }

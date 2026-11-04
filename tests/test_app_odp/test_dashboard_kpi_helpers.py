@@ -36,7 +36,7 @@ def test_kpi_parse_datetime_returns_timezone_aware_datetime_or_none():
     [
         ("", []),
         (None, []),
-        ('["A", "", "B"]', ["A", "B"]),
+        ('["A", "", "B"]', ["A", "", "B"]),
         ('"A"', ["A"]),
         ("raw", ["raw"]),
     ],
@@ -63,16 +63,12 @@ def test_kpi_due_date_reads_json_value_for_closed_phase():
     assert service._kpi_data_fine_prevista(log) == date(2026, 7, 9)
 
 
-def test_kpi_completed_order_and_machine_require_final_state_and_serial_number():
-    runtime = SimpleNamespace(StatoOrdinePost="Chiusa", StatoOdpPost="")
-    machine = SimpleNamespace(StatoOrdinePost="Chiusa", GestioneMatricola="si")
-    intermediate = SimpleNamespace(StatoOrdinePost="Pianificata", GestioneMatricola="si")
-    ordinary = SimpleNamespace(StatoOrdinePost="Chiusa", GestioneMatricola="no")
-
-    assert service._kpi_is_order_completed(runtime, machine) is True
+def test_machine_count_uses_serial_even_before_order_final_state():
+    runtime = SimpleNamespace(Azione="chiusura_macchina", StatoOrdinePost="Pianificata")
+    machine = SimpleNamespace(StatoOrdinePost="Pianificata", CodMatricola="M001", GestioneMatricola="no")
+    assert service._kpi_is_order_completed(runtime, machine) is False
     assert service._kpi_macchine_prodotte(runtime, machine) == 1.0
-    assert service._kpi_macchine_prodotte(runtime, intermediate) == 0.0
-    assert service._kpi_macchine_prodotte(runtime, ordinary) == 0.0
+    assert service._kpi_macchine_prodotte(runtime, SimpleNamespace(GestioneMatricola="si")) == 0.0
 
 
 def test_kpi_time_reliability_requires_positive_times_within_ten_percent():

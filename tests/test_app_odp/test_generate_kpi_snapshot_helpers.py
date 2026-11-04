@@ -5,10 +5,11 @@ from app_odp.tasks import generate_kpi_snapshot as task
 
 
 def test_snapshot_helpers_use_final_orders_and_json_due_dates():
-    runtime = SimpleNamespace(StatoOrdinePost="Chiusa", StatoOdpPost="")
+    runtime = SimpleNamespace(Azione="chiusura_macchina", StatoOrdinePost="Chiusa", StatoOdpPost="")
     log = SimpleNamespace(
         StatoOrdinePost="Chiusa",
         GestioneMatricola="si",
+        CodMatricola="M001",
         DataFineSched='["2026-06-24 00:00:00"]',
         NumFase="[1.0, 2.0]",
         FaseConsuntivata="2",
@@ -24,6 +25,7 @@ def test_snapshot_bucket_counts_all_phases_but_only_completed_orders():
     bucket = task._new_bucket("global", "*")
     base = {
         "macchine_prodotte": 0.0,
+        "matricola": "M001",
         "ritardo_giorni": 3,
         "tempo_previsto_ore": 2.0,
         "tempo_reale_ore": 2.5,

@@ -9,6 +9,7 @@ from app_odp.models import (
     OdpRuntimeLog,
 )
 from app_odp.services.erp_export_service import _build_operation_group_id
+from app_odp.services.kpi_service import _kpi_active_value_from_list
 from app_odp.services.order_helpers import (
     _bool_text,
     _extract_codes_from_cell,
@@ -62,11 +63,17 @@ def _add_input_odp_closure_log(
             TempoPrevistoLavoraz=ordine.TempoPrevistoLavoraz,
             CodClassifTecnica=ordine.CodClassifTecnica,
             CodTipoDoc=ordine.CodTipoDoc,
-            FaseAttiva=_norm_text(ordine.FaseAttiva),
+            FaseAttiva=_norm_text(fase_consuntivata),
             QtyDaLavorare=_norm_text(ordine.QtyDaLavorare),
-            RisorsaAttiva=_norm_text(ordine.RisorsaAttiva),
-            LavorazioneAttiva=_norm_text(ordine.LavorazioneAttiva),
-            AttrezzaggioAttivo=_norm_text(ordine.AttrezzaggioAttivo),
+            RisorsaAttiva=_norm_text(ordine.RisorsaAttiva) if _norm_text(ordine.FaseAttiva) == _norm_text(fase_consuntivata) else _kpi_active_value_from_list(
+                getattr(ordine, "CodRisorsaProd", ""), ordine.NumFase, fase_consuntivata,
+            ),
+            LavorazioneAttiva=_norm_text(ordine.LavorazioneAttiva) if _norm_text(ordine.FaseAttiva) == _norm_text(fase_consuntivata) else _kpi_active_value_from_list(
+                getattr(ordine, "CodLavorazione", ""), ordine.NumFase, fase_consuntivata,
+            ),
+            AttrezzaggioAttivo=_norm_text(ordine.AttrezzaggioAttivo) if _norm_text(ordine.FaseAttiva) == _norm_text(fase_consuntivata) else _kpi_active_value_from_list(
+                getattr(ordine, "TempoAttrezzaggio", ""), ordine.NumFase, fase_consuntivata,
+            ),
             RifOrdinePrinc=_norm_text(getattr(ordine, "RifOrdinePrinc", "")),
             Note=ordine.Note,
             FaseConsuntivata=_norm_text(fase_consuntivata),

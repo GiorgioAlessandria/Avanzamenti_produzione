@@ -141,31 +141,9 @@ def test_dashboard_order_payload_builds_confirmed_ui_fields(monkeypatch):
     }
 
 
-def test_dashboard_row_matches_filters_uses_case_insensitive_and_logic():
-    row = {
-        "reparto": "Montaggio",
-        "risorsa": "R-01",
-        "lavorazione": "Assemblaggio finale",
-        "operatore": "Mario Rossi",
-        "cod_art": "ABC-123",
-        "descrizione": "Pompa principale",
-        "stato": "Attivo",
-    }
-    filters = {
-        "reparto": "MONT",
-        "risorsa": "r-0",
-        "lavorazione": "semblaggio",
-        "operatore": "rossi",
-        "articolo": "pompa",
-        "stato": "ATT",
-    }
-
-    assert service._dashboard_row_matches_filters(row, filters) is True
-    assert service._dashboard_row_matches_filters(
-        row,
-        {"articolo": "abc-123"},
-    ) is True
-
-    filters["stato"] = "Chiuso"
-    assert service._dashboard_row_matches_filters(row, filters) is False
-
+def test_dashboard_dropdown_filters_match_exact_codes_case_insensitively():
+    row = {"reparto": "70", "risorsa": "R-01", "lavorazione": "L1", "operatore": "Mario", "cod_art": "ABC-123", "descrizione": "Pompa", "stato": "Attivo"}
+    assert service._dashboard_row_matches_filters(row, {"risorsa": "r-01", "stato": "attivo"})
+    assert service._dashboard_row_matches_filters(row, {"articolo": "abc-123"})
+    assert not service._dashboard_row_matches_filters(row, {"reparto": "7"})
+    assert not service._dashboard_row_matches_filters(row, {"articolo": "pompa"})
