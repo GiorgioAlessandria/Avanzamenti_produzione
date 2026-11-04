@@ -507,6 +507,9 @@
     }
 </style>
 
+{% if lct_home|default(false) %}
+    {% include 'partials/_home_lct.j2' %}
+{% else %}
 <main class="home-fill-page d-flex flex-column w-100 mt-3 mb-3"
       data-bridge-tab="home_standard">
     <div class="container-fluid home-fill-container w-100 ps-0 pe-0 mx-0">
@@ -691,6 +694,7 @@
         </div>
     </div>
 </main>
+{% endif %}
 
 <div class="modal fade"
      id="modalMaterialiOrdine"

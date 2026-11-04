@@ -1,4 +1,5 @@
 {% from 'partials/_table_text.j2' import wrap_plus %}
+{% autoescape lct_home|default(false) %}
 {% for singolo_odp in odp %}
     {% if not (singolo_odp.IsWorkGroup|default(false)) and singolo_odp.StatoOrdine == "Pianificata" %}
         {% set pr = singolo_odp.PrioritaNumero if singolo_odp.PrioritaNumero is defined else none %}
@@ -51,6 +52,8 @@
             <td>{{ wrap_plus(singolo_odp.DataFineSched | db_date("%Y-%m-%d %H:%M:%S","%d/%m/%Y")) }}</td>
             <td>{{ wrap_plus(singolo_odp.AttrezzaggioAttivo) }}</td>
             <td>{{ wrap_plus(singolo_odp.RisorsaAttiva) }}</td>
+            {% if lct_home|default(false) %}{% include 'partials/_home_lct_actions.j2' %}{% endif %}
         </tr>
     {% endif %}
 {% endfor %}
+{% endautoescape %}

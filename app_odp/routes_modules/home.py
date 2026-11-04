@@ -188,9 +188,13 @@ def home():
     )
     method_settings = _home_method_settings_for_user(config, policy, user)
     home_ui_texts = _home_ui_texts_for_user(config, policy, user)
+    from app_odp.services.lct_service import uses_lct_home, lct_sections, lct_fresa_busy
 
     return render_template(
         "home.j2",
+        lct_home=uses_lct_home(policy, config),
+        lct_sections=lct_sections(odp) if uses_lct_home(policy, config) else {},
+        lct_fresa_busy=lct_fresa_busy(odp, user.username) if uses_lct_home(policy, config) else False,
         active_partial=template,
         active_tab=active_tab,
         home_config=config,

@@ -1,0 +1,8 @@
+{% if lct_key.endswith('in_corso') %}
+    {% include 'partials/_home_standard_rows_in_corso.j2' %}
+{% else %}
+    {% include 'partials/_home_standard_rows_da_eseguire.j2' %}
+{% endif %}
+{% if not odp %}
+    <tr><td colspan="{{ 13 if lct_key.endswith('in_corso') else 11 }}" class="text-center text-muted py-3">Nessun ordine in questa sezione.</td></tr>
+{% endif %}

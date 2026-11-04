@@ -1,0 +1,72 @@
+<style>
+    .lct-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+    .lct-panel { min-width: 0; border: 1px solid var(--bs-border-color); border-radius: .5rem; overflow: hidden; }
+    .lct-panel h2 { font-size: 1.15rem; padding: .8rem 1rem; margin: 0; background: var(--bs-tertiary-bg); }
+    .lct-panel-active h2 { background: #d1e7dd; color: #0f5132; }
+    .lct-panel .table-responsive { max-height: 34vh; overflow: auto; }
+    .lct-panel thead th { position: sticky; top: 0; z-index: 1; background: var(--bs-body-bg); }
+    .lct-actions { display: flex; flex-wrap: wrap; gap: .3rem; min-width: 140px; }
+    .lct-panel td:nth-child(6) { min-width: 150px; max-width: 220px; overflow-wrap: anywhere; }
+    .lct-panel :is(th, td):is(:nth-child(4), :nth-child(5), :nth-child(8), :nth-child(9), :nth-child(10)) { display: none; }
+    @media (max-width: 991px) { .lct-grid { grid-template-columns: 1fr; } }
+</style>
+<main class="my-3" id="home-lct">
+    <h1 class="h4">Avanzamenti LCT</h1>
+    <p class="small text-muted">Fase 1: fresatura · Fase 2: buratto. Ogni ordine ha una propria riga; le etichette indicano la gestione del tempo nel gruppo.</p>
+    <div class="lct-grid">
+        {% for lct_key, title in [
+            ('fresa_da_eseguire', 'Fresa · ordini da prendere in carico'),
+            ('fresa_in_corso', 'Fresa · ordini attivi e sospesi'),
+            ('buratto_da_eseguire', 'Buratto · ordini da prendere in carico'),
+            ('buratto_in_corso', 'Buratto · ordini attivi e sospesi')
+        ] %}
+            {% set in_corso = lct_key.endswith('in_corso') %}
+            <section class="lct-panel {{ 'lct-panel-active' if in_corso else '' }}" aria-labelledby="titolo_{{ lct_key }}">
+                <h2 id="titolo_{{ lct_key }}">{{ title }}</h2>
+                <div class="d-flex gap-2 p-2">
+                    {% for key, label in [('ordine', 'ordine'), ('codice', 'articolo')] %}
+                        <input type="search" class="js-table-filter form-control form-control-sm"
+                               aria-label="Filtra per {{ label }}: {{ title }}" placeholder="Filtra per {{ label }}…"
+                               data-target-table="lct_{{ lct_key }}" data-filter-mode="dataset" data-filter-key="{{ key }}">
+                    {% endfor %}
+                </div>
+                <div class="table-responsive">
+                    <table id="lct_{{ lct_key }}" class="table table-sm table-hover table-selectable table-sortable table-state-rowcolor mb-0">
+                        <thead><tr>
+                            {% for label, sort in [('Pr', 'num'), ('Ordine', 'text'), ('Codice', 'text'), ('Rev.', 'text'), ('Var.', 'text'), ('Descrizione', 'text'), ('Quantità', 'num'), ('Consegna', 'date'), ('Min. Attrez.', 'num'), ('Risorsa', 'text')] %}
+                                <th scope="col" data-sort="{{ sort }}">{{ label }}</th>
+                            {% endfor %}
+                            {% if in_corso %}<th scope="col">Stato</th><th scope="col">Operatore</th>{% endif %}
+                            <th scope="col">Azioni</th>
+                        </tr></thead>
+                        <tbody id="tbody_lct_{{ lct_key }}">
+                            {% with odp=lct_sections[lct_key] %}{% include 'partials/_home_lct_rows.j2' %}{% endwith %}
+                        </tbody>
+                    </table>
+                </div>
+                {% if lct_key == 'buratto_da_eseguire' %}
+                    <div class="d-flex gap-2 flex-wrap p-2 border-top">
+                        {% if policy.can('ordini_multipli') %}
+                            <button type="button" class="btn btn-sm btn-outline-primary js-open-gruppo-multiplo"
+                                    data-workgroup-table="#lct_{{ lct_key }}">Ordini multipli</button>
+                        {% endif %}
+                        {% if policy.can('ordini_mascherati') %}
+                            <button type="button" class="btn btn-sm btn-outline-secondary js-open-gruppo-mascherato"
+                                    data-workgroup-table="#lct_{{ lct_key }}">Ordini mascherati</button>
+                        {% endif %}
+                    </div>
+                {% endif %}
+            </section>
+        {% endfor %}
+    </div>
+</main>
+<script>
+    // Seleziona la riga del comando prima dell'autofill condiviso dei toast.
+    document.addEventListener('click', function (event) {
+        const button = event.target.closest('#home-lct [data-use-selected]');
+        if (!button) return;
+        const row = button.closest('tr');
+        row.closest('table').querySelectorAll('.row-selected').forEach(r => r.classList.remove('row-selected'));
+        row.classList.add('row-selected');
+    }, true);
+</script>

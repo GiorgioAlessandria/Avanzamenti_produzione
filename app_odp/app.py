@@ -660,6 +660,7 @@ def setup_request_logging(app):
 
 def _ensure_builtin_permissions() -> None:
     builtins = {
+        "home_lct_multifase": "Visualizzazione della home LCT a quattro sezioni per fresatura e buratto",
         "visualizza_pianificati": "Visualizzazione delle macchine pianificate nelle viste Vendite",
         "vendite": (
             "Visualizzazione ordini macchina e gestione ordini cliente per le vendite"
