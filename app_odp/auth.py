@@ -15,6 +15,7 @@ from app_odp.operator_session import (
 auth_bp = Blueprint("auth", __name__)
 
 LOGIN_START_PAGES = {
+    "serbatoi": ("Serbatoi", "main.serbatoi_page", ("serbatoi_produzione", "serbatoi_acquisti")),
     "produzione": ("Produzione", "main.home", ("home",)),
     "acquisti": ("Acquisti", "main.home_acquisti", ("home_acquisti",)),
     "vendite_ordini": (
@@ -57,7 +58,17 @@ LOGIN_START_PAGES = {
 }
 
 
+def load_active_user(user_id):
+    try:
+        user_id = int(user_id)
+    except (TypeError, ValueError):
+        return None
+    return User.query.filter_by(id=user_id, active=True).first()
+
+
 def login_start_page_options(user):
+    if not getattr(user, "active", False):
+        return {}
     policy = RbacPolicy(user)
     return {
         key: label
@@ -67,6 +78,8 @@ def login_start_page_options(user):
 
 
 def _configured_login_redirect(user, *, authenticate=False):
+    if not getattr(user, "active", False):
+        return None
     preferences = getattr(user, "preferences", {})
     if not isinstance(preferences, dict):
         return None
@@ -89,6 +102,7 @@ def _configured_login_redirect(user, *, authenticate=False):
         "main.rifiuti_page",
         "main.manutenzioni_home",
         "main.tarature_home",
+        "main.serbatoi_page",
     }:
         login_user(user)
 
@@ -144,6 +158,10 @@ def _get_post_login_redirect(user):
     if has_vendite:
         token = create_operator_session(user)
         return url_for("main.vendite_assegnazioni_page", tab_session=token)
+
+    if policy.can("serbatoi_produzione") or policy.can("serbatoi_acquisti"):
+        token = create_operator_session(user)
+        return url_for("main.serbatoi_page", tab_session=token)
 
     return None
 
@@ -232,6 +250,11 @@ def login():
             return redirect(
                 url_for("main.vendite_assegnazioni_page", tab_session=token)
             )
+
+        if policy.can("serbatoi_produzione") or policy.can("serbatoi_acquisti"):
+            login_user(user)
+            token = create_operator_session(user)
+            return redirect(url_for("main.serbatoi_page", tab_session=token))
 
         return render_template(
             "login.j2",

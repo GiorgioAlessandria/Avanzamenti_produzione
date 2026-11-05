@@ -42,6 +42,9 @@
         <div class="container ms-2 ps-3 me-0"
              style="width: auto;height: auto;">
             {% set nav_policy = operator_policy if operator_policy else policy %}
+            {% if nav_policy and (nav_policy.can('serbatoi_produzione') or nav_policy.can('serbatoi_acquisti')) %}
+                <div class="mb-3"><a href="{{ operator_url_for('main.serbatoi_page') }}" class="text-dark fs-4">Serbatoi</a></div>
+            {% endif %}
             {% if nav_policy and nav_policy.can('carica_documenti') %}
                 <div class="mb-3">
                     <a href="{{ operator_url_for('main.carica_documenti') }}"

@@ -1,0 +1,15 @@
+.serbatoi .card { overflow: hidden; }
+.serbatoi .card-body { min-width: 0; overflow-wrap: anywhere; }
+.serbatoi .card-header { padding: .85rem 1rem; }
+.serbatoi .serbatoi-list { max-height: 66vh; }
+.serbatoi .serbatoi-list thead th { position: sticky; top: 0; background: var(--bs-body-bg, #fff); z-index: 1; }
+.serbatoi td, .serbatoi dd, .serbatoi .card-header { overflow-wrap: anywhere; }
+.serbatoi .table td { padding-top: .8rem; padding-bottom: .8rem; }
+.serbatoi .table a { text-underline-offset: .18em; }
+.serbatoi details > summary { cursor: pointer; }
+.serbatoi details[open] > summary { margin-bottom: .6rem; }
+.serbatoi .serbatoi-detail { min-height: 16rem; }
+.serbatoi .serbatoi-excluded { max-height: 15rem; overflow: auto; }
+.serbatoi .form-label { font-weight: 500; }
+.serbatoi a:focus-visible, .serbatoi summary:focus-visible { outline: 3px solid var(--bs-primary, #0d6efd); outline-offset: 3px; }
+@media (max-width: 991px) { .serbatoi .serbatoi-list { max-height: 42vh; } .serbatoi .nav-tabs { flex-wrap: nowrap; overflow-x: auto; } .serbatoi .nav-link { white-space: nowrap; } }

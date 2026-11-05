@@ -1,0 +1,117 @@
+<section id="start-page-section" class="container-fluid mt-4 mb-4">
+    {% for category, message in get_flashed_messages(with_categories=true, category_filter=['start-page-success', 'start-page-error']) %}
+        <div class="alert alert-{{ 'success' if category == 'start-page-success' else 'danger' }}" role="status">{{ message|e }}</div>
+    {% endfor %}
+    <div class="row g-4">
+        <div class="col-12 col-lg-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-header">
+                    <h3 class="mb-0">Pagina iniziale degli utenti</h3>
+                </div>
+                <div class="card-body">
+                    <div class="mb-4">
+                        <label for="start-page-role" class="form-label fw-semibold">Ruolo</label>
+                        <select id="start-page-role" class="form-select">
+                            <option value="">-- Seleziona un ruolo --</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="form-label fw-semibold">Utenti associati al ruolo</label>
+                        <div id="start-page-users-placeholder" class="alert alert-secondary mb-0">
+                            Seleziona un ruolo per visualizzare gli utenti associati.
+                        </div>
+                        <div id="start-page-users" class="list-group"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-lg-8">
+            <div class="card shadow-sm h-100">
+                <div class="card-header">
+                    <h3 class="mb-0">Dettaglio impostazioni</h3>
+                </div>
+                <div class="card-body">
+                    <div id="start-page-detail-placeholder" class="alert alert-info mb-0">
+                        Seleziona prima un ruolo e poi un utente.
+                    </div>
+                    <div id="start-page-editor" class="d-none">
+                        <p class="fw-semibold" id="start-page-selected-user"></p>
+                        <p class="text-muted">Sono disponibili solo le pagine consentite dai permessi dell'utente. Automatico mantiene la scelta prevista dai permessi.</p>
+                        <form method="post" action="{{ operator_url_for('main.impostazioni_pagina_iniziale') }}" id="start-page-form">
+                            <input type="hidden" name="csrf_token" value="{{ start_page_csrf }}">
+                            <input type="hidden" name="user_id" id="start-page-user-id" value="">
+                            <label class="form-label fw-semibold" for="start-page-select">Pagina da aprire al login</label>
+                            <select name="login_start_page" class="form-select mb-4" id="start-page-select" disabled></select>
+                            <button type="submit" class="btn btn-primary" id="start-page-save" disabled>Salva</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+<script id="start-page-users-data" type="application/json">{{ start_page_users|tojson }}</script>
+<script>
+    (() => {
+        const users = JSON.parse(document.getElementById("start-page-users-data").textContent);
+        const roleSelect = document.getElementById("start-page-role");
+        const list = document.getElementById("start-page-users");
+        const editor = document.getElementById("start-page-editor");
+        const placeholder = document.getElementById("start-page-detail-placeholder");
+        const select = document.getElementById("start-page-select");
+        const rolesFor = user => user.roles.length ? user.roles : [{id: "unassigned", name: "Senza ruolo", description: "Senza ruolo"}];
+        const roles = new Map();
+        users.forEach(user => rolesFor(user).forEach(role => roles.set(String(role.id), role)));
+        Array.from(roles.values()).sort((a, b) => a.description.localeCompare(b.description, "it"))
+            .forEach(role => roleSelect.add(new Option(role.description || role.name, role.id)));
+
+        roleSelect.addEventListener("change", () => {
+            list.replaceChildren();
+            editor.classList.add("d-none");
+            placeholder.classList.remove("d-none");
+            document.getElementById("start-page-user-id").value = "";
+            document.getElementById("start-page-selected-user").textContent = "";
+            document.getElementById("start-page-save").disabled = true;
+            select.replaceChildren();
+            select.disabled = true;
+            document.getElementById("start-page-users-placeholder").classList.toggle("d-none", !!roleSelect.value);
+            if (!roleSelect.value) return;
+            users.filter(user => rolesFor(user).some(role => String(role.id) === roleSelect.value)).forEach(user => {
+                const button = document.createElement("button");
+                button.type = "button";
+                button.className = "list-group-item list-group-item-action";
+                button.dataset.startPageUser = user.id;
+                button.setAttribute("aria-pressed", "false");
+                const content = document.createElement("div");
+                content.className = "d-flex justify-content-between align-items-center";
+                const name = document.createElement("span");
+                name.textContent = user.username;
+                const badge = document.createElement("span");
+                badge.className = "badge text-bg-light";
+                badge.textContent = roles.get(roleSelect.value)?.name || "Senza ruolo";
+                content.append(name, badge);
+                button.append(content);
+                list.append(button);
+            });
+        });
+        list.addEventListener("click", event => {
+            const button = event.target.closest("button[data-start-page-user]");
+            if (!button) return;
+            const user = users.find(item => String(item.id) === button.dataset.startPageUser);
+            if (!user) return;
+            list.querySelectorAll("button").forEach(item => {
+                item.classList.toggle("active", item === button);
+                item.setAttribute("aria-pressed", item === button ? "true" : "false");
+            });
+            document.getElementById("start-page-selected-user").textContent = user.username;
+            document.getElementById("start-page-user-id").value = user.id;
+            select.replaceChildren(new Option("Automatico", ""));
+            Object.entries(user.options).forEach(([value, label]) => select.add(new Option(label, value)));
+            select.value = Object.hasOwn(user.options, user.selected) ? user.selected : "";
+            select.disabled = false;
+            document.getElementById("start-page-save").disabled = false;
+            placeholder.classList.add("d-none");
+            editor.classList.remove("d-none");
+        });
+    })();
+</script>

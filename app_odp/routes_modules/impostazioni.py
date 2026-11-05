@@ -400,7 +400,7 @@ def impostazioni():
             "login_start_page_csrf",
             secrets.token_urlsafe(32),
         )
-        for target in User.query.order_by(User.username.asc()).all():
+        for target in User.query.filter(User.active.is_(True)).order_by(User.username.asc()).all():
             preferences = target.preferences
             selected = (
                 preferences.get("login_start_page", "")
@@ -411,6 +411,10 @@ def impostazioni():
                 {
                     "id": target.id,
                     "username": target.username,
+                    "roles": [
+                        {"id": role.id, "name": role.name or "", "description": role.description or role.name or ""}
+                        for role in target.roles
+                    ],
                     "selected": selected if isinstance(selected, str) else "",
                     "options": login_start_page_options(target),
                 }
@@ -470,6 +474,8 @@ def impostazioni_pagina_iniziale():
     target = db.session.get(User, user_id)
     if target is None:
         abort(404)
+    if not target.active:
+        abort(400, description="La pagina iniziale può essere impostata solo per utenti attivi.")
 
     selected = request.form.get("login_start_page", "")
     options = login_start_page_options(target)

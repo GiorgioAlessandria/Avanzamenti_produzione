@@ -1,0 +1,56 @@
+[
+  {
+    "codice_oss": "SCB100907",
+    "codice_lav": "SCB101000",
+    "descrizione": "SERBATOIO ALLUMINIO OSSIDATO LD200 Y10 FD120-285",
+    "codice_spezzone": "GR18-000-0002"
+  },
+  {
+    "codice_oss": "SCB100978",
+    "codice_lav": "SCB101006",
+    "descrizione": "SERBATOIO ALLUMINIO OSSIDATO LD202 Y10 GA30-90",
+    "codice_spezzone": "GR18-000-0003"
+  },
+  {
+    "codice_oss": "SC4117261",
+    "codice_lav": "SCB100999",
+    "descrizione": "SERBATOIO ALLUMINIO OSSIDATO LD200 Y10 ING LAT",
+    "codice_spezzone": "GR18-000-0002"
+  },
+  {
+    "codice_oss": "SC0090596",
+    "codice_lav": "SCB101003",
+    "descrizione": "SERBATOIO ALLUMINIO OSSIDATO LD202 Y10",
+    "codice_spezzone": "GR18-000-0003"
+  },
+  {
+    "codice_oss": "SC0090495",
+    "codice_lav": "SCB100998",
+    "descrizione": "SERBATOIO ALLUMINIO OSSIDATO LD200 Y10",
+    "codice_spezzone": "GR18-000-0002"
+  },
+  {
+    "codice_oss": "SC0090494",
+    "codice_lav": "SCB101004",
+    "descrizione": "SERBATOIO ALLUMINIO OSSIDATO LD202 Y10 ING LAT",
+    "codice_spezzone": "GR18-000-0003"
+  },
+  {
+    "codice_oss": "SC0090592",
+    "codice_lav": "SCB101002",
+    "descrizione": "SERBATOIO ALLUMINIO OSSIDATO LD101 Y10 ING LAT",
+    "codice_spezzone": "GR18-000-0001"
+  },
+  {
+    "codice_oss": "SC0090595",
+    "codice_lav": "SCB101001",
+    "descrizione": "SERBATOIO ALLUMINIO OSSIDATO LD101 Y10",
+    "codice_spezzone": "GR18-000-0001"
+  },
+  {
+    "codice_oss": "SC0090597",
+    "codice_lav": "SCB101005",
+    "descrizione": "SERBATOIO ALLUMINIO OSSIDATO LD202 Y10 CECCATO",
+    "codice_spezzone": "GR18-000-0004"
+  }
+]

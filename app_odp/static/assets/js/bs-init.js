@@ -1,24 +1,20 @@
-document.addEventListener('DOMContentLoaded', function() {
+// La delega mantiene attivi anche i pulsanti ricreati dagli aggiornamenti AJAX.
+document.addEventListener('click', function(event) {
+	var toastTrigger = event.target.closest('[data-bs-toggle="toast"]');
+	if (!toastTrigger || toastTrigger.disabled) return;
+	var toastSelector = toastTrigger.getAttribute('data-bs-target');
 
-	var toastTriggers = document.querySelectorAll('[data-bs-toggle="toast"]');
+	if (!toastSelector) return;
 
-	for (let toastTrigger of toastTriggers) {
-		toastTrigger.addEventListener('click', function () {
-			var toastSelector = toastTrigger.getAttribute('data-bs-target');
+	try {
+		var toastEl = document.querySelector(toastSelector);
 
-			if (!toastSelector) return;
+		if (!toastEl) return;
 
-			try {
-				var toastEl = document.querySelector(toastSelector);
-
-				if (!toastEl) return;
-
-				var toast = new bootstrap.Toast(toastEl);
-				toast.show();
-			}
-			catch(e) {
-				console.error(e);
-			}
-		})
+		var toast = bootstrap.Toast.getOrCreateInstance(toastEl);
+		toast.show();
+	}
+	catch(e) {
+		console.error(e);
 	}
 }, false);

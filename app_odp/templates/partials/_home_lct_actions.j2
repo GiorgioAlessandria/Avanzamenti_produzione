@@ -6,9 +6,7 @@
         {% set owner = singolo_odp.runtime_row.Utente_operazione if singolo_odp.runtime_row else '' %}
         {% set mine = not owner or owner == policy.user.username %}
         {% set grouped = singolo_odp.LctGroup|default(none) %}
-        {% if state == 'Pianificata' %}
-            {% set actions = [(1, 'Prendi in carico fresa' if fase == 1 else 'Prendi in carico buratto', 'primary')] %}
-        {% elif state == 'Attivo' and mine %}
+        {% if state == 'Attivo' and mine %}
             {% set actions = [(2, 'Sospendi gruppo' if grouped else 'Sospendi', 'outline-warning'), (4, 'Chiusure gruppo' if grouped else ('Termine fresa' if fase == 1 else 'Termine ordine'), 'primary')] %}
         {% elif state == 'In Sospeso' %}
             {% set actions = [(3, 'Riprendi gruppo' if grouped else 'Riprendi', 'outline-success')] %}
@@ -18,7 +16,7 @@
         {% endif %}
         {% for toast, label, color in actions %}
             <button type="button" class="btn btn-sm btn-{{ color }}"
-                    {% if fase == 1 and toast in [1, 3] and lct_fresa_busy|default(false) %}
+                    {% if fase == 1 and toast == 3 and lct_fresa_busy|default(false) %}
                         disabled title="Sospendi o termina la fresatura attiva prima di avviarne un'altra"
                     {% endif %}
                     aria-label="{{ label }} · {{ ordine_display }}"

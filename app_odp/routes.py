@@ -104,6 +104,7 @@ def inject_order_ref_formatters():
 
 from app_odp.routes_modules import (
     preferenze,
+    serbatoi,
     acquisti,
     priorita,
     dashboard,

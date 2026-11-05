@@ -9,7 +9,7 @@ from app_odp.models import (
     OdpRuntimeLog,
 )
 from app_odp.services.erp_export_service import _build_operation_group_id
-from app_odp.services.kpi_service import _kpi_active_value_from_list
+from app_odp.services.serbatoi_service import evento_lct
 from app_odp.services.order_helpers import (
     _bool_text,
     _extract_codes_from_cell,
@@ -37,6 +37,9 @@ def _add_input_odp_closure_log(
     closed_by: str,
     closed_at: str,
 ):
+    evento_lct(ordine, tipo="CHIUSURA", operazione=operation_group_id,
+               fase=_norm_text(fase_consuntivata), utente=closed_by, q_ok=q_ok, q_nok=q_nok,
+               finale=not chiusura_parziale)
     db.session.add(
         InputOdpLog(
             OperationGroupId=operation_group_id,
@@ -63,17 +66,11 @@ def _add_input_odp_closure_log(
             TempoPrevistoLavoraz=ordine.TempoPrevistoLavoraz,
             CodClassifTecnica=ordine.CodClassifTecnica,
             CodTipoDoc=ordine.CodTipoDoc,
-            FaseAttiva=_norm_text(fase_consuntivata),
+            FaseAttiva=_norm_text(ordine.FaseAttiva),
             QtyDaLavorare=_norm_text(ordine.QtyDaLavorare),
-            RisorsaAttiva=_norm_text(ordine.RisorsaAttiva) if _norm_text(ordine.FaseAttiva) == _norm_text(fase_consuntivata) else _kpi_active_value_from_list(
-                getattr(ordine, "CodRisorsaProd", ""), ordine.NumFase, fase_consuntivata,
-            ),
-            LavorazioneAttiva=_norm_text(ordine.LavorazioneAttiva) if _norm_text(ordine.FaseAttiva) == _norm_text(fase_consuntivata) else _kpi_active_value_from_list(
-                getattr(ordine, "CodLavorazione", ""), ordine.NumFase, fase_consuntivata,
-            ),
-            AttrezzaggioAttivo=_norm_text(ordine.AttrezzaggioAttivo) if _norm_text(ordine.FaseAttiva) == _norm_text(fase_consuntivata) else _kpi_active_value_from_list(
-                getattr(ordine, "TempoAttrezzaggio", ""), ordine.NumFase, fase_consuntivata,
-            ),
+            RisorsaAttiva=_norm_text(ordine.RisorsaAttiva),
+            LavorazioneAttiva=_norm_text(ordine.LavorazioneAttiva),
+            AttrezzaggioAttivo=_norm_text(ordine.AttrezzaggioAttivo),
             RifOrdinePrinc=_norm_text(getattr(ordine, "RifOrdinePrinc", "")),
             Note=ordine.Note,
             FaseConsuntivata=_norm_text(fase_consuntivata),
@@ -107,6 +104,8 @@ def _add_input_odp_takeover_log(
     taken_at: str,
     note_evento: str = "Presa in carico ordine",
 ):
+    evento_lct(ordine, tipo="AVVIO", operazione=operation_group_id,
+               fase=_norm_text(ordine.FaseAttiva), utente=taken_by)
     db.session.add(
         InputOdpLog(
             OperationGroupId=operation_group_id,

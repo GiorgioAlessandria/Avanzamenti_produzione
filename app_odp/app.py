@@ -5,12 +5,13 @@ from app_odp.operator_session import active_user, active_policy, active_token
 from app_odp.models import db, Permissions, User
 from app_odp import (
     logistica_models,
+    serbatoi_models,
     manutenzioni_models,
     rifiuti_models,
     tarature_models,
     vendite_models,
 )
-from app_odp.auth import auth_bp
+from app_odp.auth import auth_bp, load_active_user
 from app_odp.routes import main_bp
 import tomllib
 from flask_login import current_user
@@ -675,6 +676,8 @@ def _ensure_builtin_permissions() -> None:
         "utente_amministrazione": "Gestione delle note per produzione negli ordini cliente",
         "storico_ordini": "Storico ordini",
         "scorte_segnalazione_libera": ("Segnalazione scorte con testo libero"),
+        "serbatoi_produzione": "Serbatoi: ordini cliente, assegnazioni, catalogo e produzione",
+        "serbatoi_acquisti": "Serbatoi: barre, spezzoni, conto lavoro e spedizioni",
         # Rifiuti
         "rifiuti_carica": ("Caricamento dei rifiuti nello stock virtuale"),
         "rifiuti_elimina": (
@@ -833,9 +836,7 @@ def create_app():
     login_manager.init_app(app)
     login_manager.login_view = "auth.login"
 
-    @login_manager.user_loader
-    def load_user(user_id: str):
-        return User.query.get(int(user_id))
+    login_manager.user_loader(load_active_user)
 
     @app.context_processor
     def inject_policy():

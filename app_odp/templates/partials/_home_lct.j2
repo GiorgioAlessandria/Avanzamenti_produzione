@@ -37,23 +37,20 @@
                                 <th scope="col" data-sort="{{ sort }}">{{ label }}</th>
                             {% endfor %}
                             {% if in_corso %}<th scope="col">Stato</th><th scope="col">Operatore</th>{% endif %}
-                            <th scope="col">Azioni</th>
+                            {% if in_corso %}<th scope="col">Azioni</th>{% endif %}
                         </tr></thead>
                         <tbody id="tbody_lct_{{ lct_key }}">
                             {% with odp=lct_sections[lct_key] %}{% include 'partials/_home_lct_rows.j2' %}{% endwith %}
                         </tbody>
                     </table>
                 </div>
-                {% if lct_key == 'buratto_da_eseguire' %}
+                {% if not in_corso %}
                     <div class="d-flex gap-2 flex-wrap p-2 border-top">
-                        {% if policy.can('ordini_multipli') %}
-                            <button type="button" class="btn btn-sm btn-outline-primary js-open-gruppo-multiplo"
-                                    data-workgroup-table="#lct_{{ lct_key }}">Ordini multipli</button>
-                        {% endif %}
-                        {% if policy.can('ordini_mascherati') %}
-                            <button type="button" class="btn btn-sm btn-outline-secondary js-open-gruppo-mascherato"
-                                    data-workgroup-table="#lct_{{ lct_key }}">Ordini mascherati</button>
-                        {% endif %}
+                        <button type="button" class="btn btn-primary"
+                                data-use-selected="#lct_{{ lct_key }}" data-fill-target="#toast-1"
+                                data-bs-target="#toast-1" data-bs-toggle="toast">
+                            Prendi in carico {{ 'fresa' if lct_key == 'fresa_da_eseguire' else 'buratto' }}
+                        </button>
                     </div>
                 {% endif %}
             </section>
@@ -66,6 +63,7 @@
         const button = event.target.closest('#home-lct [data-use-selected]');
         if (!button) return;
         const row = button.closest('tr');
+        if (!row) return;
         row.closest('table').querySelectorAll('.row-selected').forEach(r => r.classList.remove('row-selected'));
         row.classList.add('row-selected');
     }, true);
