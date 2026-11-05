@@ -56,6 +56,7 @@ from app_odp.services.order_helpers import (
 )
 from app_odp.services.ordini_gruppi_service import (
     available_orders_payload,
+    group_outcome_message,
     create_mascherato_group,
     create_misto_group,
     create_multiplo_group,
@@ -638,7 +639,7 @@ def api_chiudi_membro_gruppo(group_uid=None):
         return jsonify(
             {
                 "ok": True,
-                "message": "Ordine del gruppo chiuso correttamente.",
+                "message": "Ordine avanzato correttamente. " + group_outcome_message(group),
                 "group": group_to_dict(group),
                 "results": [result_payload],
                 "outbox_ids": [item["outbox_id"] for item in exports],
@@ -893,11 +894,7 @@ def api_chiudi_gruppo_ordini(group_uid=None):
         {
             "ok": True,
             "changed": True,
-            "message": (
-                "Chiusura gruppo registrata. Il gruppo resta sospeso perché almeno un ordine è stato chiuso parzialmente."
-                if _norm_text(group.Status).lower() == "in sospeso"
-                else "Gruppo ordini chiuso correttamente. Ogni ordine ha generato il proprio export AVP."
-            ),
+            "message": "Avanzamenti registrati. " + group_outcome_message(group),
             "group": group_to_dict(group),
             "results": closure_results,
             "exports": group_outbox_exports,

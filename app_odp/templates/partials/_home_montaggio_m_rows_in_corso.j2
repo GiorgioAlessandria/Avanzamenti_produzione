@@ -1,3 +1,4 @@
+{% from 'partials/_home_workgroup_links.j2' import order_link, code_link with context %}
 {% for singolo_odp in odp %}
     {% if singolo_odp.IsWorkGroup|default(false) and singolo_odp.GestioneMatricola == 'si' and singolo_odp.StatoOrdine != "Pianificata" and singolo_odp.StatoOrdine != "Chiusa" %}
         {% set group_type_display = singolo_odp.WorkGroupDisplayType|default(singolo_odp.WorkGroupType) %}
@@ -38,13 +39,20 @@
                     Dettaglio
                 </button>
                 <span class="badge {{ group_badge_class }} me-1">{{ group_type_label }}</span>
-                <strong>{{ singolo_odp.OrdineVisuale }}</strong>
+                <div class="wg-order-links">
+                    {% for member_order in singolo_odp.WorkGroupOrdini %}
+                        <div>{{ order_link(member_order) }}</div>
+                    {% endfor %}
+                </div>
                 <div class="small text-muted">{{ singolo_odp.WorkGroupUid }}</div>
             </td>
-            <td>{{ singolo_odp.CodiciVisuale }}</td>
+            <td>
+                {% for member_order in singolo_odp.WorkGroupOrdini %}
+                    <div>{{ code_link(member_order, metodo_lookup|default({}), metodo_documentale_prefisso|default('', true)) }}</div>
+                {% endfor %}
+            </td>
             <td class="text-start">
-                <strong>{{ singolo_odp.DesArt }}</strong>
-                <div class="small text-muted">{{ singolo_odp.WorkGroupMembers|default([])|length }} ordini nel gruppo</div>
+                {% include 'partials/_home_workgroup_members.j2' %}
             </td>
             <td><span class="text-muted">Gruppo</span></td>
             {% if can_view_packaging_notes|default(false) %}
@@ -52,7 +60,7 @@
             {% endif %}
             <td>{{ singolo_odp.DataFineSched | db_date("%Y-%m-%d %H:%M:%S","%d/%m/%Y") }}</td>
             <td data-phase-code="{{ singolo_odp.FaseAttiva|default('')|e }}">{{ phase_label(singolo_odp.FaseAttiva|default(''))|e }}</td>
-            <td data-col="stato">{{ singolo_odp.WorkGroupStatus }}</td>
+            <td data-col="stato">{{ singolo_odp.WorkGroupStatus|e }}</td>
             <td><span class="text-muted">-</span></td>
             <td>{{ singolo_odp.OperatoreUsername|default('-') or '-' }}</td>
         </tr>

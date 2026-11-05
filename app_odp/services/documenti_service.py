@@ -215,10 +215,15 @@ def _normalize_indice_modifica_for_pdf(value) -> str:
     return indice
 
 
+def _document_orders(odp_rows):
+    for row in odp_rows or []:
+        yield from getattr(row, "WorkGroupOrdini", None) or [row]
+
+
 def _build_metodo_montaggio_lookup(odp_rows) -> dict[str, dict]:
     lookup = {}
 
-    for ordine in odp_rows or []:
+    for ordine in _document_orders(odp_rows):
         cod_art = _norm_text(getattr(ordine, "CodArt", ""))
         indice_modifica = _normalize_indice_modifica_for_pdf(
             getattr(ordine, "IndiceModifica", "")
@@ -322,7 +327,7 @@ def _build_metodo_lookup(
 ) -> dict[str, dict]:
     lookup = {}
 
-    for ordine in odp_rows or []:
+    for ordine in _document_orders(odp_rows):
         cod_art = _norm_text(getattr(ordine, "CodArt", ""))
         indice_modifica = _normalize_indice_modifica_for_pdf(
             getattr(ordine, "IndiceModifica", "")

@@ -3585,6 +3585,7 @@
             };
 
             const modal = ensureWorkgroupCloseModal();
+            modal.dataset.enhancedWorkgroup = {{ (not lct_home|default(false))|tojson }} ? "1" : "0";
 
             document.getElementById("modal-workgroup-close-title").textContent =
                 `Chiusura gruppo ${groupType || ""}`;
@@ -3594,6 +3595,9 @@
 
             renderWorkgroupCloseRows();
 
+            if (modal.dataset.enhancedWorkgroup === "1") {
+                window.AvpWorkgroups.mountClose(modal, workgroupCloseState.detail);
+            }
             bootstrap.Modal.getOrCreateInstance(modal).show();
         }
 
@@ -3895,6 +3899,15 @@
                     return false;
                 }
 
+                if (document.getElementById("modalWorkgroupClose").dataset.enhancedWorkgroup === "1") {
+                    const residual = parseSystemQty(row.quantita);
+                    const partial = getGroupRowChecked(key, "chiusura_parziale");
+                    if (Number.isFinite(residual) && (partial ? qOk + qKo >= residual : !sameQty(qOk + qKo, residual))) {
+                        showGroupCloseFeedback(`${label}: la somma conforme + non conforme deve essere ${partial ? "minore del" : "uguale al"} residuo (${residual}).`);
+                        return false;
+                    }
+                }
+
                 groupOrderEl(key).querySelector('[data-field="quantita_conforme"]').value = String(qOk);
                 groupOrderEl(key).querySelector('[data-field="quantita_non_conforme"]').value = String(qKo);
             }
@@ -3959,7 +3972,7 @@
                                data-field="data_registrazione">
                     </div>
                     {% endif %}
-                    {% if has_tempo_avanzamento_permission %}
+                    {% if lct_home|default(false) and has_tempo_avanzamento_permission %}
                     <div class="col">
                         <label class="form-label mb-1">Tempo avanzamento</label>
                         <div class="input-group input-group-sm">
@@ -4163,8 +4176,12 @@
             showGroupCloseFeedback("");
             if (!validateGroupSingleTotalQuantity(row)) return;
             if (row.richiede_lotti === true && !collectGroupLotti(row)) return;
-            if (!confirm("Chiudere solo questo ordine del gruppo?")) return;
+            const enhanced = document.getElementById("modalWorkgroupClose").dataset.enhancedWorkgroup === "1";
+            if (enhanced && !window.AvpWorkgroups.validateStop()) return;
+            const consequence = enhanced ? window.AvpWorkgroups.singleOutcome(workgroupCloseState.detail, row) : "";
+            if (!confirm(`Chiudere solo questo ordine del gruppo?\n${consequence}`)) return;
 
+            if (!window.AvpWorkgroups.beginClose()) return;
             const oldText = button?.textContent || "";
             if (button) {
                 button.disabled = true;
@@ -4182,6 +4199,7 @@
                     credentials: "same-origin",
                     body: JSON.stringify({
                         group_uid: workgroupCloseState.groupUid,
+                        tempo_non_funzionamento_minuti: window.AvpWorkgroups.stopMinutes(),
                         note: groupNote,
                         order: buildGroupClosePayloadForRow(row, {singleClose: true})
                     })
@@ -4220,7 +4238,9 @@
                     window.applyHomeFragments(data.fragments);
                 }
 
-                if (exportErrors.length) {
+                if (enhanced) {
+                    alert([data.message, ...exportErrors].filter(Boolean).join("\n"));
+                } else if (exportErrors.length) {
                     alert(exportErrors.join("\n"));
                 }
             } catch (err) {
@@ -4229,11 +4249,14 @@
                     button.disabled = false;
                     button.textContent = oldText;
                 }
+            } finally {
+                window.AvpWorkgroups.endClose();
             }
         }
 
         async function submitWorkgroupClose() {
             showGroupCloseFeedback("");
+            if (!window.AvpWorkgroups.validateStop()) return;
 
             if (!validateGroupQuantities()) {
                 return;
@@ -4276,42 +4299,52 @@
                 return;
             }
 
-            const resp = await window.avpFetch("/api/ordini/gruppi/chiudi", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "X-Requested-With": "XMLHttpRequest"
-                },
-                credentials: "same-origin",
-                body: JSON.stringify({group_uid: workgroupCloseState.groupUid, note: groupNote, orders})
-            });
-
-            const data = await resp.json();
-
-            if (!resp.ok || data.ok === false) {
-                showGroupCloseFeedback(data.error || "Errore durante la chiusura gruppo.");
-                return;
-            }
-
-            const exportErrors = [];
-            for (const row of (data.exports || [])) {
-                const exportResult = await exportAvpTxt({
-                    suffix: row.suffix || "officina",
-                    outboxId: row.outbox_id
+            if (!window.AvpWorkgroups.beginClose()) return;
+            try {
+                const resp = await window.avpFetch("/api/ordini/gruppi/chiudi", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-Requested-With": "XMLHttpRequest"
+                    },
+                    credentials: "same-origin",
+                    body: JSON.stringify({group_uid: workgroupCloseState.groupUid, note: groupNote, orders,
+                        tempo_non_funzionamento_minuti: window.AvpWorkgroups.stopMinutes()})
                 });
-                if (!exportResult.ok) {
-                    exportErrors.push(exportResult.error || `Export non generato per ${row.outbox_id}.`);
+
+                const data = await resp.json();
+
+                if (!resp.ok || data.ok === false) {
+                    showGroupCloseFeedback(data.error || "Errore durante la chiusura gruppo.");
+                    return;
                 }
-            }
 
-            bootstrap.Modal.getOrCreateInstance(document.getElementById("modalWorkgroupClose")).hide();
+                const exportErrors = [];
+                for (const row of (data.exports || [])) {
+                    const exportResult = await exportAvpTxt({
+                        suffix: row.suffix || "officina",
+                        outboxId: row.outbox_id
+                    });
+                    if (!exportResult.ok) {
+                        exportErrors.push(exportResult.error || `Export non generato per ${row.outbox_id}.`);
+                    }
+                }
 
-            if (data.fragments && window.applyHomeFragments) {
-                window.applyHomeFragments(data.fragments);
-            }
+                bootstrap.Modal.getOrCreateInstance(document.getElementById("modalWorkgroupClose")).hide();
 
-            if (exportErrors.length) {
-                alert(exportErrors.join("\n"));
+                if (data.fragments && window.applyHomeFragments) {
+                    window.applyHomeFragments(data.fragments);
+                }
+
+                if (document.getElementById("modalWorkgroupClose").dataset.enhancedWorkgroup === "1") {
+                    alert([data.message, ...exportErrors].filter(Boolean).join("\n"));
+                } else if (exportErrors.length) {
+                    alert(exportErrors.join("\n"));
+                }
+            } catch (err) {
+                showGroupCloseFeedback(err?.message || "Errore di comunicazione con il server.");
+            } finally {
+                window.AvpWorkgroups.endClose();
             }
         }
     })();

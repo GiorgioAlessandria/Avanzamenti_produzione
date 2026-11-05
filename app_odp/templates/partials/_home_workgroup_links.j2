@@ -1,0 +1,29 @@
+{% macro order_link(ordine) -%}
+    <button type="button"
+            class="btn btn-link p-0 text-decoration-none open-materiali-modal"
+            data-codart="{{ ordine.CodArt|e }}"
+            data-variante="{{ ordine.VarianteArt|e }}"
+            data-fase-attiva="{{ ordine.FaseAttiva|e }}"
+            data-distinta="{{ ordine.DistintaMateriale|tojson|forceescape }}">
+        {{ ordine_ref_display(ordine)|e }}
+    </button>
+{%- endmacro %}
+
+{% macro code_link(ordine, lookup, prefix='') -%}
+    {% set revision = ordine.IndiceModifica|string|trim if ordine.IndiceModifica is not none else '' %}
+    {% set revision = '' if revision == '-' or revision|upper == 'X' else revision %}
+    {% set document_key = prefix ~ ordine.CodArt ~ ('.' ~ revision if revision else '') %}
+    {% set document = lookup.get(document_key) %}
+    {% if document and document.found %}
+        <button type="button"
+                class="btn btn-link p-0 text-decoration-none"
+                data-bs-toggle="modal"
+                data-bs-target="#modalMetodoMontaggio"
+                data-codart="{{ ordine.CodArt|e }}"
+                data-pdf-url="{{ document.url|e }}">
+            {{ ordine.CodArt|e }}
+        </button>
+    {% else %}
+        <span class="text-danger">{{ ordine.CodArt|e }}</span>
+    {% endif %}
+{%- endmacro %}

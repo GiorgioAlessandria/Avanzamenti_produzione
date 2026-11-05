@@ -1,3 +1,4 @@
+{% from 'partials/_home_workgroup_links.j2' import order_link, code_link with context %}
 {% from 'partials/_table_text.j2' import wrap_plus %}
 {% autoescape lct_home|default(false) %}
 {% for singolo_odp in odp %}
@@ -43,21 +44,28 @@
                     Dettaglio
                 </button>
                 <span class="badge {{ group_badge_class }} me-1">{{ wrap_plus(group_type_label) }}</span>
-                <strong>{{ wrap_plus(singolo_odp.OrdineVisuale) }}</strong>
+                <div class="wg-order-links">
+                    {% for member_order in singolo_odp.WorkGroupOrdini %}
+                        <div>{{ order_link(member_order) }}</div>
+                    {% endfor %}
+                </div>
                 <div class="small text-muted">{{ wrap_plus(singolo_odp.WorkGroupUid) }}</div>
             </td>
-            <td>{{ wrap_plus(singolo_odp.CodiciVisuale) }}</td>
+            <td>
+                {% for member_order in singolo_odp.WorkGroupOrdini %}
+                    <div>{{ code_link(member_order, metodo_montaggio_lookup|default(metodo_lookup|default({})), '' if metodo_montaggio_lookup is defined else metodo_documentale_prefisso|default('', true)) }}</div>
+                {% endfor %}
+            </td>
             <td></td>
             <td></td>
             <td class="text-start">
-                <strong>{{ wrap_plus(singolo_odp.DesArt) }}</strong>
-                <div class="small text-muted">{{ wrap_plus(singolo_odp.WorkGroupMembers|default([])|length) }} ordini nel gruppo</div>
+                {% include 'partials/_home_workgroup_members.j2' %}
             </td>
-            <td>{{ wrap_plus(singolo_odp.Quantita) }}</td>
+            <td><span class="small text-muted">Per ordine</span></td>
             <td>{{ wrap_plus(singolo_odp.DataFineSched | db_date("%Y-%m-%d %H:%M:%S","%d/%m/%Y")) }}</td>
             <td></td>
             <td>{{ wrap_plus(singolo_odp.CodRisorsaProd) }}</td>
-            <td data-col="stato">{{ wrap_plus(singolo_odp.WorkGroupStatus) }}</td>
+            <td data-col="stato">{{ singolo_odp.WorkGroupStatus|e }}</td>
             <td>{{ wrap_plus(singolo_odp.OperatoreUsername|default('-') or '-') }}</td>
         </tr>
     {% elif singolo_odp.StatoOrdine != "Pianificata" and singolo_odp.StatoOrdine != "Chiusa" %}

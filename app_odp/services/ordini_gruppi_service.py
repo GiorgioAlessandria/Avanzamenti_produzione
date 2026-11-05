@@ -789,6 +789,45 @@ def assign_elapsed_group_runtime(
     return elapsed_seconds
 
 
+def _deduct_suspended_group_stop(group: OdpWorkGroup, minutes: int) -> None:
+    if not minutes:
+        return
+    seconds = int(minutes) * 60
+    if seconds < 0 or seconds > int(group.TotalRuntimeSeconds or 0):
+        raise ValueError("Il fermo indicato supera il tempo registrato disponibile del gruppo.")
+    adjustments = []
+    for member in _members_for_closure(group):
+        removed = _assigned_seconds_for_member(group, member, seconds)
+        if not removed:
+            continue
+        runtime = _runtime_for_member(member)
+        if (
+            runtime is None
+            or removed > int(member.RuntimeSecondsAssigned or 0)
+            or removed > _tempo_to_seconds(runtime.Tempo_funzionamento)
+        ):
+            raise ValueError("Il fermo indicato supera il tempo disponibile degli ordini residui.")
+        adjustments.append((member, runtime, removed))
+    if not adjustments:
+        raise ValueError("Non ci sono ordini a cui applicare il fermo del gruppo.")
+    for member, runtime, removed in adjustments:
+        member.RuntimeSecondsAssigned -= removed
+        runtime.Tempo_funzionamento = _seconds_to_tempo_text(
+            _tempo_to_seconds(runtime.Tempo_funzionamento) - removed
+        )
+        ordine = _order_for_member(member)
+        if ordine is not None:
+            _append_group_runtime_log(
+                group_uid=group.GroupUid, ordine=ordine,
+                action="rettifica_fermo_gruppo", event_at=_now_iso(),
+                elapsed_seconds=-removed,
+                note="Fermo aggiuntivo registrato alla chiusura del gruppo sospeso",
+                extra_payload={"tempo_non_funzionamento_secondi": seconds,
+                               "runtime_seconds_removed": removed},
+            )
+    group.TotalRuntimeSeconds -= seconds
+
+
 def suspend_group(
     group_uid: str, *, causale: str = "", minuti_non_funzionamento: int = 0
 ) -> OdpWorkGroup:
@@ -1020,6 +1059,8 @@ def prepare_group_member_for_single_closure(
             now_dt=now_dt,
             minuti_non_funzionamento=minuti_non_funzionamento or 0,
         )
+    else:
+        _deduct_suspended_group_stop(group, minuti_non_funzionamento or 0)
 
     rt = _runtime_for_member(target)
     if rt is not None:
@@ -1066,7 +1107,11 @@ def finalize_group_after_single_member_closure(
         group.LastActivationAt = None
         return group
 
-    if len(open_members) <= 1:
+    # Senza un ordine a tempo, i mascherati residui tornano singoli sospesi.
+    if len(open_members) <= 1 or all(
+        _norm_text(member.TimeShareMode).upper() == SHARE_ZERO
+        for member in open_members
+    ):
         for member in open_members:
             member.Status = GROUP_STATUS_SCIOLTO
             member.DissolvedAt = now_iso
@@ -1128,9 +1173,9 @@ def finalize_group_after_single_member_closure(
             masked_member.TimeShareMode = SHARE_ZERO
     else:
         group.GroupType = GROUP_TYPE_MULTIPLO
-        group.InitialMemberCount = len(open_members)
+        group.InitialMemberCount = len(timed_members)
         group.Fase = ""
-        for member in open_members:
+        for member in timed_members:
             member.Role = ROLE_MEMBER
             member.TimeShareMode = SHARE_SPLIT
 
@@ -1187,6 +1232,8 @@ def prepare_group_for_full_closure(
             now_dt=now_dt,
             minuti_non_funzionamento=minuti_non_funzionamento,
         )
+    else:
+        _deduct_suspended_group_stop(group, minuti_non_funzionamento)
 
     for member in _members_for_closure(group):
         rt = _runtime_for_member(member)
@@ -1322,6 +1369,22 @@ def group_to_dict(group: OdpWorkGroup) -> dict:
     }
 
 
+def group_outcome_message(group: OdpWorkGroup) -> str:
+    remaining = [m for m in group.members if _norm_text(m.Status) in {
+        GROUP_STATUS_ATTIVO, GROUP_STATUS_SOSPESO
+    }]
+    if group.Status == GROUP_STATUS_SCIOLTO:
+        return "Gruppo sciolto. Gli ordini residui sono sospesi e gestibili singolarmente."
+    if group.Status == GROUP_STATUS_CHIUSO:
+        return "Gruppo terminato. Ogni ordine ha il proprio avanzamento."
+    timed = sum(_norm_text(m.TimeShareMode).upper() != SHARE_ZERO for m in remaining)
+    state = "attivo" if group.Status == GROUP_STATUS_ATTIVO else "sospeso"
+    return (
+        f"Il gruppo resta {state} con {len(remaining)} ordini: "
+        f"{timed} con tempo attribuito e {len(remaining) - timed} mascherati a tempo zero."
+    )
+
+
 def first_order_for_group(group: OdpWorkGroup):
     for member in group.members:
         ordine = _order_for_member(member)
@@ -1366,6 +1429,14 @@ def available_orders_payload(policy, *, only_pianificata: bool = True) -> list[d
                 "priorita": priority,
                 "quantita": _qty_da_lavorare_text(ordine),
                 "stato": _norm_text(ordine.StatoOrdine),
+                "operatore": _norm_text(getattr(getattr(ordine, "runtime_row", None), "Utente_operazione", "")),
+                "motivo_blocco": (
+                    "Ordine attivo da un altro operatore"
+                    if _norm_text(ordine.StatoOrdine).lower() == "attivo"
+                    and _norm_text(getattr(getattr(ordine, "runtime_row", None), "Utente_operazione", ""))
+                    not in {"", _current_username()}
+                    else ""
+                ),
             }
         )
 
@@ -1535,6 +1606,7 @@ class WorkGroupHomeRow:
                     "modalita_lotti": "m" if gestione_matricola else "sl",
                     "ruolo": _norm_text(getattr(member, "Role", "")),
                     "time_share_mode": _norm_text(getattr(member, "TimeShareMode", "")),
+                    "group_status": self.WorkGroupStatus,
                 }
             )
 
