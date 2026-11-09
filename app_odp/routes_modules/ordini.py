@@ -96,6 +96,8 @@ from app_odp.services.priorita_service import (
 )
 from app_odp.services.etichette_service import generazione_lotti
 from app_odp.services.common import _last_log_token
+from app_odp.services.serbatoi_service import usa_export_lct_due_fasi
+from app_odp.services import serbatoi_cq_service as cq
 from app_odp.services.erp_export_service import (
     _build_operation_group_id,
     _get_blocking_outbox_for_phase,
@@ -103,6 +105,7 @@ from app_odp.services.erp_export_service import (
     _build_phase_payload,
     _phase_export_flags,
     _queue_phase_export,
+    _serbatoi_export_fase_1_error,
 )
 from app_odp.services.home_service import (
     _home_reparto_config_by_tab,
@@ -186,7 +189,7 @@ def _dissolve_group_for_single_close(id_documento: str, id_riga: str) -> dict:
         id_documento=id_documento,
         id_riga=id_riga,
     )
-    return {"skip_min_active_time": True}
+    return {"skip_min_active_time": True, "group_uid": active_group.GroupUid}
 
 
 def _group_response_payload(group, policy, *, changed=True, message=""):
@@ -545,7 +548,7 @@ def api_chiudi_membro_gruppo(group_uid=None):
         member_payload["note"] = _norm_text(member_payload.get("note") or data.get("note") or "")
         member_payload["chiusura_parziale"] = False
         member_payload["tempo_non_funzionamento_minuti"] = 0
-        member_payload["_group_close_context"] = {
+        group_close_context = {
             "group_uid": group_uid,
             "member_id": member.id,
             "single_member": True,
@@ -569,6 +572,7 @@ def api_chiudi_membro_gruppo(group_uid=None):
                 policy=policy,
                 commit=False,
                 skip_min_active_time=True,
+                group_close_context=group_close_context,
             )
             export_suffix = "montaggio_m"
         else:
@@ -577,6 +581,8 @@ def api_chiudi_membro_gruppo(group_uid=None):
                 policy=policy,
                 commit=False,
                 skip_min_active_time=True,
+                group_close_context=group_close_context,
+                consenti_sovrapproduzione=True,
             )
             export_suffix = (
                 "montaggio_sl"
@@ -773,7 +779,7 @@ def api_chiudi_gruppo_ordini(group_uid=None):
 
             # Il tempo non funzionamento è già stato sottratto una volta a livello gruppo.
             member_payload["tempo_non_funzionamento_minuti"] = 0
-            member_payload["_group_close_context"] = {
+            group_close_context = {
                 "group_uid": group.GroupUid,
                 "group_type": group.GroupType,
                 "member_role": member.Role,
@@ -793,6 +799,7 @@ def api_chiudi_gruppo_ordini(group_uid=None):
                     policy=policy,
                     commit=False,
                     skip_min_active_time=True,
+                    group_close_context=group_close_context,
                 )
                 export_suffix = "montaggio_m"
             else:
@@ -801,6 +808,8 @@ def api_chiudi_gruppo_ordini(group_uid=None):
                     policy=policy,
                     commit=False,
                     skip_min_active_time=True,
+                    group_close_context=group_close_context,
+                    consenti_sovrapproduzione=True,
                 )
                 export_suffix = (
                     "montaggio_sl"
@@ -1907,6 +1916,8 @@ def _chiudi_ordine_da_payload(
     policy=None,
     commit: bool = True,
     skip_min_active_time: bool = False,
+    group_close_context: dict | None = None,
+    consenti_sovrapproduzione: bool = False,
 ):
     id_documento = _norm_text(data.get("id_documento"))
     id_riga = _norm_text(data.get("id_riga"))
@@ -1938,13 +1949,13 @@ def _chiudi_ordine_da_payload(
     policy = policy or active_policy()
     ordine = _get_visible_odp_by_key(policy, id_documento, id_riga)
 
-    if not _parse_bool_flag(data.get("_group_close_context")) and not data.get(
-        "_group_close_context"
-    ):
+    if group_close_context is None:
         group_close_options = _dissolve_group_for_single_close(id_documento, id_riga)
         skip_min_active_time = skip_min_active_time or group_close_options[
             "skip_min_active_time"
         ]
+        group_uid = group_close_options.get("group_uid", "")
+        group_close_context = {"group_uid": group_uid, "single_member": bool(group_uid)}
 
     can_override_registration_date = policy.can("modifica_data_chiusura")
     can_force_tempo_avanzamento = policy.can("export_avp_senza_riga_tempo")
@@ -1958,7 +1969,16 @@ def _chiudi_ordine_da_payload(
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
 
-    fase_corrente = _fase_corrente_for_export(ordine)
+    stato = InputOdpRuntime.query.filter_by(
+        IdDocumento=ordine.IdDocumento,
+        IdRiga=ordine.IdRiga,
+    ).first()
+    fase_corrente = _fase_corrente_for_export(ordine, stato=stato)
+    export_serbatoi = usa_export_lct_due_fasi(ordine)
+    if export_serbatoi and fase_corrente not in ("1", "2"):
+        return jsonify({"ok": False, "error": "Fase attiva Serbatoi non valida."}), 409
+    solo_tempo = export_serbatoi and fase_corrente == "1"
+    distinta_intera = export_serbatoi and fase_corrente == "2"
     blocking_outbox = _get_blocking_outbox_for_phase(
         id_documento=ordine.IdDocumento,
         id_riga=ordine.IdRiga,
@@ -1980,13 +2000,14 @@ def _chiudi_ordine_da_payload(
             409,
         )
 
-    stato = InputOdpRuntime.query.filter_by(
-        IdDocumento=ordine.IdDocumento,
-        IdRiga=ordine.IdRiga,
-    ).first()
     closure_error = _ensure_ordine_attivo_per_chiusura(ordine, stato=stato)
     if closure_error:
         return closure_error
+
+    if distinta_intera:
+        export_error = _serbatoi_export_fase_1_error(ordine)
+        if export_error:
+            return jsonify({"ok": False, "error": export_error}), 409
 
     now_dt = _now_rome_dt()
 
@@ -2025,16 +2046,32 @@ def _chiudi_ordine_da_payload(
         )
 
     q_lavorata = q_ok + q_nok
+    piano_cq = cq.piano_codice(ordine.CodArt) if solo_tempo else None
+    if piano_cq:
+        esiti_cq = cq.valida_esiti(piano_cq, data.get("cq_fresatura"), q_lavorata, q_nok)
+    elif data.get("cq_fresatura") is not None:
+        raise s.SerbatoiError("Fase o piano CQ modificati. Riaprire la conferma dell’ordine.")
+    if export_serbatoi and not chiusura_parziale and (
+        q_lavorata < q_tot or (q_lavorata > q_tot and not consenti_sovrapproduzione)
+    ):
+        return jsonify({
+            "ok": False,
+            "error": "La chiusura della fase deve consuntivare tutta la quantità residua.",
+        }), 400
     qty_residua = q_tot - q_lavorata
     qty_residua_text = _decimal_to_text(qty_residua)
     qty_lavorata_text = _decimal_to_text(q_lavorata)
     qty_pre_text = _qty_da_lavorare_text(ordine, stato=stato)
-    distinta_base_export = _build_export_distinta_base(
-        ordine=ordine,
-        fase_corrente=fase_corrente,
-        q_lavorata=q_lavorata,
-        q_tot=q_ordine_totale,
-    )
+    distinta_base_export = "[]"
+    if solo_tempo:
+        lotti_input = []
+    else:
+        distinta_base_export = _build_export_distinta_base(
+            ordine=ordine,
+            fase_corrente="" if distinta_intera else fase_corrente,
+            q_lavorata=q_lavorata,
+            q_tot=q_ordine_totale,
+        )
     if chiusura_parziale:
         if q_lavorata <= 0:
             return (
@@ -2058,9 +2095,10 @@ def _chiudi_ordine_da_payload(
                 400,
             )
 
-    componenti_richiesti_lotto = _componenti_lotto_per_ordine(
+    componenti_richiesti_lotto = [] if solo_tempo else _componenti_lotto_per_ordine(
         ordine,
         include_senza_lotti=True,
+        distinta_intera=distinta_intera,
     )
     componenti_lotto_by_cod = {
         _norm_text(comp.get("CodArt")): comp
@@ -2077,6 +2115,18 @@ def _chiudi_ordine_da_payload(
             ),
             400,
         )
+
+    if distinta_intera and lotti_input:
+        chiavi_lotti = {component_key(row) for row in lotti_input}
+        chiavi_distinta = [
+            component_key(comp) for comp in json.loads(distinta_base_export)
+            if component_key(comp) in chiavi_lotti
+        ]
+        if len(chiavi_distinta) != len(set(chiavi_distinta)):
+            return jsonify({
+                "ok": False,
+                "error": "La distinta contiene più righe per uno stesso componente con lotto. Verificare la distinta nel gestionale prima di chiudere.",
+            }), 409
 
     if lotti_input:
         for lotto_row in lotti_input:
@@ -2187,14 +2237,13 @@ def _chiudi_ordine_da_payload(
         when_iso=now_iso,
     )
 
-    fase_corrente = _fase_corrente_for_export(ordine, stato=stato)
     phase_export_flags = _phase_export_flags(
         ordine,
         fase_corrente,
         chiusura_parziale=chiusura_parziale,
     )
 
-    if _norm_text(ordine.GestioneLotto).lower() == "si" and q_ok > 0:
+    if not solo_tempo and _norm_text(ordine.GestioneLotto).lower() == "si" and q_ok > 0:
         rif_lotto_prodotto = generazione_lotti(registration_dt)
 
         for row in lotti_input:
@@ -2230,8 +2279,6 @@ def _chiudi_ordine_da_payload(
             db.session.rollback()
             return jsonify({"ok": False, "error": str(exc)}), 400
 
-    outbox = None
-
     if chiusura_parziale:
         if stato is None:
             db.session.rollback()
@@ -2249,59 +2296,32 @@ def _chiudi_ordine_da_payload(
                 ),
                 409,
             )
-        payload = _build_phase_payload(
-            distinta_base=distinta_base_export,
-            ordine=ordine,
-            fase_corrente=fase_corrente,
-            q_ok=q_ok,
-            q_nok=q_nok,
-            tempo_finale=tempo_finale,
-            lotti_input=lotti_input,
-            lotto_prodotto=lotto_prodotto,
-            note=note,
-            now_iso=registration_iso,
-            registrazione_data=registration_date_text,
-            chiusura_parziale=True,
-            tipo_documento=ordine.CodTipoDoc,
-            risorsa=ordine.RisorsaAttiva,
-            magazzino=ordine.CodMagPrincipale,
-            variante=ordine.VarianteArt,
-            tempo_avanzamento_minuti=tempo_avanzamento_minuti,
-            tempo_avanzamento_ore=tempo_avanzamento_ore,
-            **phase_export_flags,
-        )
-        outbox = _queue_phase_export(
-            ordine=ordine,
-            fase_corrente=fase_corrente,
-            payload=payload,
-        )
-    else:
-        payload = _build_phase_payload(
-            ordine=ordine,
-            distinta_base=distinta_base_export,
-            fase_corrente=fase_corrente,
-            q_ok=q_ok,
-            q_nok=q_nok,
-            tempo_finale=tempo_finale,
-            lotti_input=lotti_input,
-            lotto_prodotto=lotto_prodotto,
-            note=note,
-            now_iso=registration_iso,
-            registrazione_data=registration_date_text,
-            chiusura_parziale=False,
-            tipo_documento=ordine.CodTipoDoc,
-            risorsa=ordine.RisorsaAttiva,
-            magazzino=ordine.CodMagPrincipale,
-            variante=ordine.VarianteArt,
-            tempo_avanzamento_minuti=tempo_avanzamento_minuti,
-            tempo_avanzamento_ore=tempo_avanzamento_ore,
-            **phase_export_flags,
-        )
-        outbox = _queue_phase_export(
-            ordine=ordine,
-            fase_corrente=fase_corrente,
-            payload=payload,
-        )
+    payload = _build_phase_payload(
+        ordine=ordine,
+        distinta_base=distinta_base_export,
+        fase_corrente=fase_corrente,
+        q_ok=q_ok,
+        q_nok=Decimal("0") if solo_tempo else q_nok,
+        tempo_finale=tempo_finale,
+        lotti_input=lotti_input,
+        lotto_prodotto=lotto_prodotto,
+        note=note,
+        now_iso=registration_iso,
+        registrazione_data=registration_date_text,
+        chiusura_parziale=chiusura_parziale,
+        tipo_documento=ordine.CodTipoDoc,
+        risorsa=ordine.RisorsaAttiva,
+        magazzino=ordine.CodMagPrincipale,
+        variante=ordine.VarianteArt,
+        tempo_avanzamento_minuti=tempo_avanzamento_minuti,
+        tempo_avanzamento_ore=tempo_avanzamento_ore,
+        **phase_export_flags,
+    )
+    if solo_tempo:
+        payload["salda_riga"] = 0
+    if distinta_intera:
+        payload["distinta_intera"] = True
+    outbox = _queue_phase_export(ordine, fase_corrente, payload)
 
     db.session.flush()
 
@@ -2311,11 +2331,24 @@ def _chiudi_ordine_da_payload(
             f"[PARZIALE] residuo={qty_residua_text}; {note}".strip().rstrip(";")
         )
 
+    q_ok_transizione = q_ok
+    if solo_tempo and not chiusura_parziale:
+        parziali = InputOdpLog.query.filter_by(
+            IdDocumento=ordine.IdDocumento,
+            IdRiga=ordine.IdRiga,
+            RifRegistraz=ordine.RifRegistraz,
+            FaseConsuntivata=fase_corrente,
+            ChiusuraParziale="true",
+        ).with_entities(InputOdpLog.QuantitaConforme)
+        q_ok_transizione += sum(
+            _parse_qty_decimal(quantita) for (quantita,) in parziali
+        )
+
     transition = _advance_or_finalize_phase(
         ordine=ordine,
         stato=stato,
         fase_corrente=fase_corrente,
-        q_ok=q_ok,
+        q_ok=q_ok_transizione,
         q_nok=q_nok,
         qty_residua=qty_residua,
         qty_residua_text=qty_residua_text,
@@ -2379,7 +2412,10 @@ def _chiudi_ordine_da_payload(
         qty_post=qty_post_log,
         closed_by=_current_username(),
         closed_at=now_iso,
+        consenti_sovrapproduzione=consenti_sovrapproduzione,
     )
+    if piano_cq:
+        cq.registra_fresatura(ordine, operation_group_id, piano_cq, esiti_cq, q_ok, q_nok, _current_username())
 
     _append_operazione_log(
         topic="fase_consuntivata_parziale"
@@ -2413,7 +2449,8 @@ def _chiudi_ordine_da_payload(
             "lotto_prodotto": lotto_prodotto,
             "emit_product_line": phase_export_flags["emit_product_line"],
             "is_last_phase": phase_export_flags["is_last_phase"],
-            "fase_successiva": phase_export_flags["fase_successiva"],
+            "fase_successiva": transition["fase_successiva"] if transition["tipo"] == "avanzata" else None,
+            **group_close_context,
             "phase_sequence": phase_export_flags["phase_sequence"],
             "tempo_funzionamento_calcolato": tempo_finale,
             "tempo_avanzamento_forzato": tempo_avanzamento_ore is not None,
@@ -2537,6 +2574,7 @@ def _chiudi_ordine_montaggio_macchina_da_payload(
     policy=None,
     commit: bool = True,
     skip_min_active_time: bool = False,
+    group_close_context: dict | None = None,
 ):
 
     id_documento = _norm_text(data.get("id_documento"))
@@ -2556,13 +2594,13 @@ def _chiudi_ordine_montaggio_macchina_da_payload(
     policy = policy or active_policy()
     ordine = _get_visible_odp_by_key(policy, id_documento, id_riga)
 
-    if not _parse_bool_flag(data.get("_group_close_context")) and not data.get(
-        "_group_close_context"
-    ):
+    if group_close_context is None:
         group_close_options = _dissolve_group_for_single_close(id_documento, id_riga)
         skip_min_active_time = skip_min_active_time or group_close_options[
             "skip_min_active_time"
         ]
+        group_uid = group_close_options.get("group_uid", "")
+        group_close_context = {"group_uid": group_uid, "single_member": bool(group_uid)}
 
     can_override_registration_date = policy.can("modifica_data_chiusura")
     can_force_tempo_avanzamento = policy.can("export_avp_senza_riga_tempo")
@@ -2907,7 +2945,8 @@ def _chiudi_ordine_montaggio_macchina_da_payload(
             "export_status": outbox.status if outbox else None,
             "emit_product_line": phase_export_flags["emit_product_line"],
             "is_last_phase": phase_export_flags["is_last_phase"],
-            "fase_successiva": phase_export_flags["fase_successiva"],
+            "fase_successiva": transition["fase_successiva"] if transition["tipo"] == "avanzata" else None,
+            **group_close_context,
             "phase_sequence": phase_export_flags["phase_sequence"],
             "tempo_funzionamento_calcolato": tempo_finale,
             "tempo_avanzamento_forzato": tempo_avanzamento_ore is not None,
@@ -3028,6 +3067,23 @@ def api_chiudi_ordine_montaggio_macchina():
     return _chiudi_ordine_montaggio_macchina_da_payload(data, commit=True)
 
 
+@main_bp.post("/api/ordini/piani-cq")
+@operator_perm_required("home")
+def api_piani_cq_ordini():
+    data = request.get_json(silent=True)
+    if not isinstance(data, list) or not 1 <= len(data) <= 20 or not all(isinstance(r, dict) for r in data):
+        return jsonify(ok=False, error="Elenco ODP non valido."), 400
+    policy = active_policy()
+    piani = []
+    for riga in data:
+        ordine = _get_visible_odp_by_key(policy, _norm_text(riga.get("id_documento")), _norm_text(riga.get("id_riga")))
+        if _fase_corrente_for_export(ordine) == "1" and usa_export_lct_due_fasi(ordine):
+            piani.append(cq.piano_codice(ordine.CodArt))
+        else:
+            piani.append(None)
+    return jsonify(ok=True, piani=piani)
+
+
 @main_bp.post("/api/ordini/lotti-componenti")
 @operator_perm_required("home")
 def api_lotti_componenti():
@@ -3044,20 +3100,26 @@ def api_lotti_componenti():
     ordine = _get_visible_odp_by_key(policy, id_documento, id_riga)
 
     fase_corrente = _fase_corrente_for_export(ordine)
-    distinta_pendente = distinta_pendente_per_ordine(ordine, fase_corrente)
+    export_serbatoi = not is_macchina and usa_export_lct_due_fasi(ordine)
+    solo_tempo = export_serbatoi and fase_corrente == "1"
+    distinta_intera = export_serbatoi and fase_corrente == "2"
+    distinta_pendente = [] if solo_tempo else distinta_pendente_per_ordine(
+        ordine, "" if distinta_intera else fase_corrente
+    )
     pending_keys = {component_key(row) for row in distinta_pendente}
 
     ordine_gestione_lotto = (
-        _norm_text(getattr(ordine, "GestioneLotto", "")).lower() == "si"
+        not solo_tempo and _norm_text(getattr(ordine, "GestioneLotto", "")).lower() == "si"
     )
     ordine_gestione_matricola = (
         _norm_text(getattr(ordine, "GestioneMatricola", "")).lower() == "si"
     )
 
-    componenti_lotto = _componenti_lotto_per_ordine(
+    componenti_lotto = [] if solo_tempo else _componenti_lotto_per_ordine(
         ordine,
         include_senza_lotti=True,
         ignore_parent_gestione_lotto=ordine_gestione_matricola or is_macchina,
+        distinta_intera=distinta_intera,
     )
     componenti_lotto = [
         comp for comp in componenti_lotto

@@ -335,19 +335,20 @@ def _get_visible_odp_by_key(
     return ordine
 
 
-def _render_bridge_standard(odp, config=None):
+def _render_bridge_standard(odp, config=None, *, lct_preview=False):
     from app_odp.services.documenti_service import _build_metodo_montaggio_lookup
 
-    metodo_montaggio_lookup = _build_metodo_montaggio_lookup(odp)
+    metodo_montaggio_lookup = {} if lct_preview else _build_metodo_montaggio_lookup(odp)
 
     from app_odp.services.lct_service import uses_lct_home, lct_sections, lct_fresa_busy
     policy = active_policy()
-    if uses_lct_home(policy, config):
+    if lct_preview or uses_lct_home(policy, config):
         return {
             f"tbody_lct_{key}": render_template(
                 "partials/_home_lct_rows.j2", odp=rows, lct_home=True,
                 lct_key=key, metodo_montaggio_lookup=metodo_montaggio_lookup,
-                lct_fresa_busy=lct_fresa_busy(odp, policy.user.username),
+                lct_preview=lct_preview,
+                lct_fresa_busy=not lct_preview and lct_fresa_busy(odp, policy.user.username),
             )
             for key, rows in lct_sections(odp).items()
         }
@@ -421,11 +422,13 @@ RENDERERS = {
 def _render_fragments_for_home_config(
     config: HomeRepartoConfig,
     odp: list[InputOdp],
+    *,
+    lct_preview: bool = False,
 ) -> dict:
     renderer_key = _norm_text(getattr(config, "renderer", "")) or "empty"
 
     if renderer_key == "standard":
-        return _render_bridge_standard(odp, config=config)
+        return _render_bridge_standard(odp, config=config, lct_preview=lct_preview)
 
     if renderer_key == "montaggio":
         method_settings = _home_method_settings_for_user(
@@ -570,6 +573,7 @@ def _home_rows_for_config(
     *,
     apply_priorita: bool = True,
     sort_priorita: bool = True,
+    lct_preview: bool = False,
 ) -> list:
     from app_odp.services.ordini_gruppi_service import (
         _collapse_work_group_rows_for_home,
@@ -591,7 +595,7 @@ def _home_rows_for_config(
 
     from app_odp.services.lct_service import uses_lct_home, lct_home_rows
     rows = _collapse_work_group_rows_for_home(odp)
-    if uses_lct_home(policy, config):
+    if lct_preview or uses_lct_home(policy, config):
         return lct_home_rows(rows)
     return rows
 

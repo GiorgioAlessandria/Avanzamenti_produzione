@@ -52,6 +52,7 @@
             <td>{{ wrap_plus(singolo_odp.DataFineSched | db_date("%Y-%m-%d %H:%M:%S","%d/%m/%Y")) }}</td>
             <td>{{ wrap_plus(singolo_odp.AttrezzaggioAttivo) }}</td>
             <td>{{ wrap_plus(singolo_odp.RisorsaAttiva) }}</td>
+            {% if lct_home|default(false) %}{% include 'partials/_home_lct_actions.j2' %}{% endif %}
         </tr>
     {% endif %}
 {% endfor %}

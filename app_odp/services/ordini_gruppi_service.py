@@ -1599,6 +1599,7 @@ class WorkGroupHomeRow:
                         ordine,
                         stato=stato,
                     ),
+                    "quantita_ordine": _norm_text(getattr(ordine, "Quantita", "")),
                     "gestione_lotto": gestione_lotto,
                     "gestione_matricola": gestione_matricola,
                     "is_macchina": gestione_matricola,

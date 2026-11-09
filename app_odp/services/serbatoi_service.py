@@ -3,22 +3,31 @@ from __future__ import annotations
 import hashlib
 import json
 from collections import Counter
-from decimal import InvalidOperation
+from datetime import date, datetime
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+import re
 from uuid import uuid4
 
 from sqlalchemy import or_, update
 
-from app_odp.models import db, InputOdp, AcqOrdineClienteAperto, AcqClienteFornitore, AcqOrdineFornitoreAperto
+from app_odp.models import db, InputOdp, AcqOrdineClienteAperto, AcqClienteFornitore, AcqOrdineFornitoreAperto, AcqArticoli, AcqArticoliLookup
 from app_odp.serbatoi_models import (
     SerbatoiArticolo as Articolo, SerbatoiCliente as Cliente,
     SerbatoiProduzione as Produzione, SerbatoiImpegno as Impegno,
     SerbatoiBarre as Barre, SerbatoiLotto as Lotto,
     SerbatoiConsumo as Consumo, SerbatoiMovimento as Movimento,
     SerbatoiEvento as Evento,
+    SerbatoiParametri as Parametri, SerbatoiBarreOrigine as BarreOrigine,
+    SerbatoiBarreManuale as BarreManuale,
+    SerbatoiPrezzoBarre as PrezzoBarre, SerbatoiRiferimentoBarre as RiferimentoBarre,
+    SerbatoiTempistiche as Tempistiche,
 )
+from app_odp.services.acquisti_service import _parse_acquisti_date
 from app_odp.services.order_helpers import (
     _norm_text, _parse_qty_decimal, _phase_sequence_for_ordine,
     _now_rome_dt, _ordine_ref_label,
+    _normalize_udm,
+    _decimal_to_text,
 )
 
 
@@ -31,7 +40,7 @@ def intero(value, label="Quantità", *, zero=False):
         n = _parse_qty_decimal(value)
     except (ValueError, TypeError, InvalidOperation):
         raise SerbatoiError(f"{label}: inserire un numero intero valido.") from None
-    if not n.is_finite() or n != n.to_integral_value() or n < (0 if zero else 1):
+    if not n.is_finite() or n != n.to_integral_value() or n < (0 if zero else 1) or n > 2**63 - 1:
         raise SerbatoiError(f"{label}: inserire un intero {'non negativo' if zero else 'positivo'}.")
     return int(n)
 
@@ -41,6 +50,297 @@ def testo(value, label, massimo=120):
     if not value or len(value) > massimo:
         raise SerbatoiError(f"{label}: valore obbligatorio, massimo {massimo} caratteri.")
     return value
+
+
+def parametri():
+    return db.session.get(Parametri, 1) or Parametri(
+        id=1, fornitore_barre_tipo="", fornitore_barre_codice="", codice_barre="", unita_barre="M",
+        lunghezza_barre_mm=6000, fornitore_spezzoni_tipo="", fornitore_spezzoni_codice="",
+        codici_spezzoni=[], sfrido_mm=0,
+    )
+
+
+TEMPI_SERBATOI = {
+    "grezzo": ("Grezzo per lotto", 7),
+    "in_lavorazione": ("In lavorazione per lotto", 7),
+    "lavorato": ("Lavorato per lotto, anche a Gaser", 4),
+    "ossidato": ("Ossidato per lotto", 2),
+    "trasporto_bernardi": ("Singola tratta da Bernardi", 4),
+    "trasporto_gaser": ("Rientro da Gaser", 2),
+    "preavviso": ("Preavviso prima della data limite", 7),
+}
+LOTTI_SERBATOI = {
+    "SCB100907": 288, "SCB100978": 192, "SC4117261": 288,
+    "SC0090596": 192, "SC0090495": 288, "SC0090494": 192,
+    "SC0090592": 288, "SC0090595": 288, "SC0090597": 192,
+}
+COLORI_SCADENZA = {
+    "rosso": "Consegna oggi o in ritardo",
+    "arancione": "In scadenza",
+    "giallo": "Preavviso di scadenza",
+    "verde": "In anticipo",
+    "grigio": "Stima non disponibile",
+}
+
+
+def tempistiche():
+    return db.session.get(Tempistiche, 1) or Tempistiche(
+        id=1, giorni={key: default for key, (_, default) in TEMPI_SERBATOI.items()},
+        lotti=LOTTI_SERBATOI.copy(),
+    )
+
+
+def salva_tempistiche(data, utente):
+    giorni = {key: intero(data.get(key), label, zero=True) for key, (label, _) in TEMPI_SERBATOI.items()}
+    cfg = tempistiche()
+    lotti = cfg.lotti.copy()
+    for articolo in Articolo.query.all():
+        key = f"lotto_{articolo.id}"
+        if key not in data:
+            continue
+        raw = _norm_text(data.get(key))
+        if raw:
+            lotti[articolo.codice_oss] = intero(raw, f"Lotto {articolo.codice_oss}")
+        else:
+            lotti.pop(articolo.codice_oss, None)
+    cfg.giorni, cfg.lotti = giorni, lotti
+    db.session.add(cfg)
+    movimento("TEMPISTICHE", 0, utente, note="Aggiornati tempi di consegna e lotti standard.")
+
+
+def scadenza_cliente(consegna, codice, fasi, cfg, oggi):
+    data = _parse_acquisti_date(consegna)
+    if data is None:
+        try:
+            data = datetime.strptime(_norm_text(consegna), "%d/%m/%Y").date()
+        except ValueError:
+            return dict(colore="grigio", testo="Data di consegna da verificare")
+    giorni = cfg.giorni
+    lotto = cfg.lotti.get(codice)
+    residui = {
+        "grezzo": (fasi["grezzo"] + fasi["da_assegnare"], 2 * giorni["trasporto_bernardi"]),
+        "in_lavorazione": (fasi["in_lavorazione"], 2 * giorni["trasporto_bernardi"]),
+        "lavorato": (fasi["lavorato"], 2 * giorni["trasporto_bernardi"]),
+        "gaser": (fasi["gaser"], giorni["trasporto_gaser"]),
+        "ossidato": (fasi["ossidato"], 0),
+    }
+    lead = None
+    if lotto:
+        # Una frazione residua impegna un lotto. Fa fede la quota con più giorni residui.
+        lead = max((giorni["lavorato" if fase == "gaser" else fase] * ((q + lotto - 1) // lotto) + trasporto
+                    for fase, (q, trasporto) in residui.items() if q > 0), default=None)
+    alla_consegna = (data - oggi).days
+    if alla_consegna <= 0:
+        colore = "rosso"
+        testo_scadenza = "Consegna oggi" if alla_consegna == 0 else "In ritardo"
+    elif lead is None:
+        colore = "grigio"
+        testo_scadenza = "Lotto standard da configurare" if not lotto else COLORI_SCADENZA[colore]
+    else:
+        margine = alla_consegna - lead
+        colore = "arancione" if margine <= 0 else "giallo" if margine <= giorni["preavviso"] else "verde"
+        testo_scadenza = COLORI_SCADENZA[colore]
+    limite = data.toordinal() - lead if lead is not None else 0
+    return dict(colore=colore, testo=testo_scadenza, consegna=data, giorni=lead,
+                limite=date.fromordinal(limite) if limite > 0 else None)
+
+
+def fornitore_selezionato(value):
+    tipo, sep, code = _norm_text(value).partition("|")
+    f = next((r for r in fornitori() if (r.TipoAnagrafica, r.CodCliFor) == (tipo, code)), None) if sep else None
+    if f is None:
+        raise SerbatoiError("Selezionare un fornitore dall'anagrafica fornitori.")
+    return f
+
+
+def salva_parametri(data, utente):
+    barre = fornitore_selezionato(data.get("fornitore_barre"))
+    spezzoni = fornitore_selezionato(data.get("fornitore_spezzoni"))
+    code = testo(data.get("codice_barre"), "Codice barre").upper()
+    unit = _normalize_udm(testo(data.get("unita_barre"), "Unità delle barre", 20))
+    if unit not in {"M","MT","METRO","METRI","PZ","N","NR","BARRE","BARRA"}:
+        raise SerbatoiError("Unità barre non supportata: usare metri oppure un conteggio di barre. I kg non vengono convertiti automaticamente.")
+    length = intero(data.get("lunghezza_barre_mm"), "Lunghezza barra")
+    scrap = intero(data.get("sfrido_mm"), "Sfrido", zero=True)
+    raw_codes = testo(data.get("codici_spezzoni"), "Codici spezzoni", 24000)
+    codes = list(dict.fromkeys(testo(c, "Codice spezzone").upper() for c in raw_codes.splitlines() if c.strip()))
+    if not codes or len(codes) > 200:
+        raise SerbatoiError("Indicare da 1 a 200 codici spezzoni, uno per riga.")
+    cfg = parametri()
+    cfg.fornitore_barre_tipo, cfg.fornitore_barre_codice = barre.TipoAnagrafica, barre.CodCliFor
+    cfg.fornitore_spezzoni_tipo, cfg.fornitore_spezzoni_codice = spezzoni.TipoAnagrafica, spezzoni.CodCliFor
+    cfg.codice_barre, cfg.unita_barre, cfg.lunghezza_barre_mm = code, unit, length
+    cfg.codici_spezzoni, cfg.sfrido_mm = codes, scrap
+    db.session.add(cfg)
+    movimento("PARAMETRI", 0, utente, note=f"Barre: {barre.RagioneSociale} / {code}; spezzoni: {spezzoni.RagioneSociale}; codici: {', '.join(codes)}")
+    return cfg
+
+
+def corrisponde_barre(row, cfg):
+    tipo = row.TipoAnagrafica if isinstance(row, AcqOrdineFornitoreAperto) else row.fornitore_tipo
+    code = row.CodCliFor if isinstance(row, AcqOrdineFornitoreAperto) else row.fornitore_codice
+    art = row.CodArt if isinstance(row, AcqOrdineFornitoreAperto) else row.codice
+    return bool(cfg.codice_barre and cfg.fornitore_barre_codice
+                and (tipo, code) == (cfg.fornitore_barre_tipo, cfg.fornitore_barre_codice)
+                and _norm_text(art).upper() == cfg.codice_barre)
+
+
+def _centesimi(value, label):
+    raw = _norm_text(value)
+    if not re.fullmatch(r"[0-9]{1,9}(?:[.,][0-9]{1,2})?", raw):
+        raise SerbatoiError(f"{label}: inserire un numero positivo con al massimo due decimali.")
+    return intero(_parse_qty_decimal(raw) * 100, label)
+
+
+def formatta_centesimi(value):
+    return f"{Decimal(value) / 100:.2f}".replace(".", ",")
+
+
+def salva_prezzo_barre(barra, data, utente):
+    centesimi = _centesimi(data.get("prezzo_kg"), "Prezzo €/kg")
+    data_prezzo = _parse_acquisti_date(data.get("data_prezzo"))
+    if data_prezzo is None or data_prezzo.isoformat() != _norm_text(data.get("data_prezzo")):
+        raise SerbatoiError("Indicare una data del prezzo valida.")
+    prezzo = db.session.get(PrezzoBarre, barra.id)
+    if prezzo and (prezzo.centesimi_kg, prezzo.data_prezzo) == (centesimi, data_prezzo):
+        return
+    prima = f"{formatta_centesimi(prezzo.centesimi_kg)} €/kg ({prezzo.data_prezzo.isoformat()})" if prezzo else "—"
+    if prezzo is None:
+        prezzo = PrezzoBarre(barre_id=barra.id)
+        db.session.add(prezzo)
+    prezzo.centesimi_kg, prezzo.data_prezzo = centesimi, data_prezzo
+    movimento("PREZZO_BARRE", 0, utente, note=f"{barra.riferimento} · {prima} → {formatta_centesimi(centesimi)} €/kg ({data_prezzo.isoformat()})")
+
+
+def salva_riferimento_barre(data, utente):
+    cfg = parametri()
+    chiave = (cfg.fornitore_barre_tipo, cfg.fornitore_barre_codice, cfg.codice_barre)
+    if not all(chiave) or chiave != (data.get("fornitore_tipo"), data.get("fornitore_codice"), data.get("codice")):
+        raise SerbatoiError("Parametri barre modificati. Ricaricare la pagina prima di salvare il riferimento.")
+    centesimi = _centesimi(data.get("prezzo_kg"), "Prezzo di riferimento €/kg")
+    soglia = _centesimi(data.get("soglia_percento"), "Soglia percentuale")
+    riferimento = db.session.get(RiferimentoBarre, chiave)
+    if riferimento and (riferimento.centesimi_kg, riferimento.soglia_centesimi_percento) == (centesimi, soglia):
+        return
+    prima = f"{formatta_centesimi(riferimento.centesimi_kg)} €/kg (±{formatta_centesimi(riferimento.soglia_centesimi_percento)}%)" if riferimento else "—"
+    if riferimento is None:
+        riferimento = RiferimentoBarre(fornitore_tipo=chiave[0], fornitore_codice=chiave[1], codice=chiave[2])
+        db.session.add(riferimento)
+    riferimento.centesimi_kg, riferimento.soglia_centesimi_percento = centesimi, soglia
+    movimento("RIFERIMENTO_PREZZO_BARRE", 0, utente,
+              note=f"{chiave[1]} · {chiave[2]} · {prima} → {formatta_centesimi(centesimi)} €/kg (±{formatta_centesimi(soglia)}%)")
+
+
+def scostamento_prezzo_barre(prezzo, riferimento):
+    base = riferimento.centesimi_kg
+    differenza = prezzo.centesimi_kg - base
+    percentuale = (Decimal(differenza) * 100 / base).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    return {
+        "percentuale": f"{percentuale:+.2f}".replace(".", ",") if percentuale else "0,00",
+        "soglia_raggiunta": abs(differenza) * 10000 >= base * riferimento.soglia_centesimi_percento,
+        "aumento": differenza > 0,
+    }
+
+
+def descrizioni_articoli():
+    descriptions = {}
+    for a in Articolo.query.all():
+        descriptions.update({a.codice_oss: a.descrizione, a.codice_lav: a.descrizione})
+    for row in AcqOrdineFornitoreAperto.query.all():
+        if _norm_text(row.DesArt):
+            descriptions[_norm_text(row.CodArt).upper()] = row.DesArt
+    for row in AcqArticoliLookup.query.filter_by(VarianteArt="").order_by(AcqArticoliLookup.IndiceModifica):
+        if _norm_text(row.DesArt):
+            descriptions[_norm_text(row.CodArt).upper()] = row.DesArt
+    for row in AcqArticoli.query.all():
+        if _norm_text(row.DesArt):
+            descriptions[_norm_text(row.CodArt).upper()] = row.DesArt
+    return descriptions
+
+
+def riferimenti_barre_erp(cfg):
+    return [r for r in AcqOrdineFornitoreAperto.query.all() if corrisponde_barre(r, cfg)]
+
+
+def _riferimento_fornitore(row):
+    return " · ".join(filter(None, [row.CodTipoDoc, row.CodSerie, row.NumRegistraz or row.NumDocOriginale or row.IdDocumento, f"riga {row.IdRigaDoc}"]))
+
+
+def quantita_barre_erp(row, cfg):
+    meters = {"M","MT","METRO","METRI"}
+    counts = {"PZ","N","NR","BARRE","BARRA"}
+    unit, configured = _normalize_udm(row.UmDoc), _normalize_udm(cfg.unita_barre)
+    if not ((unit in meters and configured in meters) or (unit in counts and configured in counts)):
+        raise SerbatoiError(f"unità ERP {row.UmDoc or 'assente'} diversa dal parametro {cfg.unita_barre}")
+    try:
+        qty = _parse_qty_decimal(row.QTA_ORD)
+        converted = qty * 1000 / cfg.lunghezza_barre_mm if unit in meters else qty
+        n = intero(converted)
+    except (SerbatoiError,ValueError,InvalidOperation,ZeroDivisionError):
+        raise SerbatoiError("quantità non valida o metri non multipli della lunghezza barra; verificare senza arrotondare") from None
+    return n
+
+
+def _origine_barre(row, b, q):
+    return BarreOrigine(id_documento=row.IdDocumento,id_riga=row.IdRigaDoc,barre_id=b.id,quantita_erp=q,
+                         quantita_originale=_decimal_to_text(_parse_qty_decimal(row.QTA_ORD)),unita_originale=_normalize_udm(row.UmDoc))
+
+
+def acquisisci_barre_erp(cfg):
+    count, avvisi = 0, []
+    known = {x.barre_id for x in BarreOrigine.query.all()} | {x.barre_id for x in BarreManuale.query.all()}
+    pending = [b for b in Barre.query.all() if corrisponde_barre(b,cfg) and b.id not in known]
+    if pending:
+        return 0, ["Prima di acquisire gli ordini barre ERP, collegare i riferimenti precedenti oppure confermarli come pregressi/manuali: " + ", ".join(b.riferimento for b in pending)]
+    for row in riferimenti_barre_erp(cfg):
+        key = row.IdDocumento, row.IdRigaDoc
+        old = db.session.get(BarreOrigine, key)
+        try:
+            q = quantita_barre_erp(row,cfg)
+            if row.QTA_SALDO_DOC is not None:
+                balance = _parse_qty_decimal(row.QTA_SALDO_DOC)
+                if not balance.is_finite():
+                    raise SerbatoiError("saldo ERP non valido")
+                if balance <= 0:
+                    continue
+        except (SerbatoiError,ValueError,InvalidOperation) as exc:
+            avvisi.append(f"Barre {_riferimento_fornitore(row)}: {exc}.")
+            continue
+        if old:
+            previous = record(Barre,old.barre_id)
+            if old.quantita_erp != q or not corrisponde_barre(previous,cfg) or previous.lunghezza_mm != cfg.lunghezza_barre_mm:
+                avvisi.append(f"Barre {_riferimento_fornitore(row)}: dati ERP o lunghezza modificati; verificare l'ordine senza sovrascrivere i carichi.")
+            continue
+        ref = _riferimento_fornitore(row)
+        if Barre.query.filter_by(fornitore_tipo=cfg.fornitore_barre_tipo, fornitore_codice=cfg.fornitore_barre_codice,
+                                 codice=cfg.codice_barre, riferimento=ref).first():
+            avvisi.append(f"Barre {ref}: ordine già presente; collegare il riferimento ERP nel dettaglio.")
+            continue
+        b = crea_ordine_barre(dict(riferimento=ref, quantita=q), "Sincronizzazione ERP",da_erp=True)
+        db.session.flush()
+        db.session.add(_origine_barre(row,b,q))
+        count += 1
+    return count, avvisi
+
+
+def collega_barre_erp(barre_id, id_documento, id_riga, utente):
+    b = blocca(record(Barre, barre_id))
+    row = db.session.get(AcqOrdineFornitoreAperto, (id_documento, id_riga))
+    cfg = parametri()
+    if row is None or not corrisponde_barre(row, cfg) or not corrisponde_barre(b, cfg):
+        raise SerbatoiError("Ordine non compatibile con fornitore e codice barre configurati.")
+    if quantita_barre_erp(row,cfg) != b.quantita or b.lunghezza_mm != cfg.lunghezza_barre_mm:
+        raise SerbatoiError("Quantità o unità dell'ordine ERP diverse: verificare prima il collegamento.")
+    db.session.add(_origine_barre(row,b,b.quantita))
+    movimento("COLLEGA_BARRE_ERP", b.quantita, utente, note=f"{b.riferimento} → {_riferimento_fornitore(row)}")
+
+
+def conferma_barre_manuali(barre_id, note, utente):
+    b = blocca(record(Barre,barre_id))
+    note = testo(note,"Motivo del riferimento pregresso/manuale",1000)
+    if db.session.get(BarreManuale,b.id) is None:
+        db.session.add(BarreManuale(barre_id=b.id,data=_now_rome_dt().isoformat(),operatore=utente,note=note))
+        movimento("CONFERMA_BARRE_MANUALI",b.quantita,utente,note=f"{b.riferimento}: {note}")
 
 
 def record(model, key):
@@ -116,6 +416,21 @@ def articolo_per_codice(codice):
                                 or_(Articolo.codice_lav == code, Articolo.codice_oss == code)).first()
 
 
+def usa_export_lct_due_fasi(ordine):
+    if _phase_sequence_for_ordine(ordine) != ["1", "2"]:
+        return False
+    produzione = Produzione.query.filter_by(
+        id_documento=ordine.IdDocumento, id_riga=ordine.IdRiga
+    ).first()
+    if produzione is not None:
+        return (produzione.fase_inizio, produzione.fase_fine) == ("1", "2")
+    articolo = articolo_per_codice(ordine.CodArt)
+    return (
+        articolo is not None
+        and (articolo.fase_inizio or "1", articolo.fase_fine or "2") == ("1", "2")
+    )
+
+
 def acquisisci_odp(ordine):
     p = Produzione.query.filter_by(id_documento=ordine.IdDocumento, id_riga=ordine.IdRiga).first()
     if p:
@@ -143,8 +458,7 @@ def acquisisci_odp(ordine):
 
 
 def sincronizza():
-    count = 0
-    avvisi = []
+    count, avvisi = acquisisci_barre_erp(parametri())
     for row in AcqOrdineClienteAperto.query.all():
         a = articolo_per_codice(row.CodArt)
         if not a:
@@ -157,13 +471,17 @@ def sincronizza():
             avvisi.append(f"Riga cliente {row.IdDocumento}/{row.IdRigaDoc}: quantità non valida.")
             continue
         c = Cliente.query.filter_by(id_documento=row.IdDocumento, id_riga=row.IdRigaDoc).first()
+        consegna = _norm_text(row.DataConsegna)
+        if c is not None and c.articolo_id == a.id and c.consegna != consegna:
+            c.consegna = consegna
+            count += 1
         if c is None:
             if q == 0:
                 continue
             c = Cliente(id_documento=row.IdDocumento, id_riga=row.IdRigaDoc,
                         riferimento=_norm_text(row.NumDocOriginale or row.NumRegistraz or row.IdDocumento),
                         cliente=_norm_text(row.CodCliFor), articolo_id=a.id, quantita=q, saldo_erp=q,
-                        consegna=_norm_text(row.DataConsegna))
+                        consegna=consegna)
             db.session.add(c)
             count += 1
         elif c.articolo_id != a.id:
@@ -240,15 +558,33 @@ def stati_cliente(c):
     return dict(stati)
 
 
-def assegna_produzione(cliente_id, produzione_id, quantita, utente):
-    c = blocca(record(Cliente, cliente_id))
-    p = blocca(record(Produzione, produzione_id))
-    q = intero(quantita)
+def verifica_assegnazione_produzione(c, p):
+    q = c.quantita
+    live = db.session.get(InputOdp, (p.id_documento,p.id_riga))
+    if live is None:
+        raise SerbatoiError("ODP non più presente negli ordini aperti: per materiale già prodotto usare il magazzino.")
+    if _norm_text(live.StatoOrdine).casefold() == "chiusa":
+        raise SerbatoiError("ODP chiuso: per materiale già prodotto usare il magazzino.")
+    if p.anomalia or c.anomalia:
+        raise SerbatoiError("ODP non operativo o quantità da verificare: riconciliare l'ordine prima dell'assegnazione.")
+    articolo = articolo_per_codice(live.CodArt)
+    if articolo is None or articolo.id != p.articolo_id or intero(live.Quantita) != p.quantita:
+        raise SerbatoiError("Dati ODP modificati o articolo disattivato: aggiornare e verificare l'ordine prima dell'assegnazione.")
+    if copertura(c):
+        raise SerbatoiError("La riga è già coperta, anche parzialmente. Liberare l'assegnazione prima di collegare l'intero lotto a un ODP.")
     if p.articolo_id != c.articolo_id:
         raise SerbatoiError("Articoli non compatibili.")
     free = capacita_produzione(p) - sum(quote_future(p).values())
     if q > free or q > c.quantita - copertura(c):
         raise SerbatoiError("Quantità superiore al fabbisogno cliente o alla capacità ODP libera. Per materiale già prodotto usare l'assegnazione da magazzino.")
+    return free
+
+
+def assegna_produzione(cliente_id, produzione_id, utente):
+    c = blocca(record(Cliente, cliente_id))
+    p = blocca(record(Produzione, produzione_id))
+    verifica_assegnazione_produzione(c, p)
+    q = c.quantita
     db.session.add(Impegno(cliente_id=c.id, produzione_id=p.id, quantita=q, realizzata=0))
     movimento("IMPEGNO_ODP", q, utente, produzione=p, note=f"Cliente #{c.id}")
 
@@ -286,16 +622,25 @@ def libera_materiale(lotto_id, quantita, utente):
     return sposta(l, intero(quantita), "Lavorato", "Bernardi", utente, "RITORNO_STOCK")
 
 
+def quantita_da_tracciare(p):
+    eccedenza = db.session.query(db.func.sum(Movimento.quantita)).filter_by(
+        produzione_id=p.id, tipo="SOVRAPRODUZIONE_LCT"
+    ).scalar() or 0
+    return p.quantita + eccedenza
+
+
 def consuma_spezzoni(produzione_id, lotto_id, quantita, utente):
     p = blocca(record(Produzione, produzione_id))
     l = blocca(record(Lotto, lotto_id))
     q = intero(quantita)
     a = record(Articolo, p.articolo_id)
+    if l.codice not in parametri().codici_spezzoni:
+        raise SerbatoiError("Codice spezzone non abilitato nei parametri.")
     used = sum(x.quantita for x in Consumo.query.filter_by(produzione_id=p.id))
     if l.tipo != "Spezzone" or l.stato != "Disponibile" or l.codice != a.codice_spezzone:
         raise SerbatoiError("Spezzone non compatibile con la produzione.")
-    if used + q > p.quantita:
-        raise SerbatoiError("Consumo superiore alla quantità dell'ODP.")
+    if used + q > quantita_da_tracciare(p):
+        raise SerbatoiError("Consumo superiore alla quantità da tracciare per l'ODP.")
     dest = sposta(l, q, "Consumato", "Bernardi", utente, "PRELIEVO_SPEZZONI")
     db.session.add(Consumo(produzione_id=p.id, lotto_id=dest.id, quantita=q))
     movimento("ORIGINE_ODP", q, utente, origine=dest, produzione=p)
@@ -311,7 +656,8 @@ def _avvia_materiale(p, utente):
     movimento("AVVIO_LCT", p.quantita, utente, destinazione=l, produzione=p)
 
 
-def evento_lct(ordine, *, tipo, operazione, fase, utente, q_ok=0, q_nok=0, finale=False):
+def evento_lct(ordine, *, tipo, operazione, fase, utente, q_ok=0, q_nok=0, finale=False,
+               consenti_sovrapproduzione=False):
     p = acquisisci_odp(ordine)
     if p is None:
         return
@@ -335,9 +681,19 @@ def evento_lct(ordine, *, tipo, operazione, fase, utente, q_ok=0, q_nok=0, final
         return
     working = lotti_produzione(p, "In lavorazione")
     available = sum(l.quantita for l in working)
-    if good + bad > available:
-        raise SerbatoiError("Conferma LCT superiore al materiale ancora in lavorazione Serbatoi.")
-    if finale and fase == p.fase_fine and good + bad != available:
+    eccedenza = good + bad - available
+    if eccedenza > 0:
+        if not (finale and consenti_sovrapproduzione):
+            raise SerbatoiError("Conferma LCT superiore al materiale ancora in lavorazione Serbatoi.")
+        lotto = working[0] if working else Lotto.query.filter_by(
+            produzione_id=p.id, tipo="Materiale", stato="In lavorazione", padre_id=None
+        ).first()
+        if lotto is None:
+            raise SerbatoiError("Lotto di lavorazione Serbatoi non disponibile.")
+        lotto.quantita += eccedenza
+        movimento("SOVRAPRODUZIONE_LCT", eccedenza, utente, destinazione=lotto, produzione=p)
+        working = [lotto]
+    if finale and fase == p.fase_fine and eccedenza < 0:
         raise SerbatoiError("La chiusura finale LCT lascia un residuo Serbatoi: verificare le quantità oppure usare la chiusura parziale.")
     if not working:
         if good or bad:
@@ -360,19 +716,28 @@ def evento_lct(ordine, *, tipo, operazione, fase, utente, q_ok=0, q_nok=0, final
         sposta(l, remaining, "Lavorato", "Bernardi", utente, "COMPLETAMENTO_STOCK")
 
 
-def crea_ordine_barre(data, utente):
-    tipo, sep, codice = _norm_text(data.get("fornitore")).partition("|")
-    f = next((r for r in fornitori() if (r.TipoAnagrafica, r.CodCliFor) == (tipo, codice)), None) if sep else None
-    if f is None:
-        raise SerbatoiError("Selezionare un fornitore valido dall'anagrafica.")
+def crea_ordine_barre(data, utente, *, da_erp=False):
+    cfg = parametri()
+    if not cfg.codice_barre or not cfg.fornitore_barre_codice:
+        raise SerbatoiError("Configurare prima fornitore e codice barre nei Parametri.")
+    expected_supplier = f"{cfg.fornitore_barre_tipo}|{cfg.fornitore_barre_codice}"
+    if data.get("fornitore", expected_supplier) != expected_supplier or _norm_text(data.get("codice", cfg.codice_barre)).upper() != cfg.codice_barre:
+        raise SerbatoiError("Fornitore o codice barre diversi dai parametri del modulo.")
+    if data.get("lunghezza_mm") is not None and intero(data["lunghezza_mm"]) != cfg.lunghezza_barre_mm:
+        raise SerbatoiError("Lunghezza barre diversa dai Parametri. Ricaricare la pagina.")
+    f = fornitore_selezionato(expected_supplier)
+    ref = testo(data.get("riferimento"), "Ordine barre")
+    if Barre.query.filter_by(fornitore_tipo=f.TipoAnagrafica,fornitore_codice=f.CodCliFor,codice=cfg.codice_barre,riferimento=ref).first():
+        raise SerbatoiError("Ordine barre già presente per lo stesso fornitore, codice e riferimento.")
     b = Barre(fornitore_tipo=f.TipoAnagrafica, fornitore_codice=f.CodCliFor,
               fornitore_nome=_norm_text(f.RagioneSociale),
-              riferimento=testo(data.get("riferimento"), "Ordine barre"),
-              codice=testo(data.get("codice"), "Articolo barre").upper(),
-              lunghezza_mm=intero(data.get("lunghezza_mm"), "Lunghezza mm"),
+              riferimento=ref,
+              codice=cfg.codice_barre, lunghezza_mm=cfg.lunghezza_barre_mm,
               quantita=intero(data.get("quantita")))
     db.session.add(b)
     movimento("ORDINE_BARRE", b.quantita, utente, note=f"{b.riferimento} · {b.fornitore_nome}")
+    if not da_erp:
+        db.session.add(BarreManuale(barre_id=b.id,data=_now_rome_dt().isoformat(),operatore=utente,note="Registrazione manuale dell'ordine"))
     return b
 
 
@@ -385,6 +750,8 @@ def fornitori():
 
 def ricevi_barre(barre_id, quantita, ddt, utente):
     b = blocca(record(Barre, barre_id))
+    if not corrisponde_barre(b,parametri()):
+        raise SerbatoiError("L'ordine barre non corrisponde al fornitore/codice dei Parametri.")
     q = intero(quantita)
     doc = documento(ddt)
     received = sum(l.iniziale for l in Lotto.query.filter_by(barre_id=b.id, padre_id=None, tipo="Barra"))
@@ -395,22 +762,28 @@ def ricevi_barre(barre_id, quantita, ddt, utente):
     return l
 
 
-def taglia_barre(lotto_id, numero_barre, codice_spezzone, pezzi, lunghezza_mm, sfrido_mm, utente):
+def taglia_barre(lotto_id, numero_barre, codice_spezzone, pezzi, lunghezza_mm, sfrido_mm, utente, *, fornitore_atteso=None):
     l = blocca(record(Lotto, lotto_id))
     n, q = intero(numero_barre, "Barre consumate"), intero(pezzi, "Spezzoni prodotti")
     lunghezza, sfrido = intero(lunghezza_mm, "Lunghezza spezzone"), intero(sfrido_mm, "Sfrido", zero=True)
     code = testo(codice_spezzone, "Codice spezzone").upper()
+    cfg = parametri()
+    if sfrido != cfg.sfrido_mm:
+        raise SerbatoiError("Sfrido diverso dai Parametri. Ricaricare la pagina.")
+    if fornitore_atteso is not None and fornitore_atteso != f"{cfg.fornitore_spezzoni_tipo}|{cfg.fornitore_spezzoni_codice}":
+        raise SerbatoiError("Fornitore spezzoni modificato nei Parametri. Ricaricare la pagina.")
+    if code not in cfg.codici_spezzoni:
+        raise SerbatoiError("Codice spezzone non abilitato nei Parametri.")
+    supplier = fornitore_selezionato(f"{cfg.fornitore_spezzoni_tipo}|{cfg.fornitore_spezzoni_codice}")
     if l.tipo != "Barra" or l.stato != "Disponibile":
         raise SerbatoiError("Selezionare un lotto barre disponibile.")
-    if not Articolo.query.filter_by(codice_spezzone=code, attivo=True).first():
-        raise SerbatoiError("Codice spezzone non configurato nel catalogo Serbatoi.")
     b = record(Barre, l.barre_id)
     if q > n * (b.lunghezza_mm // (lunghezza + sfrido)):
         raise SerbatoiError("Gli spezzoni superano la resa delle barre indicate, considerando lo sfrido per taglio.")
     used = sposta(l, n, "Consumato", "Bernardi", utente, "CONSUMO_BARRE")
     out = nuovo_lotto("Spezzone", code, q, stato="Disponibile", ubicazione="Bernardi", padre_id=used.id)
     movimento("TAGLIO", q, utente, origine=used, destinazione=out,
-               note=f"{n} barre; pezzo {lunghezza} mm; sfrido/taglio {sfrido} mm; lunghezza non trasformata {n * b.lunghezza_mm - q * (lunghezza + sfrido)} mm")
+               note=f"{n} barre; pezzo {lunghezza} mm; sfrido/taglio {sfrido} mm; fornitore spezzoni {supplier.RagioneSociale} ({supplier.CodCliFor}); lunghezza non trasformata {n * b.lunghezza_mm - q * (lunghezza + sfrido)} mm")
     return out
 
 
@@ -433,12 +806,14 @@ def origine_completa(l, visited=None):
     if l.produzione_id:
         p = record(Produzione, l.produzione_id)
         consumi = Consumo.query.filter_by(produzione_id=p.id).all()
-        return bool(consumi) and sum(x.quantita for x in consumi) >= p.quantita and all(
+        return bool(consumi) and sum(x.quantita for x in consumi) >= quantita_da_tracciare(p) and all(
             origine_completa(record(Lotto, x.lotto_id), set(visited)) for x in consumi)
     return False
 
 
 def avanza_materiale(lotto_id, quantita, azione, ddt, scarti, utente):
+    from app_odp.services import serbatoi_cq_service as cq
+
     l = blocca(record(Lotto, lotto_id))
     q, bad = intero(quantita), intero(scarti or 0, "Scarti", zero=True)
     doc = documento(ddt)
@@ -463,6 +838,14 @@ def avanza_materiale(lotto_id, quantita, azione, ddt, scarti, utente):
         raise SerbatoiError("Quantità e scarti superiori alla disponibilità.")
     if not origine_completa(l):
         raise SerbatoiError("Provenienza incompleta: registrare i prelievi spezzoni e gli ordini barre di origine prima di proseguire.")
+    if azione == "rientro":
+        piano = cq.piano_rientro(l)
+        if piano:
+            if bad:
+                raise SerbatoiError("Registrare tutti i pezzi rientrati. I KO si indicano nel controllo qualità.")
+            rientro = sposta(l, q, cq.STATO_CQ, target, utente, "RIENTRO", cliente_id=c.id, ddt=doc)
+            cq.accoda_rientro(rientro, piano)
+            return rientro
     if bad:
         sposta(l, bad, "Scarto", place, utente, "SCARTO", cliente_id=c.id, ddt=doc)
     return sposta(l, q, new, target, utente, azione.upper(), cliente_id=c.id, ddt=doc)

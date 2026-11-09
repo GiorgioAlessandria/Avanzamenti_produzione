@@ -6,10 +6,109 @@
 .serbatoi td, .serbatoi dd, .serbatoi .card-header { overflow-wrap: anywhere; }
 .serbatoi .table td { padding-top: .8rem; padding-bottom: .8rem; }
 .serbatoi .table a { text-underline-offset: .18em; }
+.serbatoi [data-serbatoi-row] { cursor: pointer; }
+.serbatoi [data-serbatoi-row]:focus-visible { outline: 3px solid var(--bs-primary, #0d6efd); outline-offset: -3px; }
 .serbatoi details > summary { cursor: pointer; }
 .serbatoi details[open] > summary { margin-bottom: .6rem; }
 .serbatoi .serbatoi-detail { min-height: 16rem; }
+.serbatoi .serbatoi-price-chart { position: relative; height: clamp(23rem, 48vh, 34rem); }
+.serbatoi .serbatoi-price-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+  gap: .65rem;
+  max-width: 54rem;
+}
+.serbatoi .serbatoi-price-summary > div {
+  padding: .65rem .85rem;
+  border-radius: .375rem;
+  background: var(--bs-tertiary-bg);
+}
+.serbatoi .serbatoi-price-summary dt { font-size: .85rem; }
+.serbatoi .serbatoi-price-summary dd { margin: .1rem 0 0; font-size: 1.15rem; font-weight: 600; }
+@media (max-width: 575px) {
+  .serbatoi .serbatoi-price-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .serbatoi .serbatoi-price-summary > div:nth-child(3) { grid-column: 1 / -1; }
+}
 .serbatoi .serbatoi-excluded { max-height: 15rem; overflow: auto; }
 .serbatoi .form-label { font-weight: 500; }
+.serbatoi .serbatoi-flow-panel { border: 1px solid var(--bs-border-color, #dee2e6); border-radius: .375rem; padding: 1rem; background: var(--bs-body-bg, #fff); }
+.serbatoi .serbatoi-flow-scroll { overflow-x: auto; overflow-y: hidden; padding: .2rem .2rem .4rem; }
+.serbatoi .serbatoi-phase-order-count { font-size: .75rem; color: var(--bs-secondary-color, #6c757d); margin: .25rem 0 .5rem; }
+.serbatoi .serbatoi-phase-orders {
+  position: relative; /* Mantiene le descrizioni per lettori di schermo nel riquadro scorrevole. */
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-height: 14rem;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+}
+.serbatoi .serbatoi-phase-orders > li + li { border-top: 1px solid var(--bs-border-color, #dee2e6); }
+.serbatoi .serbatoi-phase-order { display: block; padding: .6rem .35rem; border-radius: .2rem; text-decoration: none; color: var(--bs-body-color, #212529); }
+.serbatoi .serbatoi-phase-order:hover, .serbatoi .serbatoi-phase-order.is-selected { background: var(--bs-tertiary-bg, #f0f2f4); }
+.serbatoi [data-scadenza="rosso"] { --serbatoi-scadenza-bg: #ff929b; }
+.serbatoi [data-scadenza="arancione"] { --serbatoi-scadenza-bg: #ffad5c; }
+.serbatoi [data-scadenza="giallo"] { --serbatoi-scadenza-bg: #ffe54c; }
+.serbatoi [data-scadenza="verde"] { --serbatoi-scadenza-bg: #95e97d; }
+.serbatoi [data-scadenza="grigio"] { --serbatoi-scadenza-bg: #d5dbe3; }
+.serbatoi [data-scadenza="blu"] { --serbatoi-scadenza-bg: #7bd3ff; }
+.serbatoi .serbatoi-list tr[data-scadenza] > td {
+  --bs-table-bg: var(--serbatoi-scadenza-bg);
+  --bs-table-bg-state: transparent;
+  --bs-table-color-state: #212529;
+  --bs-secondary-color: #495057;
+}
+.serbatoi .serbatoi-list tr[data-scadenza] a { color: #084298; }
+.serbatoi .serbatoi-phase-order[data-scadenza] { background: var(--serbatoi-scadenza-bg); color: #212529; --bs-secondary-color: #495057; }
+.serbatoi [data-scadenza]:is(.table-active, .is-selected) { outline: 2px solid #495057; outline-offset: -2px; }
+.serbatoi-scadenza-campione { display: inline-block; width: .75em; height: .75em; background: var(--serbatoi-scadenza-bg); border: 1px solid #6c757d; }
+.serbatoi .serbatoi-phase-order-head { display: flex; justify-content: space-between; gap: .65rem; font-size: .85rem; }
+.serbatoi .serbatoi-phase-order-head > span { min-width: 0; overflow-wrap: anywhere; text-decoration: underline; text-underline-offset: .15em; }
+.serbatoi .serbatoi-phase-order-head strong { flex: 0 0 auto; white-space: nowrap; }
+.serbatoi .serbatoi-phase-order-head small { font-weight: 400; }
+.serbatoi .serbatoi-phase-order-meta { display: block; font-size: .75rem; color: var(--bs-secondary-color, #6c757d); margin-top: .35rem; overflow-wrap: anywhere; }
+.serbatoi .serbatoi-pending-orders { border-top: 1px solid var(--bs-border-color, #dee2e6); padding-top: .8rem; margin-top: .8rem; }
+.serbatoi .serbatoi-pending-orders .serbatoi-phase-orders { display: flex; flex-wrap: wrap; gap: .5rem; max-height: 9rem; }
+.serbatoi .serbatoi-pending-orders .serbatoi-phase-orders > li { flex: 0 1 18rem; max-width: 100%; border-top: 0; }
+.serbatoi .serbatoi-flow { display: grid; grid-template-columns: repeat(6, minmax(190px, 1fr)); min-width: 1220px; gap: 1rem; list-style: none; padding: 0; margin: 0 0 .8rem; }
+.serbatoi .serbatoi-flow.serbatoi-flow--production { grid-template-columns: repeat(4, minmax(190px, 1fr)); min-width: 808px; }
+.serbatoi .serbatoi-flow.serbatoi-flow--customer { grid-template-columns: repeat(6, minmax(0, 1fr)); min-width: 0; }
+.serbatoi .serbatoi-flow.serbatoi-flow--shipping { grid-template-columns: repeat(4, minmax(0, 1fr)); min-width: 0; }
+@media (max-width: 1279px) {
+  .serbatoi .serbatoi-flow.serbatoi-flow--customer { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .serbatoi .serbatoi-flow--customer > li::after { display: none; }
+}
+@media (max-width: 767px) {
+  .serbatoi .serbatoi-flow.serbatoi-flow--customer,
+  .serbatoi .serbatoi-flow.serbatoi-flow--shipping { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .serbatoi .serbatoi-flow--shipping > li::after { display: none; }
+}
+.serbatoi .serbatoi-flow > li { position: relative; min-width: 0; }
+.serbatoi .serbatoi-flow > li:not(:last-child)::after { content: '→'; position: absolute; right: -.85rem; top: .5rem; color: var(--bs-secondary-color, #6c757d); }
+.serbatoi .serbatoi-flow-step { display: grid; grid-template-columns: 1.75rem minmax(0, 1fr); column-gap: .5rem; padding: .4rem 0 .6rem; border-bottom: 3px solid transparent; text-decoration: none; color: var(--bs-body-color, #212529); }
+.serbatoi .serbatoi-flow-step:hover { border-bottom-color: var(--bs-border-color, #dee2e6); }
+.serbatoi .serbatoi-flow-step.is-active { border-bottom-color: var(--bs-primary, #0d6efd); }
+.serbatoi .serbatoi-flow-index { grid-row: 1 / 4; display: grid; place-items: center; width: 1.75rem; height: 1.75rem; border: 1px solid var(--bs-border-color, #dee2e6); border-radius: 50%; font-size: .8rem; }
+.serbatoi .is-active .serbatoi-flow-index { border-color: var(--bs-primary, #0d6efd); color: var(--bs-primary, #0d6efd); }
+.serbatoi .serbatoi-flow-name { font-weight: 600; }
+.serbatoi .serbatoi-flow-place { grid-column: 2; color: var(--bs-secondary-color, #6c757d); font-size: .8rem; }
+.serbatoi .serbatoi-flow-qty { grid-column: 2; font-size: 1.4rem; font-weight: 600; margin-top: .2rem; }
+.serbatoi .serbatoi-flow-qty small { font-size: .75rem; font-weight: 400; color: var(--bs-secondary-color, #6c757d); }
+.serbatoi .serbatoi-filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; width: 100%; }
+.serbatoi .serbatoi-state-line { display: flex; justify-content: space-between; gap: .75rem; margin-bottom: .2rem; font-size: .9rem; }
+.serbatoi .serbatoi-state-line strong { flex: 0 0 auto; white-space: nowrap; }
+.serbatoi .serbatoi-phase-number { display: inline-block; margin-right: .65rem; min-width: 1rem; color: var(--bs-secondary-color, #6c757d); font-size: .8rem; }
+.serbatoi .serbatoi-phase-table .fase-presente td:last-child { font-weight: 700; }
+.serbatoi .serbatoi-lotto-overview { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; margin-bottom: 1rem; }
+.serbatoi .serbatoi-lotto-overview dt { font-size: .8rem; color: var(--bs-secondary-color, #6c757d); font-weight: 400; }
+.serbatoi .serbatoi-lotto-overview dd { font-size: 1.1rem; font-weight: 600; }
+.serbatoi .serbatoi-advance-controls { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .5rem; }
 .serbatoi a:focus-visible, .serbatoi summary:focus-visible { outline: 3px solid var(--bs-primary, #0d6efd); outline-offset: 3px; }
+.serbatoi .serbatoi-flow-step:focus-visible,
+.serbatoi .serbatoi-phase-order:focus-visible,
+.serbatoi .serbatoi-phase-orders:focus-visible { outline: 2px solid var(--bs-primary, #0d6efd); outline-offset: -2px; }
 @media (max-width: 991px) { .serbatoi .serbatoi-list { max-height: 42vh; } .serbatoi .nav-tabs { flex-wrap: nowrap; overflow-x: auto; } .serbatoi .nav-link { white-space: nowrap; } }
+@media (max-width: 767px) {
+ .serbatoi .serbatoi-advance-controls { grid-template-columns: 1fr; }
+}

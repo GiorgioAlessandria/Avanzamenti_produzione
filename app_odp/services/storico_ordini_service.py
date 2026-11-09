@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, date, timedelta, time
+from datetime import datetime, date, timedelta, time, timezone
 import json
 
 from sqlalchemy import and_, desc, or_
@@ -17,7 +17,10 @@ from app_odp.models import (
     OdpWorkGroup,
     OdpWorkGroupMember,
 )
+from app_odp.ordine_ref import format_erp_decimal_ref_part, parse_ordine_ref_display
+from app_odp.phase_labels import phase_code
 from app_odp.services.order_helpers import (
+    ROME_TZ,
     _decimal_to_text,
     _json_safe,
     _norm_text,
@@ -32,7 +35,8 @@ LOT_SEARCH_LIMIT = 200
 
 ACTION_LABELS = {
     "presa_in_carico": "Presa in carico",
-    "presa_in_carico_gruppo": "Presa in carico gruppo",
+    "presa_in_carico_gruppo": "Ingresso nel gruppo",
+    "sync_nuovo_ordine": "Ordine acquisito dal gestionale",
     "sospensione": "Lavorazione sospesa",
     "sospensione_gruppo": "Lavorazione del gruppo sospesa",
     "riattivazione": "Lavorazione ripresa",
@@ -45,7 +49,8 @@ ACTION_LABELS = {
     "chiusura_membro_scioglie_gruppo": "Chiusura singola: gruppo sciolto",
     "runtime_pre_gruppo": "Tempo maturato prima dell'ingresso nel gruppo",
     "runtime_gruppo": "Tempo di lavorazione attribuito dal gruppo",
-    "scioglimento_gruppo_attiva_membro": "Gruppo sciolto: ordine prosegue singolarmente",
+    "rettifica_fermo_gruppo": "Rettifica del fermo del gruppo",
+    "scioglimento_gruppo_attiva_membro": "Gruppo sciolto: ordine resta attivo",
     "scioglimento_gruppo_sospende_membro": "Gruppo sciolto: ordine sospeso",
     "blocco_distinta_materiale_assente": "Presa in carico bloccata: distinta materiali assente",
 }
@@ -92,16 +97,23 @@ def _parse_dt(value) -> datetime | None:
     if not raw:
         return None
     try:
-        return datetime.fromisoformat(raw)
+        parsed = datetime.fromisoformat(raw)
     except ValueError:
         return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=ROME_TZ)
+    return parsed.astimezone(timezone.utc)
+
+
+def _event_sort_at(value) -> datetime:
+    return _parse_dt(value) or datetime.min.replace(tzinfo=timezone.utc)
 
 
 def _format_dt(value) -> str:
     parsed = _parse_dt(value)
     if parsed is None:
         return _norm_text(value) or "-"
-    return parsed.strftime("%d/%m/%Y %H:%M:%S")
+    return parsed.astimezone(ROME_TZ).strftime("%d/%m/%Y %H:%M:%S")
 
 
 def _payload(row) -> dict:
@@ -237,7 +249,7 @@ def _group_for_event(row, payload: dict, member_by_order, groups_by_uid) -> str:
     return max(
         matches,
         key=lambda uid: (
-            _norm_text(getattr(matches[uid], "CreatedAt", "")),
+            _event_sort_at(matches[uid].CreatedAt),
             uid,
         ),
         default="",
@@ -273,13 +285,14 @@ def _operation_ids(rows) -> list[str]:
     )
 
 
-def _input_rows_without_runtime_duplicates(input_rows, operation_ids):
-    operation_ids = set(operation_ids)
+def _input_rows_without_runtime_duplicates(input_rows, runtime_rows):
+    runtime_operations = {
+        (_norm_text(row.OperationGroupId), _order_key(row))
+        for row in runtime_rows if _norm_text(row.OperationGroupId)
+    }
     return [
-        row
-        for row in input_rows
-        if not _norm_text(getattr(row, "OperationGroupId", ""))
-        or _norm_text(getattr(row, "OperationGroupId", "")) not in operation_ids
+        row for row in input_rows
+        if (_norm_text(row.OperationGroupId), _order_key(row)) not in runtime_operations
     ]
 
 
@@ -300,7 +313,7 @@ def _row_matches_python_filters(entry, params) -> bool:
         return False
 
     group_type = _norm_text(params.get("tipo_gruppo")).upper()
-    if group_type and _norm_text(entry.get("group_type")).upper() != group_type:
+    if group_type and group_type not in entry["group_types"]:
         return False
 
     return True
@@ -316,8 +329,17 @@ def _input_event_action(row: InputOdpLog) -> str:
     note = _visible_note(row.NoteChiusura).lower()
     if "distinta" in note and ("assente" in note or "mancante" in note):
         return "blocco_distinta_materiale_assente"
+    if note.startswith("inserimento nuova riga da sync_input"):
+        return "sync_nuovo_ordine"
     if "scioglimento gruppo" in note:
         return "scioglimento_gruppo_sospende_membro" if "sospes" in note else "scioglimento_gruppo_attiva_membro"
+    for prefix, action in (
+        ("presa in carico da gruppo ordini", "presa_in_carico_gruppo"),
+        ("riattivazione gruppo ordini", "riattivazione_gruppo"),
+        ("chiusura membro gruppo", "chiusura_membro_scioglie_gruppo"),
+    ):
+        if note.startswith(prefix):
+            return action
     if "riattivazione" in note or "ripresa" in note:
         return "riattivazione"
     for action in sorted(ACTION_LABELS, key=len, reverse=True):
@@ -337,7 +359,7 @@ def _input_event_action(row: InputOdpLog) -> str:
 
 def _event_category(action: str, state_post: str = "", payload=None) -> str:
     payload = payload or {}
-    if action in {"runtime_gruppo", "runtime_pre_gruppo"}:
+    if action in {"runtime_gruppo", "runtime_pre_gruppo", "rettifica_fermo_gruppo"}:
         return "tempi"
     if action.startswith("blocco_"):
         return "blocco"
@@ -372,37 +394,44 @@ def _matches_event_filter(action, state_post, payload, selected):
     return selected.lower() in f"{action} {_event_label(action, state_post, payload)}".lower()
 
 
-def _event_entry(entries: dict, row, group_uid: str, payload: dict, groups_by_uid):
-    if group_uid:
-        key = f"group:{group_uid}"
-        group = groups_by_uid.get(group_uid)
-        group_type = _effective_group_type(group, payload)
-        return entries.setdefault(
-            key,
-            {
-                "kind": "group",
-                "key": key,
-                "group_uid": group_uid,
-                "group_type": group_type,
-                "group_type_label": _group_label(group_type),
-                "label": f"Gruppo {group_uid}",
-                "orders": set(),
-                "num_progr_righe": {
-                    _norm_text(getattr(member, "NumProgrRiga", ""))
-                    for member in getattr(group, "members", [])
-                    if _norm_text(getattr(member, "NumProgrRiga", ""))
-                },
-                "articles": set(),
-                "risorse": set(),
-                "operatori": set(),
-                "eventi": set(),
-                "count": 0,
-                "last_event_at": "",
-                "last_event": "",
-                "status": _norm_text(getattr(group, "Status", "")),
-            },
-        )
+def _event_group(row, payload, member_by_order, groups_by_uid):
+    uid = _norm_text(payload.get("group_uid"))
+    if uid:
+        if getattr(row, "Azione", "") == "runtime_pre_gruppo":
+            return uid, "single_before_group"
+        return uid, "single_member" if payload.get("single_member") else "group"
+    if "group_uid" in payload:
+        return "", "single"
 
+    action = _norm_text(getattr(row, "Azione", "")) or _input_event_action(row)
+    if "gruppo" in action:
+        uid = _group_for_event(row, payload, member_by_order, groups_by_uid)
+        return uid, "group"
+
+    # shortcut: la modalità delle vecchie chiusure non è registrata; il legame
+    # con il gruppo è ricostruibile quando il membro apparteneva ancora alla fase.
+    if action.startswith("chiusura"):
+        event_at = _parse_dt(_row_event_at(row))
+        phase = _norm_text(payload.get("fase") or getattr(row, "FasePre", "")
+                           or getattr(row, "FaseConsuntivata", ""))
+        for member in member_by_order.get(_order_key(row), []):
+            group = groups_by_uid.get(_norm_text(member.GroupUid))
+            start = _parse_dt(member.CreatedAt or getattr(group, "CreatedAt", ""))
+            end = (_parse_dt(member.ClosedAt) or _parse_dt(member.DissolvedAt)
+                   or _parse_dt(getattr(group, "ClosedAt", ""))
+                   or _parse_dt(getattr(group, "DissolvedAt", "")))
+            member_phase = _norm_text(member.Fase)
+            if phase and member_phase and (phase_code(phase) or phase) != (phase_code(member_phase) or member_phase):
+                continue
+            if not event_at or not start:
+                continue
+            if event_at >= start and (not end or event_at <= end + timedelta(seconds=2)):
+                return _norm_text(member.GroupUid), "historical"
+
+    return "", "single"
+
+
+def _event_entry(entries: dict, row):
     key = f"order:{_norm_text(row.IdDocumento)}|{_norm_text(row.IdRiga)}"
     label = _norm_text(row.RifRegistraz) or f"{row.IdDocumento}/{row.IdRiga}"
     return entries.setdefault(
@@ -411,11 +440,11 @@ def _event_entry(entries: dict, row, group_uid: str, payload: dict, groups_by_ui
             "kind": "order",
             "key": key,
             "group_uid": "",
-            "group_type": "",
-            "group_type_label": "Singolo",
+            "group_types": set(),
             "label": label,
             "orders": set(),
             "num_progr_righe": set(),
+            "id_riga": _norm_text(row.IdRiga),
             "articles": set(),
             "risorse": set(),
             "operatori": set(),
@@ -442,10 +471,11 @@ def _add_entry_event(entry: dict, row, event_label: str, user: str = "") -> None
     entry["count"] += 1
 
     event_at = _row_event_at(row)
-    technical = _norm_text(getattr(row, "Azione", "")) in {"runtime_gruppo", "runtime_pre_gruppo"}
+    technical = _norm_text(getattr(row, "Azione", "")) in {"runtime_gruppo", "runtime_pre_gruppo", "rettifica_fermo_gruppo"}
     previous_technical = entry.get("last_event_technical", technical)
     if (not entry["last_event_at"] or (previous_technical and not technical)
-            or (previous_technical == technical and event_at > entry["last_event_at"])):
+            or (previous_technical == technical
+                and _event_sort_at(event_at) > _event_sort_at(entry["last_event_at"]))):
         entry["last_event_at"] = event_at
         entry["last_event"] = event_label
         entry["last_operator"] = _norm_text(user)
@@ -455,6 +485,22 @@ def _add_entry_event(entry: dict, row, event_label: str, user: str = "") -> None
             getattr(row, "FaseConsuntivata", "") or getattr(row, "FasePre", "")
             or getattr(row, "FaseAttiva", "") or getattr(row, "FasePost", "")
         )
+
+
+def _filter_order_search(query, model, value):
+    text = _norm_text(value)
+    if not text:
+        return query
+    ref = parse_ordine_ref_display(text)
+    if ref:
+        return query.filter(model.RifRegistraz == ref[0])
+    if "/" in text:
+        doc, riga = (part.strip() for part in text.split("/", 1))
+        return query.filter(model.IdDocumento == doc, model.IdRiga == riga)
+    return query.filter(or_(
+        model.RifRegistraz.icontains(text, autoescape=True),
+        model.IdDocumento.icontains(text, autoescape=True),
+    ))
 
 
 def _filtered_runtime_query(params, start_dt, end_dt):
@@ -468,19 +514,7 @@ def _filtered_runtime_query(params, start_dt, end_dt):
             OdpRuntimeLog.EventAt <= end_dt.isoformat(timespec="seconds")
         )
 
-    text = _norm_text(params.get("q"))
-    if text:
-        like = f"%{text}%"
-        query = query.filter(
-            or_(
-                OdpRuntimeLog.IdDocumento.ilike(like),
-                OdpRuntimeLog.IdRiga.ilike(like),
-                OdpRuntimeLog.RifRegistraz.ilike(like),
-                OdpRuntimeLog.CodArt.ilike(like),
-                OdpRuntimeLog.Azione.ilike(like),
-                OdpRuntimeLog.UtenteOperazione.ilike(like),
-            )
-        )
+    query = _filter_order_search(query, OdpRuntimeLog, params.get("q"))
 
     for field, column in (
         ("articolo", OdpRuntimeLog.CodArt),
@@ -505,19 +539,7 @@ def _filtered_input_query(params, start_dt, end_dt):
             InputOdpLog.ClosedAt <= end_dt.isoformat(timespec="seconds")
         )
 
-    text = _norm_text(params.get("q"))
-    if text:
-        like = f"%{text}%"
-        query = query.filter(
-            or_(
-                InputOdpLog.IdDocumento.ilike(like),
-                InputOdpLog.IdRiga.ilike(like),
-                InputOdpLog.RifRegistraz.ilike(like),
-                InputOdpLog.CodArt.ilike(like),
-                InputOdpLog.ClosedBy.ilike(like),
-                InputOdpLog.NoteChiusura.ilike(like),
-            )
-        )
+    query = _filter_order_search(query, InputOdpLog, params.get("q"))
 
     for field, column in (
         ("articolo", InputOdpLog.CodArt),
@@ -556,14 +578,27 @@ def build_storico_ordini_list(params) -> dict:
         .all()
     )
 
-    runtime_operation_ids = _operation_ids(runtime_rows)
-    input_event_rows = _input_rows_without_runtime_duplicates(
-        input_rows, runtime_operation_ids
-    )
-    order_keys = {_order_key(row) for row in runtime_rows} | {
-        _order_key(row) for row in input_event_rows
-    }
+    scan_count = max(len(runtime_rows), len(input_rows))
+    order_keys = {_order_key(row) for row in (*runtime_rows, *input_rows)}
     member_by_order, groups_by_uid = _member_maps(order_keys)
+    ref = parse_ordine_ref_display(params.get("q"))
+    if ref:
+        num_progr = _num_progr_by_order(
+            (member for members in member_by_order.values() for member in members),
+            OdpRuntimeLog.query.filter_by(RifRegistraz=ref[0]).all(),
+        )
+        target_riga = format_erp_decimal_ref_part(ref[1])
+
+        def matches_riga(row):
+            return format_erp_decimal_ref_part(
+                num_progr.get(_order_key(row)) or row.IdRiga
+            ) == target_riga
+
+        runtime_rows = [row for row in runtime_rows if matches_riga(row)]
+        input_rows = [row for row in input_rows if matches_riga(row)]
+
+    runtime_operation_ids = _operation_ids(runtime_rows)
+    input_event_rows = _input_rows_without_runtime_duplicates(input_rows, runtime_rows)
     input_by_operation = _input_logs_by_operation(runtime_operation_ids)
 
     entries = {}
@@ -573,11 +608,16 @@ def build_storico_ordini_list(params) -> dict:
         state_post = row.StatoOrdinePost or row.StatoOdpPost
         if not _matches_event_filter(row.Azione, state_post, payload, params.get("evento")):
             continue
-        group_uid = _group_for_event(row, payload, member_by_order, groups_by_uid)
-        entry = _event_entry(entries, row, group_uid, payload, groups_by_uid)
+        entry = _event_entry(entries, row)
+        group_uid, _ = _event_group(row, payload, member_by_order, groups_by_uid)
+        if group_uid:
+            group_type = _effective_group_type(groups_by_uid.get(group_uid), payload).upper()
+            entry["group_types"].add(group_type or "Gruppo")
         _add_entry_event(entry, row, _event_label(row.Azione, state_post, payload), row.UtenteOperazione)
 
         for input_log in input_by_operation.get(_norm_text(row.OperationGroupId), []):
+            if _order_key(input_log) != _order_key(row):
+                continue
             entry["risorse"].add(
                 _norm_text(input_log.RisorsaAttiva)
                 or _norm_text(input_log.CodRisorsaProd)
@@ -588,8 +628,11 @@ def build_storico_ordini_list(params) -> dict:
         payload = {}
         if not _matches_event_filter(_input_event_action(row), row.StatoOrdinePost, payload, params.get("evento")):
             continue
-        group_uid = _group_for_event(row, payload, member_by_order, groups_by_uid)
-        entry = _event_entry(entries, row, group_uid, payload, groups_by_uid)
+        entry = _event_entry(entries, row)
+        group_uid, _ = _event_group(row, payload, member_by_order, groups_by_uid)
+        if group_uid:
+            group_type = _effective_group_type(groups_by_uid.get(group_uid), payload).upper()
+            entry["group_types"].add(group_type or "Gruppo")
         _add_entry_event(entry, row, _input_event_label(row), row.ClosedBy)
 
     filtered = [
@@ -597,7 +640,7 @@ def build_storico_ordini_list(params) -> dict:
         for entry in entries.values()
         if _row_matches_python_filters(entry, params)
     ]
-    filtered.sort(key=lambda item: item["last_event_at"], reverse=True)
+    filtered.sort(key=lambda item: _event_sort_at(item["last_event_at"]), reverse=True)
 
     total = len(filtered)
     start_idx = (page - 1) * page_size
@@ -611,11 +654,12 @@ def build_storico_ordini_list(params) -> dict:
             "risorse",
             "operatori",
             "eventi",
+            "group_types",
         ):
             entry[field] = [value for value in sorted(entry[field]) if value]
+        entry["group_type_label"] = ", ".join(map(_group_label, entry["group_types"]))
         entry["last_event_at_display"] = _format_dt(entry["last_event_at"])
 
-    scan_count = max(len(runtime_rows), len(input_rows))
     return _json_safe(
         {
             "ok": True,
@@ -643,20 +687,20 @@ def _runtime_rows_for_order(id_documento: str, id_riga: str):
 def _runtime_rows_for_group(group_uid: str):
     group = OdpWorkGroup.query.filter_by(GroupUid=group_uid).first()
     members = OdpWorkGroupMember.query.filter_by(GroupUid=group_uid).all()
+    member_by_order = {_order_key(member): [member] for member in members}
+    groups_by_uid = {group_uid: group}
     rows = []
 
     for member in members:
         for row in _runtime_rows_for_order(
             _norm_text(member.IdDocumento), _norm_text(member.IdRiga)
         ):
-            payload = _payload(row)
-            recorded_group = _norm_text(payload.get("group_uid"))
-            if (recorded_group == group_uid if recorded_group
-                    else _event_in_group_window(row.EventAt, group)):
+            uid, _ = _event_group(row, _payload(row), member_by_order, groups_by_uid)
+            if uid == group_uid:
                 rows.append(row)
 
     payload_rows = OdpRuntimeLog.query.filter(
-        OdpRuntimeLog.PayloadJson.ilike(f"%{group_uid}%")
+        OdpRuntimeLog.PayloadJson.contains(group_uid, autoescape=True)
     ).all()
     by_id = {row.log_id: row for row in rows}
     for row in payload_rows:
@@ -664,7 +708,7 @@ def _runtime_rows_for_group(group_uid: str):
             by_id[row.log_id] = row
 
     return sorted(
-        by_id.values(), key=lambda row: (_norm_text(row.EventAt), row.log_id or 0)
+        by_id.values(), key=lambda row: (_event_sort_at(row.EventAt), row.log_id or 0)
     )
 
 
@@ -705,9 +749,9 @@ def _input_logs_for_runtime_or_orders(runtime_rows, order_keys=None, group=None)
             ).all()
             rows.extend(_historical_rows_for_orders(candidates, operation_ids, order_keys, group))
 
-    by_id = {row.log_id: row for row in rows}
+    by_id = {row.log_id: row for row in rows if not order_keys or _order_key(row) in order_keys}
     return sorted(
-        by_id.values(), key=lambda row: (_norm_text(row.ClosedAt), row.log_id or 0)
+        by_id.values(), key=lambda row: (_event_sort_at(row.ClosedAt), row.log_id or 0)
     )
 
 
@@ -728,9 +772,9 @@ def _lotti_for_runtime_or_inputs(
             candidates = model.query.filter(model.IdDocumento.in_(list(docs))).all()
             rows.extend(_historical_rows_for_orders(candidates, operation_ids, order_keys, group))
 
-    by_id = {row.log_id: row for row in rows}
+    by_id = {row.log_id: row for row in rows if not order_keys or _order_key(row) in order_keys}
     return sorted(
-        by_id.values(), key=lambda row: (_norm_text(row.ClosedAt), row.log_id or 0)
+        by_id.values(), key=lambda row: (_event_sort_at(row.ClosedAt), row.log_id or 0)
     )
 
 
@@ -783,6 +827,8 @@ def _runtime_to_dict(row):
         "source": "runtime",
         "event_at": _norm_text(row.EventAt),
         "event_at_display": _format_dt(row.EventAt),
+        "logged_at": _norm_text(row.logged_at),
+        "activation_before": _norm_text(row.DataUltimaAttivazionePre or row.DataInCaricoPre),
         "azione": _norm_text(row.Azione),
         "azione_label": _event_label(row.Azione, row.StatoOrdinePost or row.StatoOdpPost, payload),
         "descrizione": _event_description(row, payload),
@@ -829,6 +875,7 @@ def _input_to_dict(row, num_progr_by_order=None):
         "articolo": _norm_text(row.CodArt),
         "descrizione": _norm_text(row.DesArt),
         "fase": _norm_text(row.FaseConsuntivata or row.FaseAttiva),
+        "fase_attiva": _norm_text(row.FaseAttiva),
         "risorsa": _norm_text(row.RisorsaAttiva or row.CodRisorsaProd),
         "q_ok": _norm_text(row.QuantitaConforme),
         "q_ko": _norm_text(row.QuantitaNonConforme),
@@ -872,6 +919,7 @@ def _input_timeline_to_dict(row, num_progr_by_order=None):
         "source": "input",
         "event_at": _norm_text(row.ClosedAt),
         "event_at_display": _format_dt(row.ClosedAt),
+        "logged_at": _norm_text(row.logged_at),
         "azione": _input_event_action(row),
         "azione_label": label,
         "operation_group_id": _norm_text(row.OperationGroupId),
@@ -887,8 +935,8 @@ def _input_timeline_to_dict(row, num_progr_by_order=None):
         "id_riga": _norm_text(row.IdRiga),
         "num_progr_riga": num_progr_by_order.get(_order_key(row), ""),
         "articolo": _norm_text(row.CodArt),
-        "fase_pre": "",
-        "fase_post": _norm_text(row.FaseConsuntivata or row.FaseAttiva),
+        "fase_pre": _norm_text(row.FaseConsuntivata or row.FaseAttiva),
+        "fase_post": _norm_text(row.FaseAttiva),
         "stato_pre": state_pre,
         "stato_post": state_post,
         "q_ok": _norm_text(row.QuantitaConforme),
@@ -925,6 +973,12 @@ def _prepare_timeline(timeline, input_logs, used_lots, generated_lots):
         category = _event_category(action, event["stato_post"], payload)
         event["categoria"] = category
         event["tecnico"] = category == "tempi"
+        activation = _parse_dt(event.get("activation_before"))
+        event_at = _parse_dt(event["event_at"])
+        event["orario_incoerente"] = bool(
+            category in {"fase_completata", "ordine_completato", "chiusura_parziale"}
+            and activation and event_at and activation > event_at
+        )
         order = (event["id_documento"], event["id_riga"])
         for field, (by_operation, by_time) in zip(
             ("documenti", "lotti_usati", "lotti_generati"), related
@@ -935,10 +989,19 @@ def _prepare_timeline(timeline, input_logs, used_lots, generated_lots):
                 else by_time.get((event["event_at"], *order), [])
             )
         # La chiusura può azzerare il runtime per la fase successiva.
-        if category in {"fase_completata", "ordine_completato", "chiusura_parziale"} and event["documenti"]:
-            document = event["documenti"][0]
+        document = next(iter(event["documenti"]), {})
+        if category in {"fase_completata", "ordine_completato", "chiusura_parziale"} and document:
             event["tempo_lavorazione_ore"] = _positive_number_text(document["tempo_finale"])
             event["fase"] = document["fase"] or event["fase"]
+        if category == "fase_completata":
+            current = event["fase"] or event["fase_pre"]
+            current_code = phase_code(current) or current
+            event["fase_successiva"] = next((
+                phase for phase in (event["fase_post"], document.get("fase_attiva"), event["fase_successiva"])
+                if phase and (phase_code(phase) or phase) != current_code
+            ), "")
+        else:
+            event["fase_successiva"] = ""
         owner_key = (*order, event["fase"])
         if category in {"presa_in_carico", "riattivazione"}:
             owners[owner_key] = event["utente"]
@@ -955,10 +1018,10 @@ def _prepare_timeline(timeline, input_logs, used_lots, generated_lots):
 def _timeline_steps(timeline, group_uid=""):
     steps, grouped = [], {}
     for event in timeline:
-        if event["tecnico"]:
-            continue
-        uid = _norm_text(event["payload"].get("group_uid")) or group_uid
-        key = (uid, event["event_at"], event["azione"], event["fase"], event["utente"])
+        uid = event.get("group_uid", _norm_text(event["payload"].get("group_uid")) or group_uid)
+        if event.get("modalita") == "single_member":
+            uid = ""
+        key = (uid, _parse_dt(event["event_at"]) or event["event_at"], event["azione"], event["fase"], event["utente"])
         step = grouped.get(key) if uid else None
         order = (event["id_documento"], event["id_riga"])
         if step is None or any((e["id_documento"], e["id_riga"]) == order for e in step["eventi"]):
@@ -1108,7 +1171,7 @@ def build_storico_lotti_search(params) -> dict:
         )
         rows.extend(_lotto_search_row(row, kind) for row in matches)
 
-    rows.sort(key=lambda row: (row["event_at"], row["log_id"]), reverse=True)
+    rows.sort(key=lambda row: (_event_sort_at(row["event_at"]), row["log_id"]), reverse=True)
     limited = len(rows) > LOT_SEARCH_LIMIT
     return _json_safe(
         {
@@ -1136,9 +1199,7 @@ def build_storico_ordini_detail(params) -> dict:
         runtime_rows = _runtime_rows_for_group(group_uid)
         group = OdpWorkGroup.query.filter_by(GroupUid=group_uid).first()
         members = OdpWorkGroupMember.query.filter_by(GroupUid=group_uid).all()
-        order_keys = {
-            (_norm_text(m.IdDocumento), _norm_text(m.IdRiga)) for m in members
-        }
+        order_keys = {_order_key(row) for row in (*members, *runtime_rows)}
         title = f"Gruppo {group_uid}"
         header = {
             "kind": "group",
@@ -1184,7 +1245,19 @@ def build_storico_ordini_detail(params) -> dict:
         order_keys=order_keys,
         group=group,
     )
-    num_progr_map = _num_progr_by_order(runtime_rows, members)
+    member_by_order, groups_by_uid = _member_maps(order_keys)
+    if kind == "group":
+        operations = {(_norm_text(row.OperationGroupId), _order_key(row))
+                      for row in runtime_rows if _norm_text(row.OperationGroupId)}
+        input_logs = [
+            row for row in input_logs
+            if (_norm_text(row.OperationGroupId), _order_key(row)) in operations
+            or _event_group(row, {}, member_by_order, groups_by_uid)[0] == group_uid
+        ]
+    num_progr_map = _num_progr_by_order(
+        (member for members in member_by_order.values() for member in members),
+        runtime_rows,
+    )
     used_lots = _lotti_for_runtime_or_inputs(
         LottiUsatiLog,
         runtime_rows,
@@ -1200,18 +1273,27 @@ def build_storico_ordini_detail(params) -> dict:
         group=group,
     )
 
-    timeline = [_runtime_to_dict(row) for row in runtime_rows]
-    runtime_ops = set(_operation_ids(runtime_rows))
-    timeline.extend(
-        _input_timeline_to_dict(row, num_progr_map)
-        for row in input_logs
-        if _norm_text(row.OperationGroupId) not in runtime_ops
+    sources = [(row, _runtime_to_dict(row)) for row in runtime_rows]
+    sources.extend(
+        (row, _input_timeline_to_dict(row, num_progr_map))
+        for row in _input_rows_without_runtime_duplicates(input_logs, runtime_rows)
     )
+    timeline = []
+    for row, event in sources:
+        event["group_uid"], event["modalita"] = _event_group(
+            row, _payload(row), member_by_order, groups_by_uid
+        )
+        timeline.append(event)
     timeline.sort(
-        key=lambda row: (_norm_text(row["event_at"]), row["source"], row["log_id"])
+        key=lambda row: (_event_sort_at(row["event_at"]), row["source"], row["log_id"])
     )
     timeline = _prepare_timeline(timeline, input_logs, used_lots, generated_lots)
     if header["kind"] == "order":
+        header["num_progr_riga"] = num_progr_map.get((id_documento, id_riga), "")
+        header["groups"] = sorted(
+            {event["group_uid"] for event in timeline if event["group_uid"]}
+            | {member.GroupUid for member in member_by_order.get((id_documento, id_riga), []) if member.GroupUid}
+        )
         first = next(iter(timeline), None)
         if first:
             header["title"] = first["ordine"]

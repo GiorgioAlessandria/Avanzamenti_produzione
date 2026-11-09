@@ -16,6 +16,8 @@ auth_bp = Blueprint("auth", __name__)
 
 LOGIN_START_PAGES = {
     "serbatoi": ("Serbatoi", "main.serbatoi_page", ("serbatoi_produzione", "serbatoi_acquisti")),
+    "cq_serbatoi": ("Controllo qualità Serbatoi", "main.serbatoi_qualita",
+                    ("serbatoi_produzione", "serbatoi_acquisti", "CQ_serbatoi")),
     "produzione": ("Produzione", "main.home", ("home",)),
     "acquisti": ("Acquisti", "main.home_acquisti", ("home_acquisti",)),
     "vendite_ordini": (
@@ -103,6 +105,7 @@ def _configured_login_redirect(user, *, authenticate=False):
         "main.manutenzioni_home",
         "main.tarature_home",
         "main.serbatoi_page",
+        "main.serbatoi_qualita",
     }:
         login_user(user)
 
@@ -162,6 +165,9 @@ def _get_post_login_redirect(user):
     if policy.can("serbatoi_produzione") or policy.can("serbatoi_acquisti"):
         token = create_operator_session(user)
         return url_for("main.serbatoi_page", tab_session=token)
+
+    if policy.can("CQ_serbatoi"):
+        return url_for("main.serbatoi_qualita", tab_session=create_operator_session(user))
 
     return None
 
@@ -255,6 +261,10 @@ def login():
             login_user(user)
             token = create_operator_session(user)
             return redirect(url_for("main.serbatoi_page", tab_session=token))
+
+        if policy.can("CQ_serbatoi"):
+            login_user(user)
+            return redirect(url_for("main.serbatoi_qualita", tab_session=create_operator_session(user)))
 
         return render_template(
             "login.j2",

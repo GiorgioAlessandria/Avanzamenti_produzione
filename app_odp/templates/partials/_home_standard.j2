@@ -2,6 +2,7 @@
 {% set has_modifica_data_chiusura_permission = policy and policy.can('modifica_data_chiusura') %}
 {% set has_tempo_avanzamento_permission = policy and policy.can('export_avp_senza_riga_tempo') %}
 {% set lavorazioni_richiesta_disegni = config.get('LAVORAZIONI_RICHIESTA_DISEGNI', []) %}
+<script src="{{ url_for('static', filename='assets/js/serbatoi-cq.js') }}" defer></script>
 <!--toast nuovo ordine in carico -->
 <div class="toast lh-lg hide"
 
@@ -2144,23 +2145,25 @@
             btn.disabled = true;
 
             try {
+                const avanzamento = {
+                    id_documento: idDocumento,
+                    id_riga: idRiga,
+                    quantita_conforme: String(nConf),
+                    quantita_non_conforme: String(nNonConf),
+                    note: note,
+                    lotti: lottiPayload,
+                    chiusura_parziale: chiusuraParziale,
+                    tempo_non_funzionamento_minuti: tempoNonFunzionamentoMinuti,
+                    data_registrazione: inpDataRegistrazione?.value || "",
+                    tempo_avanzamento_minuti: inpTempoAvanzamento?.value?.trim() || "",
+                    num_progr_riga: numProgrRiga
+                };
+                if (!await window.avpCqcFresatura([avanzamento])) return;
                 const resp = await window.avpFetch("/api/ordini/chiudi", {
                     method: "POST",
                     headers: {"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"},
                     credentials: "same-origin",
-                    body: JSON.stringify({
-                        id_documento: idDocumento,
-                        id_riga: idRiga,
-                        quantita_conforme: String(nConf),
-                        quantita_non_conforme: String(nNonConf),
-                        note: note,
-                        lotti: lottiPayload,
-                        chiusura_parziale: chiusuraParziale,
-                        tempo_non_funzionamento_minuti: tempoNonFunzionamentoMinuti,
-                        data_registrazione: inpDataRegistrazione?.value || "",
-                        tempo_avanzamento_minuti: inpTempoAvanzamento?.value?.trim() || "",
-                        num_progr_riga: numProgrRiga,
-                    })
+                    body: JSON.stringify(avanzamento)
                 });
 
                 let data = {};
@@ -2416,10 +2419,6 @@
             return Number.isFinite(n) ? n : 0;
         }
 
-        function sameQty(a, b) {
-            return Math.abs(Number(a || 0) - Number(b || 0)) < 0.000001;
-        }
-
         function isGestioneLottoSi(comp) {
             const flag = String(comp?.GestioneLotto ?? comp?.gestione_lotto ?? comp?.gestioneLotto ?? "")
                 .trim()
@@ -2450,7 +2449,7 @@
 
         function getGroupQuantitaRichiestaComponente(row, comp) {
             const baseQty = parseSystemQty(comp?.Quantita);
-            const qOrdTotale = parseSystemQty(row.quantita);
+            const qOrdTotale = parseSystemQty(row.quantita_ordine || row.quantita);
             const qLavorata = getGroupQuantitaLavorata(row);
 
             if (!Number.isFinite(baseQty) || baseQty <= 0) return 0;
@@ -2538,8 +2537,8 @@
                 showGroupCloseFeedback(`Inserire almeno una quantita OK o KO per l'ordine ${label}.`);
                 return false;
             }
-            if (Number.isFinite(qTot) && !sameQty(qOk + qKo, qTot)) {
-                showGroupCloseFeedback(`Per chiudere solo l'ordine ${label}, la somma OK + KO deve essere uguale alla quantita dell'ordine.`);
+            if (Number.isFinite(qTot) && qOk + qKo < qTot) {
+                showGroupCloseFeedback(`Per chiudere solo l'ordine ${label}, la somma OK + KO deve coprire almeno il residuo (${qTot}).`);
                 return false;
             }
 
@@ -2599,8 +2598,8 @@
                 if (document.getElementById("modalWorkgroupClose").dataset.enhancedWorkgroup === "1") {
                     const residual = parseSystemQty(row.quantita);
                     const partial = getGroupRowChecked(key, "chiusura_parziale");
-                    if (Number.isFinite(residual) && (partial ? qOk + qKo >= residual : !sameQty(qOk + qKo, residual))) {
-                        showGroupCloseFeedback(`${label}: la somma conforme + non conforme deve essere ${partial ? "minore del" : "uguale al"} residuo (${residual}).`);
+                    if (Number.isFinite(residual) && (partial ? qOk + qKo >= residual : qOk + qKo < residual)) {
+                        showGroupCloseFeedback(`${label}: la somma conforme + non conforme deve essere ${partial ? "minore del residuo" : "almeno pari al residuo"} (${residual}).`);
                         return false;
                     }
                 }
@@ -2812,6 +2811,22 @@
                     });
                 });
 
+                if (!isMacchinaLotti) {
+                    const righeLotto = Array.from(box.querySelectorAll('[data-field="lotto_quantita"]'));
+                    righeLotto.forEach(input => input.addEventListener("input", () => {
+                        input.dataset.modificato = "1";
+                    }));
+                    const aggiornaQuantitaLotti = () => {
+                        righeLotto.forEach((input, index) => {
+                            if (input.dataset.modificato) return;
+                            const richiesta = getGroupQuantitaRichiestaComponente(row, componenti[index]);
+                            input.value = richiesta > 0 ? String(richiesta) : "";
+                        });
+                    };
+                    groupOrderEl(key)?.querySelectorAll('[data-field="quantita_conforme"], [data-field="quantita_non_conforme"]')
+                        .forEach(input => input.addEventListener("input", aggiornaQuantitaLotti));
+                }
+
             } catch (err) {
                 state.loaded = false;
                 state.loadError = err?.message || "Errore caricamento lotti.";
@@ -2887,6 +2902,15 @@
 
             try {
                 const groupNote = document.getElementById("modal-workgroup-close-note")?.value?.trim() || "";
+                const ordine = buildGroupClosePayloadForRow(row, {singleClose: true});
+                ordine.riferimento_cq = row.ordine;
+                if (!await window.avpCqcFresatura([ordine])) {
+                    if (button) {
+                        button.disabled = false;
+                        button.textContent = oldText;
+                    }
+                    return;
+                }
                 const resp = await window.avpFetch("/api/ordini/gruppi/chiudi-membro", {
                     method: "POST",
                     headers: {
@@ -2898,7 +2922,7 @@
                         group_uid: workgroupCloseState.groupUid,
                         tempo_non_funzionamento_minuti: window.AvpWorkgroups.stopMinutes(),
                         note: groupNote,
-                        order: buildGroupClosePayloadForRow(row, {singleClose: true})
+                        order: ordine
                     })
                 });
 
@@ -2998,6 +3022,8 @@
 
             if (!window.AvpWorkgroups.beginClose()) return;
             try {
+                orders.forEach((ordine, indice) => { ordine.riferimento_cq = workgroupCloseState.detail[indice].ordine; });
+                if (!await window.avpCqcFresatura(orders)) return;
                 const resp = await window.avpFetch("/api/ordini/gruppi/chiudi", {
                     method: "POST",
                     headers: {
@@ -3012,7 +3038,7 @@
                 const data = await resp.json();
 
                 if (!resp.ok || data.ok === false) {
-                    showGroupCloseFeedback(data.error || "Errore durante la chiusura gruppo.");
+                    showGroupCloseFeedback(data.error || data.message || "Errore durante la chiusura gruppo.");
                     return;
                 }
 

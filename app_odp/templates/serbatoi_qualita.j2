@@ -1,0 +1,152 @@
+{% extends "base.j2" %}
+{% block title %}Controllo qualità Serbatoi{% endblock %}
+{% macro campi_controllo(c) %}
+ <fieldset class="border rounded p-3 mb-3" data-controllo>
+  <legend class="float-none w-auto fs-6 fw-semibold px-1 mb-1">Controllo</legend>
+  <div class="row g-2">
+   <label class="col-12">Descrizione<textarea class="form-control" name="descrizione" rows="2" maxlength="500" required>{{ c.descrizione|default('') }}</textarea></label>
+   <label class="col-md-6">Frequenza<input class="form-control" name="frequenza" value="{{ c.frequenza|default('100%') }}" maxlength="30" placeholder="100% o 20 ogni lotto" required></label>
+   <label class="col-md-6">Strumento<input class="form-control" name="strumento" value="{{ c.strumento|default('') }}" maxlength="200"></label>
+   <label class="col-md-6">Valore o riferimento<input class="form-control" name="valore" value="{{ c.valore|default('') }}" maxlength="300"></label>
+   <label class="col-md-6">Piano di reazione<input class="form-control" name="reazione" value="{{ c.reazione|default('') }}" maxlength="300"></label>
+   <label class="col-12">Note<textarea class="form-control" name="note" rows="2" maxlength="300">{{ c.note|default('') }}</textarea></label>
+  </div>
+  <button class="btn btn-sm btn-outline-danger mt-2" type="button" data-rimuovi-controllo>Rimuovi controllo</button>
+ </fieldset>
+{% endmacro %}
+{% block content %}
+<main class="container-fluid px-3 px-lg-4 py-3">
+ <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+  <h1 class="h4 mb-0">Controllo qualità Serbatoi</h1>
+  {% if can_piani %}<a class="btn btn-outline-secondary" href="{{ operator_url_for('main.serbatoi_page') }}">Torna a Serbatoi</a>{% endif %}
+ </div>
+ {% for categoria, messaggio in get_flashed_messages(with_categories=true) %}<div class="alert alert-{{ categoria }}" role="status">{{ messaggio }}</div>{% endfor %}
+ {% if can_piani %}
+ <details class="card mb-3" {% if piano_in_modifica %}open{% endif %}>
+  <summary class="card-header fw-semibold">Piani di controllo per codice</summary>
+  <div class="card-body">
+   <p class="small text-body-secondary">Carica un Excel per codice. Il piano vale sia per Fresatura sia per Rientro Gaser. I controlli già registrati conservano la revisione utilizzata.</p>
+   <form class="row g-2 align-items-end mb-3" method="post" enctype="multipart/form-data" action="{{ url_cq() }}">
+    <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="azione" value="piano">
+    <div class="col-sm-8"><label class="form-label w-100 mb-0">Procedura controlli (.xlsx)<input class="form-control" type="file" name="piano" accept=".xlsx" required></label></div>
+    <div class="col-sm"><button class="btn btn-outline-primary">Importa piano CQ</button></div>
+   </form>
+   {% for piano in piani %}<details class="border-top py-2">
+    <summary>{{ piano.codice }}{% if piano.revisione %} · Rev. {{ piano.revisione }}{% endif %} · {{ piano.controlli|length }} controlli</summary>
+    <ul class="small mb-0 mt-2">{% for c in piano.controlli %}<li>{{ c.descrizione }} · {{ c.frequenza }}</li>{% endfor %}</ul>
+    <a class="btn btn-sm btn-outline-primary mt-2" href="{{ url_cq(piano=piano.codice) }}#modifica-piano-cq">Modifica piano</a>
+   </details>{% else %}<p class="small text-body-secondary mb-0">Nessun piano importato.</p>{% endfor %}
+   {% if piano_in_modifica %}
+   <form id="modifica-piano-cq" method="post" action="{{ url_cq(piano=piano_in_modifica.codice) }}" class="border-top pt-3 mt-3">
+    <h2 class="h6">Modifica piano · {{ piano_in_modifica.codice }}</h2>
+    <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="azione" value="modifica_piano">
+    <input type="hidden" name="codice" value="{{ piano_in_modifica.codice }}"><input type="hidden" name="versione" value="{{ piano_in_modifica.versione }}">
+    <label class="form-label">Revisione<input class="form-control" name="revisione" value="{{ piano_in_modifica.revisione }}" maxlength="40"></label>
+    <p class="small text-body-secondary">Usa 100% per il controllo integrale o, ad esempio, 20 ogni lotto per il campionamento. I lotti già in coda e gli esiti registrati conservano il piano originale.</p>
+    <div data-controlli>{% for c in piano_in_modifica.controlli %}{{ campi_controllo(c) }}{% endfor %}</div>
+    <template>{{ campi_controllo({}) }}</template>
+    <div class="d-flex flex-wrap gap-2">
+     <button class="btn btn-outline-primary" type="button" data-aggiungi-controllo>Aggiungi controllo</button>
+     <button class="btn btn-primary" type="submit">Salva modifiche</button>
+     <a class="btn btn-outline-secondary" href="{{ url_cq() }}">Annulla</a>
+    </div>
+   </form>
+   {% endif %}
+  </div>
+ </details>
+ {% endif %}
+ <div class="row g-3">
+  <section class="col-lg-5">
+   <div class="card"><h2 class="h6 card-header mb-0">Rientri Gaser e giacenza KO</h2>
+    <div class="card-body">
+     <p class="small mb-2">KO da contabilizzare <strong>{{ giacenze.values()|sum }} pz</strong></p>
+     <div class="list-group" style="max-height:65vh;overflow-y:auto">
+      {% for cq, cliente, lotto in righe %}
+       <a class="list-group-item list-group-item-action {{ 'active' if selezione and selezione[0].id == cq.id }}" {% if selezione and selezione[0].id == cq.id %}aria-current="true"{% endif %} href="{{ url_cq(id=cq.id) }}">
+        <div class="fw-semibold">{{ cliente.riferimento }} · riga {{ cliente.id_riga }}</div>
+        <div class="small">{{ cq.piano.codice }} · {{ lotto.riferimento }} · {{ cq.quantita }} pz</div>
+        <div class="small">{% if cq.risultati is none %}Da controllare{% elif cq.id in giacenze %}{{ giacenze[cq.id] }} KO da contabilizzare{% else %}Controllo completato{% endif %}</div>
+       </a>
+      {% else %}<p class="text-body-secondary mb-0">Nessun rientro registrato per il controllo qualità.</p>{% endfor %}
+     </div>
+    </div>
+   </div>
+  </section>
+  <section class="col-lg-7">
+   <div class="card"><h2 class="h6 card-header mb-0">Dettaglio del controllo</h2><div class="card-body">
+    {% if selezione %}
+     {% set cq, cliente, lotto = selezione %}
+     <p><strong>{{ cliente.riferimento }} · riga {{ cliente.id_riga }}</strong><br>{{ lotto.riferimento }}{% if ddt %} · DDT {{ ddt.ddt }}{% endif %} · {{ cq.quantita }} pezzi rientrati</p>
+     {% if cq.risultati is none %}
+     <form method="post" action="{{ url_cq(id=cq.id) }}">
+      <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="azione" value="controlla">
+      <input type="hidden" name="controllo_id" value="{{ cq.id }}"><input type="hidden" name="versione" value="{{ cq.piano.versione }}">
+      {% for c in cq.piano.controlli %}{% set i = loop.index0 %}{% set minimo = [cq.quantita, c.campione or cq.quantita]|min %}
+      <fieldset class="border rounded p-3 mb-3">
+       <legend class="float-none w-auto fs-6 fw-semibold px-1 mb-1">Controllo {{ loop.index }}</legend>
+       <p class="mb-1">{{ c.descrizione }}</p>
+       <p class="small text-body-secondary mb-2">{{ [c.frequenza, c.strumento, c.valore, c.note, c.reazione]|reject('equalto','')|join(' · ') }}</p>
+       <div class="row g-2 align-items-end">
+        <label class="col-6 col-sm-3">Verificati<input class="form-control form-control-sm" name="verificati_{{ i }}" type="number" min="{{ minimo }}" max="{{ cq.quantita }}" value="{{ minimo }}" required></label>
+        <label class="col-6 col-sm-2">KO<input class="form-control form-control-sm" name="ko_{{ i }}" type="number" min="0" max="{{ cq.quantita }}" value="0" required></label>
+        <label class="col-sm-5">Note<input class="form-control form-control-sm" name="note_{{ i }}" maxlength="300"></label>
+        <label class="col-sm-2"><input class="form-check-input" name="eseguito_{{ i }}" type="checkbox" value="1" required> Eseguito</label>
+       </div>
+      </fieldset>
+      {% endfor %}
+      <div class="d-flex align-items-end flex-wrap gap-2">
+       <label>Totale pezzi KO distinti<input class="form-control" name="ko_totale" type="number" min="0" max="{{ cq.quantita }}" value="0" required></label>
+       <button class="btn btn-primary">Conferma controllo</button>
+      </div>
+      <p class="small text-body-secondary mt-2 mb-0">Conta ogni pezzo KO una sola volta anche se fallisce più controlli.</p>
+     </form>
+     {% else %}
+     <p><strong>{{ cq.quantita - cq.ko }} conformi · {{ cq.ko }} KO</strong><br>{{ cq.operatore }} · {{ cq.data[:16]|replace('T', ' ') }}</p>
+     <ul class="list-group mb-3">{% for esito in cq.risultati %}<li class="list-group-item">{{ cq.piano.controlli[loop.index0].descrizione }}<br><small>{{ esito.verificati }} verificati · {{ esito.ko }} KO{% if esito.note %} · {{ esito.note }}{% endif %}</small></li>{% endfor %}</ul>
+     {% if cq.id in giacenze and can_contabilizza %}
+     <form method="post" action="{{ url_cq(id=cq.id) }}" class="mb-3">
+      <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="azione" value="contabilizza">
+      <input type="hidden" name="controllo_id" value="{{ cq.id }}">
+      <label class="form-label d-block"><input type="checkbox" class="form-check-input" name="contabilizzato" value="1" required> Ho contabilizzato i {{ giacenze[cq.id] }} pezzi KO.</label>
+      <button class="btn btn-outline-primary">Azzera giacenza KO</button>
+     </form>
+     {% elif cq.contabilizzato_il %}<p class="small">Contabilizzato da {{ cq.contabilizzato_da }} · {{ cq.contabilizzato_il[:16]|replace('T',' ') }}.</p>{% endif %}
+     <a class="btn btn-outline-primary" href="{{ operator_url_for('main.serbatoi_cqc', cliente_id=cliente.id) }}">Scarica CQC riga cliente</a>
+     {% endif %}
+    {% else %}<p class="text-body-secondary mb-0">Seleziona un rientro per vedere i controlli del codice.</p>{% endif %}
+   </div></div>
+  </section>
+ </div>
+</main>
+{% endblock %}
+{% block extra_js %}{{ super() }}
+{% if piano_in_modifica %}
+<script>
+    (() => {
+        const form = document.getElementById('modifica-piano-cq');
+        const elenco = form.querySelector('[data-controlli]');
+        const aggiungi = form.querySelector('[data-aggiungi-controllo]');
+        const aggiorna = () => {
+            aggiungi.disabled = elenco.children.length >= 50;
+            [...elenco.children].forEach((riga, indice) => {
+                riga.querySelector('legend').textContent = 'Controllo ' + (indice + 1);
+                riga.querySelector('[data-rimuovi-controllo]').disabled = elenco.children.length <= 1;
+            });
+        };
+        aggiungi.addEventListener('click', () => {
+            elenco.append(form.querySelector('template').content.cloneNode(true));
+            aggiorna();
+            elenco.lastElementChild.querySelector('textarea').focus();
+        });
+        elenco.addEventListener('click', event => {
+            const rimuovi = event.target.closest('[data-rimuovi-controllo]');
+            if (!rimuovi || elenco.children.length <= 1) return;
+            rimuovi.closest('[data-controllo]').remove();
+            aggiorna();
+            aggiungi.focus();
+        });
+        aggiorna();
+    })();
+</script>
+{% endif %}
+{% endblock %}

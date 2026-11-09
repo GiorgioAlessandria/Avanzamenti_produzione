@@ -1,7 +1,29 @@
 {% extends "base.j2" %}
 
 {% block content %}
-    {% include active_partial %}
+    {% if lct_preview|default(false) %}
+        <div class="d-flex flex-wrap align-items-end justify-content-between gap-2 my-3">
+            {% if lct_configs %}
+                <form method="get" action="{{ url_for('main.home') }}" class="d-flex flex-wrap align-items-end gap-2">
+                    <input type="hidden" name="vista" value="lct">
+                    <input type="hidden" name="tab_session" value="{{ tab_session|e }}">
+                    <label class="form-label mb-0">Reparto
+                        <select class="form-select" name="tab" required>
+                            <option value="">Seleziona un reparto</option>
+                            {% for config in lct_configs %}
+                                <option value="{{ config.tab_code|e }}" {{ 'selected' if config.tab_code == active_tab }}>{{ config.label|e }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <button type="submit" class="btn btn-primary">Visualizza</button>
+                </form>
+            {% else %}
+                <p class="mb-0">Nessun reparto con vista di produzione standard disponibile.</p>
+            {% endif %}
+            <a class="btn btn-outline-secondary" href="{{ operator_url_for('main.home') }}">Torna alla produzione</a>
+        </div>
+    {% endif %}
+    {% if active_partial %}{% include active_partial %}{% endif %}
 
     {% if manutenzioni_da_eseguire %}
         <div class="modal fade"

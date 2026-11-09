@@ -36,10 +36,11 @@ def _add_input_odp_closure_log(
     qty_post: str,
     closed_by: str,
     closed_at: str,
+    consenti_sovrapproduzione: bool = False,
 ):
     evento_lct(ordine, tipo="CHIUSURA", operazione=operation_group_id,
                fase=_norm_text(fase_consuntivata), utente=closed_by, q_ok=q_ok, q_nok=q_nok,
-               finale=not chiusura_parziale)
+               finale=not chiusura_parziale, consenti_sovrapproduzione=consenti_sovrapproduzione)
     db.session.add(
         InputOdpLog(
             OperationGroupId=operation_group_id,

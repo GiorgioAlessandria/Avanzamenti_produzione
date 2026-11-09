@@ -5,6 +5,7 @@ from pathlib import Path
 from flask import current_app
 import re
 from app_odp.models import db, ErpOutbox, InputOdp, InputOdpLog
+from app_odp.odp_output import _load_distinta_base
 from app_odp.services.session_helpers import _current_username
 from app_odp.services.order_helpers import (
     _norm_text,
@@ -202,6 +203,21 @@ def _get_blocking_outbox_for_phase(
         .order_by(ErpOutbox.outbox_id.desc())
         .first()
     )
+
+
+def _serbatoi_export_fase_1_error(ordine) -> str:
+    righe = ErpOutbox.query.filter_by(
+        IdDocumento=ordine.IdDocumento, IdRiga=ordine.IdRiga,
+        RifRegistraz=ordine.RifRegistraz, Fase="1", kind="consuntivo_fase",
+    ).all()
+    for riga in righe:
+        if riga.status in ("pending", "error"):
+            return "Completare l'invio della fase 1 al gestionale prima di chiudere il buratto."
+        if riga.status == "exported" and _load_distinta_base(
+            json.loads(riga.payload_json).get("distinta_base")
+        ):
+            return "La fase 1 ha già esportato componenti. Verificare gli scarichi nel gestionale prima di chiudere il buratto."
+    return ""
 
 
 def _normalize_lotti_for_payload(lotti_input: list[dict]) -> list[dict]:

@@ -14,7 +14,7 @@ def _component_matches_payload_phase(component: dict, payload: dict) -> bool:
     Se il componente non ha NumFase in un ordine multifase, non va esportato
     come componente di fase.
     """
-    if not _is_multiphase_payload(payload):
+    if payload.get("distinta_intera") is True or not _is_multiphase_payload(payload):
         return True
 
     fase_payload = _to_int(payload.get("fase"))

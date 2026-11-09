@@ -104,7 +104,7 @@
                 <table class="table table-sm table-hover align-middle mb-0">
                     <thead class="table-light">
                     <tr>
-                        <th>Tipo</th>
+                        <th>Gruppi</th>
                         <th>Lotto</th>
                         <th>Ordine di produzione</th>
                         <th>Documento / riga</th>
@@ -143,10 +143,11 @@
                     </div>
                     <div class="col-12 col-md-2">
                         <label class="form-label"
-                               for="storico-q">Ordine / testo</label>
+                               for="storico-q">Ordine di produzione</label>
                         <input class="form-control"
                                id="storico-q"
-                               placeholder="Documento, riga, articolo">
+                               placeholder="Es. 2026.1.610 2,00" autocomplete="off"
+                               title="Cerca per numero ODP, con o senza riga. Se il periodo è quello predefinito, la ricerca include tutto lo storico.">
                     </div>
                     <div class="col-12 col-md-2">
                         <label class="form-label"
@@ -225,7 +226,7 @@
                     <tr>
                         <th>Data ultimo passaggio</th>
                         <th>Tipo</th>
-                        <th>Ordine / gruppo</th>
+                        <th>Ordine</th>
                         <th>N. riga ERP</th>
                         <th>Articoli</th>
                         <th>Risorse</th>
@@ -316,6 +317,7 @@
 
             let currentPage = 1;
             let totalPages = 1;
+            let orderDetailKey = "";
 
             function esc(value) {
                 return String(value ?? "").replace(/[&<>"']/g, ch => ({
@@ -380,9 +382,11 @@
 
                 totalPages = data.total_pages || 1;
                 const scanLimitReached = Boolean(data.scan_limit_reached);
+                const count = data.total || 0;
+                const ordersFound = count === 1 ? "1 ordine trovato" : `${count} ordini trovati`;
                 countEl.textContent = scanLimitReached
-                    ? `${data.total || 0} risultati (limite raggiunto: restringere periodo o filtri)`
-                    : `${data.total || 0} risultati`;
+                    ? `${ordersFound} (limite raggiunto: restringere periodo o filtri)`
+                    : ordersFound;
                 countEl.classList.toggle("text-warning", scanLimitReached);
                 countEl.classList.toggle("text-muted", !scanLimitReached);
                 pageEl.textContent = `Pagina ${data.page || 1} di ${totalPages}`;
@@ -390,19 +394,18 @@
                 nextBtn.disabled = currentPage >= totalPages;
 
                 if (!data.rows.length) {
-                    body.innerHTML = `<tr><td colspan="10" class="text-center text-muted py-3">Nessun log trovato.</td></tr>`;
+                    body.innerHTML = `<tr><td colspan="10" class="text-center text-muted py-3">Nessun ordine trovato.</td></tr>`;
                     return;
                 }
 
                 body.innerHTML = data.rows.map(row => `
                     <tr>
                         <td>${esc(row.last_event_at_display)}</td>
-                        <td>${esc(row.group_type_label || "Singolo")}</td>
+                        <td>${esc(row.group_type_label || "—")}</td>
                         <td>
                             <div class="fw-semibold">${esc(row.label)}</div>
-                            <div class="small text-muted">${shortList(row.orders)}</div>
                         </td>
-                        <td>${shortList(row.num_progr_righe)}</td>
+                        <td>${shortList(row.num_progr_righe.length ? row.num_progr_righe : [row.id_riga])}</td>
                         <td>${shortList(row.articles)}</td>
                         <td>${shortList(row.risorse)}</td>
                         <td>${esc(row.last_operator || "Non disponibile")}</td>
@@ -414,7 +417,7 @@
                                     data-kind="${esc(row.kind)}"
                                     data-group-uid="${esc(row.group_uid || "")}"
                                     data-key="${esc(row.key)}">
-                                Storico lavorazione
+                                Percorso ordine
                             </button>
                         </td>
                     </tr>
@@ -566,7 +569,27 @@
                         <tr><td>${esc(row.lotto)}</td><td>${esc(row.articolo)}</td>
                         <td>${esc(row.quantita)}</td><td>${esc(window.phaseLabel(row.fase))}</td></tr>`
                 )}` : "";
+                const scope = {
+                    group: "Operazione di gruppo",
+                    single_member: "Operazione singola su un ordine del gruppo",
+                    single_before_group: "Lavorazione singola prima dell’ingresso nel gruppo",
+                    historical: "Gruppo associato · modalità storica non registrata",
+                }[ev.modalita] || "Operazione singola";
+                const currentPhase = ev.fase || ev.fase_pre;
+                const phaseLabel = phase => "Fase " + window.phaseLabel(phase);
+                let transition = "";
+                if (currentPhase && ev.fase_successiva) {
+                    transition = `${phaseLabel(currentPhase)} → ${phaseLabel(ev.fase_successiva)}`;
+                } else if (currentPhase && ev.categoria === "ordine_completato") {
+                    transition = `${phaseLabel(currentPhase)} → Ordine completato`;
+                } else if (currentPhase && ev.categoria === "chiusura_parziale") {
+                    transition = `${phaseLabel(currentPhase)} · Lavorazione da proseguire nella stessa fase`;
+                }
                 return `<div class="border-top pt-2 mt-2">
+                    <div class="small mb-1"><strong>${esc(scope)}</strong>${ev.group_uid ? ` · Gruppo ${esc(ev.group_uid)}` : ""}</div>
+                    ${transition ? `<div class="small text-primary fw-semibold mb-1">${esc(transition)}</div>` : ""}
+                    ${ev.orario_incoerente ? '<p class="small text-warning-emphasis mb-1">Nel log la chiusura precede l’ultima attivazione registrata. Verifica gli orari originali nei dettagli tecnici.</p>' : ""}
+                    ${ev.tecnico && ev.elapsed_seconds !== "" ? `<div class="small mb-1">Tempo attribuito: ${esc((Number(ev.elapsed_seconds) / 60).toLocaleString("it-IT", {maximumFractionDigits: 2}))} min</div>` : ""}
                     <div class="small text-muted mb-2">Ordine ${esc(ev.ordine)} · ${esc(ev.articolo || "Articolo non disponibile")}${ev.num_progr_riga ? ` · Riga ERP ${esc(ev.num_progr_riga)}` : ev.id_riga ? ` · Riga ${esc(ev.id_riga)}` : ""}</div>
                     <div class="row g-2 small mb-2">
                         <div class="col-12 col-md-6">Registrato da: <strong>${esc(ev.utente || "Non disponibile")}</strong></div>
@@ -575,7 +598,6 @@
                     ${ev.causale ? `<div class="border-start border-warning border-3 ps-2 mb-2"><strong>Causale:</strong> ${esc(ev.causale)}</div>` : ""}
                     ${ev.stato_pre || ev.stato_post ? `<div class="small">Stato: ${esc(ev.stato_pre || "Non disponibile")} → ${esc(ev.stato_post || "Non disponibile")}</div>` : ""}
                     ${hasQuantity ? `<div class="small">Conformi: <strong>${esc(ev.q_ok || "0")}</strong> · Non conformi: <strong>${esc(ev.q_ko || "0")}</strong>${ev.quantita_residua !== "" ? ` · Quantità residua: ${esc(ev.quantita_residua)}` : ""}</div>` : ""}
-                    ${ev.fase_successiva && ev.categoria === "fase_completata" ? `<div class="small text-primary">Fase successiva: ${esc(window.phaseLabel(ev.fase_successiva))}</div>` : ""}
                     ${ev.tempo_lavorazione_ore ? `<div class="small">Tempo registrato nella fase: ${esc(ev.tempo_lavorazione_ore)} ore</div>` : ""}
                     ${ev.tempo_non_funzionamento_minuti ? `<div class="small">Non funzionamento: ${esc(ev.tempo_non_funzionamento_minuti)} min</div>` : ""}
                     ${ev.note ? `<div class="small mt-1" style="white-space: pre-wrap"><strong>Note:</strong> ${esc(ev.note)}</div>` : ""}
@@ -588,6 +610,9 @@
                         </details>` : ""}
                     <details class="mt-2"><summary class="small text-muted">Dettagli tecnici</summary>
                         <div class="small mt-1">${esc(ev.descrizione)}</div>
+                        <div class="small">Orario originale (${ev.source === "runtime" ? "EventAt" : "ClosedAt"}): <code>${esc(ev.event_at || "Non disponibile")}</code></div>
+                        ${ev.logged_at ? `<div class="small">Registrazione nel log: <code>${esc(ev.logged_at)}</code></div>` : ""}
+                        ${ev.activation_before ? `<div class="small">Attivazione precedente nel log: <code>${esc(ev.activation_before)}</code></div>` : ""}
                         <pre class="bg-light border rounded p-2 mt-1 storico-payload">${esc(ev.payload_pretty || "Nessun dato aggiuntivo")}</pre>
                     </details>
                 </div>`;
@@ -598,7 +623,7 @@
                 detailTitle.textContent = header.title || "Storico lavorazione";
                 detailSubtitle.textContent = header.kind === "group"
                     ? `${header.group_type || ""} ${header.status ? "- " + header.status : ""}`
-                    : "Ordine singolo";
+                    : `Percorso della riga ${header.num_progr_riga || header.id_riga || ""}`;
 
                 const membersHtml = header.members?.length ? `
                     <h3 class="h6">Ordini del gruppo</h3>
@@ -692,20 +717,20 @@
                 );
 
                 detailContent.innerHTML = `
-                    <p class="small text-muted">Sequenza cronologica completa. La presa in carico ricostruita deriva dagli eventi precedenti della stessa fase.</p>
-                    <h3 class="h6">Passaggi della lavorazione</h3>
+                    ${header.kind === "group" && orderDetailKey ? `
+                        <button type="button" class="btn btn-sm btn-outline-secondary js-storico-detail mb-2"
+                                data-kind="order" data-key="${esc(orderDetailKey)}">Torna al percorso ordine</button>
+                    ` : ""}
+                    ${header.groups?.length ? `
+                        <div class="d-flex flex-wrap gap-2 mb-3">
+                            ${header.groups.map(uid => `<button type="button"
+                                class="btn btn-sm btn-outline-primary text-break js-storico-detail"
+                                data-kind="group" data-group-uid="${esc(uid)}">Percorso del gruppo ${esc(uid)}</button>`).join("")}
+                        </div>
+                    ` : ""}
+                    <p class="small text-muted">Orari di Roma. La presa in carico ricostruita deriva dagli eventi precedenti della stessa fase.</p>
+                    <h3 class="h6">${header.kind === "group" ? "Passaggi di tutti gli ordini del gruppo" : "Passaggi della riga d’ordine"}</h3>
                     <div class="storico-timeline mb-3">${timelineHtml}</div>
-                    ${(data.registrazioni_tempi || []).length ? `
-                        <details class="border rounded p-3 mb-3">
-                            <summary class="fw-semibold">Registrazioni dei tempi (${data.registrazioni_tempi.length})</summary>
-                            ${data.registrazioni_tempi.map(ev => `
-                                <div class="border-bottom py-2">
-                                    <div class="fw-semibold">${esc(ev.azione_label)}</div>
-                                    <div class="small text-muted">${esc(ev.event_at_display)} · Fase ${esc(ev.fase ? window.phaseLabel(ev.fase) : "Non disponibile")}</div>
-                                    ${ev.elapsed_seconds !== "" ? `<div>Tempo attribuito: ${esc((Number(ev.elapsed_seconds) / 60).toLocaleString("it-IT", {maximumFractionDigits: 2}))} min</div>` : ""}
-                                    ${eventDetails(ev)}
-                                </div>`).join("")}
-                        </details>` : ""}
                     <details class="border rounded p-3">
                         <summary class="fw-semibold">Documenti originali, lotti e composizione del gruppo</summary>
                         <div class="mt-3">${membersHtml}</div>
@@ -717,6 +742,7 @@
             }
 
             async function openDetail(btn) {
+                if (btn.dataset.kind !== "group") orderDetailKey = btn.dataset.key || "";
                 detailTitle.textContent = "Storico lavorazione";
                 detailSubtitle.textContent = "";
                 detailContent.innerHTML = "Caricamento...";
@@ -745,6 +771,12 @@
 
             document.getElementById("storico-filters").addEventListener("submit", event => {
                 event.preventDefault();
+                if (value("storico-q")) {
+                    const dates = ["storico-date-from", "storico-date-to"].map(id => document.getElementById(id));
+                    if (dates.every(input => input.value === input.defaultValue)) {
+                        dates.forEach(input => { input.value = ""; });
+                    }
+                }
                 currentPage = 1;
                 loadList();
             });
@@ -770,6 +802,10 @@
                     currentPage += 1;
                     loadList();
                 }
+            });
+            detailContent.addEventListener("click", event => {
+                const btn = event.target.closest(".js-storico-detail");
+                if (btn) openDetail(btn);
             });
             body.addEventListener("click", event => {
                 const btn = event.target.closest(".js-storico-detail");

@@ -20,6 +20,7 @@ def _componenti_lotto_per_ordine(
     ordine,
     include_senza_lotti: bool = False,
     ignore_parent_gestione_lotto: bool = False,
+    distinta_intera: bool = False,
     **_unused,
 ) -> list[dict]:
     if not ignore_parent_gestione_lotto:
@@ -27,7 +28,7 @@ def _componenti_lotto_per_ordine(
             return []
 
     distinta = _parse_distinta_materiale(ordine)
-    fase_attiva = _fase_attiva_int(ordine)
+    fase_attiva = None if distinta_intera else _fase_attiva_int(ordine)
 
     componenti_lotto = []
     codici_visti = set()

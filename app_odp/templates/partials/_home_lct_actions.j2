@@ -1,29 +1,35 @@
 {% autoescape true %}
 <td>
     <div class="lct-actions">
-        {% set fase = singolo_odp.FaseAttiva|int %}
-        {% set state = singolo_odp.StatoOrdine %}
-        {% set owner = singolo_odp.runtime_row.Utente_operazione if singolo_odp.runtime_row else '' %}
-        {% set mine = not owner or owner == policy.user.username %}
         {% set grouped = singolo_odp.LctGroup|default(none) %}
-        {% if state == 'Attivo' and mine %}
-            {% set actions = [(2, 'Sospendi gruppo' if grouped else 'Sospendi', 'outline-warning'), (4, 'Chiusure gruppo' if grouped else ('Termine fresa' if fase == 1 else 'Termine ordine'), 'primary')] %}
-        {% elif state == 'In Sospeso' %}
-            {% set actions = [(3, 'Riprendi gruppo' if grouped else 'Riprendi', 'outline-success')] %}
-        {% else %}
-            {% set actions = [] %}
-            <span class="text-muted small">In uso da {{ owner }}</span>
+        {% if not lct_preview|default(false) %}
+            {% set fase = singolo_odp.FaseAttiva|int %}
+            {% set state = singolo_odp.StatoOrdine %}
+            {% set owner = singolo_odp.runtime_row.Utente_operazione if singolo_odp.runtime_row else '' %}
+            {% set mine = not owner or owner == policy.user.username %}
+            {% if state == 'Pianificata' %}
+                {% set actions = [(1, 'Prendi in carico fresa' if fase == 1 else 'Prendi in carico buratto', 'primary')] %}
+            {% elif state == 'Attivo' and mine %}
+                {% set actions = [(2, 'Sospendi gruppo' if grouped else 'Sospendi', 'outline-warning'), (4, 'Chiusure gruppo' if grouped else ('Termine fresa' if fase == 1 else 'Termine ordine'), 'primary')] %}
+            {% elif state == 'In Sospeso' %}
+                {% set actions = [(3, 'Riprendi gruppo' if grouped else 'Riprendi', 'outline-success')] %}
+            {% else %}
+                {% set actions = [] %}
+                <span class="text-muted small">In uso da {{ owner }}</span>
+            {% endif %}
+            {% for toast, label, color in actions %}
+                <button type="button" class="btn btn-sm btn-{{ color }}"
+                        {% if fase == 1 and toast in [1, 3] and lct_fresa_busy|default(false) %}
+                            disabled title="Sospendi o termina la fresatura attiva prima di avviarne un'altra"
+                        {% endif %}
+                        aria-label="{{ label }} · {{ ordine_display }}"
+                        data-use-selected="#lct_{{ lct_key }}" data-fill-target="#toast-{{ toast }}"
+                        data-bs-target="#toast-{{ toast }}" data-bs-toggle="toast">{{ label }}</button>
+            {% endfor %}
         {% endif %}
-        {% for toast, label, color in actions %}
-            <button type="button" class="btn btn-sm btn-{{ color }}"
-                    {% if fase == 1 and toast == 3 and lct_fresa_busy|default(false) %}
-                        disabled title="Sospendi o termina la fresatura attiva prima di avviarne un'altra"
-                    {% endif %}
-                    aria-label="{{ label }} · {{ ordine_display }}"
-                    data-use-selected="#lct_{{ lct_key }}" data-fill-target="#toast-{{ toast }}"
-                    data-bs-target="#toast-{{ toast }}" data-bs-toggle="toast">{{ label }}</button>
-        {% endfor %}
-        {% if grouped %}
+        {% if grouped and lct_preview|default(false) %}
+            <span class="small text-muted">{{ grouped.WorkGroupDisplayType }} · {{ grouped.OrdineVisuale }}</span>
+        {% elif grouped %}
             <button type="button" class="btn btn-sm btn-outline-secondary js-open-workgroup-detail-modal"
                     data-group-uid="{{ grouped.WorkGroupUid }}" data-group-type="{{ grouped.WorkGroupDisplayType }}"
                     data-group-label="{{ grouped.OrdineVisuale }}"

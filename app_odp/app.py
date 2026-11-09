@@ -678,6 +678,7 @@ def _ensure_builtin_permissions() -> None:
         "scorte_segnalazione_libera": ("Segnalazione scorte con testo libero"),
         "serbatoi_produzione": "Serbatoi: ordini cliente, assegnazioni, catalogo e produzione",
         "serbatoi_acquisti": "Serbatoi: barre, spezzoni, conto lavoro e spedizioni",
+        "CQ_serbatoi": "Serbatoi: controlli qualità dei rientri Gaser e consultazione CQC",
         # Rifiuti
         "rifiuti_carica": ("Caricamento dei rifiuti nello stock virtuale"),
         "rifiuti_elimina": (

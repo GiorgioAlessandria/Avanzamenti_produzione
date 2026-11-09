@@ -114,15 +114,19 @@
             data-operatore="{{ operatore }}">
             <td class="pr-cell fw-bold text-center">{{ wrap_plus(pr or "") }}</td>
             <td>
-                <button
-                        type="button"
-                        class="btn btn-link p-0 text-decoration-none open-materiali-modal"
-                        data-codart="{{ singolo_odp.CodArt|e }}"
-                        data-variante="{{ singolo_odp.VarianteArt|e }}"
-                        data-fase-attiva="{{ singolo_odp.FaseAttiva }}"
-                        data-distinta='{{ singolo_odp.DistintaMateriale|tojson }}'>
+                {% if lct_preview|default(false) %}
                     {{ wrap_plus(ordine_display) }}
-                </button>
+                {% else %}
+                    <button
+                            type="button"
+                            class="btn btn-link p-0 text-decoration-none open-materiali-modal"
+                            data-codart="{{ singolo_odp.CodArt|e }}"
+                            data-variante="{{ singolo_odp.VarianteArt|e }}"
+                            data-fase-attiva="{{ singolo_odp.FaseAttiva }}"
+                            data-distinta='{{ singolo_odp.DistintaMateriale|tojson }}'>
+                        {{ wrap_plus(ordine_display) }}
+                    </button>
+                {% endif %}
             </td>
             {% set rev = singolo_odp.IndiceModifica %}
             {% set rev_pdf = rev|string|trim if rev is not none else "" %}
@@ -140,6 +144,8 @@
                             data-pdf-url="{{ metodo_doc.url }}">
                         {{ wrap_plus(singolo_odp.CodArt) }}
                     </button>
+                {% elif lct_preview|default(false) %}
+                    {{ wrap_plus(singolo_odp.CodArt) }}
                 {% else %}
                     <span class="text-danger">{{ wrap_plus(singolo_odp.CodArt) }}</span>
                 {% endif %}

@@ -17,6 +17,7 @@ from app_odp.services.home_service import (
     _home_method_settings_for_user,
     _home_ui_texts_for_user,
     _first_allowed_home_reparto_config,
+    _allowed_home_reparto_configs,
     _home_reparto_config_by_tab,
     _policy_can_access_home_config,
     _render_fragments_for_home_config,
@@ -39,6 +40,14 @@ from app_odp.vendite_models import (
 )
 
 
+def _is_lct_preview(policy):
+    if request.args.get("vista") != "lct":
+        return False
+    if not policy.has_direct_admin_role:
+        abort(403)
+    return True
+
+
 @main_bp.get("/api/home/<tab>/bridge")
 @operator_perm_required("home")
 def api_home_bridge(tab):
@@ -47,9 +56,12 @@ def api_home_bridge(tab):
         abort(404)
 
     policy = active_policy()
+    lct_preview = _is_lct_preview(policy)
 
     if not _policy_can_access_home_config(policy, config):
         abort(403)
+    if lct_preview and config.renderer != "standard":
+        abort(404)
 
     client_last_event_id = _norm_text(request.args.get("last_event_id"))
     server_last_event_id = _last_log_token()
@@ -68,9 +80,9 @@ def api_home_bridge(tab):
             }
         )
 
-    odp = _home_rows_for_config(policy, config, apply_priorita=True, sort_priorita=True)
+    odp = _home_rows_for_config(policy, config, lct_preview=lct_preview)
 
-    fragments = _render_fragments_for_home_config(config, odp)
+    fragments = _render_fragments_for_home_config(config, odp, lct_preview=lct_preview)
 
     return jsonify(
         {
@@ -132,6 +144,25 @@ def home():
     user = active_user()
 
     tab_raw = request.args.get("tab")
+    if _is_lct_preview(policy):
+        from app_odp.services.lct_service import lct_sections
+
+        configs = [cfg for cfg in _allowed_home_reparto_configs(policy) if cfg.renderer == "standard"]
+        config = next((cfg for cfg in configs if cfg.tab_code == tab_raw), None)
+        if tab_raw and config is None:
+            abort(404)
+        if not tab_raw and len(configs) == 1:
+            config = configs[0]
+        odp = _home_rows_for_config(policy, config, lct_preview=True) if config else []
+        return render_template(
+            "home.j2", lct_preview=True, lct_home=True, lct_configs=configs,
+            lct_sections=lct_sections(odp), active_partial="partials/_home_lct.j2" if config else None,
+            active_tab=config.tab_code if config else None, home_config=config,
+            policy=policy, operator_user=user, operator_policy=policy, tab_session=active_token(),
+            bridge_url=url_for("main.api_home_bridge", tab=config.tab_code, vista="lct",
+                               tab_session=active_token()) if config else None,
+            bridge_last_event_id=_last_log_token() if config else "",
+        )
     config = _home_reparto_config_by_tab(tab_raw) if tab_raw else None
 
     # Default: prima home reparto consentita dal DB.

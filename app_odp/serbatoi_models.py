@@ -2,6 +2,29 @@
 from app_odp.models import db
 
 
+class SerbatoiParametri(db.Model):
+    __tablename__ = "serbatoi_parametri"
+    id = db.Column(db.Integer, primary_key=True)
+    fornitore_barre_tipo = db.Column(db.Text, nullable=False, default="")
+    fornitore_barre_codice = db.Column(db.Text, nullable=False, default="")
+    codice_barre = db.Column(db.String(120), nullable=False, default="")
+    unita_barre = db.Column(db.String(20), nullable=False, default="M")
+    lunghezza_barre_mm = db.Column(db.Integer, nullable=False, default=6000)
+    fornitore_spezzoni_tipo = db.Column(db.Text, nullable=False, default="")
+    fornitore_spezzoni_codice = db.Column(db.Text, nullable=False, default="")
+    codici_spezzoni = db.Column(db.JSON, nullable=False, default=list)
+    sfrido_mm = db.Column(db.Integer, nullable=False, default=0)
+    __table_args__ = (db.CheckConstraint("id = 1 AND lunghezza_barre_mm > 0 AND sfrido_mm >= 0"),)
+
+
+class SerbatoiTempistiche(db.Model):
+    __tablename__ = "serbatoi_tempistiche"
+    id = db.Column(db.Integer, primary_key=True)
+    giorni = db.Column(db.JSON, nullable=False)
+    lotti = db.Column(db.JSON, nullable=False)
+    __table_args__ = (db.CheckConstraint("id = 1"),)
+
+
 class SerbatoiArticolo(db.Model):
     __tablename__ = "serbatoi_articoli"
     id = db.Column(db.Integer, primary_key=True)
@@ -45,6 +68,14 @@ class SerbatoiProduzione(db.Model):
     __table_args__ = (db.UniqueConstraint("id_documento", "id_riga"), db.CheckConstraint("quantita > 0"))
 
 
+class SerbatoiRettificaVista(db.Model):
+    __tablename__ = "serbatoi_rettifiche_vista"
+    produzione_id = db.Column(db.Integer, db.ForeignKey("serbatoi_produzioni.id"), primary_key=True)
+    operatore = db.Column(db.Text, nullable=False)
+    data = db.Column(db.Text, nullable=False)
+    note = db.Column(db.Text, nullable=False)
+
+
 class SerbatoiImpegno(db.Model):
     __tablename__ = "serbatoi_impegni"
     id = db.Column(db.Integer, primary_key=True)
@@ -66,6 +97,42 @@ class SerbatoiBarre(db.Model):
     lunghezza_mm = db.Column(db.Integer, nullable=False)
     quantita = db.Column(db.Integer, nullable=False)
     __table_args__ = (db.CheckConstraint("quantita > 0 AND lunghezza_mm > 0"),)
+
+
+class SerbatoiBarreOrigine(db.Model):
+    __tablename__ = "serbatoi_barre_origini"
+    id_documento = db.Column(db.Text, primary_key=True)
+    id_riga = db.Column(db.Text, primary_key=True)
+    barre_id = db.Column(db.Integer, db.ForeignKey("serbatoi_ordini_barre.id"), unique=True, nullable=False)
+    quantita_erp = db.Column(db.Integer, nullable=False)
+    quantita_originale = db.Column(db.Text, nullable=False, default="")
+    unita_originale = db.Column(db.String(20), nullable=False, default="")
+
+
+class SerbatoiBarreManuale(db.Model):
+    __tablename__ = "serbatoi_barre_manuali"
+    barre_id = db.Column(db.Integer, db.ForeignKey("serbatoi_ordini_barre.id"), primary_key=True)
+    data = db.Column(db.Text, nullable=False)
+    operatore = db.Column(db.Text, nullable=False)
+    note = db.Column(db.Text, nullable=False)
+
+
+class SerbatoiPrezzoBarre(db.Model):
+    __tablename__ = "serbatoi_prezzi_barre"
+    barre_id = db.Column(db.Integer, db.ForeignKey("serbatoi_ordini_barre.id"), primary_key=True)
+    centesimi_kg = db.Column(db.Integer, nullable=False)
+    data_prezzo = db.Column(db.Date, nullable=False)
+    __table_args__ = (db.CheckConstraint("centesimi_kg > 0"),)
+
+
+class SerbatoiRiferimentoBarre(db.Model):
+    __tablename__ = "serbatoi_riferimenti_prezzo_barre"
+    fornitore_tipo = db.Column(db.Text, primary_key=True)
+    fornitore_codice = db.Column(db.Text, primary_key=True)
+    codice = db.Column(db.String(120), primary_key=True)
+    centesimi_kg = db.Column(db.Integer, nullable=False)
+    soglia_centesimi_percento = db.Column(db.Integer, nullable=False)
+    __table_args__ = (db.CheckConstraint("centesimi_kg > 0 AND soglia_centesimi_percento > 0"),)
 
 
 class SerbatoiLotto(db.Model):
@@ -122,3 +189,30 @@ class SerbatoiRichiesta(db.Model):
     __tablename__ = "serbatoi_richieste"
     chiave = db.Column(db.String(64), primary_key=True)
     dati = db.Column(db.String(64), nullable=False)
+
+
+class SerbatoiPianoCQ(db.Model):
+    __tablename__ = "serbatoi_piani_cq"
+    codice = db.Column(db.String(120), primary_key=True)
+    revisione = db.Column(db.String(40), nullable=False)
+    controlli = db.Column(db.JSON, nullable=False)
+
+
+class SerbatoiControlloCQ(db.Model):
+    __tablename__ = "serbatoi_controlli_cq"
+    id = db.Column(db.Integer, primary_key=True)
+    fase = db.Column(db.String(20), nullable=False)
+    produzione_id = db.Column(db.Integer, db.ForeignKey("serbatoi_produzioni.id"), index=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey("serbatoi_clienti_ordini.id"), index=True)
+    lotto_id = db.Column(db.Integer, db.ForeignKey("serbatoi_lotti.id"), unique=True)
+    lotto_ko_id = db.Column(db.Integer, db.ForeignKey("serbatoi_lotti.id"))
+    operazione = db.Column(db.String(128), unique=True)
+    piano = db.Column(db.JSON, nullable=False)
+    risultati = db.Column(db.JSON)
+    quantita = db.Column(db.Integer, nullable=False)
+    ko = db.Column(db.Integer)
+    operatore = db.Column(db.Text)
+    data = db.Column(db.Text)
+    contabilizzato_da = db.Column(db.Text)
+    contabilizzato_il = db.Column(db.Text)
+    __table_args__ = (db.CheckConstraint("quantita > 0 AND (ko IS NULL OR (ko >= 0 AND ko <= quantita))"),)

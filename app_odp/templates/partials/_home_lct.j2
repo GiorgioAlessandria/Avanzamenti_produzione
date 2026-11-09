@@ -10,9 +10,8 @@
     .lct-panel :is(th, td):is(:nth-child(4), :nth-child(5), :nth-child(8), :nth-child(9), :nth-child(10)) { display: none; }
     @media (max-width: 991px) { .lct-grid { grid-template-columns: 1fr; } }
 </style>
-<main class="my-3" id="home-lct">
-    <h1 class="h4">Avanzamenti LCT</h1>
-    <p class="small text-muted">Fase 1: fresatura · Fase 2: buratto. Ogni ordine ha una propria riga; le etichette indicano la gestione del tempo nel gruppo.</p>
+<main class="my-3" id="home-lct" aria-label="Avanzamenti LCT">
+    {% if lct_preview|default(false) %}<p class="small text-muted">Vista amministratore in sola consultazione.</p>{% endif %}
     <div class="lct-grid">
         {% for lct_key, title in [
             ('fresa_da_eseguire', 'Fresa · ordini da prendere in carico'),
@@ -37,26 +36,18 @@
                                 <th scope="col" data-sort="{{ sort }}">{{ label }}</th>
                             {% endfor %}
                             {% if in_corso %}<th scope="col">Stato</th><th scope="col">Operatore</th>{% endif %}
-                            {% if in_corso %}<th scope="col">Azioni</th>{% endif %}
+                            <th scope="col">{{ 'Dettagli' if lct_preview|default(false) else 'Azioni' }}</th>
                         </tr></thead>
                         <tbody id="tbody_lct_{{ lct_key }}">
                             {% with odp=lct_sections[lct_key] %}{% include 'partials/_home_lct_rows.j2' %}{% endwith %}
                         </tbody>
                     </table>
                 </div>
-                {% if not in_corso %}
-                    <div class="d-flex gap-2 flex-wrap p-2 border-top">
-                        <button type="button" class="btn btn-primary"
-                                data-use-selected="#lct_{{ lct_key }}" data-fill-target="#toast-1"
-                                data-bs-target="#toast-1" data-bs-toggle="toast">
-                            Prendi in carico {{ 'fresa' if lct_key == 'fresa_da_eseguire' else 'buratto' }}
-                        </button>
-                    </div>
-                {% endif %}
             </section>
         {% endfor %}
     </div>
 </main>
+{% if not lct_preview|default(false) %}
 <script>
     // Seleziona la riga del comando prima dell'autofill condiviso dei toast.
     document.addEventListener('click', function (event) {
@@ -68,3 +59,4 @@
         row.classList.add('row-selected');
     }, true);
 </script>
+{% endif %}
