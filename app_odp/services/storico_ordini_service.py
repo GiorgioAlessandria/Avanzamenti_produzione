@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, date, timedelta, time, timezone
 import json
 
-from sqlalchemy import and_, desc, or_
+from sqlalchemy import and_, case, desc, func, or_
 
 from app_odp.models import (
     AcqArticoli,
@@ -76,7 +76,7 @@ GROUP_TYPE_LABELS = {
 
 
 def default_period() -> tuple[str, str]:
-    end = date.today()
+    end = datetime.now(ROME_TZ).date()
     start = end - timedelta(days=30)
     return start.isoformat(), end.isoformat()
 
@@ -1002,7 +1002,7 @@ def _prepare_timeline(timeline, input_logs, used_lots, generated_lots):
             ), "")
         else:
             event["fase_successiva"] = ""
-        owner_key = (*order, event["fase"])
+        owner_key = (*order, phase_code(event["fase"]) or event["fase"])
         if category in {"presa_in_carico", "riattivazione"}:
             owners[owner_key] = event["utente"]
         recorded_owner = _norm_text(payload.get("operatore_in_carico"))
@@ -1013,6 +1013,96 @@ def _prepare_timeline(timeline, input_logs, used_lots, generated_lots):
         )
 
     return timeline
+
+
+def build_storico_operatori_timeline(params) -> dict:
+    start = _parse_date(params.get("date_from"))
+    end = _parse_date(params.get("date_to"))
+    if start is None or end is None or end < start or end.date() == date.max:
+        return {"ok": False, "error": "Seleziona un periodo valido."}
+    stop = end + timedelta(days=1)
+    page = _bounded_int(params.get("page"), 1, 1, 1_000_000)
+    selected = _norm_text(params.get("operatore")).casefold()
+
+    def period_rows(model, column):
+        with_offset = or_(func.substr(column, -6, 1).in_(("+", "-")),
+                          func.substr(column, -1, 1) == "Z")
+        instant = func.julianday(column)
+        in_period = case(
+            (with_offset, and_(
+                instant >= func.julianday(start.replace(tzinfo=ROME_TZ).isoformat()),
+                instant < func.julianday(stop.replace(tzinfo=ROME_TZ).isoformat()),
+            )),
+            else_=and_(column >= start.date().isoformat(), column < stop.date().isoformat()),
+        )
+        return model.query.filter(in_period).order_by(column, model.log_id).limit(SCAN_LIMIT + 1).all()
+
+    runtime_rows = period_rows(OdpRuntimeLog, OdpRuntimeLog.EventAt)
+    input_rows = period_rows(InputOdpLog, InputOdpLog.ClosedAt)
+    if max(len(runtime_rows), len(input_rows)) > SCAN_LIMIT:
+        return {"ok": False, "error": "Il periodo contiene troppi eventi. Seleziona meno giorni."}
+
+    order_keys = {_order_key(row) for row in (*runtime_rows, *input_rows)}
+    member_by_order, groups_by_uid = _member_maps(order_keys)
+    num_progr = _num_progr_by_order(
+        (member for members in member_by_order.values() for member in members),
+        runtime_rows,
+    )
+    sources = [(row, _runtime_to_dict(row)) for row in runtime_rows]
+    sources.extend(
+        (row, _input_timeline_to_dict(row, num_progr))
+        for row in _input_rows_without_runtime_duplicates(input_rows, runtime_rows)
+    )
+    sources.sort(key=lambda item: (_event_sort_at(item[1]["event_at"]), item[1]["source"], item[1]["log_id"]))
+    _prepare_timeline([event for _, event in sources], input_rows, [], [])
+
+    rows, operators, orders = [], {}, set()
+    for row, event in sources:
+        owner = event["operatore_in_carico"]
+        category = event["categoria"]
+        if not owner or category not in {
+            "presa_in_carico", "riattivazione", "sospensione", "chiusura_parziale",
+            "fase_completata", "ordine_completato", "gruppo",
+        }:
+            continue
+        doc, line = _order_key(row)
+        at = _parse_dt(event["event_at"])
+        if not doc or not line or at is None:
+            continue
+        key = owner.casefold()
+        operators.setdefault(key, owner)
+        if selected and key != selected:
+            continue
+        orders.add((doc, line))
+        group_uid, mode = _event_group(row, event["payload"], member_by_order, groups_by_uid)
+        day, hour = at.astimezone(ROME_TZ).strftime("%d/%m/%Y %H:%M:%S").split(" ")
+        rows.append({
+            "key": f"order:{doc}|{line}",
+            "ordine": event["ordine"],
+            "riga": num_progr.get((doc, line)) or line,
+            "articolo": event["articolo"],
+            "giorno": day,
+            "ora": hour,
+            "operatore": owner,
+            "autore": event["utente"],
+            "evento": event["azione_label"],
+            "categoria": category,
+            "fase": event["fase"],
+            "fase_successiva": event["fase_successiva"],
+            "group_uid": group_uid,
+            "modalita": mode,
+        })
+
+    offset = (page - 1) * PAGE_SIZE_DEFAULT
+    return {
+        "ok": True,
+        "rows": rows[offset:offset + PAGE_SIZE_DEFAULT],
+        "operators": sorted(operators.values(), key=str.casefold),
+        "total": len(rows),
+        "orders": len(orders),
+        "page": page,
+        "total_pages": max((len(rows) + PAGE_SIZE_DEFAULT - 1) // PAGE_SIZE_DEFAULT, 1),
+    }
 
 
 def _timeline_steps(timeline, group_uid=""):

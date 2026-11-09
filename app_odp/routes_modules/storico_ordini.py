@@ -10,6 +10,7 @@ from app_odp.services.storico_ordini_service import (
     build_storico_ordini_detail,
     build_storico_ordini_list,
     build_storico_lotti_search,
+    build_storico_operatori_timeline,
     default_period,
 )
 
@@ -45,4 +46,10 @@ def api_storico_ordini_detail():
 @require_active_perm("storico_ordini")
 def api_storico_ordini_lotti():
     payload = build_storico_lotti_search(request.args)
+    return jsonify(payload), 200 if payload.get("ok") else 400
+
+@main_bp.get("/api/storico-ordini/operatori")
+@require_active_perm("storico_ordini")
+def api_storico_operatori():
+    payload = build_storico_operatori_timeline(request.args)
     return jsonify(payload), 200 if payload.get("ok") else 400

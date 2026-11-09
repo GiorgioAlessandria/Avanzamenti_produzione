@@ -49,6 +49,7 @@
           id="storico-ordini-page"
           data-list-url="{{ operator_url_for('main.api_storico_ordini') }}"
           data-detail-url="{{ operator_url_for('main.api_storico_ordini_detail') }}"
+          data-operatori-url="{{ operator_url_for('main.api_storico_operatori') }}"
           data-lotti-url="{{ operator_url_for('main.api_storico_ordini_lotti') }}">
         <div class="d-flex justify-content-between align-items-start mb-3">
             <div>
@@ -56,6 +57,39 @@
                 <div class="text-muted small">Passaggi per fase, prese in carico ed esiti della lavorazione</div>
             </div>
         </div>
+
+        <details class="card shadow-sm mb-3 storico-filter-card" id="storico-operatori">
+            <summary class="card-header fw-semibold">Timeline operatori</summary>
+            <div class="card-body">
+                <form class="row g-2 align-items-end" id="storico-operatori-form">
+                    <div class="col-6 col-md-2">
+                        <label class="form-label" for="storico-operatori-da">Da</label>
+                        <input class="form-control" type="date" id="storico-operatori-da" value="{{ default_date_to }}" required>
+                    </div>
+                    <div class="col-6 col-md-2">
+                        <label class="form-label" for="storico-operatori-a">A</label>
+                        <input class="form-control" type="date" id="storico-operatori-a" value="{{ default_date_to }}" required>
+                    </div>
+                    <div class="col-8 col-md-4">
+                        <label class="form-label" for="storico-operatori-scelta">Operatore in carico</label>
+                        <select class="form-select" id="storico-operatori-scelta">
+                            <option value="">Tutti gli operatori</option>
+                        </select>
+                    </div>
+                    <div class="col-4 col-md-auto">
+                        <button type="submit" class="btn btn-primary w-100">Applica</button>
+                    </div>
+                </form>
+                <p class="small text-muted mt-3 mb-2">Orari di Roma. I passaggi sono attribuiti all’operatore in carico registrato nel log o ricostruito dalle prese in carico del periodo.</p>
+                <p class="small fw-semibold mb-2" id="storico-operatori-stato" role="status" aria-live="polite"></p>
+                <div id="storico-operatori-risultati"></div>
+                <div class="d-none d-flex justify-content-between align-items-center mt-3" id="storico-operatori-pagine">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="storico-operatori-prev">Precedente</button>
+                    <span class="small" id="storico-operatori-pagina"></span>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="storico-operatori-next">Successiva</button>
+                </div>
+            </div>
+        </details>
 
         <details class="card shadow-sm mb-3 storico-filter-card">
             <summary class="card-header">
@@ -423,6 +457,104 @@
                     </tr>
                 `).join("");
             }
+
+            const operatorPanel = document.getElementById("storico-operatori");
+            const operatorSelect = document.getElementById("storico-operatori-scelta");
+            const operatorStatus = document.getElementById("storico-operatori-stato");
+            const operatorResults = document.getElementById("storico-operatori-risultati");
+            const operatorPages = document.getElementById("storico-operatori-pagine");
+            const operatorPrev = document.getElementById("storico-operatori-prev");
+            const operatorNext = document.getElementById("storico-operatori-next");
+            let operatorRequest = 0;
+
+            async function loadOperatorTimeline(number = 1) {
+                const request = ++operatorRequest;
+                const query = new URLSearchParams({
+                    date_from: value("storico-operatori-da"),
+                    date_to: value("storico-operatori-a"),
+                    operatore: operatorSelect.value,
+                    page: String(number),
+                });
+                const sep = page.dataset.operatoriUrl.includes("?") ? "&" : "?";
+                operatorStatus.textContent = "Caricamento timeline…";
+                operatorResults.replaceChildren();
+                operatorPages.classList.add("d-none");
+
+                try {
+                    const response = await window.avpFetch(`${page.dataset.operatoriUrl}${sep}${query}`);
+                    const data = await response.json();
+                    if (request !== operatorRequest) return;
+                    if (!response.ok || !data.ok) {
+                        operatorStatus.textContent = data.error || "Errore nel caricamento della timeline.";
+                        return;
+                    }
+
+                    const selected = operatorSelect.value;
+                    operatorSelect.replaceChildren(new Option("Tutti gli operatori", ""));
+                    data.operators.forEach(name => operatorSelect.add(new Option(name, name)));
+                    operatorSelect.value = data.operators.includes(selected) ? selected : "";
+                    if (selected && !operatorSelect.value) {
+                        loadOperatorTimeline();
+                        return;
+                    }
+
+                    operatorStatus.textContent = data.total
+                        ? `${data.orders} righe ODP · ${data.total} passaggi`
+                        : "Nessun passaggio attribuibile nel periodo selezionato.";
+                    let lastDay = "";
+                    operatorResults.innerHTML = data.rows.map(row => {
+                        const heading = row.giorno === lastDay ? "" : `<h3 class="h6 border-bottom pb-2 mt-3">${esc(row.giorno)}</h3>`;
+                        lastDay = row.giorno;
+                        const tone = {
+                            presa_in_carico: "primary", riattivazione: "primary", sospensione: "warning",
+                            chiusura_parziale: "warning", fase_completata: "success", ordine_completato: "success",
+                        }[row.categoria] || "secondary";
+                        const phase = row.fase ? `Fase ${window.phaseLabel(row.fase)}` : "";
+                        const transition = row.fase_successiva ? ` → Fase ${window.phaseLabel(row.fase_successiva)}` : "";
+                        const scope = row.group_uid
+                            ? (row.modalita === "single_member" ? "Chiusura singola dal gruppo" : "Gruppo associato")
+                            : "";
+                        return `${heading}<div class="storico-timeline">
+                            <div class="storico-timeline-item pb-2">
+                                <div class="d-flex flex-wrap align-items-center gap-2">
+                                    <time class="small text-muted text-nowrap">${esc(row.ora)}</time>
+                                    <strong>${esc(row.operatore)}</strong>
+                                    <span class="badge text-bg-${tone}">${esc(row.evento)}</span>
+                                    <span class="small">${esc(phase + transition)}</span>
+                                </div>
+                                <div class="small mt-1">
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline js-storico-detail"
+                                            data-kind="order" data-key="${esc(row.key)}">${esc(row.ordine)} · riga ${esc(row.riga)}</button>
+                                    ${row.articolo ? ` · ${esc(row.articolo)}` : ""}
+                                    ${scope ? ` · <span class="text-muted" title="${esc(row.group_uid)}">${esc(scope)}</span>` : ""}
+                                    ${row.autore && row.autore !== row.operatore ? ` · Registrato da ${esc(row.autore)}` : ""}
+                                </div>
+                            </div>
+                        </div>`;
+                    }).join("");
+                    operatorPages.classList.toggle("d-none", data.total_pages <= 1);
+                    document.getElementById("storico-operatori-pagina").textContent = `Pagina ${data.page} di ${data.total_pages}`;
+                    operatorPrev.disabled = data.page <= 1;
+                    operatorNext.disabled = data.page >= data.total_pages;
+                    operatorPrev.onclick = () => loadOperatorTimeline(data.page - 1);
+                    operatorNext.onclick = () => loadOperatorTimeline(data.page + 1);
+                } catch (error) {
+                    if (request === operatorRequest) operatorStatus.textContent = "Errore di comunicazione con il server.";
+                }
+            }
+
+            operatorPanel.addEventListener("toggle", () => {
+                if (operatorPanel.open && !operatorRequest) loadOperatorTimeline();
+            });
+            document.getElementById("storico-operatori-form").addEventListener("submit", event => {
+                event.preventDefault();
+                loadOperatorTimeline();
+            });
+            operatorSelect.addEventListener("change", () => loadOperatorTimeline());
+            operatorResults.addEventListener("click", event => {
+                const btn = event.target.closest(".js-storico-detail");
+                if (btn) openDetail(btn);
+            });
 
             function resetLotSearch() {
                 lotRequestVersion += 1;
