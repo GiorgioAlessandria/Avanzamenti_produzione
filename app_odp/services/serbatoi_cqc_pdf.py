@@ -1,12 +1,13 @@
 from datetime import datetime
 from io import BytesIO
+from pathlib import Path
 from xml.sax.saxutils import escape
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
-from reportlab.platypus import LongTable, Paragraph, SimpleDocTemplate, Spacer, TableStyle
+from reportlab.platypus import Image, LongTable, Paragraph, SimpleDocTemplate, Spacer, TableStyle
 
 
 def build_cqc_pdf(cliente, articolo, fresature, rientri):
@@ -21,8 +22,17 @@ def build_cqc_pdf(cliente, articolo, fresature, rientri):
     def testo(valore, stile="BodyText"):
         return Paragraph(escape(str(valore or "-")).replace("\n", "<br/>"), stili[stile])
 
+    logo_path = Path(__file__).resolve().parents[1] / "static" / "assets" / "img" / "logo_completo.jpg"
+    intestazione = testo("BERNARDI s.r.l.", "Heading3")
+    if logo_path.is_file():
+        logo = Image(str(logo_path), hAlign="LEFT")
+        logo.drawHeight *= (32 * mm) / logo.drawWidth
+        logo.drawWidth = 32 * mm
+        intestazione = logo
+
+    riferimento_cliente = f"Ordine cliente {cliente.riferimento} | Riga {cliente.id_riga}"
     storia = [
-        testo("BERNARDI s.r.l.", "Heading3"),
+        intestazione,
         testo("CQC - Certificato di controllo qualità", "Title"),
         testo(f"Cliente {cliente.cliente} | Ordine {cliente.riferimento} | Riga {cliente.id_riga}", "Heading3"),
         testo(f"Articolo cliente {articolo.codice_oss} - {articolo.descrizione}"),
@@ -41,7 +51,7 @@ def build_cqc_pdf(cliente, articolo, fresature, rientri):
             data = datetime.fromisoformat(c.data).strftime("%d/%m/%Y %H:%M")
             revisione = f" rev. {c.piano['revisione']}" if c.piano["revisione"] else ""
             storia.extend([
-                testo(riferimento, "Heading3"),
+                testo(f"{riferimento} | {riferimento_cliente}", "Heading3"),
                 testo(f"{data} | Operatore {c.operatore} | Piano {c.piano['codice']}{revisione}"),
                 testo(f"Quantità lotto: {c.quantita} pz | Conformi: {c.quantita - c.ko} pz | KO: {c.ko} pz"),
                 Spacer(1, 2 * mm),

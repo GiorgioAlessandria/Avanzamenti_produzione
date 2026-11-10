@@ -1,6 +1,6 @@
 import hashlib
 import json
-from collections import defaultdict
+from collections import Counter, defaultdict
 from functools import cache
 from pathlib import Path
 import secrets
@@ -13,7 +13,8 @@ from werkzeug.utils import secure_filename
 
 from app_odp.models import db, InputOdp, AcqOrdineClienteAperto, AcqOrdineFornitoreAperto
 from app_odp.operator_session import active_policy, active_user, active_token
-from app_odp.policy.decorator import require_active_any_perm
+from app_odp.policy.decorator import require_active_any_perm, require_active_perm
+from app_odp.policy.serbatoi import SERBATOI_OPERATIVI, SERBATOI_QUALITA
 from app_odp.routes_blueprint import main_bp
 from app_odp.serbatoi_models import SerbatoiRichiesta, SerbatoiRettificaVista
 from app_odp.services import serbatoi_service as s
@@ -27,6 +28,8 @@ from app_odp.services.serbatoi_mercato_service import mercato_alluminio
 TABS = {"clienti": "Ordini cliente", "produzione": "ODP e stock", "barre": "Ordini barre",
         "spezzoni": "Spezzoni", "magazzino": "Magazzino materiale", "storico": "Spedizioni", "articoli": "Parametri"}
 
+TABS_PRODUZIONE = {key: TABS[key] for key in ("clienti", "produzione", "storico")}
+
 FASI = (
     {"codice": "grezzo", "nome": "Grezzo", "stato": "Grezzo", "ubicazione": "Bernardi"},
     {"codice": "in_lavorazione", "nome": "In lavorazione", "stato": "In lavorazione", "ubicazione": "Bernardi"},
@@ -35,6 +38,10 @@ FASI = (
     {"codice": "ossidato", "nome": "Ossidato", "stato": "Ossidato", "ubicazione": "Bernardi"},
     {"codice": "spedito", "nome": "Spedito", "stato": "Spedito", "ubicazione": "Cliente"},
 )
+
+FASI_MAGAZZINO = (*FASI[:4],
+                  {"codice": "cq", "nome": "Controllo qualità", "stato": cq.STATO_CQ, "ubicazione": "Bernardi"},
+                  FASI[4])
 
 FASI_ODP = (
     {"codice": "grezzo", "nome": "Grezzo", "stato": "Grezzo", "ubicazione": "Bernardi"},
@@ -80,9 +87,9 @@ def _fasi_da_stati(stati):
     return result
 
 
-def _ordini_per_fase(rows, tab, clienti, produzioni, ubicazione, fasi=FASI):
+def _ordini_per_fase(rows, tab, ubicazione, fasi):
     result = {}
-    for fase in (*fasi, {"codice": "da_assegnare", "ubicazione": ""}):
+    for fase in fasi:
         gruppi = {}
         if ubicazione and fase["ubicazione"] != ubicazione:
             result[fase["codice"]] = []
@@ -94,28 +101,11 @@ def _ordini_per_fase(rows, tab, clienti, produzioni, ubicazione, fasi=FASI):
             obj = row["oggetto"]
             titolo, target_tab, target_id = row["titolo"], tab, row["id"]
             info = obj.cliente if tab == "clienti" else row["info"] if tab == "storico" else ""
-            tipo = "ordine"
-            if tab == "magazzino":
-                if row.get("tab_dettaglio"):
-                    target_tab, target_id = row["tab_dettaglio"], row["id_dettaglio"]
-                    tipo = "stock" if target_tab == "produzione" else "ordine"
-                elif obj.cliente_id:
-                    c = clienti[obj.cliente_id]
-                    titolo, info = f"{c.riferimento} · riga {c.id_riga}", c.cliente
-                    target_tab, target_id = "clienti", c.id
-                elif obj.produzione_id:
-                    p = produzioni[obj.produzione_id]
-                    tipo = "lavorazione" if obj.stato == "In lavorazione" else "stock"
-                    titolo = p.riferimento if tipo == "lavorazione" else f"Stock · {p.riferimento}"
-                    info, target_tab, target_id = "ODP", "produzione", p.id
-                else:
-                    titolo, info, tipo = f"Magazzino · {obj.riferimento}", "Materiale libero", "stock"
-            key = target_tab, target_id, tipo
+            key = target_tab, target_id
             if key not in gruppi:
                 gruppi[key] = dict(titolo=titolo, info=info, codice=row["codice"],
                                    descrizione=row.get("descrizione", ""),
-                                   fase=row.get("fase_dettaglio", ("lavorati" if fase["codice"] not in ("grezzo","in_lavorazione") else ""))
-                                   if target_tab == "produzione" and tab != "produzione" else fase["codice"],
+                                   fase=fase["codice"],
                                    tab=target_tab, id=target_id, quantita=0,
                                    rettifica=bool(row.get("pezzi_rettificati")) and fase["codice"] == "lavorati",
                                    scadenza=row.get("scadenza") if tab != "clienti" or fase["codice"] != "spedito" else None)
@@ -142,12 +132,12 @@ def _url_cq(**kwargs):
 
 
 @main_bp.route("/serbatoi/qualita", methods=["GET", "POST"])
-@require_active_any_perm(*cq.PERMESSI_CQ)
+@require_active_any_perm(*SERBATOI_QUALITA)
 def serbatoi_qualita():
     _accesso()
     policy = active_policy()
-    can_piani = policy.can("serbatoi_produzione") or policy.can("serbatoi_acquisti") or policy.has_direct_admin_role
-    can_contabilizza = policy.can("serbatoi_acquisti") or policy.has_direct_admin_role
+    can_piani = any(policy.can(code) for code in SERBATOI_OPERATIVI)
+    can_contabilizza = policy.can("all_serbatoi")
     session.setdefault("serbatoi_csrf", secrets.token_urlsafe(32))
     if request.method == "POST":
         dati = request.form
@@ -174,13 +164,19 @@ def serbatoi_qualita():
                     abort(404)
                 id_selezionato = controllo.id
                 if azione == "controlla":
+                    lotto = s.record(s.Lotto, controllo.lotto_id)
+                    piano = cq.piano_controllo_rientro(controllo, lotto)
+                    if not piano:
+                        raise s.SerbatoiError(f"Manca il piano di controllo per il codice {lotto.codice}.")
                     esiti = [
                         dict(verificati=dati.get(f"verificati_{i}"), ko=dati.get(f"ko_{i}"),
                              note=dati.get(f"note_{i}"), eseguito=dati.get(f"eseguito_{i}") == "1")
-                        for i in range(len(controllo.piano["controlli"]))
+                        for i in range(len(piano["controlli"]))
                     ]
                     cq.conferma_rientro(controllo, dict(versione=dati.get("versione"), esiti=esiti),
                                        dati.get("ko_totale"), _current_username())
+                    if not can_piani:
+                        id_selezionato = None
                     messaggio = "Controllo registrato. I pezzi conformi sono disponibili per la spedizione."
                 else:
                     if dati.get("contabilizzato") != "1":
@@ -202,21 +198,25 @@ def serbatoi_qualita():
         s.Cliente, s.Cliente.id == cq.Controllo.cliente_id
     ).join(s.Lotto, s.Lotto.id == cq.Controllo.lotto_id).filter(
         cq.Controllo.fase == "rientro"
-    ).order_by(cq.Controllo.data.isnot(None), cq.Controllo.id.desc()).all()
+    )
+    if not can_piani:
+        righe = righe.filter(cq.Controllo.data.is_(None), s.Lotto.stato == cq.STATO_CQ)
+    righe = righe.order_by(cq.Controllo.data.isnot(None), cq.Controllo.id.desc()).all()
     selezione = next((r for r in righe if str(r[0].id) == request.args.get("id")), None)
+    piano_selezionato = cq.piano_controllo_rientro(selezione[0], selezione[2]) if selezione else None
     giacenze = {r[0].id: db.session.get(s.Lotto, r[0].lotto_ko_id).quantita
-                for r in righe if r[0].lotto_ko_id and not r[0].contabilizzato_il}
+                for r in righe if can_piani and r[0].lotto_ko_id and not r[0].contabilizzato_il}
     ddt = s.Movimento.query.filter_by(tipo="RIENTRO", destinazione_id=selezione[2].id).first() if selezione else None
     codice_piano = request.args.get("piano")
     piano_in_modifica = cq.piano_codice(codice_piano) if can_piani and codice_piano else None
     return render_template("serbatoi_qualita.j2", righe=righe, selezione=selezione, giacenze=giacenze,
-                           piani=cq.Piano.query.order_by(cq.Piano.codice).all(), can_piani=can_piani,
-                           piano_in_modifica=piano_in_modifica,
+                           piani=cq.Piano.query.order_by(cq.Piano.codice).all() if can_piani else (), can_piani=can_piani,
+                           piano_in_modifica=piano_in_modifica, piano_selezionato=piano_selezionato,
                            can_contabilizza=can_contabilizza, csrf=session["serbatoi_csrf"], url_cq=_url_cq, ddt=ddt)
 
 
 @main_bp.get("/serbatoi/cqc/<int:cliente_id>")
-@require_active_any_perm(*cq.PERMESSI_CQ)
+@require_active_any_perm(*SERBATOI_OPERATIVI)
 def serbatoi_cqc(cliente_id):
     _accesso()
     cliente = db.get_or_404(s.Cliente, cliente_id)
@@ -224,10 +224,7 @@ def serbatoi_cqc(cliente_id):
         fresature, rientri = cq.dati_cqc(cliente)
     except s.SerbatoiError as exc:
         flash(str(exc), "warning")
-        policy = active_policy()
-        if policy.can("serbatoi_produzione") or policy.can("serbatoi_acquisti"):
-            return redirect(_url(tab="clienti", id=cliente.id))
-        return redirect(_url_cq())
+        return redirect(_url(tab="clienti", id=cliente.id))
     articolo = s.record(s.Articolo, cliente.articolo_id)
     lotti = []
     for r in rientri:
@@ -276,21 +273,27 @@ def _riga_barre(b, lotti, prezzo=None):
 
 
 @main_bp.get("/serbatoi/mercato-alluminio")
-@require_active_any_perm("serbatoi_produzione", "serbatoi_acquisti")
+@require_active_perm("all_serbatoi")
 def serbatoi_mercato_alluminio():
     _accesso()
     return jsonify(mercato_alluminio(s._now_rome_dt().date()))
 
 
 @main_bp.get("/serbatoi")
-@require_active_any_perm("serbatoi_produzione", "serbatoi_acquisti")
+@require_active_any_perm(*SERBATOI_OPERATIVI)
 def serbatoi_page():
     _accesso()
     tab = request.args.get("tab", "clienti")
     if tab not in TABS:
         abort(404)
+    can_all = active_policy().can("all_serbatoi")
+    tabs = TABS if can_all else TABS_PRODUZIONE
+    if tab not in tabs:
+        abort(403)
     con_fasi = tab in ("clienti", "produzione", "magazzino", "storico")
     fasi_vista = FASI_ODP if tab == "produzione" else FASI_SPEDIZIONI if tab == "storico" else FASI
+    if tab == "magazzino":
+        fasi_vista = FASI_MAGAZZINO
     fase = request.args.get("fase", "") if con_fasi else ""
     ubicazione = request.args.get("ubicazione", "") if con_fasi and tab != "produzione" else ""
     if fase not in ("", "da_assegnare", *(f["codice"] for f in fasi_vista)) or ubicazione not in ("", "Bernardi", "Gaser", "Cliente"):
@@ -337,6 +340,7 @@ def serbatoi_page():
                 key=lambda scadenza: PRIORITA_SCADENZA[scadenza["colore"]], default=None,
             )
 
+    quote_lavorazione = {}
     rows = []
     prezzi_barre, serie_prezzi = {}, []
     riferimento_prezzo = scostamento_ultimo = None
@@ -404,10 +408,20 @@ def serbatoi_page():
                         info = f"{c.cliente} · {l.riferimento}"
                     scadenza = {"colore": "grigio", "testo": "Spedizione registrata"} if l.stato == "Spedito" else riepilogo_cliente(c.id)["scadenza"]
                     stato = "Da spedire" if l.stato == "Ossidato" else fase_spedizione["nome"]
+                fasi_lotto = _fasi_da_stati({f"{l.stato} · {l.ubicazione}": l.quantita})
+                assegnati = l.quantita if l.cliente_id else 0
+                if tab == "magazzino":
+                    if l.stato == cq.STATO_CQ:
+                        fasi_lotto = {"cq": l.quantita}
+                    if not l.cliente_id and p and l.stato == "In lavorazione":
+                        if p.id not in quote_lavorazione:
+                            quote_lavorazione[p.id] = sum(s.quote_future(p).values())
+                        assegnati = min(l.quantita, quote_lavorazione[p.id])
+                        quote_lavorazione[p.id] -= assegnati
                 rows.append(dict(id=l.id, titolo=titolo, codice=l.codice,
                                  info=info, scadenza=scadenza,
                                  stato=stato, quantita=l.quantita, oggetto=l,
-                                 fasi=_fasi_da_stati({f"{l.stato} · {l.ubicazione}": l.quantita})))
+                                 fasi=fasi_lotto, assegnati=assegnati))
         if tab == "magazzino":
             for p in produzioni:
                 ordine = odp_by_key.get((p.id_documento, p.id_riga))
@@ -422,7 +436,7 @@ def serbatoi_page():
                         id=f"grezzo-cliente-{impegno_id}", titolo=f"{c.riferimento} · riga {c.id_riga}",
                         codice=ordine.CodArt, descrizione=ordine.DesArt, info=f"{c.cliente} · ODP {p.riferimento}",
                         scadenza=riepilogo_cliente(c.id)["scadenza"], stato="Grezzo · Pianificato",
-                        quantita=quantita, oggetto=p, fasi={"grezzo": quantita},
+                        quantita=quantita, oggetto=p, fasi={"grezzo": quantita}, assegnati=quantita,
                         tab_dettaglio="clienti", id_dettaglio=c.id, fase_dettaglio="grezzo",
                     ))
                 liberi = p.quantita - sum(quote.values())
@@ -431,7 +445,7 @@ def serbatoi_page():
                         id=f"grezzo-stock-{p.id}", titolo=f"Stock · {p.riferimento}",
                         codice=ordine.CodArt, descrizione=ordine.DesArt, info=p.riferimento_stock,
                         scadenza=STOCK_INTERNO, stato="Grezzo · Pianificato",
-                        quantita=liberi, oggetto=p, fasi={"grezzo": liberi},
+                        quantita=liberi, oggetto=p, fasi={"grezzo": liberi}, assegnati=0, da_produrre=liberi,
                         tab_dettaglio="produzione", id_dettaglio=p.id, fase_dettaglio="grezzo",
                     ))
     else:
@@ -448,8 +462,57 @@ def serbatoi_page():
         rows = [r for r in rows if any(r.get("fasi", {}).get(f["codice"], 0) for f in fasi_vista if f["ubicazione"] == ubicazione)]
     totali_fasi = {f["codice"]: sum(r.get("fasi", {}).get(f["codice"], 0) for r in rows)
                    if not ubicazione or f["ubicazione"] == ubicazione else 0 for f in fasi_vista}
-    da_assegnare = sum(r.get("fasi", {}).get("da_assegnare", 0) for r in rows) if not ubicazione else 0
-    ordini_per_fase = _ordini_per_fase(rows, tab, clienti_by_id, produzioni_by_id, ubicazione, fasi_vista) if con_fasi else {}
+    ordini_per_fase = _ordini_per_fase(rows, tab, ubicazione, fasi_vista) if con_fasi and tab != "magazzino" else {}
+    riepilogo_magazzino = {}
+    scorte_materiali = {"Barra": Counter(), "Spezzone": Counter()}
+    giacenze_spezzoni = {}
+    if tab in ("magazzino", "spezzoni") and ubicazione in ("", "Bernardi"):
+        codici = [codice for codice in cfg.codici_spezzoni
+                  if not filtro or filtro in f"{codice} {descrizioni.get(codice, '')}".casefold()]
+        giacenze = s.giacenze_spezzoni_erp(codici)
+        giacenze_spezzoni = {codice: giacenze.get(codice) for codice in sorted(codici)}
+    serbatoi_da_produrre = 0
+    riepilogo_clienti = {}
+    if tab == "magazzino":
+        for lotto in lotti:
+            if lotto.tipo not in scorte_materiali or lotto.stato != "Disponibile":
+                continue
+            if ubicazione and lotto.ubicazione != ubicazione:
+                continue
+            if filtro and filtro not in f"{lotto.codice} {descrizioni.get(lotto.codice, '')}".casefold():
+                continue
+            scorte_materiali[lotto.tipo][lotto.codice] += lotto.quantita
+        serbatoi_da_produrre = sum(r.get("da_produrre", 0) for r in rows)
+        for f in fasi_vista:
+            codice = f["codice"]
+            if ubicazione and f["ubicazione"] != ubicazione:
+                continue
+            assegnati = sum(r["assegnati"] for r in rows if r["fasi"].get(codice))
+            riepilogo_magazzino[codice] = dict(assegnati=assegnati, stock=totali_fasi[codice] - assegnati)
+    elif tab == "clienti":
+        aperti = [r for r in rows if r["fasi"]["spedito"] < r["oggetto"].quantita]
+        id_aperti = {r["id"] for r in aperti}
+        id_per_fase = {
+            codice: {ordine["id"] for ordine in ordini} & id_aperti
+            for codice, ordini in ordini_per_fase.items()
+        }
+        scadenze = [r["scadenza"] or {} for r in aperti]
+        lead = [scadenza["giorni"] for scadenza in scadenze if scadenza.get("giorni") is not None]
+        riepilogo_clienti = dict(
+            righe=len(aperti),
+            grezzo=len(id_per_fase["grezzo"]),
+            in_lavorazione=len(id_per_fase["in_lavorazione"]),
+            lavorati=len(id_per_fase["lavorato"] | id_per_fase["gaser"]),
+            ossidati=len(id_per_fase["ossidato"]),
+            per_ubicazione={
+                posto: len(set().union(*(id_per_fase[f["codice"]] for f in fasi_vista if f["ubicazione"] == posto)))
+                for posto in ("Bernardi", "Gaser")
+            },
+            giorni_ritardo=sum(max(0, (oggi - scadenza["consegna"]).days)
+                              for scadenza in scadenze if scadenza.get("consegna")),
+            lead_totale=sum(lead) if lead or not aperti else None,
+            lead_mancanti=len(aperti) - len(lead),
+        )
     if fase:
         matches_place = not ubicazione or any(f["codice"] == fase and f["ubicazione"] == ubicazione for f in fasi_vista)
         rows = [r for r in rows if matches_place and r.get("fasi", {}).get(fase, 0) > 0]
@@ -491,7 +554,7 @@ def serbatoi_page():
     elif tab in ("magazzino", "spezzoni", "storico") and detail:
         trace, docs = s.tracciabilita(detail)
     rientro_cq = bool(tab in ("magazzino", "storico") and detail
-                      and detail.stato == "Lavorato" and detail.ubicazione == "Gaser" and cq.piano_rientro(detail))
+                      and detail.stato == "Lavorato" and detail.ubicazione == "Gaser")
     if tab == "articoli":
         known = {code for a in articoli if a.attivo for code in (a.codice_oss, a.codice_lav)}
         avvisi = sorted({s._norm_text(r.CodArt) for r in clienti_erp_by_key.values()
@@ -515,18 +578,20 @@ def serbatoi_page():
             if (o.IdDocumento, o.IdRiga) not in acquisiti and s._norm_text(o.CodArt).upper() in (articolo.codice_lav, articolo.codice_oss):
                 odp_esclusi.append(dict(riferimento=f"{o.RifRegistraz or o.IdDocumento} · riga {o.IdRiga}",
                                         motivo="ODP presente nella cache ma non ancora acquisito in Serbatoi. Aggiorna e verifica gli avvisi su articolo e fasi del ciclo."))
-    return render_template("serbatoi.j2", tab=tab, tabs=TABS, rows=rows, selected=selected, detail=detail,
+    return render_template("serbatoi.j2", tab=tab, tabs=tabs, rows=rows, selected=selected, detail=detail,
                            odp_assegnabili=odp_assegnabili, odp_esclusi=odp_esclusi,
                            articoli=articoli, clienti=clienti, produzioni=produzioni, lotti=lotti, barre=barre,
                            fornitori=lista_fornitori, trace=trace, docs=docs, impegni=impegni,
                            disponibilita=disponibilita, stati=stati, esclusi=avvisi,
                            servizio=s, serbatoi_url=_url, csrf=session["serbatoi_csrf"], request_id=lambda: uuid4().hex,
                            fasi=fasi_vista, con_fasi=con_fasi, fase_filtro=fase, ubicazione_filtro=ubicazione,
-                           totali_fasi=totali_fasi, da_assegnare=da_assegnare,
-                           ordini_per_fase=ordini_per_fase,
+                           totali_fasi=totali_fasi,
+                           ordini_per_fase=ordini_per_fase, riepilogo_magazzino=riepilogo_magazzino,
+                           riepilogo_clienti=riepilogo_clienti, scorte_materiali=scorte_materiali,
+                           serbatoi_da_produrre=serbatoi_da_produrre, giacenze_spezzoni=giacenze_spezzoni,
                            parametri=cfg, descrizioni=descrizioni, tempistiche=config_tempi,
                            campi_tempistiche=s.TEMPI_SERBATOI, colori_scadenza=s.COLORI_SCADENZA,
-                           ordini_barre_erp=[r for r in s.riferimenti_barre_erp(cfg) if db.session.get(s.BarreOrigine,(r.IdDocumento,r.IdRigaDoc)) is None],
+                           ordini_barre_erp=[r for r in s.riferimenti_barre_erp(cfg) if db.session.get(s.BarreOrigine,(r.IdDocumento,r.IdRigaDoc)) is None] if tab == "barre" else (),
                            origine_barra=origine_barra,
                            serie_prezzi=serie_prezzi, riferimento_prezzo=riferimento_prezzo,
                            scostamento_ultimo=scostamento_ultimo,
@@ -535,31 +600,31 @@ def serbatoi_page():
                            barra_manuale=db.session.get(s.BarreManuale,detail.id) if tab == "barre" and detail else None,
                            forn_barre_label=next((f.RagioneSociale or f.CodCliFor for f in lista_fornitori if (f.TipoAnagrafica,f.CodCliFor)==(cfg.fornitore_barre_tipo,cfg.fornitore_barre_codice)),"Non configurato"),
                            forn_spezzoni_label=next((f.RagioneSociale or f.CodCliFor for f in lista_fornitori if (f.TipoAnagrafica,f.CodCliFor)==(cfg.fornitore_spezzoni_tipo,cfg.fornitore_spezzoni_codice)),"Non configurato"),
-                           can_produzione=active_policy().can("serbatoi_produzione"),
-                           can_acquisti=active_policy().can("serbatoi_acquisti"),
+                           can_produzione=True, can_acquisti=can_all,
                            rientro_cq=rientro_cq, cqc_presente=cqc_presente,
                            can_rettifica_vista=active_policy().has_direct_admin_role)
 
 
 @main_bp.post("/serbatoi/azione")
-@require_active_any_perm("serbatoi_produzione", "serbatoi_acquisti")
+@require_active_any_perm(*SERBATOI_OPERATIVI)
 def serbatoi_azione():
     _accesso()
     data = request.form
     if not session.get("serbatoi_csrf") or not secrets.compare_digest(data.get("csrf", ""), session["serbatoi_csrf"]):
         abort(400, "Sessione del modulo scaduta. Ricaricare la pagina.")
     action = data.get("azione", "")
-    production_actions = {"articolo", "catalogo_precedente", "attivo", "fasi", "assegna_odp", "assegna_magazzino", "libera_impegno", "libera_materiale", "consuma", "riconcilia", "riconcilia_cliente"}
-    purchasing_actions = {"barre", "ricevi", "taglia", "collega_barre_erp", "conferma_barre_manuali",
-                          "prezzo_barre", "riferimento_prezzo_barre"}
+    production_actions = {"sync", "avanza", "assegna_odp", "assegna_magazzino", "libera_impegno",
+                          "libera_materiale", "consuma", "riconcilia", "riconcilia_cliente"}
+    all_actions = {"articolo", "catalogo_precedente", "attivo", "fasi", "parametri", "tempistiche",
+                   "barre", "ricevi", "taglia", "collega_barre_erp", "conferma_barre_manuali",
+                   "prezzo_barre", "riferimento_prezzo_barre"}
     visual_actions = {"mostra_lavorati", "ripristina_fase_odp"}
-    if action in production_actions and not active_policy().can("serbatoi_produzione"):
-        abort(403)
-    if action in purchasing_actions and not active_policy().can("serbatoi_acquisti"):
+    can_all = active_policy().can("all_serbatoi")
+    if action in all_actions and not can_all:
         abort(403)
     if action in visual_actions and not active_policy().has_direct_admin_role:
         abort(403)
-    if action not in production_actions | purchasing_actions | visual_actions | {"sync", "avanza", "parametri", "tempistiche"}:
+    if action not in production_actions | all_actions | visual_actions:
         abort(400)
     ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
     changed, notices = 0, []
@@ -577,7 +642,7 @@ def serbatoi_azione():
             db.session.flush()
             user = _current_username()
             if action == "sync":
-                changed, notices = s.sincronizza()
+                changed, notices = s.sincronizza(includi_barre=can_all)
             elif action == "parametri":
                 s.salva_parametri(data,user)
             elif action == "tempistiche":
@@ -681,6 +746,6 @@ def serbatoi_azione():
         if ajax:
             return jsonify(ok=False, error="Dati modificati da un'altra operazione. Ricaricare la pagina."), 409
         flash("Dati modificati da un'altra operazione o riferimento già presente. Ricaricare la pagina.", "warning")
-    return redirect(_url(tab=data.get("tab") if data.get("tab") in TABS else "clienti", id=data.get("id", ""),
+    return redirect(_url(tab=data.get("tab") if data.get("tab") in (TABS if can_all else TABS_PRODUZIONE) else "clienti", id=data.get("id", ""),
                          fase=data.get("fase", ""), ubicazione=data.get("ubicazione", ""), q=data.get("q", ""),
                          fornitore=data.get("fornitore_filtro", "")))

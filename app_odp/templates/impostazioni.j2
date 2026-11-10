@@ -7,6 +7,32 @@
 {% block content %}
     <main class="container-fluid mt-4 mb-4">
         {% if start_page_csrf %}
+            <section class="card mb-4">
+                <div class="card-body">
+                    <h2 class="h5">Cambia il tuo codice di accesso</h2>
+                    {% for message in get_flashed_messages(category_filter=['change-code-error']) %}
+                        <div class="alert alert-danger" role="alert">{{ message|e }}</div>
+                    {% endfor %}
+                    <form class="row g-3 align-items-end" method="post"
+                          action="{{ operator_url_for('main.impostazioni_cambia_codice_accesso') }}">
+                        <input type="hidden" name="csrf_token" value="{{ start_page_csrf|e }}">
+                        <label class="col-md">Codice attuale
+                            <input class="form-control" name="codice_attuale" type="password"
+                                   autocomplete="current-password" required>
+                        </label>
+                        <label class="col-md">Nuovo codice
+                            <input class="form-control" name="nuovo_codice" type="password"
+                                   minlength="6" pattern="[A-Za-z0-9]+" autocomplete="new-password" required>
+                        </label>
+                        <label class="col-md">Conferma nuovo codice
+                            <input class="form-control" name="conferma_codice" type="password"
+                                   minlength="6" pattern="[A-Za-z0-9]+" autocomplete="new-password" required>
+                        </label>
+                        <div class="col-md-auto"><button class="btn btn-primary">Cambia codice</button></div>
+                        <div class="form-text">Usa almeno 6 caratteri, solo lettere e numeri. Dopo il salvataggio accedi di nuovo.</div>
+                    </form>
+                </div>
+            </section>
             {% include 'partials/_impostazioni_pagina_iniziale.j2' %}
         {% endif %}
 

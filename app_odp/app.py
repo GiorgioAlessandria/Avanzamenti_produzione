@@ -676,9 +676,9 @@ def _ensure_builtin_permissions() -> None:
         "utente_amministrazione": "Gestione delle note per produzione negli ordini cliente",
         "storico_ordini": "Storico ordini",
         "scorte_segnalazione_libera": ("Segnalazione scorte con testo libero"),
-        "serbatoi_produzione": "Serbatoi: ordini cliente, assegnazioni, catalogo e produzione",
-        "serbatoi_acquisti": "Serbatoi: barre, spezzoni, conto lavoro e spedizioni",
-        "CQ_serbatoi": "Serbatoi: controlli qualità dei rientri Gaser e consultazione CQC",
+        "all_serbatoi": "Serbatoi: accesso a tutte le sezioni",
+        "produzione_serbatoi": "Serbatoi: ordini cliente, ODP e stock, spedizioni e controllo qualità",
+        "fresa_serbatoi": "Serbatoi: accesso al solo controllo qualità",
         # Rifiuti
         "rifiuti_carica": ("Caricamento dei rifiuti nello stock virtuale"),
         "rifiuti_elimina": (
@@ -725,6 +725,9 @@ def _ensure_builtin_permissions() -> None:
         "conferma_lettura_ordine": "utente_produzione",
         "priorità_vendite": "utente_produzione",
         "nomi_fase": None,
+        "serbatoi_produzione": "produzione_serbatoi",
+        "CQ_serbatoi": "fresa_serbatoi",
+        "serbatoi_acquisti": None,
     }
     for legacy_code, replacement_code in replacements.items():
         replacement = (

@@ -51,7 +51,7 @@
                     <span>Vista LCT</span>
                 </a>
             {% endif %}
-            {% if nav_policy and (nav_policy.can('serbatoi_produzione') or nav_policy.can('serbatoi_acquisti')) %}
+            {% if nav_policy and (nav_policy.can('all_serbatoi') or nav_policy.can('produzione_serbatoi')) %}
                 <div class="d-flex">
                     <a href="{{ operator_url_for('main.serbatoi_page') }}" class="text-dark fs-4">
                         <span class="d-flex align-items-center gap-2" style="font-size: 25px;">
@@ -64,7 +64,7 @@
                     </a>
                 </div>
             {% endif %}
-            {% if nav_policy and nav_policy.can('CQ_serbatoi') %}
+            {% if nav_policy and nav_policy.can('fresa_serbatoi') and not (nav_policy.can('all_serbatoi') or nav_policy.can('produzione_serbatoi')) %}
                 <a href="{{ operator_url_for('main.serbatoi_qualita') }}" class="d-flex align-items-center gap-2 text-dark" style="font-size: 25px;">
                     <svg xmlns="http://www.w3.org/2000/svg" class="flex-shrink-0" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                         <path d="M9 4H6a2 2 0 0 0-2 2v14h16V6a2 2 0 0 0-2-2h-3M9 3h6v4H9zM8 13l3 3 5-6"/>

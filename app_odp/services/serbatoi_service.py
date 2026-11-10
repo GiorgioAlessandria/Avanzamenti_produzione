@@ -8,9 +8,9 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import re
 from uuid import uuid4
 
-from sqlalchemy import or_, update
+from sqlalchemy import func, or_, update
 
-from app_odp.models import db, InputOdp, AcqOrdineClienteAperto, AcqClienteFornitore, AcqOrdineFornitoreAperto, AcqArticoli, AcqArticoliLookup
+from app_odp.models import db, InputOdp, AcqOrdineClienteAperto, AcqClienteFornitore, AcqOrdineFornitoreAperto, AcqArticoli, AcqArticoliLookup, AcqGiacenze
 from app_odp.serbatoi_models import (
     SerbatoiArticolo as Articolo, SerbatoiCliente as Cliente,
     SerbatoiProduzione as Produzione, SerbatoiImpegno as Impegno,
@@ -22,7 +22,7 @@ from app_odp.serbatoi_models import (
     SerbatoiPrezzoBarre as PrezzoBarre, SerbatoiRiferimentoBarre as RiferimentoBarre,
     SerbatoiTempistiche as Tempistiche,
 )
-from app_odp.services.acquisti_service import _parse_acquisti_date
+from app_odp.services.acquisti_service import ACQUISTI_MAGAZZINI_MATERIALE, _normalize_acq_mag_code, _parse_acquisti_date
 from app_odp.services.order_helpers import (
     _norm_text, _parse_qty_decimal, _phase_sequence_for_ordine,
     _now_rome_dt, _ordine_ref_label,
@@ -258,6 +258,20 @@ def descrizioni_articoli():
     return descriptions
 
 
+def giacenze_spezzoni_erp(codici):
+    if not codici:
+        return {}
+    giacenze = Counter()
+    righe = AcqGiacenze.query.filter(func.upper(AcqGiacenze.CodArt).in_(codici))
+    for riga in righe:
+        if _normalize_acq_mag_code(riga.CodMag) not in ACQUISTI_MAGAZZINI_MATERIALE or riga.Giacenza is None:
+            continue
+        quantita = _parse_qty_decimal(riga.Giacenza)
+        if quantita.is_finite():
+            giacenze[riga.CodArt.upper()] += quantita
+    return {codice: _decimal_to_text(quantita) for codice, quantita in giacenze.items()}
+
+
 def riferimenti_barre_erp(cfg):
     return [r for r in AcqOrdineFornitoreAperto.query.all() if corrisponde_barre(r, cfg)]
 
@@ -457,8 +471,8 @@ def acquisisci_odp(ordine):
     return p
 
 
-def sincronizza():
-    count, avvisi = acquisisci_barre_erp(parametri())
+def sincronizza(*, includi_barre=True):
+    count, avvisi = acquisisci_barre_erp(parametri()) if includi_barre else (0, [])
     for row in AcqOrdineClienteAperto.query.all():
         a = articolo_per_codice(row.CodArt)
         if not a:
@@ -839,13 +853,12 @@ def avanza_materiale(lotto_id, quantita, azione, ddt, scarti, utente):
     if not origine_completa(l):
         raise SerbatoiError("Provenienza incompleta: registrare i prelievi spezzoni e gli ordini barre di origine prima di proseguire.")
     if azione == "rientro":
+        if bad:
+            raise SerbatoiError("Registrare tutti i pezzi rientrati. I KO si indicano nel controllo qualità.")
         piano = cq.piano_rientro(l)
-        if piano:
-            if bad:
-                raise SerbatoiError("Registrare tutti i pezzi rientrati. I KO si indicano nel controllo qualità.")
-            rientro = sposta(l, q, cq.STATO_CQ, target, utente, "RIENTRO", cliente_id=c.id, ddt=doc)
-            cq.accoda_rientro(rientro, piano)
-            return rientro
+        rientro = sposta(l, q, cq.STATO_CQ, target, utente, "RIENTRO", cliente_id=c.id, ddt=doc)
+        cq.accoda_rientro(rientro, piano)
+        return rientro
     if bad:
         sposta(l, bad, "Scarto", place, utente, "SCARTO", cliente_id=c.id, ddt=doc)
     return sposta(l, q, new, target, utente, azione.upper(), cliente_id=c.id, ddt=doc)

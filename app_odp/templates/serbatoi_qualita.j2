@@ -57,17 +57,17 @@
  {% endif %}
  <div class="row g-3">
   <section class="col-lg-5">
-   <div class="card"><h2 class="h6 card-header mb-0">Rientri Gaser e giacenza KO</h2>
+   <div class="card"><h2 class="h6 card-header mb-0">{{ 'Rientri Gaser e giacenza KO' if can_piani else 'Ordini da controllare' }}</h2>
     <div class="card-body">
-     <p class="small mb-2">KO da contabilizzare <strong>{{ giacenze.values()|sum }} pz</strong></p>
+     {% if can_piani %}<p class="small mb-2">KO da contabilizzare <strong>{{ giacenze.values()|sum }} pz</strong></p>{% endif %}
      <div class="list-group" style="max-height:65vh;overflow-y:auto">
       {% for cq, cliente, lotto in righe %}
        <a class="list-group-item list-group-item-action {{ 'active' if selezione and selezione[0].id == cq.id }}" {% if selezione and selezione[0].id == cq.id %}aria-current="true"{% endif %} href="{{ url_cq(id=cq.id) }}">
         <div class="fw-semibold">{{ cliente.riferimento }} · riga {{ cliente.id_riga }}</div>
-        <div class="small">{{ cq.piano.codice }} · {{ lotto.riferimento }} · {{ cq.quantita }} pz</div>
+        <div class="small">{{ cq.piano.codice or lotto.codice }} · {{ lotto.riferimento }} · {{ cq.quantita }} pz</div>
         <div class="small">{% if cq.risultati is none %}Da controllare{% elif cq.id in giacenze %}{{ giacenze[cq.id] }} KO da contabilizzare{% else %}Controllo completato{% endif %}</div>
        </a>
-      {% else %}<p class="text-body-secondary mb-0">Nessun rientro registrato per il controllo qualità.</p>{% endfor %}
+      {% else %}<p class="text-body-secondary mb-0">{{ 'Nessun rientro registrato per il controllo qualità.' if can_piani else 'Nessun ordine da controllare.' }}</p>{% endfor %}
      </div>
     </div>
    </div>
@@ -78,10 +78,11 @@
      {% set cq, cliente, lotto = selezione %}
      <p><strong>{{ cliente.riferimento }} · riga {{ cliente.id_riga }}</strong><br>{{ lotto.riferimento }}{% if ddt %} · DDT {{ ddt.ddt }}{% endif %} · {{ cq.quantita }} pezzi rientrati</p>
      {% if cq.risultati is none %}
+     {% if piano_selezionato %}
      <form method="post" action="{{ url_cq(id=cq.id) }}">
       <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="azione" value="controlla">
-      <input type="hidden" name="controllo_id" value="{{ cq.id }}"><input type="hidden" name="versione" value="{{ cq.piano.versione }}">
-      {% for c in cq.piano.controlli %}{% set i = loop.index0 %}{% set minimo = [cq.quantita, c.campione or cq.quantita]|min %}
+      <input type="hidden" name="controllo_id" value="{{ cq.id }}"><input type="hidden" name="versione" value="{{ piano_selezionato.versione }}">
+      {% for c in piano_selezionato.controlli %}{% set i = loop.index0 %}{% set minimo = [cq.quantita, c.campione or cq.quantita]|min %}
       <fieldset class="border rounded p-3 mb-3">
        <legend class="float-none w-auto fs-6 fw-semibold px-1 mb-1">Controllo {{ loop.index }}</legend>
        <p class="mb-1">{{ c.descrizione }}</p>
@@ -100,6 +101,7 @@
       </div>
       <p class="small text-body-secondary mt-2 mb-0">Conta ogni pezzo KO una sola volta anche se fallisce più controlli.</p>
      </form>
+     {% else %}<p class="alert alert-warning mb-0">Piano di controllo mancante per {{ lotto.codice }}. Il rientro resta in attesa finché non viene caricato il piano.</p>{% endif %}
      {% else %}
      <p><strong>{{ cq.quantita - cq.ko }} conformi · {{ cq.ko }} KO</strong><br>{{ cq.operatore }} · {{ cq.data[:16]|replace('T', ' ') }}</p>
      <ul class="list-group mb-3">{% for esito in cq.risultati %}<li class="list-group-item">{{ cq.piano.controlli[loop.index0].descrizione }}<br><small>{{ esito.verificati }} verificati · {{ esito.ko }} KO{% if esito.note %} · {{ esito.note }}{% endif %}</small></li>{% endfor %}</ul>

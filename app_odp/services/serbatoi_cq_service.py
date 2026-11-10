@@ -14,7 +14,6 @@ from app_odp.models import db
 from app_odp.serbatoi_models import SerbatoiControlloCQ as Controllo, SerbatoiPianoCQ as Piano
 from app_odp.services import serbatoi_service as s
 
-PERMESSI_CQ = ("serbatoi_produzione", "serbatoi_acquisti", "CQ_serbatoi")
 STATO_CQ = "In controllo CQ"
 GIACENZA_KO = "CQ da contabilizzare"
 CAMPI_CONTROLLO = {"descrizione": 500, "frequenza": 30, "strumento": 200,
@@ -171,7 +170,11 @@ def piano_rientro(lotto):
 
 def accoda_rientro(lotto, piano):
     db.session.add(Controllo(fase="rientro", produzione_id=lotto.produzione_id, cliente_id=lotto.cliente_id,
-                             lotto_id=lotto.id, piano=piano, quantita=lotto.quantita))
+                             lotto_id=lotto.id, piano=piano or {}, quantita=lotto.quantita))
+
+
+def piano_controllo_rientro(controllo, lotto):
+    return controllo.piano or piano_rientro(lotto)
 
 
 def conferma_rientro(controllo, payload, ko, utente):
@@ -179,13 +182,17 @@ def conferma_rientro(controllo, payload, ko, utente):
     db.session.refresh(controllo)
     if controllo.fase != "rientro" or controllo.risultati is not None or lotto.stato != STATO_CQ or lotto.quantita != controllo.quantita:
         raise s.SerbatoiError("Questo controllo di rientro non è più in attesa.")
-    risultati = valida_esiti(controllo.piano, payload, controllo.quantita, ko)
+    piano = piano_controllo_rientro(controllo, lotto)
+    if not piano:
+        raise s.SerbatoiError(f"Manca il piano di controllo per il codice {lotto.codice}.")
+    risultati = valida_esiti(piano, payload, controllo.quantita, ko)
     ko = s.intero(ko, "Totale KO", zero=True)
     if ko:
         scarto = s.sposta(lotto, ko, "Scarto", GIACENZA_KO, utente, "CQ_KO", cliente_id=lotto.cliente_id)
         controllo.lotto_ko_id = scarto.id
     if lotto.quantita:
         s.sposta(lotto, lotto.quantita, "Ossidato", "Bernardi", utente, "CQ_OK", cliente_id=lotto.cliente_id)
+    controllo.piano = piano
     controllo.risultati, controllo.ko = risultati, ko
     controllo.operatore, controllo.data = utente, s._now_rome_dt().isoformat()
 

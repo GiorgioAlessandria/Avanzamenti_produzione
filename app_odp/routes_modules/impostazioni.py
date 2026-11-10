@@ -79,6 +79,7 @@ import secrets
 
 from flask import abort, flash, redirect, session, url_for
 from sqlalchemy.exc import SQLAlchemyError
+from flask_login import current_user, logout_user
 from app_odp.auth import login_start_page_options
 from app_odp.operator_session import active_token, get_operator_token
 
@@ -517,6 +518,72 @@ def impostazioni_pagina_iniziale():
         url_for("main.impostazioni", tab_session=active_token()),
         code=303,
     )
+
+
+@main_bp.post("/impostazioni/cambia-codice-accesso")
+@require_active_perm("impostazioni_utente")
+def impostazioni_cambia_codice_accesso():
+    if get_operator_token() and get_operator_token() != active_token():
+        abort(403)
+    if not active_policy().has_direct_admin_role:
+        abort(403)
+
+    csrf = session.get("login_start_page_csrf", "")
+    submitted = request.form.get("csrf_token", "")
+    if not csrf or not secrets.compare_digest(csrf.encode(), submitted.encode()):
+        abort(400)
+
+    back = url_for("main.impostazioni", **({"tab_session": active_token()} if active_token() else {}))
+    user = active_user()
+    previous_hash = user.login_code_hash
+    current_code = request.form.get("codice_attuale", "")
+    raw_code = request.form.get("nuovo_codice", "")
+    confirmation = request.form.get("conferma_codice", "")
+
+    if not user.check_login_code(current_code):
+        flash("Il codice attuale non è corretto.", "change-code-error")
+        return redirect(back, code=303)
+    if raw_code.strip().upper() != confirmation.strip().upper():
+        flash("I due nuovi codici non coincidono.", "change-code-error")
+        return redirect(back, code=303)
+    code, error = _prepare_login_code_or_response(raw_code, exclude_user_id=user.id)
+    if error:
+        flash(error[0].get_json()["error"], "change-code-error")
+        return redirect(back, code=303)
+    if User.login_code_lookup_for(code) == user.login_code_lookup:
+        flash("Scegli un codice diverso da quello attuale.", "change-code-error")
+        return redirect(back, code=303)
+
+    credentials = User()
+    credentials.set_login_code(code)
+    try:
+        changed = db.session.query(User).filter_by(
+            id=user.id, active=True, login_code_hash=previous_hash
+        ).update(
+            {User.login_code_hash: credentials.login_code_hash,
+             User.login_code_lookup: credentials.login_code_lookup},
+            synchronize_session=False,
+        )
+        if not changed:
+            db.session.rollback()
+            flash("Il codice è stato modificato nel frattempo. Riprova.", "change-code-error")
+            return redirect(back, code=303)
+        revoke_operator_sessions_for_user(user.id, commit=False)
+        db.session.commit()
+    except SQLAlchemyError as exc:
+        db.session.rollback()
+        if isinstance(exc, IntegrityError) and _is_login_code_integrity_error(exc):
+            flash(LOGIN_CODE_DUPLICATO_MSG, "change-code-error")
+        else:
+            current_app.logger.error("Cambio del codice di accesso non riuscito.")
+            flash("Salvataggio non riuscito. Riprova.", "change-code-error")
+        return redirect(back, code=303)
+
+    session.pop("login_start_page_csrf", None)
+    if current_user.is_authenticated and current_user.id == user.id:
+        logout_user()
+    flash("Codice di accesso aggiornato. Accedi con il nuovo codice.", "change-code-success")
+    return redirect(url_for("auth.login"), code=303)
 
 
 @main_bp.post("/api/impostazioni/crea-utente")

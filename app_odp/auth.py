@@ -4,6 +4,7 @@ import hashlib
 from flask import Blueprint, render_template, request, redirect, url_for
 from flask_login import login_user, logout_user, current_user
 from app_odp.policy.policy import RbacPolicy
+from app_odp.policy.serbatoi import SERBATOI_OPERATIVI, SERBATOI_QUALITA
 from app_odp.models import User
 from app_odp.operator_session import (
     create_operator_session,
@@ -15,9 +16,9 @@ from app_odp.operator_session import (
 auth_bp = Blueprint("auth", __name__)
 
 LOGIN_START_PAGES = {
-    "serbatoi": ("Serbatoi", "main.serbatoi_page", ("serbatoi_produzione", "serbatoi_acquisti")),
+    "serbatoi": ("Serbatoi", "main.serbatoi_page", SERBATOI_OPERATIVI),
     "cq_serbatoi": ("Controllo qualità Serbatoi", "main.serbatoi_qualita",
-                    ("serbatoi_produzione", "serbatoi_acquisti", "CQ_serbatoi")),
+                    SERBATOI_QUALITA),
     "produzione": ("Produzione", "main.home", ("home",)),
     "acquisti": ("Acquisti", "main.home_acquisti", ("home_acquisti",)),
     "vendite_ordini": (
@@ -162,11 +163,11 @@ def _get_post_login_redirect(user):
         token = create_operator_session(user)
         return url_for("main.vendite_assegnazioni_page", tab_session=token)
 
-    if policy.can("serbatoi_produzione") or policy.can("serbatoi_acquisti"):
+    if any(policy.can(code) for code in SERBATOI_OPERATIVI):
         token = create_operator_session(user)
         return url_for("main.serbatoi_page", tab_session=token)
 
-    if policy.can("CQ_serbatoi"):
+    if policy.can("fresa_serbatoi"):
         return url_for("main.serbatoi_qualita", tab_session=create_operator_session(user))
 
     return None
@@ -257,12 +258,12 @@ def login():
                 url_for("main.vendite_assegnazioni_page", tab_session=token)
             )
 
-        if policy.can("serbatoi_produzione") or policy.can("serbatoi_acquisti"):
+        if any(policy.can(code) for code in SERBATOI_OPERATIVI):
             login_user(user)
             token = create_operator_session(user)
             return redirect(url_for("main.serbatoi_page", tab_session=token))
 
-        if policy.can("CQ_serbatoi"):
+        if policy.can("fresa_serbatoi"):
             login_user(user)
             return redirect(url_for("main.serbatoi_qualita", tab_session=create_operator_session(user)))
 

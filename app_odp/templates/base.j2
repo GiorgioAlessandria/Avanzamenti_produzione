@@ -288,12 +288,37 @@
 {% include "partials/_nav_offcanvas.j2" %}
 {% if tarature_alerts and tarature_alerts.scadute %}
     <div class="alert alert-danger rounded-0 border-0 mb-0 py-2 text-center"
-         role="alert">
+         id="avviso-tarature" role="alert">
         <strong>{{ tarature_alerts.scadute }} strument{{ 'o' if tarature_alerts.scadute == 1 else 'i' }}
             con taratura scaduta.</strong>
         <a class="alert-link ms-2"
            href="{{ operator_url_for('main.tarature_home') }}">Apri Tarature</a>
+        <button type="button" class="btn btn-sm btn-outline-danger ms-2"
+                id="nascondi-avviso-tarature">Nascondi per oggi</button>
     </div>
+    <script>
+        (() => {
+            const alert = document.getElementById("avviso-tarature");
+            const storageKey = "avp_tarature_nascoste:" + {{ (operator_user or current_user).id|tojson }};
+            const formatter = new Intl.DateTimeFormat("it-IT", {timeZone: "Europe/Rome"});
+            const today = () => formatter.format(new Date());
+
+            try {
+                alert.hidden = localStorage.getItem(storageKey) === today();
+            } catch (_) {
+                // Il pulsante resta disponibile anche senza salvataggio locale.
+            }
+
+            document.getElementById("nascondi-avviso-tarature").addEventListener("click", () => {
+                alert.hidden = true;
+                try {
+                    localStorage.setItem(storageKey, today());
+                } catch (_) {
+                    // La chiusura vale per la pagina corrente.
+                }
+            });
+        })();
+    </script>
 {% endif %}
 <div class="modal fade"
      id="modalRicercaArticolo"
