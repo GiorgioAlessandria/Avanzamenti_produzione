@@ -343,6 +343,14 @@ def _ensure_acquisti_schema() -> None:
             )
 
 
+def _ensure_serbatoi_schema() -> None:
+    with db.engine.begin() as connection:
+        connection.exec_driver_sql("BEGIN IMMEDIATE")
+        columns = {column["name"] for column in inspect(connection).get_columns("serbatoi_lotti")}
+        if "residuo_barra_mm" not in columns:
+            connection.exec_driver_sql("ALTER TABLE serbatoi_lotti ADD COLUMN residuo_barra_mm INTEGER")
+
+
 def _ensure_vendite_schema() -> None:
     engine = db.engine
     tables = set(inspect(engine).get_table_names())
@@ -888,6 +896,7 @@ def create_app():
             _apply_sqlite_pragmas(eng)
 
         db.create_all()
+        _ensure_serbatoi_schema()
         _ensure_priorita_schema()
         db.create_all(bind_key="log")
         db.create_all(bind_key="acq")

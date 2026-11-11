@@ -8,9 +8,9 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import re
 from uuid import uuid4
 
-from sqlalchemy import func, or_, update
+from sqlalchemy import and_, func, or_, update
 
-from app_odp.models import db, InputOdp, AcqOrdineClienteAperto, AcqClienteFornitore, AcqOrdineFornitoreAperto, AcqArticoli, AcqArticoliLookup, AcqGiacenze
+from app_odp.models import db, ErpOutbox, InputOdp, AcqOrdineClienteAperto, AcqClienteFornitore, AcqOrdineFornitoreAperto, AcqArticoli, AcqArticoliLookup, AcqGiacenze
 from app_odp.serbatoi_models import (
     SerbatoiArticolo as Articolo, SerbatoiCliente as Cliente,
     SerbatoiProduzione as Produzione, SerbatoiImpegno as Impegno,
@@ -660,14 +660,51 @@ def consuma_spezzoni(produzione_id, lotto_id, quantita, utente):
     movimento("ORIGINE_ODP", q, utente, origine=dest, produzione=p)
 
 
-def _avvia_materiale(p, utente):
+def _avvia_materiale(p, utente, *, tipo="AVVIO_LCT"):
     if p.avviata:
         return
     a = record(Articolo, p.articolo_id)
     l = nuovo_lotto("Materiale", a.codice_lav, p.quantita, stato="In lavorazione",
                     ubicazione="Bernardi", articolo_id=a.id, produzione_id=p.id)
     p.avviata = True
-    movimento("AVVIO_LCT", p.quantita, utente, destinazione=l, produzione=p)
+    movimento(tipo, p.quantita, utente, destinazione=l, produzione=p)
+
+
+def _completa_materiale(p, lotto, quantita, utente, *, motivo_rettifica=""):
+    remaining = quantita
+    for impegno in Impegno.query.filter_by(produzione_id=p.id).order_by(Impegno.id):
+        n = min(remaining, impegno.quantita - impegno.realizzata)
+        if n:
+            tipo = "COMPLETAMENTO_RETTIFICA" if motivo_rettifica else "COMPLETAMENTO_LCT"
+            sposta(lotto, n, "Lavorato", "Bernardi", utente, tipo,
+                   cliente_id=impegno.cliente_id, note=motivo_rettifica)
+            impegno.realizzata += n
+            remaining -= n
+    if remaining:
+        tipo = "COMPLETAMENTO_RETTIFICA" if motivo_rettifica else "COMPLETAMENTO_STOCK"
+        sposta(lotto, remaining, "Lavorato", "Bernardi", utente, tipo, note=motivo_rettifica)
+
+
+def rettifica_completamento(p, q_ok, q_ko, note, utente):
+    p = blocca(p)
+    if db.session.get(InputOdp, (p.id_documento, p.id_riga)) is not None:
+        raise SerbatoiError("L'ODP è ancora presente tra gli ordini operativi. Aggiornare la sincronizzazione dopo la chiusura nel gestionale.")
+    if ErpOutbox.query.filter_by(IdDocumento=p.id_documento, IdRiga=p.id_riga).filter(
+        ErpOutbox.status.in_(("pending", "error"))
+    ).first():
+        raise SerbatoiError("Ci sono consuntivi ERP in attesa o in errore per questo ODP. Verificarli prima della rettifica.")
+    motivo = testo(note, "Motivo della rettifica", 300)
+    good = intero(q_ok, "Quantità conforme", zero=True)
+    bad = intero(q_ko, "Quantità KO", zero=True)
+    residuo = capacita_produzione(p)
+    if not residuo or good + bad != residuo:
+        raise SerbatoiError(f"Conformi e KO devono coprire il residuo da registrare ({residuo} pezzi).")
+
+    _avvia_materiale(p, utente, tipo="AVVIO_RETTIFICA")
+    lotto = lotti_produzione(p, "In lavorazione")[0]
+    if bad:
+        sposta(lotto, bad, "Scarto", "Bernardi", utente, "SCARTO_RETTIFICA", note=motivo)
+    _completa_materiale(p, lotto, good, utente, motivo_rettifica=motivo)
 
 
 def evento_lct(ordine, *, tipo, operazione, fase, utente, q_ok=0, q_nok=0, finale=False,
@@ -719,15 +756,7 @@ def evento_lct(ordine, *, tipo, operazione, fase, utente, q_ok=0, q_nok=0, final
         sposta(l, bad, "Scarto", "Bernardi", utente, "SCARTO_LCT")
     if fase != p.fase_fine:
         return
-    remaining = good
-    for i in Impegno.query.filter_by(produzione_id=p.id).order_by(Impegno.id):
-        n = min(remaining, i.quantita - i.realizzata)
-        if n:
-            sposta(l, n, "Lavorato", "Bernardi", utente, "COMPLETAMENTO_LCT", cliente_id=i.cliente_id)
-            i.realizzata += n
-            remaining -= n
-    if remaining:
-        sposta(l, remaining, "Lavorato", "Bernardi", utente, "COMPLETAMENTO_STOCK")
+    _completa_materiale(p, l, good, utente)
 
 
 def crea_ordine_barre(data, utente, *, da_erp=False):
@@ -762,25 +791,43 @@ def fornitori():
             or (_norm_text(f.TipoAnagrafica) and _norm_text(f.TipoAnagrafica).upper() in tipi)]
 
 
+def _ddt_alfanumerico(ddt):
+    doc = testo(ddt, "DDT", 60)
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9./_-]*", doc):
+        raise SerbatoiError("DDT: usare lettere, numeri e separatori (. / _ -).")
+    return doc
+
+
 def ricevi_barre(barre_id, quantita, ddt, utente):
     b = blocca(record(Barre, barre_id))
     if not corrisponde_barre(b,parametri()):
         raise SerbatoiError("L'ordine barre non corrisponde al fornitore/codice dei Parametri.")
     q = intero(quantita)
-    doc = documento(ddt)
-    received = sum(l.iniziale for l in Lotto.query.filter_by(barre_id=b.id, padre_id=None, tipo="Barra"))
-    if received + q > b.quantita:
-        raise SerbatoiError("Ricezione superiore alla quantità ordinata.")
+    doc = _ddt_alfanumerico(ddt)
     l = nuovo_lotto("Barra", b.codice, q, stato="Disponibile", ubicazione="Bernardi", barre_id=b.id)
     movimento("RICEZIONE_BARRE", q, utente, destinazione=l, ddt=doc)
     return l
 
 
-def taglia_barre(lotto_id, numero_barre, codice_spezzone, pezzi, lunghezza_mm, sfrido_mm, utente, *, fornitore_atteso=None):
+def barre_equivalenti(lunghezza_mm, lunghezza_barra):
+    return Decimal(lunghezza_mm) / lunghezza_barra
+
+
+def disponibilita_barra_mm(lotto, lunghezza_barra):
+    return lotto.quantita * lunghezza_barra + (lotto.residuo_barra_mm or 0)
+
+
+def formatta_barre(quantita):
+    return format(quantita, ".6f").rstrip("0").rstrip(".").replace(".", ",")
+
+
+def taglia_barre(lotto_id, codice_spezzone, pezzi, lunghezza_mm, sfrido_mm, utente, *,
+                 fornitore_atteso=None, ddt=""):
     l = blocca(record(Lotto, lotto_id))
-    n, q = intero(numero_barre, "Barre consumate"), intero(pezzi, "Spezzoni prodotti")
+    q = intero(pezzi, "Spezzoni prodotti")
     lunghezza, sfrido = intero(lunghezza_mm, "Lunghezza spezzone"), intero(sfrido_mm, "Sfrido", zero=True)
     code = testo(codice_spezzone, "Codice spezzone").upper()
+    doc = _ddt_alfanumerico(ddt) if _norm_text(ddt) else ""
     cfg = parametri()
     if sfrido != cfg.sfrido_mm:
         raise SerbatoiError("Sfrido diverso dai Parametri. Ricaricare la pagina.")
@@ -792,12 +839,20 @@ def taglia_barre(lotto_id, numero_barre, codice_spezzone, pezzi, lunghezza_mm, s
     if l.tipo != "Barra" or l.stato != "Disponibile":
         raise SerbatoiError("Selezionare un lotto barre disponibile.")
     b = record(Barre, l.barre_id)
-    if q > n * (b.lunghezza_mm // (lunghezza + sfrido)):
-        raise SerbatoiError("Gli spezzoni superano la resa delle barre indicate, considerando lo sfrido per taglio.")
-    used = sposta(l, n, "Consumato", "Bernardi", utente, "CONSUMO_BARRE")
-    out = nuovo_lotto("Spezzone", code, q, stato="Disponibile", ubicazione="Bernardi", padre_id=used.id)
-    movimento("TAGLIO", q, utente, origine=used, destinazione=out,
-               note=f"{n} barre; pezzo {lunghezza} mm; sfrido/taglio {sfrido} mm; fornitore spezzoni {supplier.RagioneSociale} ({supplier.CodCliFor}); lunghezza non trasformata {n * b.lunghezza_mm - q * (lunghezza + sfrido)} mm")
+    per_taglio = lunghezza + sfrido
+    if per_taglio > b.lunghezza_mm:
+        raise SerbatoiError("La lunghezza dello spezzone con sfrido supera la lunghezza di una barra.")
+    consumati_mm = q * per_taglio
+    residuo_mm = disponibilita_barra_mm(l, b.lunghezza_mm) - consumati_mm
+    if residuo_mm < 0:
+        raise SerbatoiError("Il taglio supera la disponibilità del lotto barre.")
+    l.quantita, l.residuo_barra_mm = divmod(residuo_mm, b.lunghezza_mm)
+    out = nuovo_lotto("Spezzone", code, q, stato="Disponibile", ubicazione="Bernardi", padre_id=l.id)
+    consumo = formatta_barre(barre_equivalenti(consumati_mm, b.lunghezza_mm))
+    movimento("CONSUMO_BARRE_MM", consumati_mm, utente, origine=l, destinazione=out,
+               note=f"{consumo} barre equivalenti")
+    movimento("TAGLIO", q, utente, origine=l, destinazione=out, ddt=doc,
+               note=f"{consumo} barre equivalenti; pezzo {lunghezza} mm; sfrido/taglio {sfrido} mm; fornitore spezzoni {supplier.RagioneSociale} ({supplier.CodCliFor}); residuo lotto {residuo_mm} mm")
     return out
 
 
@@ -879,7 +934,10 @@ def tracciabilita(lotto):
                 visit(record(Lotto, c.lotto_id))
 
     visit(lotto)
-    docs = Movimento.query.filter(or_(Movimento.origine_id.in_(seen), Movimento.destinazione_id.in_(seen))).order_by(Movimento.id).all()
+    docs = Movimento.query.filter(or_(
+        Movimento.destinazione_id.in_(seen),
+        and_(Movimento.origine_id.in_(seen), Movimento.tipo.not_in(("CONSUMO_BARRE_MM", "TAGLIO"))),
+    )).order_by(Movimento.id).all()
     return nodes, docs
 
 

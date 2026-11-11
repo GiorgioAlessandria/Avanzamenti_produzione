@@ -51,6 +51,8 @@ from app_odp.services.order_helpers import (
     _row_key,
     _parse_qty_integer_decimal,
     _parse_minuti_non_funzionamento,
+    _seconds_to_tempo_text,
+    _tempo_to_seconds,
     _ordine_has_distinta_materiale,
     _resolve_registration_datetime,
 )
@@ -60,6 +62,7 @@ from app_odp.services.ordini_gruppi_service import (
     create_mascherato_group,
     create_misto_group,
     create_multiplo_group,
+    detach_lct_group_member,
     dissolve_group_for_single_member_close,
     finalize_group_after_member_closures,
     finalize_group_after_single_member_closure,
@@ -74,6 +77,7 @@ from app_odp.services.ordini_gruppi_service import (
     prepare_group_member_for_single_closure,
     reactivate_group,
     suspend_group,
+    try_activate_lct_group,
 )
 from app_odp.services.session_helpers import (
     _current_user_id,
@@ -82,6 +86,7 @@ from app_odp.services.session_helpers import (
 from app_odp.services.ordini_runtime_service import (
     _ensure_stato_attivo,
     _ensure_operator_can_activate_order,
+    _ensure_order_not_active_for_other_operator,
     _runtime_snapshot,
     _apply_stop_minutes_to_runtime,
     _accumulate_runtime_until,
@@ -96,6 +101,7 @@ from app_odp.services.priorita_service import (
 )
 from app_odp.services.etichette_service import generazione_lotti
 from app_odp.services.common import _last_log_token
+from app_odp.services.lct_service import uses_lct_home
 from app_odp.services.serbatoi_service import usa_export_lct_due_fasi
 from app_odp.services import serbatoi_cq_service as cq
 from app_odp.services.erp_export_service import (
@@ -109,6 +115,7 @@ from app_odp.services.erp_export_service import (
 )
 from app_odp.services.home_service import (
     _home_reparto_config_by_tab,
+    _home_reparto_config_for_ordine,
     _policy_can_access_home_config,
     _render_fragments_for_home_config,
     _get_visible_odp_by_key,
@@ -162,6 +169,17 @@ def _parse_tempo_avanzamento_override(
     return minutes, format(hours, ".2f")
 
 
+def _check_group_member_minimum_time(id_documento, id_riga, data, policy):
+    _, override_hours = _parse_tempo_avanzamento_override(
+        data.get("tempo_avanzamento_minuti"),
+        allowed=policy.can("export_avp_senza_riga_tempo"),
+    )
+    runtime = InputOdpRuntime.query.filter_by(IdDocumento=id_documento, IdRiga=id_riga).first()
+    return _ensure_min_active_time_before_chiusura(
+        runtime, _now_rome_dt(), can_bypass=override_hours is not None,
+    )
+
+
 def _quantita_totale_ordine_decimal(ordine, fallback: Decimal) -> Decimal:
     try:
         q_ordine = _parse_qty_decimal(getattr(ordine, "Quantita", ""))
@@ -177,10 +195,17 @@ def _merge_fragment_payload(target: dict, source_result) -> None:
         target.update(fragments)
 
 
-def _dissolve_group_for_single_close(id_documento: str, id_riga: str) -> dict:
+def _dissolve_group_for_single_close(id_documento: str, id_riga: str, data, policy):
     active_group = get_active_group_for_order(id_documento, id_riga)
     if active_group is None:
-        return {"skip_min_active_time": False}
+        return "", None
+
+    try:
+        min_time_error = _check_group_member_minimum_time(id_documento, id_riga, data, policy)
+    except ValueError as exc:
+        return "", (jsonify({"ok": False, "error": str(exc)}), 400)
+    if min_time_error:
+        return "", min_time_error
 
     # La chiusura singola scioglie il gruppo: da questo punto l'ordine segue
     # le regole di un ordine normale, anche se nel gruppo era un mascherato ZERO.
@@ -189,7 +214,13 @@ def _dissolve_group_for_single_close(id_documento: str, id_riga: str) -> dict:
         id_documento=id_documento,
         id_riga=id_riga,
     )
-    return {"skip_min_active_time": True, "group_uid": active_group.GroupUid}
+    return active_group.GroupUid, None
+
+
+def _lct_group_for_order(ordine, policy):
+    if uses_lct_home(policy, _home_reparto_config_for_ordine(ordine)):
+        return get_active_group_for_order(ordine.IdDocumento, ordine.IdRiga)
+    return None
 
 
 def _group_response_payload(group, policy, *, changed=True, message=""):
@@ -206,6 +237,24 @@ def _group_response_payload(group, policy, *, changed=True, message=""):
         "last_event_id": _last_log_token(),
         "fragments": fragments,
     }
+
+
+def _activate_order_or_lct_group(ordine, policy, stato):
+    if stato == "attivo" and uses_lct_home(policy, _home_reparto_config_for_ordine(ordine)):
+        _ensure_order_not_active_for_other_operator(ordine.IdDocumento, ordine.IdRiga, _current_username())
+        return None
+    if stato != "attivo":
+        try:
+            group = try_activate_lct_group([ordine], policy)
+            if group is not None:
+                payload = _group_response_payload(group, policy, message="Ordine preso in carico nel gruppo LCT.")
+                db.session.commit()
+                return jsonify(payload)
+        except Exception:
+            db.session.rollback()
+            raise
+    _ensure_operator_can_activate_order(ordine.IdDocumento, ordine.IdRiga, _current_username())
+    return None
 
 
 @main_bp.get("/api/ordini/gruppi/disponibili")
@@ -397,7 +446,7 @@ def _riattiva_gruppo_ordini_response(group_uid: str):
     policy = active_policy()
 
     try:
-        group = reactivate_group(group_uid)
+        group = reactivate_group(group_uid, policy=policy)
         db.session.commit()
 
     except ValueError as exc:
@@ -532,15 +581,16 @@ def api_chiudi_membro_gruppo(group_uid=None):
         if not id_documento or not id_riga:
             raise ValueError("Ordine del gruppo non valido.")
 
+        ordine_member = _get_visible_odp_by_key(policy, id_documento, id_riga)
+        min_time_error = _check_group_member_minimum_time(id_documento, id_riga, order_payload, policy)
+        if min_time_error:
+            return min_time_error
         group, member = prepare_group_member_for_single_closure(
             group_uid,
             id_documento=id_documento,
             id_riga=id_riga,
             minuti_non_funzionamento=minuti_non_funzionamento,
         )
-        ordine_member = _get_visible_odp_by_key(policy, member.IdDocumento, member.IdRiga)
-        if ordine_member is None:
-            raise ValueError("Ordine del gruppo non trovato.")
 
         member_payload = dict(order_payload)
         member_payload["id_documento"] = member.IdDocumento
@@ -619,7 +669,9 @@ def api_chiudi_membro_gruppo(group_uid=None):
             ),
             note=member_payload.get("note") or "",
         )
-        finalize_group_after_single_member_closure(group, member)
+        finalize_group_after_single_member_closure(
+            group, member, lct=uses_lct_home(policy, _home_reparto_config_for_ordine(ordine_member)),
+        )
 
         fragment_order = first_order_for_group(group) or ordine_member
         fragments = {}
@@ -979,16 +1031,6 @@ def api_prendi_ordine():
     stato_norm = stato_attuale.lower()
     changed = False
     message = None
-    if stato_norm in {"pianificata", "attivo"}:
-        try:
-            _ensure_operator_can_activate_order(
-                ordine.IdDocumento,
-                ordine.IdRiga,
-                _current_username(),
-            )
-        except ValueError as exc:
-            return _operator_active_block_response(exc)
-
     if _norm_text(getattr(ordine, "CodReparto", "")) in {"10", "20", "30", "70"}:
         if not _ordine_has_distinta_materiale(ordine):
             event_at = datetime.now(ROME_TZ).isoformat(timespec="seconds")
@@ -1175,6 +1217,14 @@ def api_prendi_ordine():
                 409,
             )
 
+    if stato_norm in {"pianificata", "attivo"}:
+        try:
+            response = _activate_order_or_lct_group(ordine, policy, stato_norm)
+            if response is not None:
+                return response
+        except ValueError as exc:
+            return _operator_active_block_response(exc)
+
     if stato_norm == "pianificata":
         now_dt = _now_rome_dt()
 
@@ -1331,6 +1381,20 @@ def api_sospendi_ordine():
                 409,
             )
 
+        group = _lct_group_for_order(ordine, policy)
+        if group is not None:
+            try:
+                group, member = prepare_group_member_for_single_closure(
+                    group.GroupUid,
+                    id_documento=id_documento,
+                    id_riga=id_riga,
+                    minuti_non_funzionamento=minuti_non_funzionamento,
+                    lct_active_only=True,
+                )
+            except ValueError as exc:
+                db.session.rollback()
+                return jsonify({"ok": False, "error": str(exc)}), 400
+
         stato.Stato_odp = "In Sospeso"
         stato.Utente_operazione = _current_username()
 
@@ -1339,7 +1403,7 @@ def api_sospendi_ordine():
         try:
             removed_seconds, tempo_funzionamento = _apply_stop_minutes_to_runtime(
                 stato,
-                minuti_non_funzionamento,
+                0 if group is not None else minuti_non_funzionamento,
                 max_removable_seconds=elapsed_seconds,
             )
         except ValueError as exc:
@@ -1366,6 +1430,8 @@ def api_sospendi_ordine():
             secondi_non_funzionamento=removed_seconds,
             note_evento="Sospensione ordine",
         )
+        if group is not None:
+            detach_lct_group_member(group, member)
         db.session.commit()
         changed = True
         message = "Ordine sospeso"
@@ -1625,11 +1691,9 @@ def api_riattiva_ordine():
 
     if stato_norm in {"in sospeso", "attivo"}:
         try:
-            _ensure_operator_can_activate_order(
-                ordine.IdDocumento,
-                ordine.IdRiga,
-                _current_username(),
-            )
+            response = _activate_order_or_lct_group(ordine, policy, stato_norm)
+            if response is not None:
+                return response
         except ValueError as exc:
             return _operator_active_block_response(exc)
 
@@ -1950,11 +2014,10 @@ def _chiudi_ordine_da_payload(
     ordine = _get_visible_odp_by_key(policy, id_documento, id_riga)
 
     if group_close_context is None:
-        group_close_options = _dissolve_group_for_single_close(id_documento, id_riga)
-        skip_min_active_time = skip_min_active_time or group_close_options[
-            "skip_min_active_time"
-        ]
-        group_uid = group_close_options.get("group_uid", "")
+        group_uid, min_time_error = _dissolve_group_for_single_close(id_documento, id_riga, data, policy)
+        if min_time_error:
+            return min_time_error
+        skip_min_active_time = skip_min_active_time or bool(group_uid)
         group_close_context = {"group_uid": group_uid, "single_member": bool(group_uid)}
 
     can_override_registration_date = policy.can("modifica_data_chiusura")
@@ -2302,7 +2365,8 @@ def _chiudi_ordine_da_payload(
         fase_corrente=fase_corrente,
         q_ok=q_ok,
         q_nok=Decimal("0") if solo_tempo else q_nok,
-        tempo_finale=tempo_finale,
+        tempo_finale=_seconds_to_tempo_text(_tempo_to_seconds(tempo_finale))
+        if export_serbatoi or group_close_context.get("lct") else tempo_finale,
         lotti_input=lotti_input,
         lotto_prodotto=lotto_prodotto,
         note=note,
@@ -2565,7 +2629,69 @@ def _chiudi_ordine_da_payload(
 @operator_perm_required("home")
 def api_chiudi_ordine():
     data = request.get_json(silent=True) or {}
-    return _chiudi_ordine_da_payload(data, commit=True)
+    id_documento = _norm_text(data.get("id_documento"))
+    id_riga = _norm_text(data.get("id_riga"))
+    if not id_documento or not id_riga:
+        return _chiudi_ordine_da_payload(data, commit=True)
+
+    policy = active_policy()
+    ordine = _get_visible_odp_by_key(policy, id_documento, id_riga)
+    group = _lct_group_for_order(ordine, policy)
+    if group is None:
+        return _chiudi_ordine_da_payload(data, policy=policy, commit=True)
+    if ordine.StatoOrdine != "Attivo":
+        return jsonify({"ok": False, "error": "Riprendere l'ordine prima di chiuderlo."}), 409
+
+    try:
+        # La preparazione del gruppo azzera il riferimento dell'ultima attivazione.
+        min_time_error = _check_group_member_minimum_time(id_documento, id_riga, data, policy)
+        if min_time_error:
+            return min_time_error
+        stop = data.get("tempo_non_funzionamento_minuti")
+        if stop is None:
+            stop = data.get("tempo_fermo_macchina")
+        if stop is None:
+            stop = data.get("tempo_macchina_ferma")
+        minutes = _parse_minuti_non_funzionamento(stop)
+        group, member = prepare_group_member_for_single_closure(
+            group.GroupUid, id_documento=id_documento, id_riga=id_riga,
+            minuti_non_funzionamento=minutes,
+            lct_active_only=True,
+        )
+        result = _chiudi_ordine_da_payload(
+            {**data, "tempo_non_funzionamento_minuti": 0},
+            policy=policy,
+            commit=False,
+            skip_min_active_time=True,
+            group_close_context={"group_uid": group.GroupUid, "member_id": member.id, "single_member": True, "lct": True},
+            consenti_sovrapproduzione=True,
+        )
+        if _response_status_code(result) >= 400:
+            db.session.rollback()
+            return result
+
+        member_quantities = {
+            "q_ok": data.get("quantita_conforme") or data.get("quantita_prodotta") or "",
+            "q_nok": data.get("quantita_non_conforme") or data.get("quantita_scartata") or "",
+            "note": data.get("note") or "",
+        }
+        if _parse_bool_flag(data.get("chiusura_parziale")):
+            mark_group_member_partial_closed(member, **member_quantities)
+            detach_lct_group_member(group, member)
+        else:
+            mark_group_member_closed(member, **member_quantities)
+            finalize_group_after_single_member_closure(group, member, lct=True)
+        payload = _response_json_payload(result)
+        payload["active_tab"], payload["fragments"] = _fragments_for_ordine_tab(policy, ordine)
+        payload["last_event_id"] = _last_log_token()
+        db.session.commit()
+        return jsonify(payload)
+    except ValueError as exc:
+        db.session.rollback()
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except Exception:
+        db.session.rollback()
+        raise
 
 
 def _chiudi_ordine_montaggio_macchina_da_payload(
@@ -2595,11 +2721,10 @@ def _chiudi_ordine_montaggio_macchina_da_payload(
     ordine = _get_visible_odp_by_key(policy, id_documento, id_riga)
 
     if group_close_context is None:
-        group_close_options = _dissolve_group_for_single_close(id_documento, id_riga)
-        skip_min_active_time = skip_min_active_time or group_close_options[
-            "skip_min_active_time"
-        ]
-        group_uid = group_close_options.get("group_uid", "")
+        group_uid, min_time_error = _dissolve_group_for_single_close(id_documento, id_riga, data, policy)
+        if min_time_error:
+            return min_time_error
+        skip_min_active_time = skip_min_active_time or bool(group_uid)
         group_close_context = {"group_uid": group_uid, "single_member": bool(group_uid)}
 
     can_override_registration_date = policy.can("modifica_data_chiusura")

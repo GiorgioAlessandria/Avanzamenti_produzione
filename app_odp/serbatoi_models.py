@@ -146,6 +146,8 @@ class SerbatoiLotto(db.Model):
     ubicazione = db.Column(db.String(60), nullable=False, default="Bernardi")
     quantita = db.Column(db.Integer, nullable=False)
     iniziale = db.Column(db.Integer, nullable=False)
+    # Nei lotti barra, quantita conta le barre intere e questo campo la frazione residua.
+    residuo_barra_mm = db.Column(db.Integer, nullable=True)
     padre_id = db.Column(db.Integer, db.ForeignKey("serbatoi_lotti.id"), index=True, nullable=True)
     produzione_id = db.Column(db.Integer, db.ForeignKey("serbatoi_produzioni.id"), index=True, nullable=True)
     cliente_id = db.Column(db.Integer, db.ForeignKey("serbatoi_clienti_ordini.id"), index=True, nullable=True)

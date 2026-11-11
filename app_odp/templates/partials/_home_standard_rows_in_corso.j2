@@ -85,20 +85,12 @@
         {% set metodo_key = singolo_odp.CodArt ~ ('.' ~ rev_pdf if rev_pdf else '') %}
         {% set metodo_doc = metodo_montaggio_lookup.get(metodo_key) if metodo_montaggio_lookup is defined and metodo_key else none %}
         {% set ordine_display = ordine_ref_display(singolo_odp) %}
-        {% set lct_group = singolo_odp.LctGroup|default(none) if lct_home|default(false) else none %}
         <tr class="{{ stato_class }}"
-            {% if lct_group %}
-                data-is-work-group="1"
-                data-group-uid="{{ lct_group.WorkGroupUid }}"
-                data-group-type="{{ lct_group.WorkGroupDisplayType }}"
-                data-group-label="{{ lct_group.OrdineVisuale }}"
-                data-group-detail="{{ lct_group.DettaglioGruppoVisuale|tojson|forceescape }}"
-            {% endif %}
             data-row-key="{{ singolo_odp.IdDocumento }}|{{ singolo_odp.NumProgrRiga }}"
             data-priorita="{{ pr or '' }}"
-            data-iddocumento="{{ lct_group.IdDocumento if lct_group else singolo_odp.IdDocumento }}"
+            data-iddocumento="{{ singolo_odp.IdDocumento }}"
             data-numprogrriga="{{ singolo_odp.NumProgrRiga }}"
-            data-idriga="{{ lct_group.IdRiga if lct_group else singolo_odp.IdRiga }}"
+            data-idriga="{{ singolo_odp.IdRiga }}"
             data-variante="{{ singolo_odp.VarianteArt }}"
             data-ordine="{{ ordine_display }}"
             data-codice="{{ singolo_odp.CodArt }}"
@@ -157,11 +149,7 @@
             <td>{{ wrap_plus(singolo_odp.DataFineSched | db_date("%Y-%m-%d %H:%M:%S","%d/%m/%Y")) }}</td>
             <td>{{ wrap_plus(singolo_odp.AttrezzaggioAttivo) }}</td>
             <td>{{ wrap_plus(singolo_odp.RisorsaAttiva) }}</td>
-            <td data-col="stato">{{ wrap_plus(singolo_odp.StatoOrdine) }}
-                {% if lct_home|default(false) and singolo_odp.StatoOrdine == 'Attivo' %}
-                    <span class="badge text-bg-secondary">{{ singolo_odp.LctMode|default('Principale' if singolo_odp.FaseAttiva|int == 1 else 'Singolo') }}</span>
-                {% endif %}
-            </td>
+            <td data-col="stato">{{ wrap_plus(singolo_odp.StatoOrdine) }}</td>
             <td>{{ wrap_plus(operatore or "-") }}</td>
             {% if lct_home|default(false) %}{% include 'partials/_home_lct_actions.j2' %}{% endif %}
         </tr>

@@ -150,9 +150,9 @@
    <dl class="row row-cols-1 row-cols-md-3 g-2 mb-3">
     {% set barre_disponibili = scorte_materiali['Barra'] %}
     <div class="col"><div class="border rounded h-100 p-3">
-     <dt>Barre disponibili</dt><dd class="fs-4 fw-semibold mb-0">{{ barre_disponibili.values()|sum }} <span class="fs-6 fw-normal text-body-secondary">pz</span></dd>
+     <dt>Barre disponibili</dt><dd class="fs-4 fw-semibold mb-0">{{ servizio.formatta_barre(barre_disponibili.values()|sum) }} <span class="fs-6 fw-normal text-body-secondary">barre eq.</span></dd>
      {% if barre_disponibili %}<dd class="small mb-0 mt-1"><ul class="list-unstyled mb-0">
-      {% for codice, quantita in barre_disponibili|dictsort %}<li>{{ codice }} · {{ quantita }} pz</li>{% endfor %}
+      {% for codice, quantita in barre_disponibili|dictsort %}<li>{{ codice }} · {{ servizio.formatta_barre(quantita) }}</li>{% endfor %}
      </ul></dd>{% endif %}
     </div></div>
     <div class="col"><div class="border rounded h-100 p-3">
@@ -282,16 +282,22 @@
     {{ hidden('ripristina_fase_odp') }}<input type="hidden" name="produzione_id" value="{{ detail.id }}">
     <button class="btn btn-sm btn-outline-secondary">Ripristina la fase effettiva</button>
    </form>
-  {% elif can_rettifica_vista and selected.fasi.buratto %}
+  {% endif %}
+  {% if can_rettifica_vista and selected.residuo_rettifica %}
    <details class="mb-3">
-    <summary class="fw-semibold">Rettifica visiva del buratto</summary>
+    <summary class="fw-semibold">Registra completamento per rettifica</summary>
     <form class="row g-2 mt-1" method="post" action="{{ operator_url_for('main.serbatoi_azione') }}">
-     {{ hidden('mostra_lavorati') }}<input type="hidden" name="produzione_id" value="{{ detail.id }}">
-     <p class="col-12 small mb-0">Sposta la riga in Lavorati solo nella vista ODP e stock.</p>
-     <div class="col-12"><label class="form-label w-100">Motivo della rettifica<input class="form-control mt-1" name="note" maxlength="300" required></label></div>
-     <div class="col-12"><button class="btn btn-sm btn-outline-primary">Mostra in Lavorati</button></div>
+     {{ hidden('completa_rettifica') }}<input type="hidden" name="produzione_id" value="{{ detail.id }}">
+     <p class="col-12 small mb-0">Registra i {{ selected.residuo_rettifica }} pezzi residui nel magazzino Serbatoi. Le quantità conformi passano a Lavorato, i KO a Scarto.</p>
+     {{ field('quantita_ok', 'Quantità conforme', 'number', selected.residuo_rettifica, '0') }}
+     {{ field('quantita_ko', 'Quantità KO', 'number', '0', '0') }}
+     <div class="col-12"><label class="form-label w-100">Motivo della rettifica<input class="form-control mt-1" name="note" maxlength="300" value="{{ selected.rettifica.note if selected.rettifica else '' }}" required></label></div>
+     <div class="col-12"><label class="form-check"><input class="form-check-input" type="checkbox" name="chiuso_erp" value="1" required> <span class="form-check-label">Confermo che la riga ODP è già chiusa nel gestionale</span></label></div>
+     <div class="col-12"><button class="btn btn-sm btn-outline-primary">Registra rettifica</button></div>
     </form>
    </details>
+  {% elif can_rettifica_vista and (selected.pezzi_rettificati or selected.fasi.buratto) %}
+   <p class="small text-body-secondary">La rettifica di magazzino è disponibile dopo che la sincronizzazione ha rimosso la riga dagli ODP operativi.</p>
   {% endif %}
   <p><strong>Stock lavorato disponibile:</strong> {{ servizio.lotti_produzione(detail,'Lavorato')|rejectattr('cliente_id')|map(attribute='quantita')|sum }} pezzi.<br><strong>Capacità futura non impegnata:</strong> {{ servizio.capacita_produzione(detail)-servizio.quote_future(detail).values()|sum }} pezzi.</p>
   <div class="alert alert-info">Le quantità senza cliente rimangono stock. Si fermano a Lavorato presso Bernardi e non possono essere inviate a Gaser o spedite.</div>
@@ -306,7 +312,7 @@
   {% if selected.fuori_parametri %}<div class="alert alert-warning">Ordine storico fuori dai parametri correnti. Rimane consultabile per la tracciabilità; non compare nell’elenco filtrato.</div>{% endif %}
   {% if origine_barra %}<p class="small text-body-secondary">Ordine ERP: {{ origine_barra.quantita_originale }} {{ origine_barra.unita_originale }} → {{ origine_barra.quantita_erp }} barre da {{ detail.lunghezza_mm }} mm. Riferimento {{ origine_barra.id_documento }} / riga {{ origine_barra.id_riga }}.</p>{% elif can_acquisti and ordini_barre_erp and not selected.fuori_parametri %}<details class="mb-3"><summary class="fw-semibold">Collega un riferimento ERP già registrato</summary><form class="row g-2 mt-1" method="post" action="{{ operator_url_for('main.serbatoi_azione') }}">{{ hidden('collega_barre_erp') }}<input type="hidden" name="barre_id" value="{{ detail.id }}"><div class="col-12"><label class="form-label w-100">Riga ordine ERP<select class="form-select mt-1" name="origine_erp" required><option value="">Seleziona dopo aver verificato il riferimento</option>{% for r in ordini_barre_erp %}<option value='{{ [r.IdDocumento,r.IdRigaDoc]|tojson }}'>{{ servizio._riferimento_fornitore(r) }} · {{ r.QTA_ORD }} {{ r.UmDoc }}</option>{% endfor %}</select></label></div><div class="col-12"><button class="btn btn-outline-primary">Collega origine ERP</button></div></form></details>{% endif %}
   {% if not origine_barra %}{% if barra_manuale %}<p class="small text-body-secondary">Ordine registrato manualmente: {{ barra_manuale.note }}</p>{% elif can_acquisti %}<details class="mb-3"><summary class="fw-semibold">Conferma ordine pregresso/manuale, senza origine ERP aperta</summary><form class="row g-2 mt-1" method="post" action="{{ operator_url_for('main.serbatoi_azione') }}">{{ hidden('conferma_barre_manuali') }}<input type="hidden" name="barre_id" value="{{ detail.id }}">{{ field('note','Motivo della conferma') }}<div class="col-12"><button class="btn btn-outline-primary">Conferma riferimento manuale</button></div></form></details>{% endif %}{% endif %}
-  <dl class="row"><dt class="col-8">Barre ordinate</dt><dd class="col-4">{{ detail.quantita }}</dd><dt class="col-8">Ricevute</dt><dd class="col-4">{{ selected.ricevute }}</dd><dt class="col-8">Consumate</dt><dd class="col-4">{{ selected.ricevute-selected.residue }}</dd><dt class="col-8">Disponibili</dt><dd class="col-4">{{ selected.residue }}</dd></dl>
+  <dl class="row"><dt class="col-8">Barre ordinate</dt><dd class="col-4">{{ detail.quantita }}</dd><dt class="col-8">Ricevute</dt><dd class="col-4">{{ selected.ricevute }}</dd><dt class="col-8">Consumate</dt><dd class="col-4">{{ servizio.formatta_barre(selected.ricevute-selected.residue) }}</dd><dt class="col-8">Disponibili</dt><dd class="col-4">{{ servizio.formatta_barre(selected.residue) }}</dd></dl>
   <h3 class="h6">Prezzo materia prima</h3>
   <p class="mb-2">{% if selected.prezzo %}<strong>{{ servizio.formatta_centesimi(selected.prezzo.centesimi_kg) }} €/kg</strong> · {{ selected.prezzo.data_prezzo.strftime('%d/%m/%Y') }}{% else %}Prezzo da registrare{% endif %}</p>
   {% if scostamento_prezzo %}<p class="small {{ ('text-danger' if scostamento_prezzo.aumento else 'text-success') if scostamento_prezzo.soglia_raggiunta else 'text-body-secondary' }}">Scostamento dal riferimento attuale ({{ servizio.formatta_centesimi(riferimento_dettaglio.centesimi_kg) }} €/kg) <strong>{{ scostamento_prezzo.percentuale }}%</strong>{% if scostamento_prezzo.soglia_raggiunta %} · Soglia raggiunta{% endif %}</p>{% endif %}
@@ -319,12 +325,22 @@
    </form>
   </details>{% endif %}
   {% if can_acquisti %}{% if not selected.fuori_parametri %}<details class="mb-3"><summary class="fw-semibold">Registra ricezione barre</summary><form class="row g-2 mt-1" method="post" action="{{ operator_url_for('main.serbatoi_azione') }}">{{ hidden('ricevi') }}<input type="hidden" name="barre_id" value="{{ detail.id }}">{{ field('quantita','Barre ricevute','number') }}{{ field('ddt','Numero DDT') }}<div class="col-12"><button class="btn btn-primary">Carica barre</button></div></form></details>{% endif %}
-  <details><summary class="fw-semibold">Registra taglio e carico spezzoni</summary><form class="row g-2 mt-1" method="post" action="{{ operator_url_for('main.serbatoi_azione') }}">{{ hidden('taglia') }}
-   <div class="col-12"><label class="form-label w-100">Lotto barre ricevuto<select class="form-select mt-1" name="lotto_id" required><option value="">Seleziona</option>{% for l in disponibilita %}<option value="{{ l.id }}">{{ l.riferimento }} · {{ l.quantita }} barre disponibili</option>{% endfor %}</select></label></div>
+  <details><summary class="fw-semibold">Registra taglio e carico spezzoni</summary><form class="row g-2 mt-1" method="post" action="{{ operator_url_for('main.serbatoi_azione') }}" data-lunghezza-barra="{{ detail.lunghezza_mm }}">{{ hidden('taglia') }}
+   <div class="col-12"><label class="form-label w-100">Lotto barre ricevuto<select class="form-select mt-1" name="lotto_id" required><option value="">Seleziona</option>{% for l in disponibilita %}<option value="{{ l.id }}">{{ l.riferimento }} · {{ servizio.formatta_barre(servizio.barre_equivalenti(servizio.disponibilita_barra_mm(l, detail.lunghezza_mm), detail.lunghezza_mm)) }} barre disponibili</option>{% endfor %}</select></label></div>
    <p>Fornitore spezzoni: <strong>{{ forn_spezzoni_label }}</strong> · Sfrido per taglio: {{ parametri.sfrido_mm }} mm</p><input type="hidden" name="sfrido_mm" value="{{ parametri.sfrido_mm }}"><input type="hidden" name="fornitore_spezzoni" value="{{ parametri.fornitore_spezzoni_tipo }}|{{ parametri.fornitore_spezzoni_codice }}">
-   {{ field('numero_barre','Barre intere consumate','number') }}<div class="col-sm-6"><label class="form-label w-100">Codice spezzone<select class="form-select mt-1" name="codice_spezzone" required><option value="">Seleziona</option>{% for code in parametri.codici_spezzoni %}<option value="{{ code }}">{{ code }} · {{ descrizioni.get(code,'Descrizione non disponibile') }}</option>{% endfor %}</select></label></div>
+   <div class="col-sm-6"><label class="form-label w-100">Codice spezzone
+    <select class="form-select mt-1" name="codice_spezzone" data-serbatoi-lunghezza-spezzone required>
+     <option value="">Seleziona</option>
+     {% for code in parametri.codici_spezzoni %}
+      {% set descrizione = descrizioni.get(code, '') %}
+      <option value="{{ code }}" data-descrizione="{{ descrizione }}">{{ code }} · {{ descrizione or 'Descrizione non disponibile' }}</option>
+     {% endfor %}
+    </select>
+   </label></div>
    {{ field('pezzi','Spezzoni ottenuti','number') }}{{ field('lunghezza_mm','Lunghezza spezzone (mm)','number') }}
-   <p class="small text-body-secondary">Si registrano le barre intere effettivamente utilizzate. La lunghezza non trasformata viene conservata nel movimento; non viene caricata automaticamente come barra riutilizzabile.</p><div class="col-12"><button class="btn btn-primary">Scarica barre e carica spezzoni</button></div>
+   <p class="col-12 small mb-0">Barre equivalenti da scaricare <output class="fw-semibold" name="barre_equivalenti">—</output></p>
+   {{ field('ddt','DDT spezzoni (facoltativo)',required=false) }}
+   <p class="small text-body-secondary">Lo scarico è calcolato in millimetri da quantità, lunghezza e sfrido per taglio. Il residuo resta disponibile nello stesso lotto.</p><div class="col-12"><button class="btn btn-primary">Scarica barre e carica spezzoni</button></div>
   </form></details>{% endif %}
  {% elif tab == 'articoli' %}
   <dl class="row"><dt class="col-sm-5">Ossidato</dt><dd class="col-sm-7">{{ detail.codice_oss }}</dd><dt class="col-sm-5">Lavorato</dt><dd class="col-sm-7">{{ detail.codice_lav }}</dd><dt class="col-sm-5">Spezzone</dt><dd class="col-sm-7">{{ detail.codice_spezzone }}</dd></dl>
@@ -346,7 +362,7 @@
   {% if passaggio and detail.cliente_id and (can_acquisti or can_produzione) %}
   <details class="mb-3" id="serbatoi-avanzamento"><summary class="fw-semibold">{{ passaggio[1] }} · quantità e DDT</summary><form class="row g-2 mt-1" method="post" action="{{ operator_url_for('main.serbatoi_azione') }}">{{ hidden('avanza') }}<input type="hidden" name="lotto_id" value="{{ detail.id }}"><input type="hidden" name="passaggio" value="{{ passaggio[0] }}">{{ field('quantita','Pezzi rientrati' if rientro_cq else 'Quantità conforme','number') }}{% if rientro_cq %}<p class="small mb-0">I pezzi rientrati saranno disponibili per il controllo qualità. Registra i KO in quella schermata.</p>{% else %}{{ field('scarti','Scarti','number','0','0') }}{% endif %}{{ field('ddt',passaggio[2]) }}<div class="col-12"><button class="btn btn-primary">Conferma avanzamento</button></div></form></details>{% endif %}
   <h3 class="h6">Provenienza del lotto</h3><div class="table-responsive"><table class="table table-sm"><thead><tr><th>Passaggio</th><th>Origine</th></tr></thead><tbody>{% for l in trace %}<tr><td>{{ l.tipo }} · {{ l.codice }}<div class="small text-body-secondary">{{ l.riferimento }}</div></td><td>{{ l.stato }} · {{ l.ubicazione }}{% if l.barre_id %}{% set b=servizio.record(servizio.Barre,l.barre_id) %}<div>{% if 'barre' in tabs %}<a href="{{ serbatoi_url(tab='barre',id=b.id) }}">Ordine barre {{ b.riferimento }}</a><br>{{ b.fornitore_nome }}{% else %}Ordine barre {{ b.riferimento }}{% endif %}</div>{% endif %}</td></tr>{% endfor %}</tbody></table></div>
-  <h3 class="h6">Movimenti e documenti</h3><div class="table-responsive"><table class="table table-sm"><thead><tr><th>Data / operatore</th><th>Operazione</th><th>Quantità</th><th>DDT</th></tr></thead><tbody>{% for m in docs %}<tr><td>{{ m.data[:16]|replace('T',' ') }}<br>{{ m.operatore }}</td><td>{{ m.tipo|replace('_',' ') }}{% if m.note %}<div class="small text-body-secondary">{{ m.note }}</div>{% endif %}</td><td>{{ m.quantita }}</td><td>{{ m.ddt or '—' }}</td></tr>{% endfor %}</tbody></table></div>
+  <h3 class="h6">Movimenti e documenti</h3><div class="table-responsive"><table class="table table-sm"><thead><tr><th>Data / operatore</th><th>Operazione</th><th>Quantità</th><th>DDT</th></tr></thead><tbody>{% for m in docs %}<tr><td>{{ m.data[:16]|replace('T',' ') }}<br>{{ m.operatore }}</td><td>{{ 'CONSUMO BARRE' if m.tipo == 'CONSUMO_BARRE_MM' else m.tipo|replace('_',' ') }}{% if m.note %}<div class="small text-body-secondary">{{ m.note }}</div>{% endif %}</td><td>{{ m.quantita }}{% if m.tipo == 'CONSUMO_BARRE_MM' %} mm{% endif %}</td><td>{{ m.ddt or '—' }}</td></tr>{% endfor %}</tbody></table></div>
  {% endif %}
  </div></div>
  {% if tab == 'articoli' and esclusi %}<details class="card mt-3"><summary class="card-header">Codici cliente esclusi dal filtro ({{ esclusi|length }})</summary><div class="card-body serbatoi-excluded">{% for code in esclusi %}<span class="d-inline-block me-3 mb-2">{{ code or '(senza codice)' }}</span>{% endfor %}</div></details>{% endif %}
@@ -355,4 +371,4 @@
  <form id="serbatoi-sync" class="d-none" method="post" action="{{ operator_url_for('main.serbatoi_azione') }}">{{ hidden('sync') }}</form>
 </main>
 {% endautoescape %}{% endblock %}
-{% block extra_js %}{{ super() }}<script src="{{ url_for('static',filename='vendor/chartjs/chart.umd.min.js') }}" defer></script><script src="{{ url_for('static',filename='assets/js/serbatoi.js',v='prezzi-barre-5') }}" defer></script>{% endblock %}
+{% block extra_js %}{{ super() }}<script src="{{ url_for('static',filename='vendor/chartjs/chart.umd.min.js') }}" defer></script><script src="{{ url_for('static',filename='assets/js/serbatoi.js',v='calcolo-barre-2') }}" defer></script>{% endblock %}

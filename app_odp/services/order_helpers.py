@@ -167,11 +167,11 @@ def _tempo_to_seconds(value) -> int:
     return int((hours * Decimal("3600")).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
 
-def _seconds_to_tempo_text(seconds: int) -> str:
+def _seconds_to_tempo_text(seconds: int, *, precision: int = 2) -> str:
     if seconds <= 0:
         return "0"
     hours = (Decimal(seconds) / Decimal("3600")).quantize(
-        Decimal("0.01"), rounding=ROUND_HALF_UP
+        Decimal(1).scaleb(-precision), rounding=ROUND_HALF_UP
     )
     text = format(hours, "f")
     return text.rstrip("0").rstrip(".") if "." in text else text

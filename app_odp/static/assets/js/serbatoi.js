@@ -286,9 +286,33 @@
             if (data.avvisi?.length) show(data.avvisi.join(' '));
             if (data.changed && !document.querySelector('form[data-dirty="true"]')) { remember(); location.reload(); }
         }).catch(error => show(error.message));
+    const formatoBarre = new Intl.NumberFormat('it-IT', {minimumFractionDigits: 2, maximumFractionDigits: 6});
+    const calcolaBarre = form => {
+        const campi = form.elements;
+        const pezzi = campi.namedItem('pezzi').valueAsNumber;
+        const lunghezza = campi.namedItem('lunghezza_mm').valueAsNumber;
+        const sfrido = Number(campi.namedItem('sfrido_mm').value);
+        const barra = Number(form.dataset.lunghezzaBarra);
+        const perTaglio = lunghezza + sfrido;
+        const valido = Number.isInteger(pezzi) && pezzi > 0 && Number.isInteger(lunghezza)
+            && lunghezza > 0 && sfrido >= 0 && perTaglio <= barra;
+        campi.namedItem('barre_equivalenti').value = valido
+            ? formatoBarre.format(pezzi * perTaglio / barra) : '—';
+    };
+    document.addEventListener('change', event => {
+        const select = event.target;
+        if (!select.matches('select[data-serbatoi-lunghezza-spezzone]')) return;
+        const descrizione = select.selectedOptions[0]?.dataset.descrizione || '';
+        const cifre = descrizione.trim().match(/(?:^|\D)(\d{2,3})$/)?.[1];
+        select.form.elements.namedItem('lunghezza_mm').value = Number(cifre) || '';
+        calcolaBarre(select.form);
+    });
     document.addEventListener('input', event => {
         const form = event.target.closest('.serbatoi form:not(#serbatoi-sync)');
         if (form) form.dataset.dirty = 'true';
+        if (form?.hasAttribute('data-lunghezza-barra') && event.target.matches('input[name="pezzi"], input[name="lunghezza_mm"]')) {
+            calcolaBarre(form);
+        }
     });
     document.addEventListener('submit', event => {
         const form = event.target.closest('.serbatoi form:not(#serbatoi-sync)');

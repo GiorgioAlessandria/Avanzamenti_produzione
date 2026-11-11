@@ -66,7 +66,9 @@ def _fasi_produzione(p, ordine):
     fasi = {f["codice"]: 0 for f in FASI_ODP}
     fasi["lavorati"] = db.session.query(func.coalesce(func.sum(s.Movimento.quantita), 0)).join(
         s.Lotto, s.Lotto.id == s.Movimento.destinazione_id
-    ).filter(s.Lotto.produzione_id == p.id, s.Movimento.tipo.in_(["COMPLETAMENTO_LCT", "COMPLETAMENTO_STOCK"])).scalar()
+    ).filter(s.Lotto.produzione_id == p.id, s.Movimento.tipo.in_(
+        ["COMPLETAMENTO_LCT", "COMPLETAMENTO_STOCK", "COMPLETAMENTO_RETTIFICA"]
+    )).scalar()
     remaining = s.capacita_produzione(p)
     if not remaining:
         return fasi, ""
@@ -265,9 +267,11 @@ def _riassunto_cliente(c, tempistiche, oggi):
 
 def _riga_barre(b, lotti, prezzo=None):
     received = sum(l.iniziale for l in s.Lotto.query.filter_by(barre_id=b.id, padre_id=None, tipo="Barra"))
-    remaining = sum(l.quantita for l in lotti if l.barre_id == b.id and l.tipo == "Barra" and l.stato == "Disponibile")
+    residuo_mm = sum(s.disponibilita_barra_mm(l, b.lunghezza_mm) for l in lotti
+                     if l.barre_id == b.id and l.tipo == "Barra" and l.stato == "Disponibile")
+    remaining = s.barre_equivalenti(residuo_mm, b.lunghezza_mm)
     return dict(id=b.id, titolo=b.riferimento, codice=b.codice, info=b.fornitore_nome,
-                stato=f"{received - remaining} consumate · {remaining} disponibili", quantita=b.quantita,
+                stato=f"{s.formatta_barre(received - remaining)} consumate · {s.formatta_barre(remaining)} disponibili", quantita=b.quantita,
                 oggetto=b, ricevute=received, residue=remaining, fuori_parametri=False, prezzo=prezzo,
                 scadenza={"colore": "blu", "testo": "Approvvigionamento"})
 
@@ -308,7 +312,7 @@ def serbatoi_page():
     produzioni_by_id = {p.id: p for p in produzioni}
     odp_by_key = {(o.IdDocumento, o.IdRiga): o for o in InputOdp.query.all()}
     clienti_erp_by_key = {(o.IdDocumento,o.IdRigaDoc): o for o in AcqOrdineClienteAperto.query.all()}
-    lotti = s.Lotto.query.filter(s.Lotto.quantita > 0).order_by(s.Lotto.id.desc()).all()
+    lotti = s.Lotto.query.filter((s.Lotto.quantita > 0) | (s.Lotto.residuo_barra_mm > 0)).order_by(s.Lotto.id.desc()).all()
     barre = s.Barre.query.order_by(s.Barre.id.desc()).all()
     oggi = s._now_rome_dt().date()
 
@@ -349,11 +353,13 @@ def serbatoi_page():
     elif tab == "produzione":
         rettifiche = {r.produzione_id: r for r in SerbatoiRettificaVista.query.all()}
         for p in produzioni:
-            quantita_fasi, warning = _fasi_produzione(p, odp_by_key.get((p.id_documento,p.id_riga)))
+            ordine = odp_by_key.get((p.id_documento, p.id_riga))
+            quantita_fasi, warning = _fasi_produzione(p, ordine)
             scadenza = scadenze_odp.get(p.id)
             if p.id not in scadenze_odp and (p.id in stock_odp or sum(quantita_fasi.values()) > quantita_fasi["lavorati"]):
                 scadenza = STOCK_INTERNO
             rettifica = rettifiche.get(p.id)
+            residuo_rettifica = s.capacita_produzione(p) if ordine is None else 0
             pezzi_rettificati = s.capacita_produzione(p) if rettifica else 0
             if pezzi_rettificati:
                 for fase_rettificata in ("grezzo", "fresatura", "buratto"):
@@ -366,7 +372,8 @@ def serbatoi_page():
             rows.append(dict(id=p.id, titolo=p.riferimento, codice=s.record(s.Articolo, p.articolo_id).codice_lav,
                              info=p.riferimento_stock, stato=status, quantita=p.quantita, oggetto=p,
                              fasi=quantita_fasi, avviso_fase=warning, scadenza=scadenza,
-                             rettifica=rettifica, pezzi_rettificati=pezzi_rettificati))
+                             rettifica=rettifica, pezzi_rettificati=pezzi_rettificati,
+                             residuo_rettifica=residuo_rettifica))
     elif tab == "barre":
         prezzi_barre = {p.barre_id: p for p in s.PrezzoBarre.query.all()}
         riferimento_prezzo = db.session.get(s.RiferimentoBarre, (
@@ -474,6 +481,7 @@ def serbatoi_page():
     serbatoi_da_produrre = 0
     riepilogo_clienti = {}
     if tab == "magazzino":
+        lunghezze_barre = {b.id: b.lunghezza_mm for b in barre}
         for lotto in lotti:
             if lotto.tipo not in scorte_materiali or lotto.stato != "Disponibile":
                 continue
@@ -481,7 +489,11 @@ def serbatoi_page():
                 continue
             if filtro and filtro not in f"{lotto.codice} {descrizioni.get(lotto.codice, '')}".casefold():
                 continue
-            scorte_materiali[lotto.tipo][lotto.codice] += lotto.quantita
+            quantita = lotto.quantita
+            if lotto.tipo == "Barra":
+                lunghezza = lunghezze_barre[lotto.barre_id]
+                quantita = s.barre_equivalenti(s.disponibilita_barra_mm(lotto, lunghezza), lunghezza)
+            scorte_materiali[lotto.tipo][lotto.codice] += quantita
         serbatoi_da_produrre = sum(r.get("da_produrre", 0) for r in rows)
         for f in fasi_vista:
             codice = f["codice"]
@@ -618,13 +630,13 @@ def serbatoi_azione():
     all_actions = {"articolo", "catalogo_precedente", "attivo", "fasi", "parametri", "tempistiche",
                    "barre", "ricevi", "taglia", "collega_barre_erp", "conferma_barre_manuali",
                    "prezzo_barre", "riferimento_prezzo_barre"}
-    visual_actions = {"mostra_lavorati", "ripristina_fase_odp"}
+    azioni_rettifica = {"completa_rettifica", "ripristina_fase_odp"}
     can_all = active_policy().can("all_serbatoi")
     if action in all_actions and not can_all:
         abort(403)
-    if action in visual_actions and not active_policy().has_direct_admin_role:
+    if action in azioni_rettifica and not active_policy().has_direct_admin_role:
         abort(403)
-    if action not in production_actions | all_actions | visual_actions:
+    if action not in production_actions | all_actions | azioni_rettifica:
         abort(400)
     ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
     changed, notices = 0, []
@@ -694,9 +706,9 @@ def serbatoi_azione():
             elif action == "conferma_barre_manuali":
                 s.conferma_barre_manuali(data.get("barre_id"),data.get("note"),user)
             elif action == "taglia":
-                s.taglia_barre(data.get("lotto_id"), data.get("numero_barre"), data.get("codice_spezzone"),
+                s.taglia_barre(data.get("lotto_id"), data.get("codice_spezzone"),
                                data.get("pezzi"), data.get("lunghezza_mm"), data.get("sfrido_mm",s.parametri().sfrido_mm), user,
-                               fornitore_atteso=data.get("fornitore_spezzoni"))
+                               fornitore_atteso=data.get("fornitore_spezzoni"), ddt=data.get("ddt"))
             elif action == "avanza":
                 lotto = s.avanza_materiale(data.get("lotto_id"), data.get("quantita"), data.get("passaggio"),
                                            data.get("ddt"), data.get("scarti"), user)
@@ -706,28 +718,23 @@ def serbatoi_azione():
                 s.riconcilia_produzione(data.get("produzione_id"), data.get("quantita"), data.get("note"), user)
             elif action == "riconcilia_cliente":
                 s.riconcilia_cliente(data.get("cliente_id"), data.get("quantita"), data.get("note"), user)
-            elif action in visual_actions:
+            elif action in azioni_rettifica:
                 p = s.record(s.Produzione, data.get("produzione_id"))
                 rettifica = db.session.get(SerbatoiRettificaVista, p.id)
-                if action == "mostra_lavorati" and rettifica is None:
-                    ordine = db.session.get(InputOdp, (p.id_documento, p.id_riga))
-                    fasi_odp, _ = _fasi_produzione(p, ordine)
-                    if not fasi_odp["buratto"]:
-                        raise s.SerbatoiError("La rettifica è disponibile per gli ODP visualizzati in Buratto.")
-                    db.session.add(SerbatoiRettificaVista(
-                        produzione_id=p.id, operatore=user,
-                        data=s._now_rome_dt().date().isoformat(),
-                        note=s.testo(data.get("note"), "Motivo della rettifica", 300),
-                    ))
-                elif action == "ripristina_fase_odp" and rettifica is not None:
+                if action == "completa_rettifica":
+                    if data.get("chiuso_erp") != "1":
+                        raise s.SerbatoiError("Confermare che la riga ODP è già chiusa nel gestionale.")
+                    s.rettifica_completamento(p, data.get("quantita_ok"), data.get("quantita_ko"), data.get("note"), user)
+                    changed = 1
+                if rettifica is not None:
                     db.session.delete(rettifica)
             db.session.commit()
         if ajax:
             return jsonify(ok=True, changed=changed, avvisi=notices)
-        if action in visual_actions:
-            flash("Visualizzazione aggiornata.", "success")
+        if action in azioni_rettifica:
+            flash("Rettifica registrata nel magazzino Serbatoi." if action == "completa_rettifica" else "Rettifica visiva rimossa.", "success")
             return redirect(_url(tab="produzione", id=data.get("produzione_id"),
-                                 fase="lavorati" if action == "mostra_lavorati" else "", q=""))
+                                 fase="", q=""))
         flash("Operazione registrata." + (" " + " ".join(notices) if notices else ""), "success")
         if lotto_avanzato is not None:
             if lotto_avanzato.stato == cq.STATO_CQ:

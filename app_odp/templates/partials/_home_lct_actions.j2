@@ -1,7 +1,6 @@
 {% autoescape true %}
 <td>
     <div class="lct-actions">
-        {% set grouped = singolo_odp.LctGroup|default(none) %}
         {% if not lct_preview|default(false) %}
             {% set fase = singolo_odp.FaseAttiva|int %}
             {% set state = singolo_odp.StatoOrdine %}
@@ -10,9 +9,9 @@
             {% if state == 'Pianificata' %}
                 {% set actions = [(1, 'Prendi in carico fresa' if fase == 1 else 'Prendi in carico buratto', 'primary')] %}
             {% elif state == 'Attivo' and mine %}
-                {% set actions = [(2, 'Sospendi gruppo' if grouped else 'Sospendi', 'outline-warning'), (4, 'Chiusure gruppo' if grouped else ('Termine fresa' if fase == 1 else 'Termine ordine'), 'primary')] %}
+                {% set actions = [(2, 'Sospendi', 'outline-warning'), (4, 'Termine fresa' if fase == 1 else 'Termine ordine', 'primary')] %}
             {% elif state == 'In Sospeso' %}
-                {% set actions = [(3, 'Riprendi gruppo' if grouped else 'Riprendi', 'outline-success')] %}
+                {% set actions = [(3, 'Riprendi', 'outline-success')] %}
             {% else %}
                 {% set actions = [] %}
                 <span class="text-muted small">In uso da {{ owner }}</span>
@@ -26,14 +25,6 @@
                         data-use-selected="#lct_{{ lct_key }}" data-fill-target="#toast-{{ toast }}"
                         data-bs-target="#toast-{{ toast }}" data-bs-toggle="toast">{{ label }}</button>
             {% endfor %}
-        {% endif %}
-        {% if grouped and lct_preview|default(false) %}
-            <span class="small text-muted">{{ grouped.WorkGroupDisplayType }} · {{ grouped.OrdineVisuale }}</span>
-        {% elif grouped %}
-            <button type="button" class="btn btn-sm btn-outline-secondary js-open-workgroup-detail-modal"
-                    data-group-uid="{{ grouped.WorkGroupUid }}" data-group-type="{{ grouped.WorkGroupDisplayType }}"
-                    data-group-label="{{ grouped.OrdineVisuale }}"
-                    data-group-detail="{{ grouped.DettaglioGruppoVisuale|tojson|forceescape }}">Dettaglio gruppo</button>
         {% endif %}
     </div>
 </td>

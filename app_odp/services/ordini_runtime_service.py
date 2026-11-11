@@ -272,7 +272,7 @@ def _apply_stop_minutes_to_runtime(
     return removable_seconds, _norm_text(stato.Tempo_funzionamento) or "0"
 
 
-def _accumulate_runtime_until(stato, end_dt: datetime) -> int:
+def _accumulate_runtime_until(stato, end_dt: datetime, *, precision: int = 2) -> int:
     if stato is None:
         return 0
 
@@ -286,7 +286,7 @@ def _accumulate_runtime_until(stato, end_dt: datetime) -> int:
     elapsed_seconds = max(0, int((end_dt - start_dt).total_seconds()))
     total_seconds = _tempo_to_seconds(stato.Tempo_funzionamento) + elapsed_seconds
 
-    stato.Tempo_funzionamento = _seconds_to_tempo_text(total_seconds)
+    stato.Tempo_funzionamento = _seconds_to_tempo_text(total_seconds, precision=precision)
     stato.data_ultima_attivazione = None
     return elapsed_seconds
 

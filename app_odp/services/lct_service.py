@@ -13,20 +13,13 @@ def uses_lct_home(policy, config):
 
 
 def lct_home_rows(rows):
-    """Espande la rappresentazione dei gruppi, mantenendo i comandi di gruppo."""
+    """Mostra ogni ordine LCT con la propria identità, anche se il tempo è condiviso."""
     result = []
     for row in rows:
-        if not getattr(row, "IsWorkGroup", False):
-            row.LctGroup = None
-            row.LctMode = "Principale" if _fase_to_int(row.FaseAttiva) == 1 else "Singolo"
+        if getattr(row, "IsWorkGroup", False):
+            result.extend(row.WorkGroupOrdini)
+        else:
             result.append(row)
-            continue
-        members = {(m.IdDocumento, m.IdRiga): m for m in row.WorkGroupMembers}
-        for order in row.WorkGroupOrdini:
-            member = members[(order.IdDocumento, order.IdRiga)]
-            order.LctGroup = row
-            order.LctMode = {"FULL": "Principale", "ZERO": "Mascherato", "SPLIT": "Multiplo"}.get(member.TimeShareMode, "")
-            result.append(order)
     return result
 
 
