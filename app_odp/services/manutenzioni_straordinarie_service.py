@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import func
 from sqlalchemy.orm import joinedload
 
+from app_odp.services.operator_identity import display_username
 from app_odp.manutenzioni_models import (
     ESITI_MANUTENZIONE_STRAORDINARIA,
     ManutenzioneStraordinaria,
@@ -392,22 +393,18 @@ def _apply_payload(
         intervento.eseguito_da_username = None
     elif (
         creating
-        or not intervento.eseguito_da_username
+        or not (intervento.eseguito_da_public_id or intervento.eseguito_da_username)
     ):
         intervento.eseguito_da_public_id = (
             public_id
         )
-        intervento.eseguito_da_username = (
-            username
-        )
+        intervento.eseguito_da_username = None if public_id else username
 
     if creating:
         intervento.registrato_da_public_id = (
             public_id
         )
-        intervento.registrato_da_username = (
-            username
-        )
+        intervento.registrato_da_username = None if public_id else username
 
 
 def create_manutenzione_straordinaria(
@@ -489,7 +486,7 @@ def serialize_manutenzione_straordinaria(
 
     esecutore = (
         intervento.eseguito_da_esterno
-        or intervento.eseguito_da_username
+        or display_username(intervento.eseguito_da_public_id, intervento.eseguito_da_username)
         or "-"
     )
 
@@ -553,8 +550,8 @@ def serialize_manutenzione_straordinaria(
         "eseguito_da_public_id": (
             intervento.eseguito_da_public_id
         ),
-        "eseguito_da_username": (
-            intervento.eseguito_da_username
+        "eseguito_da_username": display_username(
+            intervento.eseguito_da_public_id, intervento.eseguito_da_username
         ),
         "eseguito_da_esterno": (
             intervento.eseguito_da_esterno
@@ -563,8 +560,8 @@ def serialize_manutenzione_straordinaria(
         "registrato_da_public_id": (
             intervento.registrato_da_public_id
         ),
-        "registrato_da_username": (
-            intervento.registrato_da_username
+        "registrato_da_username": display_username(
+            intervento.registrato_da_public_id, intervento.registrato_da_username
         ),
         "note": intervento.note,
         "created_at": (

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 # app_odp/services/ordini_gruppi_service.py
+from app_odp.services.operator_identity import encode_payload_operators, order_log_actor
 from app_odp.services.order_helpers import (
     _norm_text,
     _now_rome_dt,
@@ -315,13 +316,13 @@ def _append_group_runtime_log(
             Scope=_order_reparto(ordine),
             CodArt=_norm_text(getattr(ordine, "CodArt", "")),
             CodReparto=_norm_text(getattr(ordine, "CodReparto", "")),
-            PayloadJson=json.dumps(payload, ensure_ascii=False),
+            PayloadJson=json.dumps(encode_payload_operators(payload), ensure_ascii=False),
             IdDocumento=ordine.IdDocumento,
             IdRiga=ordine.IdRiga,
             RifRegistraz=_norm_text(getattr(ordine, "RifRegistraz", "")),
             Azione=action,
             Motivo=note,
-            UtenteOperazione=_current_username(),
+            **order_log_actor("UtenteOperazione", _current_username()),
             EventAt=event_at,
             StatoOdpPre=_norm_text(stato_pre),
             StatoOdpPost=_norm_text(stato_post),

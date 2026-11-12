@@ -7,7 +7,7 @@ from app_odp.models import db
 from app_odp.operator_session import (
     active_token, active_user, get_operator_token,
 )
-from app_odp.policy.decorator import require_active_perm
+from app_odp.policy.decorator import require_active_any_perm
 from app_odp.phase_labels import PREFERENCE_KEY, get_phase_labels, phase_label, validate_phase_labels
 from app_odp.routes_blueprint import main_bp
 
@@ -22,7 +22,7 @@ def inject_phase_labels():
 
 
 @main_bp.route("/preferenze/fasi", methods=["GET", "POST"])
-@require_active_perm("utente_vendite")
+@require_active_any_perm("utente_vendite", "utente_amministrazione")
 def preferenze_fasi():
     # Un token operatore scaduto non deve modificare il profilo del login condiviso.
     if get_operator_token() and get_operator_token() != active_token():

@@ -1,6 +1,7 @@
 from flask import Flask, request, g, url_for
 from flask_login import LoginManager
 from .filters import register_filters
+from app_odp.services.operator_identity import display_username
 from app_odp.operator_session import active_user, active_policy, active_token
 from app_odp.models import db, Permissions, User
 from app_odp import (
@@ -320,6 +321,15 @@ def _ensure_logistica_schema() -> None:
         with engine.begin() as connection:
             for statement in additions:
                 connection.exec_driver_sql(statement)
+
+
+def _ensure_order_log_schema() -> None:
+    engine = db.engines["log"]
+    with engine.begin() as connection:
+        schema = inspect(connection)
+        for table in ("input_odp_log", "odp_runtime_log", "lotti_usati_log", "lotti_generati_log"):
+            if "ActorPublicId" not in {column["name"] for column in schema.get_columns(table)}:
+                connection.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN ActorPublicId TEXT")
 
 
 def _ensure_acquisti_schema() -> None:
@@ -844,6 +854,7 @@ def create_app():
     # inizializza estensioni
     db.init_app(app)
     register_filters(app)
+    app.add_template_filter(display_username)
     login_manager = LoginManager()
     login_manager.init_app(app)
     login_manager.login_view = "auth.login"
@@ -899,6 +910,7 @@ def create_app():
         _ensure_serbatoi_schema()
         _ensure_priorita_schema()
         db.create_all(bind_key="log")
+        _ensure_order_log_schema()
         db.create_all(bind_key="acq")
         _ensure_acquisti_schema()
         db.create_all(bind_key="manutenzioni")

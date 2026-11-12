@@ -26,7 +26,8 @@ from app_odp.services.serbatoi_mercato_service import mercato_alluminio
 
 
 TABS = {"clienti": "Ordini cliente", "produzione": "ODP e stock", "barre": "Ordini barre",
-        "spezzoni": "Spezzoni", "magazzino": "Magazzino materiale", "storico": "Spedizioni", "articoli": "Parametri"}
+        "spezzoni": "Spezzoni", "magazzino": "Magazzino materiale", "storico": "Spedizioni",
+        "cqc": "Stampa CQC", "articoli": "Parametri"}
 
 TABS_PRODUZIONE = {key: TABS[key] for key in ("clienti", "produzione", "storico")}
 
@@ -221,12 +222,15 @@ def serbatoi_qualita():
 @require_active_any_perm(*SERBATOI_OPERATIVI)
 def serbatoi_cqc(cliente_id):
     _accesso()
+    stampa = request.args.get("stampa") == "1"
+    if stampa and not active_policy().can("all_serbatoi"):
+        abort(403)
     cliente = db.get_or_404(s.Cliente, cliente_id)
     try:
         fresature, rientri = cq.dati_cqc(cliente)
     except s.SerbatoiError as exc:
         flash(str(exc), "warning")
-        return redirect(_url(tab="clienti", id=cliente.id))
+        return redirect(_url(tab="cqc") if stampa else _url(tab="clienti", id=cliente.id))
     articolo = s.record(s.Articolo, cliente.articolo_id)
     lotti = []
     for r in rientri:
@@ -235,7 +239,7 @@ def serbatoi_cqc(cliente_id):
         lotti.append((r, lotto.riferimento, movimento.ddt if movimento else ""))
     odp = [(f, s.record(s.Produzione, f.produzione_id).riferimento) for f in fresature]
     return send_file(build_cqc_pdf(cliente, articolo, odp, lotti), mimetype="application/pdf",
-                     as_attachment=True, download_name=secure_filename(
+                     as_attachment=not stampa, download_name=secure_filename(
                          f"CQC_{cliente.cliente}_{cliente.riferimento}_riga_{cliente.id_riga}.pdf"
                      ))
 
@@ -294,6 +298,22 @@ def serbatoi_page():
     tabs = TABS if can_all else TABS_PRODUZIONE
     if tab not in tabs:
         abort(403)
+    if tab == "cqc":
+        con_rientro = cq.Controllo.query.filter_by(fase="rientro").filter(
+            cq.Controllo.cliente_id == s.Cliente.id
+        ).exists()
+        candidati = db.session.query(s.Cliente, s.Articolo.codice_oss).join(
+            s.Articolo, s.Articolo.id == s.Cliente.articolo_id
+        ).filter(con_rientro).order_by(s.Cliente.cliente, s.Cliente.riferimento, s.Cliente.id)
+        certificati = []
+        for cliente, codice in candidati:
+            try:
+                cq.dati_cqc(cliente)
+            except s.SerbatoiError:
+                continue
+            certificati.append((cliente, codice))
+        return render_template("serbatoi_stampa_cqc.j2", tab=tab, tabs=tabs, certificati=certificati,
+                               serbatoi_url=_url)
     con_fasi = tab in ("clienti", "produzione", "magazzino", "storico")
     fasi_vista = FASI_ODP if tab == "produzione" else FASI_SPEDIZIONI if tab == "storico" else FASI
     if tab == "magazzino":
@@ -313,8 +333,21 @@ def serbatoi_page():
     odp_by_key = {(o.IdDocumento, o.IdRiga): o for o in InputOdp.query.all()}
     clienti_erp_by_key = {(o.IdDocumento,o.IdRigaDoc): o for o in AcqOrdineClienteAperto.query.all()}
     lotti = s.Lotto.query.filter((s.Lotto.quantita > 0) | (s.Lotto.residuo_barra_mm > 0)).order_by(s.Lotto.id.desc()).all()
+    if tab == "spezzoni" and request.args.get("id"):
+        try:
+            lotto_storico = db.session.get(s.Lotto, s.intero(request.args["id"], "Lotto"))
+        except s.SerbatoiError:
+            lotto_storico = None
+        if lotto_storico and lotto_storico.tipo == "Spezzone" and lotto_storico.stato == "Disponibile" and not lotto_storico.quantita:
+            lotti.append(lotto_storico)
     barre = s.Barre.query.order_by(s.Barre.id.desc()).all()
     oggi = s._now_rome_dt().date()
+    impegni_spezzoni = {i.produzione_id: i for i in s.ImpegnoSpezzone.query.all()} if tab in (
+        "clienti", "produzione", "spezzoni", "magazzino"
+    ) else {}
+    impegnati_per_lotto = Counter()
+    for impegno in impegni_spezzoni.values():
+        impegnati_per_lotto[impegno.lotto_id] += impegno.quantita
 
     @cache
     def riepilogo_cliente(cliente_id):
@@ -398,7 +431,8 @@ def serbatoi_page():
                        or (fase_spedizione and l.tipo == "Materiale" and (l.cliente_id in clienti_by_id or l.stato == "Spedito")))
             if visible:
                 c, p = clienti_by_id.get(l.cliente_id), produzioni_by_id.get(l.produzione_id)
-                titolo, stato = l.riferimento, f"{l.stato} · {l.ubicazione}"
+                titolo = l.riferimento
+                stato = f"{l.stato if l.quantita else 'Esaurito'} · {l.ubicazione}"
                 info = f"{c.riferimento} · {c.cliente}" if c else f"{p.riferimento} · Lavorazione ODP" if p and l.stato == "In lavorazione" else f"Stock · {p.riferimento}" if p else "Stock libero"
                 if tab == "magazzino":
                     if c:
@@ -409,6 +443,8 @@ def serbatoi_page():
                         scadenza = STOCK_INTERNO
                 elif tab == "spezzoni":
                     scadenza = STOCK_INTERNO
+                    if impegnati_per_lotto[l.id]:
+                        stato = f"{impegnati_per_lotto[l.id]} impegnati · {l.quantita - impegnati_per_lotto[l.id]} liberi"
                 else:
                     if c:
                         titolo = f"{c.riferimento} · riga {c.id_riga}"
@@ -472,6 +508,7 @@ def serbatoi_page():
     ordini_per_fase = _ordini_per_fase(rows, tab, ubicazione, fasi_vista) if con_fasi and tab != "magazzino" else {}
     riepilogo_magazzino = {}
     scorte_materiali = {"Barra": Counter(), "Spezzone": Counter()}
+    spezzoni_impegnati_magazzino = 0
     giacenze_spezzoni = {}
     if tab in ("magazzino", "spezzoni") and ubicazione in ("", "Bernardi"):
         codici = [codice for codice in cfg.codici_spezzoni
@@ -493,6 +530,10 @@ def serbatoi_page():
             if lotto.tipo == "Barra":
                 lunghezza = lunghezze_barre[lotto.barre_id]
                 quantita = s.barre_equivalenti(s.disponibilita_barra_mm(lotto, lunghezza), lunghezza)
+            elif lotto.tipo == "Spezzone":
+                impegnati = impegnati_per_lotto[lotto.id]
+                quantita -= impegnati
+                spezzoni_impegnati_magazzino += impegnati
             scorte_materiali[lotto.tipo][lotto.codice] += quantita
         serbatoi_da_produrre = sum(r.get("da_produrre", 0) for r in rows)
         for f in fasi_vista:
@@ -542,17 +583,26 @@ def serbatoi_page():
         cliente_id=detail.id, fase="rientro"
     ).first())
     trace, docs, impegni, disponibilita, stati, avvisi = [], [], [], [], {}, []
+    provenienza_ddt, odp_per_spezzone, prelievi_spezzone, ddt_ricezioni = [], [], [], {}
+    produzioni_collegate = set()
+    documenti_spezzone = None
     origine_barra = riferimento_dettaglio = scostamento_prezzo = None
     data_prezzo_proposta = oggi
     if tab == "clienti" and detail:
         impegni = s.Impegno.query.filter_by(cliente_id=detail.id).all()
         disponibilita = [l for l in lotti if l.cliente_id == detail.id and l.tipo == "Materiale"]
         stati = s.stati_cliente(detail)
+        produzioni_collegate = {i.produzione_id for i in impegni}
+        produzioni_collegate.update(l.produzione_id for l in disponibilita if l.produzione_id)
     elif tab == "produzione" and detail:
         impegni = s.Impegno.query.filter_by(produzione_id=detail.id).all()
-        disponibilita = s.Consumo.query.filter_by(produzione_id=detail.id).all()
+        produzioni_collegate.add(detail.id)
     elif tab == "barre" and detail:
         disponibilita = [l for l in lotti if l.barre_id == detail.id and l.tipo == "Barra" and l.stato == "Disponibile"]
+        ricezioni = db.session.query(s.Lotto.riferimento, s.Movimento.ddt, s.Lotto.id).join(
+            s.Movimento, s.Movimento.destinazione_id == s.Lotto.id
+        ).filter(s.Lotto.barre_id == detail.id, s.Movimento.tipo == "RICEZIONE_BARRE").order_by(s.Movimento.id).all()
+        ddt_ricezioni = {l.id: l for l in ricezioni}
         origine_barra = s.BarreOrigine.query.filter_by(barre_id=detail.id).first()
         if origine_barra:
             origine_erp = db.session.get(AcqOrdineFornitoreAperto, (origine_barra.id_documento, origine_barra.id_riga))
@@ -565,6 +615,35 @@ def serbatoi_page():
             scostamento_prezzo = s.scostamento_prezzo_barre(selected["prezzo"], riferimento_dettaglio)
     elif tab in ("magazzino", "spezzoni", "storico") and detail:
         trace, docs = s.tracciabilita(detail)
+        if tab == "spezzoni":
+            documenti_spezzone = s.documenti_spezzone(detail)
+            prelievi_spezzone = s.Consumo.query.join(s.Lotto, s.Lotto.id == s.Consumo.lotto_id).filter(
+                s.Lotto.padre_id == detail.id
+            ).order_by(s.Consumo.id).all()
+            if detail.quantita and detail.codice in cfg.codici_spezzoni:
+                articoli_compatibili = {a.id for a in articoli if a.codice_spezzone == detail.codice}
+                for p in produzioni:
+                    if p.articolo_id not in articoli_compatibili or not s.odp_aperto_per_spezzoni(
+                        odp_by_key.get((p.id_documento, p.id_riga))
+                    ):
+                        continue
+                    previsti = s.disponibilita_prelievo_spezzoni(p)
+                    impegno = impegni_spezzoni.get(p.id)
+                    if previsti and not (impegno and impegno.lotto_id == detail.id) and (
+                        previsti <= detail.quantita - impegnati_per_lotto[detail.id]
+                    ):
+                        odp_per_spezzone.append((p, previsti))
+    if produzioni_collegate:
+        prelievi = s.Consumo.query.filter(s.Consumo.produzione_id.in_(produzioni_collegate)).order_by(s.Consumo.id)
+        provenienza_ddt = [
+            dict(s.documenti_spezzone(s.record(s.Lotto, c.lotto_id)),
+                 odp=produzioni_by_id[c.produzione_id], quantita=c.quantita, impegnato=False)
+            for c in prelievi
+        ]
+        for produzione_id in sorted(produzioni_collegate & impegni_spezzoni.keys()):
+            impegno = impegni_spezzoni[produzione_id]
+            provenienza_ddt.append(dict(s.documenti_spezzone(s.record(s.Lotto, impegno.lotto_id)),
+                                        odp=produzioni_by_id[produzione_id], quantita=impegno.quantita, impegnato=True))
     rientro_cq = bool(tab in ("magazzino", "storico") and detail
                       and detail.stato == "Lavorato" and detail.ubicazione == "Gaser")
     if tab == "articoli":
@@ -595,6 +674,11 @@ def serbatoi_page():
                            articoli=articoli, clienti=clienti, produzioni=produzioni, lotti=lotti, barre=barre,
                            fornitori=lista_fornitori, trace=trace, docs=docs, impegni=impegni,
                            disponibilita=disponibilita, stati=stati, esclusi=avvisi,
+                           provenienza_ddt=provenienza_ddt, documenti_spezzone=documenti_spezzone,
+                           odp_per_spezzone=odp_per_spezzone, prelievi_spezzone=prelievi_spezzone,
+                           impegni_spezzoni=impegni_spezzoni, impegnati_per_lotto=impegnati_per_lotto,
+                           spezzoni_impegnati_magazzino=spezzoni_impegnati_magazzino,
+                           ddt_ricezioni=ddt_ricezioni,
                            servizio=s, serbatoi_url=_url, csrf=session["serbatoi_csrf"], request_id=lambda: uuid4().hex,
                            fasi=fasi_vista, con_fasi=con_fasi, fase_filtro=fase, ubicazione_filtro=ubicazione,
                            totali_fasi=totali_fasi,
@@ -626,10 +710,10 @@ def serbatoi_azione():
         abort(400, "Sessione del modulo scaduta. Ricaricare la pagina.")
     action = data.get("azione", "")
     production_actions = {"sync", "avanza", "assegna_odp", "assegna_magazzino", "libera_impegno",
-                          "libera_materiale", "consuma", "riconcilia", "riconcilia_cliente"}
+                          "libera_materiale", "consuma", "libera_lotto_spezzoni", "riconcilia", "riconcilia_cliente"}
     all_actions = {"articolo", "catalogo_precedente", "attivo", "fasi", "parametri", "tempistiche",
                    "barre", "ricevi", "taglia", "collega_barre_erp", "conferma_barre_manuali",
-                   "prezzo_barre", "riferimento_prezzo_barre"}
+                   "prezzo_barre", "riferimento_prezzo_barre", "ddt_spezzone", "consuma_da_spezzoni"}
     azioni_rettifica = {"completa_rettifica", "ripristina_fase_odp"}
     can_all = active_policy().can("all_serbatoi")
     if action in all_actions and not can_all:
@@ -683,8 +767,16 @@ def serbatoi_azione():
                 s.libera_impegno(data.get("impegno_id"), data.get("quantita"), user)
             elif action == "libera_materiale":
                 s.libera_materiale(data.get("lotto_id"), data.get("quantita"), user)
-            elif action == "consuma":
-                s.consuma_spezzoni(data.get("produzione_id"), data.get("lotto_id"), data.get("quantita"), user)
+            elif action in ("consuma", "consuma_da_spezzoni"):
+                s.impegna_spezzoni(data.get("produzione_id"), data.get("lotto_id"), user,
+                                   solo_odp_aperti=action == "consuma_da_spezzoni")
+            elif action == "libera_lotto_spezzoni":
+                p = s.blocca(s.record(s.Produzione, data.get("produzione_id")))
+                impegno = db.session.get(s.ImpegnoSpezzone, p.id)
+                if impegno is not None:
+                    db.session.delete(impegno)
+            elif action == "ddt_spezzone":
+                s.collega_ddt_spezzone(data.get("lotto_id"), data.get("ddt"))
             elif action == "barre":
                 barra = s.crea_ordine_barre(data, user)
                 if s._norm_text(data.get("prezzo_kg")):

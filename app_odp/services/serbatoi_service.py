@@ -16,6 +16,7 @@ from app_odp.serbatoi_models import (
     SerbatoiProduzione as Produzione, SerbatoiImpegno as Impegno,
     SerbatoiBarre as Barre, SerbatoiLotto as Lotto,
     SerbatoiConsumo as Consumo, SerbatoiMovimento as Movimento,
+    SerbatoiImpegnoSpezzone as ImpegnoSpezzone,
     SerbatoiEvento as Evento,
     SerbatoiParametri as Parametri, SerbatoiBarreOrigine as BarreOrigine,
     SerbatoiBarreManuale as BarreManuale,
@@ -643,21 +644,98 @@ def quantita_da_tracciare(p):
     return p.quantita + eccedenza
 
 
+def disponibilita_prelievo_spezzoni(p):
+    return max(0, quantita_da_tracciare(p) - _spezzoni_prelevati(p))
+
+
+def _spezzoni_prelevati(p):
+    return db.session.query(func.coalesce(func.sum(Consumo.quantita), 0)).filter_by(produzione_id=p.id).scalar()
+
+
+def _spezzoni_impegnati(lotto_id, *, escluso_odp=None):
+    query = db.session.query(func.coalesce(func.sum(ImpegnoSpezzone.quantita), 0)).filter_by(lotto_id=lotto_id)
+    if escluso_odp is not None:
+        query = query.filter(ImpegnoSpezzone.produzione_id != escluso_odp)
+    return query.scalar()
+
+
+def odp_aperto_per_spezzoni(ordine):
+    return ordine is not None and not any(
+        _norm_text(stato).casefold() in ("chiusa", "chiuso", "terminata", "terminato")
+        for stato in (ordine.StatoOrdine, ordine.StatoOrdineErp)
+    )
+
+
+def impegna_spezzoni(produzione_id, lotto_id, utente, *, solo_odp_aperti=False):
+    p = blocca(record(Produzione, produzione_id))
+    l = blocca(record(Lotto, lotto_id))
+    _verifica_lotto_spezzoni(p, l)
+    aperto = odp_aperto_per_spezzoni(db.session.get(InputOdp, (p.id_documento, p.id_riga)))
+    if solo_odp_aperti and not aperto:
+        raise SerbatoiError("Selezionare un ODP ancora aperto.")
+    quantita = disponibilita_prelievo_spezzoni(p) if aperto else _pezzi_consuntivati(p) - _spezzoni_prelevati(p)
+    if quantita <= 0:
+        raise SerbatoiError("Nessuna quantità residua da collegare a questo lotto.")
+    if quantita > l.quantita - _spezzoni_impegnati(l.id, escluso_odp=p.id):
+        raise SerbatoiError(f"Il lotto non ha {quantita} spezzoni liberi per questo ODP.")
+    impegno = db.session.get(ImpegnoSpezzone, p.id)
+    if impegno is None:
+        impegno = ImpegnoSpezzone(produzione_id=p.id)
+        db.session.add(impegno)
+    impegno.lotto_id = l.id
+    impegno.quantita = quantita
+    if not aperto:
+        _scarica_spezzoni_impegnati(p, utente, finale=True)
+
+
+def _verifica_lotto_spezzoni(p, l):
+    a = record(Articolo, p.articolo_id)
+    if l.codice not in parametri().codici_spezzoni:
+        raise SerbatoiError("Codice spezzone non abilitato nei parametri.")
+    if l.tipo != "Spezzone" or l.stato != "Disponibile" or l.codice != a.codice_spezzone:
+        raise SerbatoiError("Spezzone non compatibile con la produzione.")
+
+
 def consuma_spezzoni(produzione_id, lotto_id, quantita, utente):
     p = blocca(record(Produzione, produzione_id))
     l = blocca(record(Lotto, lotto_id))
     q = intero(quantita)
-    a = record(Articolo, p.articolo_id)
-    if l.codice not in parametri().codici_spezzoni:
-        raise SerbatoiError("Codice spezzone non abilitato nei parametri.")
-    used = sum(x.quantita for x in Consumo.query.filter_by(produzione_id=p.id))
-    if l.tipo != "Spezzone" or l.stato != "Disponibile" or l.codice != a.codice_spezzone:
-        raise SerbatoiError("Spezzone non compatibile con la produzione.")
-    if used + q > quantita_da_tracciare(p):
+    _verifica_lotto_spezzoni(p, l)
+    if q > disponibilita_prelievo_spezzoni(p):
         raise SerbatoiError("Consumo superiore alla quantità da tracciare per l'ODP.")
+    if q > l.quantita - _spezzoni_impegnati(l.id):
+        raise SerbatoiError("Quantità superiore agli spezzoni liberi nel lotto.")
+    _registra_consumo_spezzoni(p, l, q, utente)
+
+
+def _registra_consumo_spezzoni(p, l, q, utente):
     dest = sposta(l, q, "Consumato", "Bernardi", utente, "PRELIEVO_SPEZZONI")
     db.session.add(Consumo(produzione_id=p.id, lotto_id=dest.id, quantita=q))
     movimento("ORIGINE_ODP", q, utente, origine=dest, produzione=p)
+
+
+def _pezzi_consuntivati(p):
+    return db.session.query(func.coalesce(func.sum(Movimento.quantita), 0)).join(
+        Lotto, Lotto.id == Movimento.destinazione_id
+    ).filter(Lotto.produzione_id == p.id, Movimento.tipo.in_(
+        ("SCARTO_LCT", "SCARTO_RETTIFICA", "COMPLETAMENTO_LCT", "COMPLETAMENTO_STOCK", "COMPLETAMENTO_RETTIFICA")
+    )).scalar()
+
+
+def _scarica_spezzoni_impegnati(p, utente, *, finale=False):
+    impegno = db.session.get(ImpegnoSpezzone, p.id)
+    if impegno is None:
+        return
+    da_prelevare = _pezzi_consuntivati(p) - _spezzoni_prelevati(p)
+    if da_prelevare > 0:
+        l = blocca(record(Lotto, impegno.lotto_id))
+        liberi = l.quantita - _spezzoni_impegnati(l.id, escluso_odp=p.id)
+        if da_prelevare > liberi:
+            raise SerbatoiError(f"Il lotto {l.riferimento} non ha {da_prelevare} spezzoni liberi per il consuntivo.")
+        _registra_consumo_spezzoni(p, l, da_prelevare, utente)
+        impegno.quantita = max(0, impegno.quantita - da_prelevare)
+    if finale:
+        db.session.delete(impegno)
 
 
 def _avvia_materiale(p, utente, *, tipo="AVVIO_LCT"):
@@ -705,6 +783,7 @@ def rettifica_completamento(p, q_ok, q_ko, note, utente):
     if bad:
         sposta(lotto, bad, "Scarto", "Bernardi", utente, "SCARTO_RETTIFICA", note=motivo)
     _completa_materiale(p, lotto, good, utente, motivo_rettifica=motivo)
+    _scarica_spezzoni_impegnati(p, utente, finale=True)
 
 
 def evento_lct(ordine, *, tipo, operazione, fase, utente, q_ok=0, q_nok=0, finale=False,
@@ -749,14 +828,15 @@ def evento_lct(ordine, *, tipo, operazione, fase, utente, q_ok=0, q_nok=0, final
     if not working:
         if good or bad:
             raise SerbatoiError("Materiale in lavorazione Serbatoi non disponibile.")
+        _scarica_spezzoni_impegnati(p, utente, finale=finale and fase == p.fase_fine)
         return
     # Il lotto di lavorazione è unico; le origini multiple restano nei consumi ODP.
     l = working[0]
     if bad:
         sposta(l, bad, "Scarto", "Bernardi", utente, "SCARTO_LCT")
-    if fase != p.fase_fine:
-        return
-    _completa_materiale(p, l, good, utente)
+    if fase == p.fase_fine:
+        _completa_materiale(p, l, good, utente)
+    _scarica_spezzoni_impegnati(p, utente, finale=finale and fase == p.fase_fine)
 
 
 def crea_ordine_barre(data, utente, *, da_erp=False):
@@ -796,6 +876,16 @@ def _ddt_alfanumerico(ddt):
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9./_-]*", doc):
         raise SerbatoiError("DDT: usare lettere, numeri e separatori (. / _ -).")
     return doc
+
+
+def collega_ddt_spezzone(lotto_id, ddt):
+    lotto = blocca(record(Lotto, lotto_id))
+    taglio = Movimento.query.filter_by(tipo="TAGLIO", destinazione_id=lotto.id).first()
+    if lotto.tipo != "Spezzone" or taglio is None:
+        raise SerbatoiError("Taglio di origine dello spezzone non trovato.")
+    if taglio.ddt:
+        raise SerbatoiError("Il taglio ha già un DDT associato.")
+    taglio.ddt = _ddt_alfanumerico(ddt)
 
 
 def ricevi_barre(barre_id, quantita, ddt, utente):
@@ -939,6 +1029,21 @@ def tracciabilita(lotto):
         and_(Movimento.origine_id.in_(seen), Movimento.tipo.not_in(("CONSUMO_BARRE_MM", "TAGLIO"))),
     )).order_by(Movimento.id).all()
     return nodes, docs
+
+
+def documenti_spezzone(lotto):
+    trace, docs = tracciabilita(lotto)
+    taglio = next((m for m in docs if m.tipo == "TAGLIO"), None)
+    ricezione = next((m for m in docs if m.tipo == "RICEZIONE_BARRE"), None)
+    lotto_spezzone = next((l for l in trace if l.tipo == "Spezzone" and l.stato == "Disponibile"), lotto)
+    barra = next((l.barre_id for l in trace if l.barre_id), None)
+    return {
+        "lotto": lotto_spezzone,
+        "taglio": taglio,
+        "ddt_spezzone": taglio.ddt if taglio else "",
+        "ddt_barra": ricezione.ddt if ricezione else "",
+        "ordine_barre": record(Barre, barra) if barra else None,
+    }
 
 
 def riconcilia_produzione(produzione_id, quantita, note, utente):

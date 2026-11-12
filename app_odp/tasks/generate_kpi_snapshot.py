@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy import and_
 
+from app_odp.services.operator_identity import display_username
 from app_odp.app import create_app
 from app_odp.models import (
     db,
@@ -309,7 +310,9 @@ def generate_snapshot_for_month(
         reparto = _reparto_for_log(rt, il)
         risorsa = _risorsa_for_log(il)
         lavorazione = _lavorazione_for_log(il)
-        operatore = _norm_text(getattr(rt, "UtenteOperazione", ""))
+        operatore = _norm_text(display_username(
+            getattr(rt, "ActorPublicId", None), getattr(rt, "UtenteOperazione", "")
+        ))
         articolo = (
             _norm_text(getattr(il, "CodArt", ""))
             if il

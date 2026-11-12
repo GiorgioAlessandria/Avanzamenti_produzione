@@ -219,6 +219,8 @@ def home():
     )
     method_settings = _home_method_settings_for_user(config, policy, user)
     home_ui_texts = _home_ui_texts_for_user(config, policy, user)
+    preferences = getattr(user, "preferences", {})
+    production_notice = preferences.get("production_notice") if isinstance(preferences, dict) else None
     from app_odp.services.lct_service import uses_lct_home, lct_sections, lct_fresa_busy
 
     return render_template(
@@ -230,6 +232,13 @@ def home():
         active_tab=active_tab,
         home_config=config,
         home_ui_texts=home_ui_texts,
+        production_notice=production_notice if isinstance(production_notice, dict) else None,
+        production_button_animation=any(
+            " ".join((value or "").replace("_", " ").replace("-", " ").casefold().split())
+            == "responsabile carpenteria"
+            for role in getattr(policy, "direct_assigned_roles", ())
+            for value in (role.name, getattr(role, "description", None))
+        ),
         policy=policy,
         odp=odp,
         can_view_packaging_notes=policy.can("utente_imballi"),

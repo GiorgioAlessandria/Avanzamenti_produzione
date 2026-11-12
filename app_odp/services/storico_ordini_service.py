@@ -5,6 +5,7 @@ import json
 
 from sqlalchemy import and_, case, desc, func, or_
 
+from app_odp.services.operator_identity import actor_matches, display_username
 from app_odp.models import (
     AcqArticoli,
     AcqArticoliLookup,
@@ -130,6 +131,17 @@ def _payload(row) -> dict:
         parsed.pop("tempo_non_funzionamento_secondi", None)
         return parsed
     return {"value": parsed}
+
+
+def _runtime_actor(row, payload):
+    return _norm_text(display_username(
+        getattr(row, "ActorPublicId", None) or payload.get("utente_public_id"),
+        row.UtenteOperazione or payload.get("utente"),
+    ))
+
+
+def _input_actor(row):
+    return _norm_text(display_username(getattr(row, "ActorPublicId", None), row.ClosedBy))
 
 
 def _visible_note(value) -> str:
@@ -519,12 +531,14 @@ def _filtered_runtime_query(params, start_dt, end_dt):
     for field, column in (
         ("articolo", OdpRuntimeLog.CodArt),
         ("reparto", OdpRuntimeLog.CodReparto),
-        ("operatore", OdpRuntimeLog.UtenteOperazione),
     ):
         value = _norm_text(params.get(field))
         if value:
             query = query.filter(column.ilike(f"%{value}%"))
 
+    operator = _norm_text(params.get("operatore"))
+    if operator:
+        query = query.filter(actor_matches(OdpRuntimeLog, OdpRuntimeLog.UtenteOperazione, operator))
     return query
 
 
@@ -544,12 +558,14 @@ def _filtered_input_query(params, start_dt, end_dt):
     for field, column in (
         ("articolo", InputOdpLog.CodArt),
         ("reparto", InputOdpLog.CodReparto),
-        ("operatore", InputOdpLog.ClosedBy),
     ):
         value = _norm_text(params.get(field))
         if value:
             query = query.filter(column.ilike(f"%{value}%"))
 
+    operator = _norm_text(params.get("operatore"))
+    if operator:
+        query = query.filter(actor_matches(InputOdpLog, InputOdpLog.ClosedBy, operator))
     return query
 
 
@@ -613,7 +629,7 @@ def build_storico_ordini_list(params) -> dict:
         if group_uid:
             group_type = _effective_group_type(groups_by_uid.get(group_uid), payload).upper()
             entry["group_types"].add(group_type or "Gruppo")
-        _add_entry_event(entry, row, _event_label(row.Azione, state_post, payload), row.UtenteOperazione)
+        _add_entry_event(entry, row, _event_label(row.Azione, state_post, payload), _runtime_actor(row, payload))
 
         for input_log in input_by_operation.get(_norm_text(row.OperationGroupId), []):
             if _order_key(input_log) != _order_key(row):
@@ -633,7 +649,7 @@ def build_storico_ordini_list(params) -> dict:
         if group_uid:
             group_type = _effective_group_type(groups_by_uid.get(group_uid), payload).upper()
             entry["group_types"].add(group_type or "Gruppo")
-        _add_entry_event(entry, row, _input_event_label(row), row.ClosedBy)
+        _add_entry_event(entry, row, _input_event_label(row), _input_actor(row))
 
     filtered = [
         entry
@@ -780,7 +796,7 @@ def _lotti_for_runtime_or_inputs(
 
 def _event_description(row, payload: dict) -> str:
     action = _event_label(row.Azione, row.StatoOrdinePost or row.StatoOdpPost, payload)
-    user = _norm_text(row.UtenteOperazione) or _norm_text(payload.get("utente")) or "-"
+    user = _runtime_actor(row, payload) or "-"
     parts = [f"{user} - {action}"]
 
     stato_pre = _norm_text(row.StatoOrdinePre or row.StatoOdpPre)
@@ -832,7 +848,7 @@ def _runtime_to_dict(row):
         "azione": _norm_text(row.Azione),
         "azione_label": _event_label(row.Azione, row.StatoOrdinePost or row.StatoOdpPost, payload),
         "descrizione": _event_description(row, payload),
-        "utente": _norm_text(row.UtenteOperazione) or _norm_text(payload.get("utente")),
+        "utente": _runtime_actor(row, payload),
         "operation_group_id": _norm_text(row.OperationGroupId),
         "fase": _norm_text(payload.get("fase")) or _norm_text(row.FasePre or row.FasePost),
         "causale": _norm_text(row.Causale) or _norm_text(payload.get("causale")),
@@ -883,7 +899,7 @@ def _input_to_dict(row, num_progr_by_order=None):
         "tempo_non_funzionamento_minuti": _non_working_minutes(row),
         "chiusura_parziale": _norm_text(row.ChiusuraParziale),
         "note": _visible_note(row.NoteChiusura),
-        "utente": _norm_text(row.ClosedBy),
+        "utente": _input_actor(row),
         "matricola": _norm_text(row.CodMatricola),
     }
 
@@ -891,7 +907,7 @@ def _input_to_dict(row, num_progr_by_order=None):
 def _input_timeline_to_dict(row, num_progr_by_order=None):
     num_progr_by_order = num_progr_by_order or {}
     label = _input_event_label(row)
-    user = _norm_text(row.ClosedBy) or "-"
+    user = _input_actor(row) or "-"
     description = f"{user} - {label}"
     state_pre = _norm_text(row.StatoOrdinePre)
     state_post = _norm_text(row.StatoOrdinePost)
@@ -929,7 +945,7 @@ def _input_timeline_to_dict(row, num_progr_by_order=None):
         "quantita_residua": _norm_text(row.QtyDaLavorarePost),
         "fase_successiva": "",
         "descrizione": description,
-        "utente": _norm_text(row.ClosedBy),
+        "utente": _input_actor(row),
         "ordine": _norm_text(row.RifRegistraz) or f"{row.IdDocumento}/{row.IdRiga}",
         "id_documento": _norm_text(row.IdDocumento),
         "id_riga": _norm_text(row.IdRiga),
@@ -1005,7 +1021,9 @@ def _prepare_timeline(timeline, input_logs, used_lots, generated_lots):
         owner_key = (*order, phase_code(event["fase"]) or event["fase"])
         if category in {"presa_in_carico", "riattivazione"}:
             owners[owner_key] = event["utente"]
-        recorded_owner = _norm_text(payload.get("operatore_in_carico"))
+        recorded_owner = _norm_text(display_username(
+            payload.get("operatore_in_carico_public_id"), payload.get("operatore_in_carico")
+        ))
         event["operatore_in_carico"] = recorded_owner or owners.get(owner_key, "")
         event["presa_in_carico_ricostruita"] = bool(
             category not in {"presa_in_carico", "riattivazione"}
@@ -1136,7 +1154,7 @@ def _lotto_usato_to_dict(row):
         "quantita": _norm_text(row.Quantita),
         "esito": _norm_text(row.Esito),
         "fase": _norm_text(row.Fase),
-        "utente": _norm_text(row.ClosedBy),
+        "utente": _input_actor(row),
     }
 
 
@@ -1149,7 +1167,7 @@ def _lotto_generato_to_dict(row):
         "lotto": _norm_text(row.RifLottoAlfa),
         "quantita": _norm_text(row.Quantita),
         "fase": _norm_text(row.Fase),
-        "utente": _norm_text(row.ClosedBy),
+        "utente": _input_actor(row),
         "label": _norm_text(row.LabelFilename),
     }
 
@@ -1169,7 +1187,7 @@ def _lotto_search_row(row, kind: str) -> dict:
         "lotto": _norm_text(row.RifLottoAlfa),
         "quantita": _norm_text(row.Quantita),
         "fase": _norm_text(row.Fase),
-        "utente": _norm_text(row.ClosedBy),
+        "utente": _input_actor(row),
     }
 
 

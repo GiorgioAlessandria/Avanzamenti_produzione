@@ -287,12 +287,14 @@
 
 {% include "partials/_nav_offcanvas.j2" %}
 {% if tarature_alerts and tarature_alerts.scadute %}
-    <div class="alert alert-danger rounded-0 border-0 mb-0 py-2 text-center"
+    <div class="alert alert-danger alert-dismissible rounded-0 border-0 mb-0 py-2 text-center"
          role="alert">
         <strong>{{ tarature_alerts.scadute }} strument{{ 'o' if tarature_alerts.scadute == 1 else 'i' }}
             con taratura scaduta.</strong>
         <a class="alert-link ms-2"
            href="{{ operator_url_for('main.tarature_home') }}">Apri Tarature</a>
+        <button type="button" class="btn-close py-2" data-bs-dismiss="alert"
+                aria-label="Nascondi avviso tarature scadute"></button>
     </div>
 {% endif %}
 <div class="modal fade"

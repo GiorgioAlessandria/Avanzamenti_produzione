@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload
 
+from app_odp.services.operator_identity import display_username
 from app_odp.services.giorni_lavorativi_service import (
     normalizza_data_manutenzione,
 )
@@ -752,7 +753,9 @@ def serialize_evento_manutenzione(
         "data_esecuzione": (
             evento.data_esecuzione.isoformat() if evento.data_esecuzione else None
         ),
-        "eseguito_da_username": (evento.eseguito_da_username),
+        "eseguito_da_username": display_username(
+            evento.eseguito_da_public_id, evento.eseguito_da_username
+        ),
         "esito": evento.esito,
         "descrizione_intervento": (evento.descrizione_intervento),
         "straordinaria_id": (
@@ -761,7 +764,9 @@ def serialize_evento_manutenzione(
         "note": evento.note,
         "durata_minuti": evento.durata_minuti,
         "registrato_da_public_id": (evento.registrato_da_public_id),
-        "registrato_da_username": (evento.registrato_da_username),
+        "registrato_da_username": display_username(
+            evento.registrato_da_public_id, evento.registrato_da_username
+        ),
         "chiuso": evento.stato != "PROGRAMMATA",
         "data_teorica": (
             evento.data_teorica.isoformat() if evento.data_teorica else None
@@ -976,10 +981,10 @@ def completa_evento_manutenzione(
     evento.data_esecuzione = execution_date
 
     evento.eseguito_da_public_id = public_id
-    evento.eseguito_da_username = username
+    evento.eseguito_da_username = None if public_id else username
 
     evento.registrato_da_public_id = public_id
-    evento.registrato_da_username = username
+    evento.registrato_da_username = None if public_id else username
 
     evento.esito = esito
     evento.descrizione_intervento = descrizione_intervento
@@ -1001,7 +1006,7 @@ def completa_evento_manutenzione(
             intervento_eseguito="DA COMPLETARE",
             esito="DA_VERIFICARE",
             registrato_da_public_id=public_id,
-            registrato_da_username=username,
+            registrato_da_username=None if public_id else username,
         )
 
         db.session.add(straordinaria)
@@ -1042,7 +1047,7 @@ def chiudi_evento_senza_esecuzione(
     public_id, username = _user_snapshot(user)
 
     evento.registrato_da_public_id = public_id
-    evento.registrato_da_username = username
+    evento.registrato_da_username = None if public_id else username
 
     evento.data_esecuzione = None
     evento.eseguito_da_public_id = None

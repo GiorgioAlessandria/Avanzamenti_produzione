@@ -1195,6 +1195,7 @@ def _apply_note_updates(
     payload,
     *,
     can_edit_sales: bool,
+    can_edit_sales_note: bool = False,
     can_edit_production_instructions: bool = False,
     user=None,
 ) -> bool:
@@ -1226,79 +1227,78 @@ def _apply_note_updates(
                 row=row,
             )
         updated = True
-    if can_edit_sales:
-        if "commercial_note" in payload:
-            previous = row.note_commerciali
-            value = (
-                _optional_text(
-                    payload.get("commercial_note"),
-                    "Le note commerciali",
-                    MAX_NOTE,
-                )
-                or None
+    if can_edit_sales and "commercial_note" in payload:
+        previous = row.note_commerciali
+        value = (
+            _optional_text(
+                payload.get("commercial_note"),
+                "Le note commerciali",
+                MAX_NOTE,
             )
-            field_changed = row.note_commerciali != value
-            changed |= field_changed
-            row.note_commerciali = value
-            if field_changed:
-                _mark_row_changed(row, "commercial_note")
-                _log_customer_change(
-                    row.ordine_cliente,
-                    user,
-                    field="commercial_note",
-                    previous=previous,
-                    current=value,
-                    row=row,
-                )
-            updated = True
-        if "sales_note" in payload:
-            previous = row.note
-            value = (
-                _optional_text(
-                    payload.get("sales_note"),
-                    "Le note di vendita",
-                    MAX_NOTE,
-                )
-                or None
+            or None
+        )
+        field_changed = row.note_commerciali != value
+        changed |= field_changed
+        row.note_commerciali = value
+        if field_changed:
+            _mark_row_changed(row, "commercial_note")
+            _log_customer_change(
+                row.ordine_cliente,
+                user,
+                field="commercial_note",
+                previous=previous,
+                current=value,
+                row=row,
             )
-            field_changed = row.note != value
-            changed |= field_changed
-            row.note = value
-            if field_changed:
-                _mark_row_changed(row, "sales_note")
-                _log_customer_change(
-                    row.ordine_cliente,
-                    user,
-                    field="sales_note",
-                    previous=previous,
-                    current=value,
-                    row=row,
-                )
-            updated = True
-        if "shipping_note" in payload:
-            previous = row.note_spedizione
-            value = (
-                _optional_text(
-                    payload.get("shipping_note"),
-                    "Le note per imballo",
-                    MAX_NOTE,
-                )
-                or None
+        updated = True
+    if (can_edit_sales or can_edit_sales_note) and "sales_note" in payload:
+        previous = row.note
+        value = (
+            _optional_text(
+                payload.get("sales_note"),
+                "Le note di vendita",
+                MAX_NOTE,
             )
-            field_changed = row.note_spedizione != value
-            changed |= field_changed
-            row.note_spedizione = value
-            if field_changed:
-                _mark_row_changed(row, "shipping_note")
-                _log_customer_change(
-                    row.ordine_cliente,
-                    user,
-                    field="shipping_note",
-                    previous=previous,
-                    current=value,
-                    row=row,
-                )
-            updated = True
+            or None
+        )
+        field_changed = row.note != value
+        changed |= field_changed
+        row.note = value
+        if field_changed:
+            _mark_row_changed(row, "sales_note")
+            _log_customer_change(
+                row.ordine_cliente,
+                user,
+                field="sales_note",
+                previous=previous,
+                current=value,
+                row=row,
+            )
+        updated = True
+    if can_edit_sales and "shipping_note" in payload:
+        previous = row.note_spedizione
+        value = (
+            _optional_text(
+                payload.get("shipping_note"),
+                "Le note per imballo",
+                MAX_NOTE,
+            )
+            or None
+        )
+        field_changed = row.note_spedizione != value
+        changed |= field_changed
+        row.note_spedizione = value
+        if field_changed:
+            _mark_row_changed(row, "shipping_note")
+            _log_customer_change(
+                row.ordine_cliente,
+                user,
+                field="shipping_note",
+                previous=previous,
+                current=value,
+                row=row,
+            )
+        updated = True
     if not updated:
         raise VenditeAssegnazioniError("Nessuna nota modificabile ricevuta.")
     return changed
@@ -1310,6 +1310,7 @@ def update_customer_row_notes(
     user=None,
     *,
     can_edit_sales: bool,
+    can_edit_sales_note: bool = False,
     can_edit_production_instructions: bool = False,
     commit: bool = False,
 ) -> VenditeOrdineClienteRiga:
@@ -1322,6 +1323,7 @@ def update_customer_row_notes(
         row,
         payload,
         can_edit_sales=can_edit_sales,
+        can_edit_sales_note=can_edit_sales_note,
         can_edit_production_instructions=can_edit_production_instructions,
         user=user,
     )
@@ -1772,6 +1774,7 @@ def update_customer_row(
     can_edit_sales: bool,
     can_edit_production: bool,
     can_assign: bool,
+    can_edit_sales_note: bool = False,
     can_edit_production_instructions: bool = False,
     commit: bool = False,
 ) -> VenditeOrdineClienteRiga:
@@ -1805,6 +1808,8 @@ def update_customer_row(
     should_update_notes = (
         can_edit_sales and bool(sales_note_keys & work_payload.keys())
     ) or (
+        can_edit_sales_note and "sales_note" in work_payload
+    ) or (
         can_edit_production_instructions and "production_instructions" in work_payload
     )
     if should_update_notes:
@@ -1813,6 +1818,7 @@ def update_customer_row(
             work_payload,
             user,
             can_edit_sales=can_edit_sales,
+            can_edit_sales_note=can_edit_sales_note,
             can_edit_production_instructions=can_edit_production_instructions,
         )
         work_payload["version"] = row.versione

@@ -618,3 +618,33 @@ def test_empty_master_description_uses_latest_nonempty_lookup_description(storic
         ])
         db.session.commit()
         assert service.build_storico_lotti_search({"lotto": "LOT"})["materiali"][0]["descrizione"] == "Descrizione aggiornata"
+
+
+def test_log_operator_keeps_identity_after_username_change(storico_app):
+    from flask import g
+
+    from app_odp.models import User
+    from app_odp.services.operator_identity import encode_payload_operators, order_log_actor
+
+    with storico_app.app_context():
+        User.__table__.create(db.engine)
+        user = User(public_id="op-123", username="Vecchio nome")
+        db.session.add(user)
+        g.operator_user = user
+        fields = order_log_actor("ClosedBy", user.username)
+        payload = encode_payload_operators({"operatore_in_carico": user.username})
+        assert fields == {"ActorPublicId": "op-123", "ClosedBy": None}
+        assert payload == {"operatore_in_carico_public_id": "op-123"}
+        db.session.add_all([
+            InputOdpLog(OperationGroupId="new", IdDocumento="A", IdRiga="1", ClosedAt="2026-11-12", **fields),
+            InputOdpLog(OperationGroupId="old", IdDocumento="A", IdRiga="1", ClosedAt="2026-11-12", ClosedBy="Nome storico"),
+        ])
+        db.session.commit()
+        db.session.execute(User.__table__.update().values(username="Nuovo nome"))
+        db.session.commit()
+
+    with storico_app.app_context():
+        for name, expected in (("Nuovo nome", "Nuovo nome"), ("Nome storico", "Nome storico")):
+            row = service._filtered_input_query({"operatore": name}, None, None).one()
+            assert service._input_actor(row) == expected
+        assert service._filtered_input_query({"operatore": "Vecchio nome"}, None, None).count() == 0

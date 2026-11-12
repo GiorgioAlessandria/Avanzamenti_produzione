@@ -8,6 +8,7 @@ from flask import request
 from openpyxl.styles import Font, Alignment
 from openpyxl.utils import get_column_letter
 from sqlalchemy import func, and_
+from app_odp.services.operator_identity import display_username
 from app_odp.policy.policy import RbacPolicy
 from app_odp.models import (
     db,
@@ -2182,7 +2183,9 @@ def _build_dashboard_kpi_payload(*, detail_limit: int | None = 500) -> dict:
             else _norm_text(getattr(rt, "CodArt", ""))
         )
         descrizione = _norm_text(getattr(il, "DesArt", "")) if il else ""
-        operatore = _norm_text(getattr(rt, "UtenteOperazione", ""))
+        operatore = _norm_text(display_username(
+            getattr(rt, "ActorPublicId", None), getattr(rt, "UtenteOperazione", "")
+        ))
         stato = _norm_text(getattr(rt, "StatoOrdinePost", "")) or _norm_text(
             getattr(rt, "StatoOdpPost", "")
         )

@@ -417,6 +417,7 @@
           data-packaging-notes-url="{{ operator_url_for('main.api_vendite_note_imballaggio') }}"
           data-can-assign-machines="{{ 'true' if can_assign_machines else 'false' }}"
           data-can-edit-sales-notes="{{ 'true' if can_edit_sales_notes else 'false' }}"
+          data-can-edit-sales-note="{{ 'true' if can_edit_sales_note else 'false' }}"
           data-can-edit-production-instructions="{{ 'true' if can_edit_production_instructions else 'false' }}"
           data-can-delete-orders="{{ 'true' if can_create_customer_orders else 'false' }}"
           data-can-edit-order-details="{{ 'true' if can_create_customer_orders else 'false' }}"
@@ -941,6 +942,7 @@
             const canEditCustomerOrdersNote = page.dataset.canEditCustomerOrdersNote === "true";
             const canAssignMachines = page.dataset.canAssignMachines === "true";
             const canEditSalesNotes = page.dataset.canEditSalesNotes === "true";
+            const canEditSalesNote = page.dataset.canEditSalesNote === "true";
             const canEditProductionInstructions = page.dataset.canEditProductionInstructions === "true";
             const canDeleteOrders = page.dataset.canDeleteOrders === "true";
             const canEditOrderDetails = page.dataset.canEditOrderDetails === "true";
@@ -1385,7 +1387,7 @@
             }
 
             function rowActions(row, order, showConfirmation) {
-                const save = canAssignMachines || canEditSalesNotes || canEditProductionInstructions
+                const save = canAssignMachines || canEditSalesNote || canEditSalesNotes || canEditProductionInstructions
                     ? `<button class="btn btn-sm btn-outline-primary"
                                type="button"
                                data-save-row="${esc(row.id)}">
@@ -1813,7 +1815,7 @@
                                 <td class="vendite-model-cell${(row.modified_fields || []).includes("model") ? " vendite-field-modified" : ""}">${modelLabel(row)}</td>
                                 <td>${dateInput(row, "delivery_date", "Data di spedizione", !order.managed && canEditSalesNotes)}</td>
                                 <td class="vendite-note-cell">
-                                    ${noteTextarea(row, "sales_note", "Note di vendita", canEditSalesNotes)}
+                                    ${noteTextarea(row, "sales_note", "Note di vendita", canEditSalesNote)}
                                 </td>
                                 <td class="vendite-note-cell">
                                     ${noteTextarea(row, "commercial_note", "Note commerciali", canEditSalesNotes)}
@@ -2267,8 +2269,10 @@
                     `[data-note-field="${CSS.escape(field)}"]`
                 )?.value.trim() || "";
                 const payload = {version: Number(row.dataset.version)};
-                if (canEditSalesNotes) {
+                if (canEditSalesNote) {
                     payload.sales_note = value("sales_note");
+                }
+                if (canEditSalesNotes) {
                     payload.commercial_note = value("commercial_note");
                     payload.shipping_note = value("shipping_note");
                 }

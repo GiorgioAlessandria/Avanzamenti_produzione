@@ -5,6 +5,7 @@ import json
 
 from flask import current_app, jsonify, request, url_for
 
+from app_odp.services.operator_identity import order_log_actor
 from app_odp.models import (
     GiacenzaLotti,
     db,
@@ -1151,7 +1152,7 @@ def api_prendi_ordine():
                         StatoOrdinePost=stato_ordine_pre,
                         QtyDaLavorarePre=qty_pre,
                         QtyDaLavorarePost=qty_pre,
-                        ClosedBy=_current_username(),
+                        **order_log_actor("ClosedBy", _current_username()),
                         ClosedAt=event_at,
                         VarianteArt=_norm_text(getattr(ordine, "VarianteArt", "")),
                         NoteChiusura=action_note,
@@ -1172,7 +1173,7 @@ def api_prendi_ordine():
                         RifRegistraz=_norm_text(getattr(ordine, "RifRegistraz", "")),
                         Azione=action_code,
                         Motivo=action_note,
-                        UtenteOperazione=_current_username(),
+                        **order_log_actor("UtenteOperazione", _current_username()),
                         EventAt=event_at,
                         StatoOdpPre=stato_odp_pre,
                         StatoOdpPost=stato_odp_pre,

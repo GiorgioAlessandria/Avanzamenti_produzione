@@ -30,6 +30,20 @@
  </li>{% else %}<li class="text-body-secondary small py-2">Nessun ordine</li>{% endfor %}
 </ul>
 {% endautoescape %}{% endmacro %}
+{% macro tabella_provenienza_ddt(origini) %}{% autoescape true %}
+{% if origini %}
+<div class="table-responsive mb-3"><table class="table table-sm align-middle">
+ <thead><tr><th scope="col">ODP</th><th scope="col">Lotto spezzoni</th><th scope="col">Quantità</th><th scope="col">DDT spezzoni</th><th scope="col">Ordine barre</th><th scope="col">DDT barre</th></tr></thead>
+ <tbody>{% for origine in origini %}<tr>
+  <td><a href="{{ serbatoi_url(tab='produzione',id=origine.odp.id,fase='',q='') }}">{{ origine.odp.riferimento }}</a></td>
+  <td>{% if 'spezzoni' in tabs %}<a href="{{ serbatoi_url(tab='spezzoni',id=origine.lotto.id,q='') }}">{{ origine.lotto.riferimento }}</a>{% else %}{{ origine.lotto.riferimento }}{% endif %}<div class="small text-body-secondary">{{ origine.lotto.codice }}</div></td>
+  <td>{{ origine.quantita }} {{ 'impegnati' if origine.impegnato else 'prelevati' }}</td><td>{{ origine.ddt_spezzone or '—' }}</td>
+  <td>{% if origine.ordine_barre %}{% if 'barre' in tabs %}<a href="{{ serbatoi_url(tab='barre',id=origine.ordine_barre.id,q='') }}">{{ origine.ordine_barre.riferimento }}</a>{% else %}{{ origine.ordine_barre.riferimento }}{% endif %}{% else %}—{% endif %}</td>
+  <td>{{ origine.ddt_barra or '—' }}</td>
+ </tr>{% endfor %}</tbody>
+</table></div>
+{% else %}<p class="small text-body-secondary">Nessun prelievo di spezzoni collegato.</p>{% endif %}
+{% endautoescape %}{% endmacro %}
 {% macro field(name, label, type='text', value='', min='1', required=true) %}{% autoescape true %}
 <div class="col-sm-6"><label class="form-label w-100">{{ label }}<input class="form-control mt-1" name="{{ name }}" type="{{ type }}" value="{{ value }}" {% if required %}required{% endif %} {% if type == 'number' %}min="{{ min }}" step="1"{% else %}maxlength="{{ 1000 if name == 'note' else 120 }}"{% endif %}></label></div>
 {% endautoescape %}{% endmacro %}
@@ -51,10 +65,7 @@
  {% for category, message in get_flashed_messages(with_categories=true) %}<div class="alert alert-{{ category }}" role="status">{{ message }}</div>{% endfor %}
  <div class="alert alert-warning d-none" id="serbatoi-avvisi" role="status"></div>
  {% if not articoli %}<div class="alert alert-info">{% if 'articoli' in tabs %}Configura gli <a href="{{ serbatoi_url(tab='articoli') }}">articoli gestiti</a> per attivare il filtro degli ordini.{% else %}Il catalogo Serbatoi è in attesa di configurazione.{% endif %} Il magazzino Serbatoi è distinto da quello del gestionale.</div>{% endif %}
- <div class="d-flex align-items-center gap-2 mb-3">
-  <nav class="nav nav-tabs flex-grow-1" aria-label="Sezioni Serbatoi" style="min-width: 0;">{% for key, label in tabs.items() %}<a class="nav-link {{ 'active' if key == tab }} {{ 'fw-semibold' if key == 'clienti' }}" {% if key == tab %}aria-current="page"{% endif %} href="{{ serbatoi_url(tab=key) }}">{{ label }}</a>{% endfor %}<a class="nav-link" href="{{ operator_url_for('main.serbatoi_qualita') }}">Controllo qualità</a></nav>
-  <a class="btn btn-outline-secondary flex-shrink-0" href="{{ serbatoi_url(tab=tab, id=selected.id if selected else '') }}">Aggiorna</a>
- </div>
+ {% include 'partials/_serbatoi_nav.j2' %}
  {% if tab == 'barre' %}<div class="alert alert-{{ 'info' if parametri.codice_barre else 'warning' }}">Ordini barre: <strong>{{ forn_barre_label }}</strong> · <strong>{{ parametri.codice_barre or 'codice da configurare' }}</strong>. Sono acquisiti dal gestionale solo gli ordini di questo fornitore e codice. <a href="{{ serbatoi_url(tab='articoli') }}">Parametri</a></div>{% endif %}
  {% if tab == 'barre' and parametri.codice_barre %}
  <section class="card mb-3" aria-labelledby="serbatoi-prezzi-titolo">
@@ -158,6 +169,7 @@
     <div class="col"><div class="border rounded h-100 p-3">
      <dt>Spezzoni disponibili</dt>
      <dd class="mb-0 mt-1">{{ tabella_giacenze_spezzoni(giacenze_spezzoni, scorte_materiali['Spezzone']) }}</dd>
+     {% if spezzoni_impegnati_magazzino %}<dd class="small mb-0">{{ spezzoni_impegnati_magazzino }} pezzi impegnati sugli ODP</dd>{% endif %}
     </div></div>
     <div class="col"><div class="border rounded h-100 p-3">
      <dt>Serbatoi da produrre senza assegnazione</dt><dd class="fs-4 fw-semibold mb-0">{{ serbatoi_da_produrre }} <span class="fs-6 fw-normal text-body-secondary">pz</span></dd>
@@ -267,6 +279,7 @@
    {% if servizio.copertura(detail) == 0 %}<p>Viene associata l’intera riga: <strong>{{ detail.quantita }} pezzi</strong>.</p><div class="col-12"><label class="form-label w-100">ODP compatibile<select class="form-select mt-1" name="produzione_id" required><option value="">Seleziona</option>{% for p in odp_assegnabili %}<option value="{{ p.id }}">{{ p.riferimento }} · {{ p.liberi }} liberi da produrre</option>{% endfor %}</select></label></div><div class="col-12"><button class="btn btn-primary" {% if not odp_assegnabili %}disabled{% endif %}>Collega intera riga all’ODP</button></div>{% if not odp_assegnabili %}<p class="small text-body-secondary" role="status">Nessun ODP operativo compatibile con capacit&agrave; libera sufficiente per l’intera riga. Verifica anomalie e aggiornamento degli ordini; per i pezzi gi&agrave; prodotti usa il magazzino.</p>{% endif %}{% else %}<p>La riga è già coperta parzialmente. Per collegare l’intero lotto a un ODP, libera prima le assegnazioni esistenti.</p>{% endif %}</form>{% if odp_esclusi %}<details class="mt-2"><summary>ODP presenti ma non assegnabili ({{ odp_esclusi|length }})</summary><ul class="mt-2">{% for p in odp_esclusi %}<li><strong>{{ p.riferimento }}</strong>: {{ p.motivo }}</li>{% endfor %}</ul></details>{% endif %}</details>
   <details class="mb-3"><summary class="fw-semibold">Assegna componenti dal magazzino</summary><form class="row g-2 mt-1" method="post" action="{{ operator_url_for('main.serbatoi_azione') }}">{{ hidden('assegna_magazzino') }}<input type="hidden" name="cliente_id" value="{{ detail.id }}">
    <div class="col-12"><label class="form-label w-100">Lotto libero compatibile<select class="form-select mt-1" name="lotto_id" required><option value="">Seleziona</option>{% for l in lotti if l.tipo == 'Materiale' and l.articolo_id == detail.articolo_id and not l.cliente_id and l.stato in ['Grezzo','Lavorato','Ossidato'] %}<option value="{{ l.id }}">{{ l.riferimento }} · {{ l.stato }} / {{ l.ubicazione }} · {{ l.quantita }} pezzi</option>{% endfor %}</select></label></div>{{ field('quantita','Quantità','number') }}<div class="col-12"><button class="btn btn-primary">Assegna dal magazzino</button></div></form></details>{% endif %}
+  <h3 class="h6">Tracciabilità DDT di origine</h3>{{ tabella_provenienza_ddt(provenienza_ddt) }}
   <h3 class="h6">Lotti assegnati e spedizioni</h3><ul class="list-group">{% for l in disponibilita %}<li class="list-group-item">{% if l.stato == 'Spedito' or 'magazzino' in tabs %}<a href="{{ serbatoi_url(tab='storico' if l.stato == 'Spedito' else 'magazzino',id=l.id) }}">{{ l.riferimento }}</a>{% else %}{{ l.riferimento }}{% endif %} · {{ l.quantita }} · {{ l.stato }} / {{ l.ubicazione }}</li>{% else %}<li class="list-group-item text-body-secondary">Nessun lotto assegnato.</li>{% endfor %}</ul>
  {% elif tab == 'produzione' %}
   <p>{{ selected.codice }} · {{ selected.descrizione }} · {{ detail.quantita }} pezzi<br><span class="text-body-secondary">{{ detail.riferimento_stock }}</span></p>
@@ -303,9 +316,26 @@
   <div class="alert alert-info">Le quantità senza cliente rimangono stock. Si fermano a Lavorato presso Bernardi e non possono essere inviate a Gaser o spedite.</div>
   {% if detail.anomalia %}<div class="alert alert-warning">{{ detail.anomalia }}</div>{% endif %}
   <h3 class="h6">Destinazioni cliente</h3><ul class="list-group mb-3">{% for i in impegni %}{% set c=servizio.record(servizio.Cliente,i.cliente_id) %}<li class="list-group-item"><a href="{{ serbatoi_url(tab='clienti',id=c.id) }}">{{ c.riferimento }} · {{ c.cliente }}</a> · {{ i.quantita }} richiesti, {{ i.realizzata }} prodotti</li>{% else %}<li class="list-group-item">Produzione per stock.</li>{% endfor %}</ul>
-  <h3 class="h6">Spezzoni prelevati</h3><ul class="list-group mb-3">{% for c in disponibilita %}{% set l=servizio.record(servizio.Lotto,c.lotto_id) %}<li class="list-group-item">{{ l.codice }} · {{ c.quantita }} pezzi · {{ l.riferimento }}</li>{% else %}<li class="list-group-item text-body-secondary">Provenienza da completare prima dell’invio del materiale.</li>{% endfor %}</ul>
-  {% if can_produzione %}<details class="mb-3"><summary class="fw-semibold">Registra prelievo spezzoni</summary><form class="row g-2 mt-1" method="post" action="{{ operator_url_for('main.serbatoi_azione') }}">{{ hidden('consuma') }}<input type="hidden" name="produzione_id" value="{{ detail.id }}">
-   <div class="col-12"><label class="form-label w-100">Lotto spezzoni<select class="form-select mt-1" name="lotto_id" required><option value="">Seleziona</option>{% for l in lotti if l.tipo == 'Spezzone' and l.stato == 'Disponibile' and l.codice == servizio.record(servizio.Articolo,detail.articolo_id).codice_spezzone %}<option value="{{ l.id }}">{{ l.riferimento }} · {{ l.quantita }} disponibili</option>{% endfor %}</select></label></div>{{ field('quantita','Quantità prelevata','number') }}<div class="col-12"><button class="btn btn-primary">Registra prelievo</button></div></form></details>
+  <h3 class="h6">Spezzoni impegnati e prelevati</h3>{{ tabella_provenienza_ddt(provenienza_ddt) }}
+  {% if can_produzione %}
+  {% set impegno = impegni_spezzoni.get(detail.id) %}
+  <details class="mb-3"><summary class="fw-semibold">{{ 'Cambia lotto spezzoni' if impegno else 'Assegna lotto spezzoni' }}</summary>
+   <form class="row g-2 mt-1" method="post" action="{{ operator_url_for('main.serbatoi_azione') }}">{{ hidden('consuma') }}<input type="hidden" name="produzione_id" value="{{ detail.id }}">
+    <div class="col-12"><label class="form-label w-100">Lotto spezzoni
+     <select class="form-select mt-1" name="lotto_id" required><option value="">Seleziona</option>
+      {% set codice_spezzone = servizio.record(servizio.Articolo,detail.articolo_id).codice_spezzone %}
+      {% for l in lotti if l.tipo == 'Spezzone' and l.stato == 'Disponibile' and l.codice == codice_spezzone and l.quantita > impegnati_per_lotto[l.id] %}
+       <option value="{{ l.id }}">{{ l.riferimento }} · {{ l.quantita - impegnati_per_lotto[l.id] }} liberi</option>
+      {% endfor %}
+     </select>
+    </label></div>
+    <div class="col-12"><button class="btn btn-primary">Assegna lotto</button></div>
+   </form>
+  </details>
+  {% if impegno %}<form class="mb-3" method="post" action="{{ operator_url_for('main.serbatoi_azione') }}">
+   {{ hidden('libera_lotto_spezzoni') }}<input type="hidden" name="produzione_id" value="{{ detail.id }}">
+   <button class="btn btn-outline-secondary btn-sm">Libera l’impegno residuo</button>
+  </form>{% endif %}
   {% if detail.anomalia %}<details><summary class="fw-semibold">Conferma riconciliazione delle quantità pregresse</summary><form class="row g-2 mt-1" method="post" action="{{ operator_url_for('main.serbatoi_azione') }}">{{ hidden('riconcilia') }}<input type="hidden" name="produzione_id" value="{{ detail.id }}">{{ field('quantita','Quantità totale verificata','number',detail.quantita) }}{{ field('note','Esito della verifica') }}<p class="small">Conferma solo dopo aver verificato i movimenti pregressi. Questa operazione non ricostruisce produzioni o provenienze mancanti.</p><div class="col-12"><button class="btn btn-outline-primary">Conferma verifica</button></div></form></details>{% endif %}{% endif %}
  {% elif tab == 'barre' %}
   <p><strong>{{ detail.fornitore_nome }}</strong> · {{ detail.fornitore_codice }}<br>{{ detail.codice }} · {{ selected.descrizione }} · {{ detail.lunghezza_mm }} mm per barra</p>
@@ -313,6 +343,7 @@
   {% if origine_barra %}<p class="small text-body-secondary">Ordine ERP: {{ origine_barra.quantita_originale }} {{ origine_barra.unita_originale }} → {{ origine_barra.quantita_erp }} barre da {{ detail.lunghezza_mm }} mm. Riferimento {{ origine_barra.id_documento }} / riga {{ origine_barra.id_riga }}.</p>{% elif can_acquisti and ordini_barre_erp and not selected.fuori_parametri %}<details class="mb-3"><summary class="fw-semibold">Collega un riferimento ERP già registrato</summary><form class="row g-2 mt-1" method="post" action="{{ operator_url_for('main.serbatoi_azione') }}">{{ hidden('collega_barre_erp') }}<input type="hidden" name="barre_id" value="{{ detail.id }}"><div class="col-12"><label class="form-label w-100">Riga ordine ERP<select class="form-select mt-1" name="origine_erp" required><option value="">Seleziona dopo aver verificato il riferimento</option>{% for r in ordini_barre_erp %}<option value='{{ [r.IdDocumento,r.IdRigaDoc]|tojson }}'>{{ servizio._riferimento_fornitore(r) }} · {{ r.QTA_ORD }} {{ r.UmDoc }}</option>{% endfor %}</select></label></div><div class="col-12"><button class="btn btn-outline-primary">Collega origine ERP</button></div></form></details>{% endif %}
   {% if not origine_barra %}{% if barra_manuale %}<p class="small text-body-secondary">Ordine registrato manualmente: {{ barra_manuale.note }}</p>{% elif can_acquisti %}<details class="mb-3"><summary class="fw-semibold">Conferma ordine pregresso/manuale, senza origine ERP aperta</summary><form class="row g-2 mt-1" method="post" action="{{ operator_url_for('main.serbatoi_azione') }}">{{ hidden('conferma_barre_manuali') }}<input type="hidden" name="barre_id" value="{{ detail.id }}">{{ field('note','Motivo della conferma') }}<div class="col-12"><button class="btn btn-outline-primary">Conferma riferimento manuale</button></div></form></details>{% endif %}{% endif %}
   <dl class="row"><dt class="col-8">Barre ordinate</dt><dd class="col-4">{{ detail.quantita }}</dd><dt class="col-8">Ricevute</dt><dd class="col-4">{{ selected.ricevute }}</dd><dt class="col-8">Consumate</dt><dd class="col-4">{{ servizio.formatta_barre(selected.ricevute-selected.residue) }}</dd><dt class="col-8">Disponibili</dt><dd class="col-4">{{ servizio.formatta_barre(selected.residue) }}</dd></dl>
+  {% if ddt_ricezioni %}<details class="mb-3"><summary class="fw-semibold">DDT di ricezione barre</summary><ul class="mb-0 mt-2">{% for ricezione in ddt_ricezioni.values() %}<li>{{ ricezione.riferimento }} · {{ ricezione.ddt }}</li>{% endfor %}</ul></details>{% endif %}
   <h3 class="h6">Prezzo materia prima</h3>
   <p class="mb-2">{% if selected.prezzo %}<strong>{{ servizio.formatta_centesimi(selected.prezzo.centesimi_kg) }} €/kg</strong> · {{ selected.prezzo.data_prezzo.strftime('%d/%m/%Y') }}{% else %}Prezzo da registrare{% endif %}</p>
   {% if scostamento_prezzo %}<p class="small {{ ('text-danger' if scostamento_prezzo.aumento else 'text-success') if scostamento_prezzo.soglia_raggiunta else 'text-body-secondary' }}">Scostamento dal riferimento attuale ({{ servizio.formatta_centesimi(riferimento_dettaglio.centesimi_kg) }} €/kg) <strong>{{ scostamento_prezzo.percentuale }}%</strong>{% if scostamento_prezzo.soglia_raggiunta %} · Soglia raggiunta{% endif %}</p>{% endif %}
@@ -326,7 +357,7 @@
   </details>{% endif %}
   {% if can_acquisti %}{% if not selected.fuori_parametri %}<details class="mb-3"><summary class="fw-semibold">Registra ricezione barre</summary><form class="row g-2 mt-1" method="post" action="{{ operator_url_for('main.serbatoi_azione') }}">{{ hidden('ricevi') }}<input type="hidden" name="barre_id" value="{{ detail.id }}">{{ field('quantita','Barre ricevute','number') }}{{ field('ddt','Numero DDT') }}<div class="col-12"><button class="btn btn-primary">Carica barre</button></div></form></details>{% endif %}
   <details><summary class="fw-semibold">Registra taglio e carico spezzoni</summary><form class="row g-2 mt-1" method="post" action="{{ operator_url_for('main.serbatoi_azione') }}" data-lunghezza-barra="{{ detail.lunghezza_mm }}">{{ hidden('taglia') }}
-   <div class="col-12"><label class="form-label w-100">Lotto barre ricevuto<select class="form-select mt-1" name="lotto_id" required><option value="">Seleziona</option>{% for l in disponibilita %}<option value="{{ l.id }}">{{ l.riferimento }} · {{ servizio.formatta_barre(servizio.barre_equivalenti(servizio.disponibilita_barra_mm(l, detail.lunghezza_mm), detail.lunghezza_mm)) }} barre disponibili</option>{% endfor %}</select></label></div>
+   <div class="col-12"><label class="form-label w-100">Lotto barre ricevuto<select class="form-select mt-1" name="lotto_id" required><option value="">Seleziona</option>{% for l in disponibilita %}<option value="{{ l.id }}">{{ l.riferimento }}{% if l.id in ddt_ricezioni %} · DDT {{ ddt_ricezioni[l.id].ddt }}{% endif %} · {{ servizio.formatta_barre(servizio.barre_equivalenti(servizio.disponibilita_barra_mm(l, detail.lunghezza_mm), detail.lunghezza_mm)) }} barre disponibili</option>{% endfor %}</select></label></div>
    <p>Fornitore spezzoni: <strong>{{ forn_spezzoni_label }}</strong> · Sfrido per taglio: {{ parametri.sfrido_mm }} mm</p><input type="hidden" name="sfrido_mm" value="{{ parametri.sfrido_mm }}"><input type="hidden" name="fornitore_spezzoni" value="{{ parametri.fornitore_spezzoni_tipo }}|{{ parametri.fornitore_spezzoni_codice }}">
    <div class="col-sm-6"><label class="form-label w-100">Codice spezzone
     <select class="form-select mt-1" name="codice_spezzone" data-serbatoi-lunghezza-spezzone required>
@@ -349,8 +380,35 @@
   {% if can_produzione %}<details class="mt-3"><summary class="fw-semibold">Imposta le fasi per i nuovi ODP</summary><form class="row g-2 mt-1" method="post" action="{{ operator_url_for('main.serbatoi_azione') }}">{{ hidden('fasi') }}<input type="hidden" name="articolo_id" value="{{ detail.id }}">{{ field('fase_inizio','Prima fase LCT','number',detail.fase_inizio or '',required=false) }}{{ field('fase_fine','Ultima fase LCT','number',detail.fase_fine or '',required=false) }}<p class="small text-body-secondary">Le produzioni già acquisite mantengono le fasi con cui sono state collegate. Se vuote, si usano prima e ultima fase del ciclo.</p><div class="col-12"><button class="btn btn-primary">Salva fasi</button></div></form></details>{% endif %}
  {% else %}
   {% if tab == 'storico' %}<p class="small text-body-secondary">Lotto {{ detail.riferimento }}</p>{% endif %}
-  <p class="fw-semibold">{{ detail.codice }} · {{ selected.descrizione }}</p><dl class="serbatoi-lotto-overview"><div><dt>Stato lavoro</dt><dd>{{ detail.stato }}</dd></div><div><dt>Ubicazione</dt><dd>{{ detail.ubicazione }}</dd></div><div><dt>Quantità</dt><dd>{{ detail.quantita }} pezzi</dd></div></dl>
-  {% if detail.cliente_id %}{% set c=servizio.record(servizio.Cliente,detail.cliente_id) %}<p>Ordine cliente: <a href="{{ serbatoi_url(tab='clienti',id=c.id) }}">{{ c.riferimento }} · riga {{ c.id_riga }} · {{ c.cliente }}</a></p>{% elif detail.stato == 'In lavorazione' %}<p>Materiale in lavorazione sull’ODP. Le destinazioni cliente seguono i collegamenti produttivi.</p>{% else %}<p>Stock libero. Assegnalo da una riga cliente prima di proseguire verso Gaser o la spedizione.</p>{% endif %}
+  <p class="fw-semibold">{{ detail.codice }} · {{ selected.descrizione }}</p><dl class="serbatoi-lotto-overview"><div><dt>Stato lavoro</dt><dd>{{ 'Esaurito' if tab == 'spezzoni' and not detail.quantita else detail.stato }}</dd></div><div><dt>Ubicazione</dt><dd>{{ detail.ubicazione }}</dd></div><div><dt>Quantità</dt><dd>{{ detail.quantita }} pezzi</dd></div></dl>
+  {% if tab == 'spezzoni' %}
+   <p>{{ impegnati_per_lotto[detail.id] }} impegnati · {{ detail.quantita - impegnati_per_lotto[detail.id] }} liberi</p>
+   <dl class="row"><dt class="col-sm-5">DDT spezzoni</dt><dd class="col-sm-7">{{ documenti_spezzone.ddt_spezzone or '—' }}</dd>
+    <dt class="col-sm-5">DDT barre di origine</dt><dd class="col-sm-7">{{ documenti_spezzone.ddt_barra or '—' }}</dd></dl>
+   {% if can_acquisti and documenti_spezzone.taglio and not documenti_spezzone.ddt_spezzone %}
+   <details class="mb-3"><summary class="fw-semibold">Associa DDT spezzoni</summary>
+    <form class="row g-2 mt-1" method="post" action="{{ operator_url_for('main.serbatoi_azione') }}">{{ hidden('ddt_spezzone') }}
+     <input type="hidden" name="lotto_id" value="{{ detail.id }}">{{ field('ddt','DDT spezzoni') }}
+     <div class="col-12"><button class="btn btn-outline-primary">Salva DDT</button></div>
+    </form>
+   </details>{% endif %}
+   {% if prelievi_spezzone %}<h3 class="h6">Prelievi per ODP</h3><ul class="list-group mb-3">
+    {% for prelievo in prelievi_spezzone %}{% set p=servizio.record(servizio.Produzione,prelievo.produzione_id) %}
+    <li class="list-group-item"><a href="{{ serbatoi_url(tab='produzione',id=p.id) }}">{{ p.riferimento }}</a> · {{ prelievo.quantita }} pezzi</li>
+    {% endfor %}
+   </ul>{% endif %}
+   {% if odp_per_spezzone %}<details class="mb-3"><summary class="fw-semibold">Collega spezzoni a un ODP</summary>
+    <form class="row g-2 mt-1" method="post" action="{{ operator_url_for('main.serbatoi_azione') }}">{{ hidden('consuma_da_spezzoni') }}
+     <input type="hidden" name="lotto_id" value="{{ detail.id }}">
+     <div class="col-12"><label class="form-label w-100">ODP aperto compatibile
+      <select class="form-select mt-1" name="produzione_id" required><option value="">Seleziona</option>
+       {% for p, quantita in odp_per_spezzone %}<option value="{{ p.id }}">{{ p.riferimento }} · {{ quantita }} pezzi da impegnare</option>{% endfor %}
+      </select>
+     </label></div>
+     <div class="col-12"><button class="btn btn-primary">Assegna lotto</button></div>
+    </form>
+   </details>{% elif detail.quantita %}<p class="small text-body-secondary">Nessun ODP aperto compatibile con quantità ancora da tracciare.</p>{% endif %}
+  {% elif detail.cliente_id %}{% set c=servizio.record(servizio.Cliente,detail.cliente_id) %}<p>Ordine cliente: <a href="{{ serbatoi_url(tab='clienti',id=c.id) }}">{{ c.riferimento }} · riga {{ c.id_riga }} · {{ c.cliente }}</a></p>{% elif detail.stato == 'In lavorazione' %}<p>Materiale in lavorazione sull’ODP. Le destinazioni cliente seguono i collegamenti produttivi.</p>{% else %}<p>Stock libero. Assegnalo da una riga cliente prima di proseguire verso Gaser o la spedizione.</p>{% endif %}
   {% if detail.produzione_id %}{% set p=servizio.record(servizio.Produzione,detail.produzione_id) %}<p>ODP: <a href="{{ serbatoi_url(tab='produzione',id=p.id) }}">{{ p.riferimento }}</a></p>{% endif %}
   {% if can_produzione and detail.cliente_id and detail.tipo == 'Materiale' and detail.stato == 'Lavorato' and detail.ubicazione == 'Bernardi' %}<details class="mb-3"><summary class="fw-semibold">Libera materiale per stock</summary><form class="row g-2 mt-1" method="post" action="{{ operator_url_for('main.serbatoi_azione') }}">{{ hidden('libera_materiale') }}<input type="hidden" name="lotto_id" value="{{ detail.id }}">{{ field('quantita','Quantità da liberare','number') }}<div class="col-12"><button class="btn btn-outline-primary">Riporta a stock</button></div></form></details>{% endif %}
   {% if detail.tipo == 'Materiale' and not servizio.origine_completa(detail) %}<div class="alert alert-warning">Provenienza incompleta. Collega gli spezzoni alla produzione per poter inviare o spedire il materiale.</div>{% endif %}

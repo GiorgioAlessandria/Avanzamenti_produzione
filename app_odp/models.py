@@ -308,6 +308,7 @@ class InputOdpLog(db.Model):
     QtyDaLavorarePre = db.Column(db.Text)
     QtyDaLavorarePost = db.Column(db.Text)
 
+    ActorPublicId = db.Column(db.Text)
     ClosedBy = db.Column(db.Text)
     ClosedAt = db.Column(db.Text, nullable=False, index=True)
     VarianteArt = db.Column(db.Text)
@@ -346,6 +347,7 @@ class OdpRuntimeLog(db.Model):
 
     Azione = db.Column(db.Text, nullable=False, index=True)
     Motivo = db.Column(db.Text)
+    ActorPublicId = db.Column(db.Text)
     UtenteOperazione = db.Column(db.Text)
     EventAt = db.Column(db.Text, nullable=False, index=True)
 
@@ -1348,6 +1350,7 @@ class LottiUsatiLog(db.Model):
     Quantita = db.Column(db.Text, nullable=False)
     Esito = db.Column(db.Text)
 
+    ActorPublicId = db.Column(db.Text)
     ClosedBy = db.Column(db.Text)
     ClosedAt = db.Column(db.Text)
     Fase = db.Column(db.Text)
@@ -1421,6 +1424,7 @@ class LottiGeneratiLog(db.Model):
     Quantita = db.Column(db.Text, nullable=False)
     Fase = db.Column(db.Text)
 
+    ActorPublicId = db.Column(db.Text)
     ClosedBy = db.Column(db.Text)
     ClosedAt = db.Column(db.Text)
 

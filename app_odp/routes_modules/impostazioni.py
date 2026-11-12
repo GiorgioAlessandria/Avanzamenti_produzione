@@ -30,7 +30,7 @@ from app_odp.operator_session import (
     revoke_operator_sessions_for_user,
 )
 from app_odp.policy.decorator import require_active_perm
-from app_odp.policy.policy import PROTECTED_ROLE_NAMES
+from app_odp.policy.policy import PROTECTED_ROLE_NAMES, RbacPolicy
 from app_odp.routes_blueprint import main_bp
 from app_odp.services.session_helpers import _current_username
 from app_odp.services.capacity_service import (
@@ -395,14 +395,21 @@ def impostazioni():
             ]
     start_page_users = []
     start_page_csrf = None
+    production_notice_users = []
+    production_notice_csrf = None
 
     if policy.has_direct_admin_role:
+        production_notice_csrf = session.setdefault("production_notice_csrf", secrets.token_urlsafe(32))
         start_page_csrf = session.setdefault(
             "login_start_page_csrf",
             secrets.token_urlsafe(32),
         )
         for target in User.query.filter(User.active.is_(True)).order_by(User.username.asc()).all():
             preferences = target.preferences
+            options = login_start_page_options(target)
+            if "produzione" in options:
+                notice = preferences.get("production_notice") if isinstance(preferences, dict) else None
+                production_notice_users.append((target.id, target.username, notice if isinstance(notice, dict) else {}))
             selected = (
                 preferences.get("login_start_page", "")
                 if isinstance(preferences, dict)
@@ -417,7 +424,7 @@ def impostazioni():
                         for role in target.roles
                     ],
                     "selected": selected if isinstance(selected, str) else "",
-                    "options": login_start_page_options(target),
+                    "options": options,
                 }
             )
     return render_template(
@@ -450,7 +457,50 @@ def impostazioni():
         show_capacity_config_section=show_capacity_config_section,
         start_page_users=start_page_users,
         start_page_csrf=start_page_csrf,
+        production_notice_users=production_notice_users,
+        production_notice_csrf=production_notice_csrf,
+        show_change_access_code=(
+            "main.impostazioni_cambia_codice_accesso" in current_app.view_functions
+        ),
     )
+
+
+@main_bp.post("/impostazioni/avviso-produzione")
+@require_active_perm("impostazioni_utente")
+def impostazioni_avviso_produzione():
+    if not active_policy().has_direct_admin_role or (get_operator_token() and get_operator_token() != active_token()):
+        abort(403)
+
+    csrf = session.get("production_notice_csrf", "")
+    if not csrf or not secrets.compare_digest(csrf.encode(), request.form.get("csrf_token", "").encode()):
+        abort(400)
+
+    user_id = request.form.get("user_id", type=int)
+    probability = request.form.get("probability", type=int)
+    message = request.form.get("message", "").strip()
+    if user_id is None or not 0 < user_id < 2**63 or probability is None or not 0 <= probability <= 100 or len(message) > 500:
+        abort(400)
+    target = db.get_or_404(User, user_id)
+    if not target.active or not RbacPolicy(target).can("home"):
+        abort(400)
+
+    preferences = target.preferences
+    if not isinstance(preferences, dict):
+        abort(400)
+    if message:
+        preferences["production_notice"] = {"message": message, "probability": probability}
+    else:
+        preferences.pop("production_notice", None)
+    target.preferences = preferences
+    try:
+        db.session.commit()
+    except SQLAlchemyError:
+        db.session.rollback()
+        current_app.logger.exception("Salvataggio avviso di produzione non riuscito")
+        flash("Salvataggio non riuscito. Riprova.", "production-notice-error")
+    else:
+        flash(f"Avviso aggiornato per {target.username}.", "production-notice-success")
+    return redirect(url_for("main.impostazioni", tab_session=active_token(), _anchor="production-notice-settings"), code=303)
 
 
 @main_bp.post("/impostazioni/pagina-iniziale")
@@ -1280,14 +1330,10 @@ def api_modifica_utente():
             {"ok": False, "error": "Esiste già un utente con questo username."}
         ), 409
 
-    public_id_in_uso = User.query.filter(
-        func.lower(User.public_id) == values["public_id"].lower(),
-        User.id != utente.id,
-    ).first()
-    if public_id_in_uso is not None:
+    if values["public_id"] != utente.public_id:
         return jsonify(
-            {"ok": False, "error": "Esiste già un utente con questo Public ID."}
-        ), 409
+            {"ok": False, "error": "Il Public ID è permanente."}
+        ), 400
 
     if values["reparto_princ"]:
         reparto_exists = Reparti.query.filter(
@@ -1299,11 +1345,9 @@ def api_modifica_utente():
             ), 400
 
     old_username = utente.username
-    old_public_id = utente.public_id
 
     try:
         utente.username = values["username"]
-        utente.public_id = values["public_id"]
         utente.genere = values["genere"] or None
         utente.RepartoPrinc = values["reparto_princ"] or None
 
@@ -1317,12 +1361,11 @@ def api_modifica_utente():
             )
             revoke_operator_sessions_for_user(utente.id, commit=False)
 
-        if old_username != values["username"] or old_public_id != values["public_id"]:
+        if old_username != values["username"]:
             MacchinarioOperatore.query.filter(
-                MacchinarioOperatore.operatore_public_id == old_public_id
+                MacchinarioOperatore.operatore_public_id == utente.public_id
             ).update(
                 {
-                    MacchinarioOperatore.operatore_public_id: values["public_id"],
                     MacchinarioOperatore.operatore_username: values["username"],
                 },
                 synchronize_session=False,

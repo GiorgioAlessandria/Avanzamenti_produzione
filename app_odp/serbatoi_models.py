@@ -156,6 +156,14 @@ class SerbatoiLotto(db.Model):
     __table_args__ = (db.CheckConstraint("quantita >= 0 AND iniziale > 0"),)
 
 
+class SerbatoiImpegnoSpezzone(db.Model):
+    __tablename__ = "serbatoi_impegni_spezzoni"
+    produzione_id = db.Column(db.Integer, db.ForeignKey("serbatoi_produzioni.id"), primary_key=True)
+    lotto_id = db.Column(db.Integer, db.ForeignKey("serbatoi_lotti.id"), index=True, nullable=False)
+    quantita = db.Column(db.Integer, nullable=False)
+    __table_args__ = (db.CheckConstraint("quantita >= 0"),)
+
+
 class SerbatoiConsumo(db.Model):
     __tablename__ = "serbatoi_consumi"
     id = db.Column(db.Integer, primary_key=True)

@@ -154,6 +154,7 @@ def vendite_assegnazioni_page():
             admin or can_create_customer_orders or policy.can("utente_produzione")
         ),
         can_edit_sales_notes=can_create_customer_orders,
+        can_edit_sales_note=can_create_customer_orders or policy.can("utente_amministrazione"),
         can_edit_production_instructions=(
             can_create_customer_orders or policy.can("utente_amministrazione")
         ),
@@ -428,6 +429,7 @@ def api_vendite_riga_salva(row_id: int):
             payload,
             active_user(),
             can_edit_sales=can_edit_sales,
+            can_edit_sales_note=policy.can("utente_amministrazione"),
             can_edit_production=False,
             can_edit_production_instructions=can_edit_production_instructions,
             can_assign=can_assign,
@@ -459,6 +461,7 @@ def api_vendite_riga_note(row_id: int):
             payload,
             active_user(),
             can_edit_sales=policy.can("utente_vendite"),
+            can_edit_sales_note=policy.can("utente_amministrazione"),
             can_edit_production_instructions=(
                 policy.can("utente_vendite") or policy.can("utente_amministrazione")
             ),

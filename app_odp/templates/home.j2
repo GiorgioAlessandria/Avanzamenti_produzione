@@ -25,6 +25,18 @@
     {% endif %}
     {% if active_partial %}{% include active_partial %}{% endif %}
 
+    {% if production_notice and production_notice.message and production_notice.probability > 0 %}
+        <script>
+            window.addEventListener('click', (event) => {
+                const button = event.target.closest?.('[data-production-order-actions] button');
+                if (!button || button.disabled || !event.isTrusted) return;
+                if (Math.random() * 100 < {{ production_notice.probability|tojson }}) {
+                    window.alert({{ production_notice.message|tojson }});
+                }
+            }, true);
+        </script>
+    {% endif %}
+
     {% if manutenzioni_da_eseguire %}
         <div class="modal fade"
              id="modalManutenzioniDaEseguire"
@@ -112,6 +124,134 @@
 
 {% block extra_js %}
     {{ super() }}
+{% if production_button_animation|default(false) and not lct_home|default(false) %}
+<script>
+    (() => {
+        let movedButton;
+        let originalStyle;
+        let emptySpace;
+        let runnerLayer;
+        const viewport = window.visualViewport;
+
+        function restoreButton() {
+            if (!movedButton) return;
+            movedButton.style.cssText = originalStyle;
+            emptySpace.remove();
+            movedButton = undefined;
+        }
+
+        function showRunner(rect) {
+            runnerLayer?.remove();
+            const layer = document.createElement("div");
+            layer.setAttribute("aria-hidden", "true");
+            layer.dataset.productionRunner = "";
+            Object.assign(layer.style, {
+                position: "fixed",
+                left: `${viewport?.offsetLeft ?? 0}px`,
+                top: `${viewport?.offsetTop ?? 0}px`,
+                width: `${viewport?.width ?? document.documentElement.clientWidth}px`,
+                height: `${viewport?.height ?? document.documentElement.clientHeight}px`,
+                overflow: "hidden",
+                pointerEvents: "none",
+                zIndex: "1079",
+            });
+            const runner = document.createElement("span");
+            runner.textContent = "🧍";
+            const runnerBox = 34;
+            Object.assign(runner.style, {
+                position: "absolute",
+                left: `${rect.left + (rect.width - runnerBox) / 2 - (viewport?.offsetLeft ?? 0)}px`,
+                top: `${rect.top + (rect.height - runnerBox) / 2 - (viewport?.offsetTop ?? 0)}px`,
+                font: `32px/${runnerBox}px "Segoe UI Emoji", "Apple Color Emoji", sans-serif`,
+            });
+            layer.append(runner);
+            document.body.append(layer);
+            runnerLayer = layer;
+
+            if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+                window.setTimeout(() => layer.remove(), 400);
+                return;
+            }
+            const left = runner.offsetLeft;
+            const right = layer.clientWidth - left;
+            const distance = right > left ? right + runnerBox : -left - runnerBox;
+            const face = distance > 0 ? -1 : 1;
+            const standing = `translateX(0px) scaleX(${face})`;
+            const duration = 1050;
+            const pause = 0.2;
+            const run = runner.animate([
+                {transform: standing},
+                {transform: standing, offset: pause},
+                {transform: `translateX(${distance}px) scaleX(${face})`},
+            ], {duration});
+            window.setTimeout(() => { runner.textContent = "🏃"; }, duration * pause);
+            run.onfinish = () => layer.remove();
+        }
+
+        function moveProductionButton(event) {
+            const button = event.target.closest("[data-production-order-actions] button");
+            if (button !== movedButton) restoreButton();
+            if (!button || button.disabled) return;
+            const table = button.dataset.useSelected;
+            if ((table && !document.querySelector(table)?.querySelector("tbody tr.row-selected"))
+                || Math.random() >= 0.3) {
+                restoreButton();
+                return;
+            }
+
+            const rect = button.getBoundingClientRect();
+            const margin = 12;
+            const left = (viewport?.offsetLeft ?? 0) + margin;
+            const top = (viewport?.offsetTop ?? 0) + margin;
+            const horizontal = (viewport?.width ?? document.documentElement.clientWidth) - rect.width - 2 * margin;
+            const vertical = (viewport?.height ?? document.documentElement.clientHeight) - rect.height - 2 * margin;
+            if (horizontal < 0 || vertical < 0) {
+                restoreButton();
+                return;
+            }
+
+            let x = left + Math.random() * horizontal;
+            let y = top + Math.random() * vertical;
+            if (Math.hypot(x - rect.left, y - rect.top) < 48) {
+                x = left + (rect.left < left + horizontal / 2 ? horizontal : 0);
+                y = top + (rect.top < top + vertical / 2 ? vertical : 0);
+            }
+
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            if (!movedButton) {
+                movedButton = button;
+                originalStyle = button.style.cssText;
+                const style = getComputedStyle(button);
+                emptySpace = document.createElement("span");
+                emptySpace.setAttribute("aria-hidden", "true");
+                Object.assign(emptySpace.style, {
+                    flex: style.flex,
+                    width: `${rect.width}px`,
+                    height: `${rect.height}px`,
+                    margin: style.margin,
+                });
+                button.before(emptySpace);
+            }
+
+            Object.assign(button.style, {
+                position: "fixed",
+                left: `${x}px`,
+                top: `${y}px`,
+                width: `${rect.width}px`,
+                height: `${rect.height}px`,
+                zIndex: "1080",
+            });
+            button.style.setProperty("margin", "0", "important");
+            showRunner(rect);
+        }
+        window.addEventListener("resize", restoreButton);
+        viewport?.addEventListener("resize", restoreButton);
+        // Il sorteggio precede l'apertura dei toast e dei modali di gruppo.
+        window.addEventListener("click", moveProductionButton, true);
+    })();
+</script>
+{% endif %}
     <script>
         window.homeBridgeConfig = {
             url: {{ bridge_url|tojson }},

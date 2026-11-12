@@ -137,7 +137,7 @@ def _log(evento: str, entita: str, entita_id: int | None, data, user) -> None:
             entita_id=entita_id,
             dettaglio=json.dumps(data, ensure_ascii=False, default=str),
             utente_public_id=public_id,
-            utente_username=username,
+            utente_username=None if public_id else username,
         )
     )
 
@@ -341,7 +341,7 @@ def create_strumento(data, user, *, data_inserimento: date | None = None) -> Str
                 else "Taratura iniziale eseguita dalla casa madre."
             ),
             registrato_da_public_id=public_id,
-            registrato_da_username=username,
+            registrato_da_username=None if public_id else username,
         )
     )
     _log(
@@ -430,7 +430,7 @@ def record_internal_check(strumento_id: int, data, user) -> EventoTaratura:
         esito=esito,
         note=_optional_text(data.get("note")),
         registrato_da_public_id=public_id,
-        registrato_da_username=username,
+        registrato_da_username=None if public_id else username,
     )
     db.session.add(evento)
     row.stato = "IN_USO" if esito == "CONFORME" else "NON_IN_USO"
@@ -464,7 +464,7 @@ def create_spedizione(data, strumento_ids, user) -> SpedizioneTaratura:
         laboratorio=_text(data.get("laboratorio"), "laboratorio"),
         note=_optional_text(data.get("note")),
         created_by_public_id=public_id,
-        created_by_username=username,
+        created_by_username=None if public_id else username,
     )
     db.session.add(spedizione)
     db.session.flush()
@@ -529,7 +529,7 @@ def record_external_calibration(strumento_id: int, data, user, certificato) -> E
         note=_optional_text(data.get("note")),
         certificato_nome=certificato_nome,
         registrato_da_public_id=public_id,
-        registrato_da_username=username,
+        registrato_da_username=None if public_id else username,
     )
     db.session.add(evento)
     db.session.flush()

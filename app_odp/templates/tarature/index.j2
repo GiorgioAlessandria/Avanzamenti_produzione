@@ -291,7 +291,7 @@
                     <thead><tr><th>Data e ora</th><th>Utente</th><th>Evento</th><th>Entità</th><th>Dettaglio</th></tr></thead>
                     <tbody>
                     {% for item in logs %}
-                        <tr><td>{{ item.created_at.strftime('%d/%m/%Y %H:%M') }}</td><td>{{ item.utente_username or 'Sistema' }}</td><td>{{ item.evento|replace('_',' ')|title }}</td><td>{{ item.entita }} #{{ item.entita_id or '' }}</td><td class="tarature-log"><code>{{ item.dettaglio }}</code></td></tr>
+                        <tr><td>{{ item.created_at.strftime('%d/%m/%Y %H:%M') }}</td><td>{{ (item.utente_public_id|display_username(item.utente_username)) or 'Sistema' }}</td><td>{{ item.evento|replace('_',' ')|title }}</td><td>{{ item.entita }} #{{ item.entita_id or '' }}</td><td class="tarature-log"><code>{{ item.dettaglio }}</code></td></tr>
                     {% else %}<tr><td colspan="5" class="text-center text-secondary">Nessun evento.</td></tr>{% endfor %}
                     </tbody>
                 </table>

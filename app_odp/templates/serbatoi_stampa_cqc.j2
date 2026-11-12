@@ -1,0 +1,30 @@
+{% extends 'base.j2' %}
+{% block title %}Stampa CQC · Serbatoi{% endblock %}
+{% block content %}{% autoescape true %}
+<main class="container-fluid px-3 px-lg-4 py-3" aria-label="Stampa CQC">
+ {% for category, message in get_flashed_messages(with_categories=true) %}
+  <div class="alert alert-{{ category }}" role="status">{{ message }}</div>
+ {% endfor %}
+ {% include 'partials/_serbatoi_nav.j2' %}
+ {% if certificati %}
+  <div class="card table-responsive">
+   <table class="table table-hover align-middle mb-0">
+    <caption class="visually-hidden">CQC disponibili per la stampa</caption>
+    <thead class="table-light">
+     <tr><th scope="col">Cliente</th><th scope="col">Ordine cliente</th><th scope="col">Riga</th><th scope="col">Codice articolo</th><th scope="col" class="text-end">Azioni</th></tr>
+    </thead>
+    <tbody>
+     {% for cliente, codice in certificati %}
+      <tr>
+       <td>{{ cliente.cliente }}</td><td>{{ cliente.riferimento }}</td><td>{{ cliente.id_riga }}</td><td>{{ codice }}</td>
+       <td class="text-end"><a class="btn btn-sm btn-primary text-nowrap" href="{{ operator_url_for('main.serbatoi_cqc', cliente_id=cliente.id, stampa=1) }}" target="_blank" rel="noopener">Stampa CQC<span class="visually-hidden"> ordine {{ cliente.riferimento }}, riga {{ cliente.id_riga }} (si apre in una nuova scheda)</span></a></td>
+      </tr>
+     {% endfor %}
+    </tbody>
+   </table>
+  </div>
+ {% else %}
+  <p class="alert alert-info mb-0">Nessun CQC disponibile per la stampa.</p>
+ {% endif %}
+</main>
+{% endautoescape %}{% endblock %}

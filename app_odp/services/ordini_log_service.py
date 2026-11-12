@@ -1,6 +1,7 @@
 from decimal import Decimal
 import json
 
+from app_odp.services.operator_identity import encode_payload_operators, order_log_actor
 from app_odp.models import (
     db,
     InputOdpLog,
@@ -86,7 +87,7 @@ def _add_input_odp_closure_log(
             StatoOrdinePost=_norm_text(stato_ordine_post),
             QtyDaLavorarePre=_norm_text(qty_pre),
             QtyDaLavorarePost=_norm_text(qty_post),
-            ClosedBy=_norm_text(closed_by),
+            **order_log_actor("ClosedBy", closed_by),
             ClosedAt=_norm_text(closed_at),
             VarianteArt=_norm_text(getattr(ordine, "VarianteArt", "")),
         )
@@ -152,7 +153,7 @@ def _add_input_odp_takeover_log(
             StatoOrdinePost=_norm_text(stato_ordine_post),
             QtyDaLavorarePre=_norm_text(qty_pre),
             QtyDaLavorarePost=_norm_text(qty_post),
-            ClosedBy=_norm_text(taken_by),
+            **order_log_actor("ClosedBy", taken_by),
             ClosedAt=_norm_text(taken_at),
             VarianteArt=_norm_text(getattr(ordine, "VarianteArt", "")),
         )
@@ -228,7 +229,7 @@ def _add_input_odp_suspend_log(
             StatoOrdinePost=_norm_text(stato_ordine_post),
             QtyDaLavorarePre=_norm_text(qty_pre),
             QtyDaLavorarePost=_norm_text(qty_post),
-            ClosedBy=_norm_text(suspended_by),
+            **order_log_actor("ClosedBy", suspended_by),
             ClosedAt=_norm_text(suspended_at),
         )
     )
@@ -254,7 +255,7 @@ def _add_lotti_usati_logs(
                 RifLottoAlfa=_norm_text(lotto_row.get("RifLottoAlfa")),
                 Quantita=str(lotto_row.get("Quantita", 0)),
                 Esito=_norm_text(lotto_row.get("Esito", "ok")),
-                ClosedBy=_norm_text(closed_by),
+                **order_log_actor("ClosedBy", closed_by),
                 ClosedAt=_norm_text(closed_at),
                 Fase=_norm_text(fase),
             )
@@ -280,7 +281,7 @@ def _add_lotto_generato_log(
         RifLottoAlfa=lotto_prodotto["RifLottoAlfa"],
         Quantita=lotto_prodotto["Quantita"],
         Fase=lotto_prodotto["Fase"],
-        ClosedBy=_norm_text(closed_by),
+        **order_log_actor("ClosedBy", closed_by),
         ClosedAt=_norm_text(closed_at),
     )
     db.session.add(row)
@@ -365,13 +366,13 @@ def _append_operazione_log(
         Scope=scope,
         CodArt=_norm_text(ordine.CodArt),
         CodReparto=_norm_text(ordine.CodReparto),
-        PayloadJson=json.dumps(payload, ensure_ascii=False),
+        PayloadJson=json.dumps(encode_payload_operators(payload), ensure_ascii=False),
         IdDocumento=ordine.IdDocumento,
         IdRiga=ordine.IdRiga,
         RifRegistraz=ordine.RifRegistraz,
         Azione=action,
         Motivo=_norm_text(motivo),
-        UtenteOperazione=username,
+        **order_log_actor("UtenteOperazione", username),
         EventAt=event_at,
         StatoOdpPre=_norm_text(runtime_pre.get("stato_odp")),
         StatoOdpPost=_norm_text(runtime_post.get("stato_odp")),

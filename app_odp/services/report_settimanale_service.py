@@ -7,6 +7,7 @@ from typing import Any
 
 from sqlalchemy import and_, or_, select
 
+from app_odp.services.operator_identity import actor_matches, display_username
 from app_odp.models import (
     db,
     InputOdpLog,
@@ -760,7 +761,7 @@ def _load_input_logs_in_period_for_user(
             .where(
                 InputOdpLog.ClosedAt >= start_iso,
                 InputOdpLog.ClosedAt <= end_iso,
-                InputOdpLog.ClosedBy == username,
+                actor_matches(InputOdpLog, InputOdpLog.ClosedBy, username, exact=True),
             )
             .order_by(
                 InputOdpLog.IdDocumento.asc(),
@@ -885,7 +886,7 @@ def _calculate_worked_hours_by_user_phase(
 
         if operation_group_id and _is_activation_input_log(row):
             active_by_operation[operation_group_id] = (
-                _norm(row.ClosedBy),
+                _norm(display_username(getattr(row, "ActorPublicId", None), row.ClosedBy)),
                 _phase_key(row),
                 row,
             )
@@ -941,7 +942,7 @@ def _calculate_worked_hours_by_user_phase(
             operation_group_id = _norm(row.OperationGroupId)
 
             if _is_activation_input_log(row):
-                active_username = _norm(row.ClosedBy)
+                active_username = _norm(display_username(getattr(row, "ActorPublicId", None), row.ClosedBy))
                 active_phase_key = _phase_key(row)
                 active_log = row
                 continue

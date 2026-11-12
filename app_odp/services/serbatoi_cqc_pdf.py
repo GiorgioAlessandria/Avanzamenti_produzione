@@ -42,7 +42,7 @@ def build_cqc_pdf(cliente, articolo, fresature, rientri):
 
     for nome, righe in (
         ("Fresatura", [(c, f"ODP {ref}") for c, ref in fresature]),
-        ("Rientro Gaser", [(c, f"Lotto {ref} | DDT {ddt or '-'}") for c, ref, ddt in rientri]),
+        ("Ossidatura", [(c, f"Lotto {ref} | DDT {ddt or '-'}") for c, ref, ddt in rientri]),
     ):
         storia.append(testo(nome, "Heading2"))
         if nome == "Fresatura":

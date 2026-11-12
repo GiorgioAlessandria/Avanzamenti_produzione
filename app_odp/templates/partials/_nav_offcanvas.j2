@@ -85,7 +85,8 @@
                 </div>
             {% endif %}
             {% set preferences_user = operator_user if operator_user else current_user %}
-            {% if preferences_user and preferences_user.is_authenticated and nav_policy and nav_policy.can('utente_vendite') %}
+            {% if preferences_user and preferences_user.is_authenticated and nav_policy
+                  and (nav_policy.can('utente_vendite') or nav_policy.can('utente_amministrazione')) %}
                 <div class="d-flex">
                     <a href="{{ operator_url_for('main.preferenze_fasi') }}" class="text-dark fs-4">
                         <span class="d-flex align-items-center gap-2" style="font-size: 25px;">

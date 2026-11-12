@@ -6,7 +6,7 @@
 
 {% block content %}
     <main class="container-fluid mt-4 mb-4">
-        {% if start_page_csrf %}
+        {% if start_page_csrf and show_change_access_code|default(false) %}
             <section class="card mb-4">
                 <div class="card-body">
                     <h2 class="h5">Cambia il tuo codice di accesso</h2>
@@ -33,7 +33,13 @@
                     </form>
                 </div>
             </section>
+        {% endif %}
+        {% if start_page_csrf %}
             {% include 'partials/_impostazioni_pagina_iniziale.j2' %}
+        {% endif %}
+
+        {% if production_notice_csrf|default(false) %}
+            {% include 'partials/_impostazioni_avviso_produzione.j2' %}
         {% endif %}
 
         {% if show_user_abac_section %}
@@ -1494,7 +1500,7 @@
                             <input type="text"
                                    id="edit-user-public-id"
                                    class="form-control"
-                                   maxlength="100"
+                                   readonly
                                    value="${escapeHtml(user.public_id || "")}">
                         </div>
                         <div class="col-12 col-md-6">

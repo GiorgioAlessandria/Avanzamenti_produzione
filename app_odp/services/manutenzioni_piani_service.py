@@ -6,6 +6,7 @@ from typing import Any
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 
+from app_odp.services.operator_identity import display_username
 from app_odp.manutenzioni_models import (
     EventoManutenzione,
     ManutenzioneRicorrente,
@@ -406,7 +407,10 @@ def create_piano_manutenzione(
         created_by_public_id=_norm_optional_text(
             getattr(created_by, "public_id", None)
         ),
-        created_by_username=_norm_optional_text(getattr(created_by, "username", None)),
+        created_by_username=(
+            None if getattr(created_by, "public_id", None)
+            else _norm_optional_text(getattr(created_by, "username", None))
+        ),
     )
 
     piano.giorni_settimana_list = giorni_settimana
@@ -618,7 +622,9 @@ def serialize_piano_manutenzione(
         "preavviso_giorni": (piano.preavviso_giorni),
         "attiva": bool(piano.attiva),
         "created_by_public_id": (piano.created_by_public_id),
-        "created_by_username": (piano.created_by_username),
+        "created_by_username": display_username(
+            piano.created_by_public_id, piano.created_by_username
+        ),
         "created_at": (piano.created_at.isoformat() if piano.created_at else None),
         "updated_at": (piano.updated_at.isoformat() if piano.updated_at else None),
     }
