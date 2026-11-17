@@ -1,0 +1,954 @@
+{% extends "base.j2" %}
+
+{% block title %}Storico ordini{% endblock %}
+
+{% block styles %}
+    {{ super() }}
+    <style>
+        .storico-filter-card .form-label {
+            font-size: .85rem;
+            margin-bottom: .25rem;
+        }
+
+        .storico-events {
+            max-width: 260px;
+        }
+
+        .storico-timeline {
+            border-left: 2px solid var(--bs-border-color);
+            margin-left: .5rem;
+            padding-left: 1rem;
+        }
+
+        .storico-timeline-item {
+            position: relative;
+            padding-bottom: 1rem;
+        }
+
+        .storico-timeline-item::before {
+            content: "";
+            position: absolute;
+            left: -1.42rem;
+            top: .35rem;
+            width: .65rem;
+            height: .65rem;
+            border-radius: 50%;
+            background: var(--bs-primary);
+        }
+
+        .storico-payload {
+            max-height: 220px;
+            overflow: auto;
+            white-space: pre-wrap;
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+    <main class="container-fluid py-3"
+          id="storico-ordini-page"
+          data-list-url="{{ operator_url_for('main.api_storico_ordini') }}"
+          data-detail-url="{{ operator_url_for('main.api_storico_ordini_detail') }}"
+          data-operatori-url="{{ operator_url_for('main.api_storico_operatori') }}"
+          data-lotti-url="{{ operator_url_for('main.api_storico_ordini_lotti') }}">
+        <div class="d-flex justify-content-between align-items-start mb-3">
+            <div>
+                <h1 class="h4 mb-1">Storico ordini</h1>
+                <div class="text-muted small">Passaggi per fase, prese in carico ed esiti della lavorazione</div>
+            </div>
+        </div>
+
+        <details class="card shadow-sm mb-3 storico-filter-card" id="storico-operatori">
+            <summary class="card-header fw-semibold">Timeline operatori</summary>
+            <div class="card-body">
+                <form class="row g-2 align-items-end" id="storico-operatori-form">
+                    <div class="col-6 col-md-2">
+                        <label class="form-label" for="storico-operatori-da">Da</label>
+                        <input class="form-control" type="date" id="storico-operatori-da" value="{{ default_date_to }}" required>
+                    </div>
+                    <div class="col-6 col-md-2">
+                        <label class="form-label" for="storico-operatori-a">A</label>
+                        <input class="form-control" type="date" id="storico-operatori-a" value="{{ default_date_to }}" required>
+                    </div>
+                    <div class="col-8 col-md-4">
+                        <label class="form-label" for="storico-operatori-scelta">Operatore in carico</label>
+                        <select class="form-select" id="storico-operatori-scelta">
+                            <option value="">Tutti gli operatori</option>
+                        </select>
+                    </div>
+                    <div class="col-4 col-md-auto">
+                        <button type="submit" class="btn btn-primary w-100">Applica</button>
+                    </div>
+                </form>
+                <p class="small text-muted mt-3 mb-2">Orari di Roma. I passaggi sono attribuiti all’operatore in carico registrato nel log o ricostruito dalle prese in carico del periodo.</p>
+                <p class="small fw-semibold mb-2" id="storico-operatori-stato" role="status" aria-live="polite"></p>
+                <div id="storico-operatori-risultati"></div>
+                <div class="d-none d-flex justify-content-between align-items-center mt-3" id="storico-operatori-pagine">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="storico-operatori-prev">Precedente</button>
+                    <span class="small" id="storico-operatori-pagina"></span>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="storico-operatori-next">Successiva</button>
+                </div>
+            </div>
+        </details>
+
+        <details class="card shadow-sm mb-3 storico-filter-card">
+            <summary class="card-header">
+                <span class="fw-semibold">Ricerca storico lotti</span>
+                <span class="small text-muted" id="storico-lotti-count"
+                      role="status" aria-live="polite"></span>
+            </summary>
+            <div class="card-body">
+                <form class="row g-2 align-items-end" id="storico-lotti-form">
+                    <div class="col-12 col-md-8">
+                        <label class="form-label" for="storico-lotto">1. Lotto</label>
+                        <input class="form-control" id="storico-lotto" required
+                               placeholder="Inserire il lotto completo" autocomplete="off">
+                    </div>
+                    <div class="col-12 col-md-4">
+                        <button type="submit" class="btn btn-primary w-100">Cerca materiali</button>
+                    </div>
+                </form>
+                <section class="border-top mt-3 pt-3 d-none" id="storico-lotti-material-section">
+                    <label class="form-label" for="storico-lotto-articolo">2. Materiale del lotto</label>
+                    <select class="form-select" id="storico-lotto-articolo" disabled
+                            aria-describedby="storico-lotti-selection">
+                        <option value="">Seleziona il codice materiale...</option>
+                    </select>
+                    <div class="small text-muted mt-2" id="storico-lotti-selection" role="status" aria-live="polite"></div>
+                    <div class="mt-3 d-none" id="storico-lotti-summary">
+                        <div class="border rounded px-3 py-2 d-flex flex-wrap justify-content-around gap-3">
+                            <div>
+                                <div class="small text-muted">Quantità originale</div>
+                                <div class="fw-semibold" id="storico-lotti-original">-</div>
+                            </div>
+                            <div>
+                                <div class="small text-muted">Ancora disponibile</div>
+                                <div class="fw-semibold text-success" id="storico-lotti-available">-</div>
+                            </div>
+                            <div>
+                                <div class="small text-muted">Utilizzata</div>
+                                <div class="fw-semibold" id="storico-lotti-used">-</div>
+                            </div>
+                        </div>
+                        <div class="small text-muted mt-1" id="storico-lotti-summary-note"></div>
+                    </div>
+                </section>
+            </div>
+            <div class="table-responsive d-none" id="storico-lotti-results">
+                <table class="table table-sm table-hover align-middle mb-0">
+                    <thead class="table-light">
+                    <tr>
+                        <th>Gruppi</th>
+                        <th>Lotto</th>
+                        <th>Ordine di produzione</th>
+                        <th>Documento / riga</th>
+                        <th>Articolo</th>
+                        <th>Quantità</th>
+                        <th>Fase</th>
+                        <th>Data</th>
+                        <th>Operatore</th>
+                        <th></th>
+                    </tr>
+                    </thead>
+                    <tbody id="storico-lotti-body"></tbody>
+                </table>
+            </div>
+        </details>
+
+        <div class="card shadow-sm mb-3 storico-filter-card">
+            <div class="card-body">
+                <form class="row g-2 align-items-end"
+                      id="storico-filters">
+                    <div class="col-12 col-md-2">
+                        <label class="form-label"
+                               for="storico-date-from">Da</label>
+                        <input class="form-control"
+                               type="date"
+                               id="storico-date-from"
+                               value="{{ default_date_from }}">
+                    </div>
+                    <div class="col-12 col-md-2">
+                        <label class="form-label"
+                               for="storico-date-to">A</label>
+                        <input class="form-control"
+                               type="date"
+                               id="storico-date-to"
+                               value="{{ default_date_to }}">
+                    </div>
+                    <div class="col-12 col-md-2">
+                        <label class="form-label"
+                               for="storico-q">Ordine di produzione</label>
+                        <input class="form-control"
+                               id="storico-q"
+                               placeholder="Es. 2026.1.610 2,00" autocomplete="off"
+                               title="Cerca per numero ODP, con o senza riga. Se il periodo è quello predefinito, la ricerca include tutto lo storico.">
+                    </div>
+                    <div class="col-12 col-md-2">
+                        <label class="form-label"
+                               for="storico-articolo">Articolo</label>
+                        <input class="form-control"
+                               id="storico-articolo">
+                    </div>
+                    <div class="col-12 col-md-2">
+                        <label class="form-label"
+                               for="storico-risorsa">Risorsa</label>
+                        <input class="form-control"
+                               id="storico-risorsa">
+                    </div>
+                    <div class="col-12 col-md-2">
+                        <label class="form-label"
+                               for="storico-operatore">Autore evento</label>
+                        <input class="form-control"
+                               id="storico-operatore">
+                    </div>
+                    <div class="col-12 col-md-2">
+                        <label class="form-label"
+                               for="storico-reparto">Reparto</label>
+                        <input class="form-control"
+                               id="storico-reparto">
+                    </div>
+                    <div class="col-12 col-md-2">
+                        <label class="form-label"
+                               for="storico-evento">Evento</label>
+                        <select class="form-select" id="storico-evento">
+                            <option value="">Tutti</option>
+                            {% for code, label in event_filters.items() %}
+                            <option value="{{ code }}">{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-12 col-md-2">
+                        <label class="form-label"
+                               for="storico-tipo-gruppo">Tipo gruppo</label>
+                        <select class="form-select"
+                                id="storico-tipo-gruppo">
+                            <option value="">Tutti</option>
+                            <option value="MULTIPLO">Multiplo</option>
+                            <option value="MASCHERATO">Mascherato</option>
+                            <option value="MISTO">Misto</option>
+                        </select>
+                    </div>
+                    <div class="col-12 col-md-2">
+                        <button type="submit"
+                                class="btn btn-primary w-100"
+                                id="storico-apply">
+                            Applica
+                        </button>
+                    </div>
+                    <div class="col-12 col-md-2">
+                        <button type="button"
+                                class="btn btn-outline-secondary w-100"
+                                id="storico-reset">
+                            Reset
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="card shadow-sm">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span class="fw-semibold">Passaggi nel periodo e nei filtri selezionati</span>
+                <span class="small text-muted"
+                      id="storico-count"
+                      role="status"
+                      aria-live="polite">-</span>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm table-hover align-middle mb-0">
+                    <thead class="table-light">
+                    <tr>
+                        <th>Data ultimo passaggio</th>
+                        <th>Tipo</th>
+                        <th>Ordine</th>
+                        <th>N. riga ERP</th>
+                        <th>Articoli</th>
+                        <th>Risorse</th>
+                        <th>Autore ultimo passaggio</th>
+                        <th>Ultimo passaggio</th>
+                        <th>Fase</th>
+                        <th></th>
+                    </tr>
+                    </thead>
+                    <tbody id="storico-body">
+                    <tr>
+                        <td colspan="10"
+                            class="text-center text-muted py-3">Caricamento...
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="card-footer d-flex justify-content-between align-items-center">
+                <button type="button"
+                        class="btn btn-outline-secondary btn-sm"
+                        id="storico-prev">Precedente
+                </button>
+                <div class="small"
+                     id="storico-page">Pagina 1
+                </div>
+                <button type="button"
+                        class="btn btn-outline-secondary btn-sm"
+                        id="storico-next">Successiva
+                </button>
+            </div>
+        </div>
+    </main>
+
+    <div class="modal fade"
+         id="storico-detail-modal"
+         tabindex="-1"
+         aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <div>
+                        <h2 class="modal-title h5"
+                            id="storico-detail-title">Storico lavorazione</h2>
+                        <div class="small text-muted"
+                             id="storico-detail-subtitle"></div>
+                    </div>
+                    <button type="button"
+                            class="btn-close"
+                            data-bs-dismiss="modal"
+                            aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="storico-detail-content"
+                         class="text-muted">Caricamento...
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block extra_js %}
+    {{ super() }}
+    <script>
+        (function () {
+            const page = document.getElementById("storico-ordini-page");
+            if (!page) return;
+
+            const body = document.getElementById("storico-body");
+            const countEl = document.getElementById("storico-count");
+            const pageEl = document.getElementById("storico-page");
+            const prevBtn = document.getElementById("storico-prev");
+            const nextBtn = document.getElementById("storico-next");
+            const lotsBody = document.getElementById("storico-lotti-body");
+            const lotsCount = document.getElementById("storico-lotti-count");
+            const lotsResults = document.getElementById("storico-lotti-results");
+            const lotsSummary = document.getElementById("storico-lotti-summary");
+            const lotInput = document.getElementById("storico-lotto");
+            const lotMaterial = document.getElementById("storico-lotto-articolo");
+            const lotMaterialSection = document.getElementById("storico-lotti-material-section");
+            const lotSelection = document.getElementById("storico-lotti-selection");
+            let lotRequestVersion = 0;
+            const detailModalEl = document.getElementById("storico-detail-modal");
+            const detailTitle = document.getElementById("storico-detail-title");
+            const detailSubtitle = document.getElementById("storico-detail-subtitle");
+            const detailContent = document.getElementById("storico-detail-content");
+
+            let currentPage = 1;
+            let totalPages = 1;
+            let orderDetailKey = "";
+
+            function esc(value) {
+                return String(value ?? "").replace(/[&<>"']/g, ch => ({
+                    "&": "&amp;",
+                    "<": "&lt;",
+                    ">": "&gt;",
+                    '"': "&quot;",
+                    "'": "&#39;",
+                }[ch]));
+            }
+
+            function value(id) {
+                return (document.getElementById(id)?.value || "").trim();
+            }
+
+            function params() {
+                const p = new URLSearchParams({
+                    page: String(currentPage),
+                    page_size: "50",
+                    date_from: value("storico-date-from"),
+                    date_to: value("storico-date-to"),
+                    q: value("storico-q"),
+                    articolo: value("storico-articolo"),
+                    risorsa: value("storico-risorsa"),
+                    operatore: value("storico-operatore"),
+                    reparto: value("storico-reparto"),
+                    evento: value("storico-evento"),
+                    tipo_gruppo: value("storico-tipo-gruppo"),
+                });
+                return p;
+            }
+
+            function shortList(values) {
+                const arr = Array.isArray(values) ? values.filter(Boolean) : [];
+                if (!arr.length) return "-";
+                const visible = arr.slice(0, 3).map(esc).join("<br>");
+                return arr.length > 3 ? `${visible}<br><span class="text-muted">+${arr.length - 3}</span>` : visible;
+            }
+
+            async function loadList() {
+                body.innerHTML = `<tr><td colspan="10" class="text-center text-muted py-3">Caricamento...</td></tr>`;
+                const listSep = page.dataset.listUrl.includes("?") ? "&" : "?";
+                const url = `${page.dataset.listUrl}${listSep}${params().toString()}`;
+                let data = {};
+
+                try {
+                    const resp = await window.avpFetch(url);
+                    data = await resp.json().catch(() => ({
+                        ok: false,
+                        error: `Risposta non valida dal server (${resp.status})`,
+                    }));
+
+                    if (!resp.ok || !data.ok) {
+                        body.innerHTML = `<tr><td colspan="10" class="text-center text-danger py-3">${esc(data.error || "Errore caricamento")}</td></tr>`;
+                        return;
+                    }
+                } catch (err) {
+                    console.error("Errore caricamento storico ordini:", err);
+                    body.innerHTML = `<tr><td colspan="10" class="text-center text-danger py-3">Errore di comunicazione con il server.</td></tr>`;
+                    return;
+                }
+
+                totalPages = data.total_pages || 1;
+                const scanLimitReached = Boolean(data.scan_limit_reached);
+                const count = data.total || 0;
+                const ordersFound = count === 1 ? "1 ordine trovato" : `${count} ordini trovati`;
+                countEl.textContent = scanLimitReached
+                    ? `${ordersFound} (limite raggiunto: restringere periodo o filtri)`
+                    : ordersFound;
+                countEl.classList.toggle("text-warning", scanLimitReached);
+                countEl.classList.toggle("text-muted", !scanLimitReached);
+                pageEl.textContent = `Pagina ${data.page || 1} di ${totalPages}`;
+                prevBtn.disabled = currentPage <= 1;
+                nextBtn.disabled = currentPage >= totalPages;
+
+                if (!data.rows.length) {
+                    body.innerHTML = `<tr><td colspan="10" class="text-center text-muted py-3">Nessun ordine trovato.</td></tr>`;
+                    return;
+                }
+
+                body.innerHTML = data.rows.map(row => `
+                    <tr>
+                        <td>${esc(row.last_event_at_display)}</td>
+                        <td>${esc(row.group_type_label || "—")}</td>
+                        <td>
+                            <div class="fw-semibold">${esc(row.label)}</div>
+                        </td>
+                        <td>${shortList(row.num_progr_righe.length ? row.num_progr_righe : [row.id_riga])}</td>
+                        <td>${shortList(row.articles)}</td>
+                        <td>${shortList(row.risorse)}</td>
+                        <td>${esc(row.last_operator || "Non disponibile")}</td>
+                        <td class="storico-events">${esc(row.last_event)}</td>
+                        <td>${esc(row.last_phase ? window.phaseLabel(row.last_phase) : "Non disponibile")}</td>
+                        <td class="text-end">
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-primary js-storico-detail"
+                                    data-kind="${esc(row.kind)}"
+                                    data-group-uid="${esc(row.group_uid || "")}"
+                                    data-key="${esc(row.key)}">
+                                Percorso ordine
+                            </button>
+                        </td>
+                    </tr>
+                `).join("");
+            }
+
+            const operatorPanel = document.getElementById("storico-operatori");
+            const operatorSelect = document.getElementById("storico-operatori-scelta");
+            const operatorStatus = document.getElementById("storico-operatori-stato");
+            const operatorResults = document.getElementById("storico-operatori-risultati");
+            const operatorPages = document.getElementById("storico-operatori-pagine");
+            const operatorPrev = document.getElementById("storico-operatori-prev");
+            const operatorNext = document.getElementById("storico-operatori-next");
+            let operatorRequest = 0;
+
+            async function loadOperatorTimeline(number = 1) {
+                const request = ++operatorRequest;
+                const query = new URLSearchParams({
+                    date_from: value("storico-operatori-da"),
+                    date_to: value("storico-operatori-a"),
+                    operatore: operatorSelect.value,
+                    page: String(number),
+                });
+                const sep = page.dataset.operatoriUrl.includes("?") ? "&" : "?";
+                operatorStatus.textContent = "Caricamento timeline…";
+                operatorResults.replaceChildren();
+                operatorPages.classList.add("d-none");
+
+                try {
+                    const response = await window.avpFetch(`${page.dataset.operatoriUrl}${sep}${query}`);
+                    const data = await response.json();
+                    if (request !== operatorRequest) return;
+                    if (!response.ok || !data.ok) {
+                        operatorStatus.textContent = data.error || "Errore nel caricamento della timeline.";
+                        return;
+                    }
+
+                    const selected = operatorSelect.value;
+                    operatorSelect.replaceChildren(new Option("Tutti gli operatori", ""));
+                    data.operators.forEach(name => operatorSelect.add(new Option(name, name)));
+                    operatorSelect.value = data.operators.includes(selected) ? selected : "";
+                    if (selected && !operatorSelect.value) {
+                        loadOperatorTimeline();
+                        return;
+                    }
+
+                    operatorStatus.textContent = data.total
+                        ? `${data.orders} righe ODP · ${data.total} passaggi`
+                        : "Nessun passaggio attribuibile nel periodo selezionato.";
+                    let lastDay = "";
+                    operatorResults.innerHTML = data.rows.map(row => {
+                        const heading = row.giorno === lastDay ? "" : `<h3 class="h6 border-bottom pb-2 mt-3">${esc(row.giorno)}</h3>`;
+                        lastDay = row.giorno;
+                        const tone = {
+                            presa_in_carico: "primary", riattivazione: "primary", sospensione: "warning",
+                            chiusura_parziale: "warning", fase_completata: "success", ordine_completato: "success",
+                        }[row.categoria] || "secondary";
+                        const phase = row.fase ? `Fase ${window.phaseLabel(row.fase)}` : "";
+                        const transition = row.fase_successiva ? ` → Fase ${window.phaseLabel(row.fase_successiva)}` : "";
+                        const scope = row.group_uid
+                            ? (row.modalita === "single_member" ? "Chiusura singola dal gruppo" : "Gruppo associato")
+                            : "";
+                        return `${heading}<div class="storico-timeline">
+                            <div class="storico-timeline-item pb-2">
+                                <div class="d-flex flex-wrap align-items-center gap-2">
+                                    <time class="small text-muted text-nowrap">${esc(row.ora)}</time>
+                                    <strong>${esc(row.operatore)}</strong>
+                                    <span class="badge text-bg-${tone}">${esc(row.evento)}</span>
+                                    <span class="small">${esc(phase + transition)}</span>
+                                </div>
+                                <div class="small mt-1">
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline js-storico-detail"
+                                            data-kind="order" data-key="${esc(row.key)}">${esc(row.ordine)} · riga ${esc(row.riga)}</button>
+                                    ${row.articolo ? ` · ${esc(row.articolo)}` : ""}
+                                    ${scope ? ` · <span class="text-muted" title="${esc(row.group_uid)}">${esc(scope)}</span>` : ""}
+                                    ${row.autore && row.autore !== row.operatore ? ` · Registrato da ${esc(row.autore)}` : ""}
+                                </div>
+                            </div>
+                        </div>`;
+                    }).join("");
+                    operatorPages.classList.toggle("d-none", data.total_pages <= 1);
+                    document.getElementById("storico-operatori-pagina").textContent = `Pagina ${data.page} di ${data.total_pages}`;
+                    operatorPrev.disabled = data.page <= 1;
+                    operatorNext.disabled = data.page >= data.total_pages;
+                    operatorPrev.onclick = () => loadOperatorTimeline(data.page - 1);
+                    operatorNext.onclick = () => loadOperatorTimeline(data.page + 1);
+                } catch (error) {
+                    if (request === operatorRequest) operatorStatus.textContent = "Errore di comunicazione con il server.";
+                }
+            }
+
+            operatorPanel.addEventListener("toggle", () => {
+                if (operatorPanel.open && !operatorRequest) loadOperatorTimeline();
+            });
+            document.getElementById("storico-operatori-form").addEventListener("submit", event => {
+                event.preventDefault();
+                loadOperatorTimeline();
+            });
+            operatorSelect.addEventListener("change", () => loadOperatorTimeline());
+            operatorResults.addEventListener("click", event => {
+                const btn = event.target.closest(".js-storico-detail");
+                if (btn) openDetail(btn);
+            });
+
+            function resetLotSearch() {
+                lotRequestVersion += 1;
+                lotMaterial.innerHTML = '<option value="">Seleziona il codice materiale...</option>';
+                lotMaterial.disabled = true;
+                lotMaterialSection.classList.add("d-none");
+                lotsResults.classList.add("d-none");
+                lotsSummary.classList.add("d-none");
+                lotsCount.textContent = "";
+                lotSelection.textContent = "";
+            }
+
+            async function loadLots(selectMaterial = false) {
+                if (!selectMaterial) resetLotSearch();
+                const lotto = value("storico-lotto");
+                const articolo = selectMaterial ? lotMaterial.value : "";
+                const version = ++lotRequestVersion;
+                lotsResults.classList.toggle("d-none", !selectMaterial);
+                if (selectMaterial && !articolo) {
+                    lotsResults.classList.add("d-none");
+                    lotsSummary.classList.add("d-none");
+                    lotSelection.textContent = "Seleziona un materiale per visualizzarne lo storico.";
+                    lotsCount.textContent = "";
+                    return;
+                }
+                lotsSummary.classList.add("d-none");
+                lotsCount.textContent = "Ricerca...";
+                lotSelection.textContent = "";
+                lotsBody.innerHTML = `<tr><td colspan="10" class="text-center text-muted py-3">Ricerca...</td></tr>`;
+                const sep = page.dataset.lottiUrl.includes("?") ? "&" : "?";
+
+                try {
+                    const resp = await window.avpFetch(
+                        `${page.dataset.lottiUrl}${sep}${new URLSearchParams({lotto, articolo})}`
+                    );
+                    const data = await resp.json().catch(() => ({
+                        ok: false,
+                        error: `Risposta non valida dal server (${resp.status})`,
+                    }));
+                    if (version !== lotRequestVersion) return;
+                    if (!resp.ok || !data.ok) {
+                        lotsResults.classList.remove("d-none");
+                        lotsCount.textContent = "";
+                        lotsBody.innerHTML = `<tr><td colspan="10" class="text-center text-danger py-3">${esc(data.error || "Errore ricerca lotto")}</td></tr>`;
+                        return;
+                    }
+
+                    if (!selectMaterial) {
+                        const materials = data.materiali || [];
+                        lotsCount.textContent = `${materials.length} ${materials.length === 1 ? "materiale trovato" : "materiali trovati"}`;
+                        if (!materials.length) {
+                            lotsResults.classList.remove("d-none");
+                            lotsBody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-3">Nessun materiale associato al lotto indicato.</td></tr>';
+                            return;
+                        }
+                        lotMaterial.innerHTML = '<option value="">Seleziona il codice materiale...</option>' + materials.map(item =>
+                            `<option value="${esc(item.codice)}">${esc(item.codice)} — ${esc(item.descrizione || "Descrizione non disponibile")}</option>`
+                        ).join("");
+                        lotMaterial.disabled = false;
+                        lotMaterialSection.classList.remove("d-none");
+                        lotSelection.textContent = `Lotto ${data.lotto}: seleziona un materiale per visualizzarne lo storico.`;
+                        return;
+                    }
+                    lotSelection.textContent = `Lotto ${data.lotto} · ${data.articolo} — ${data.descrizione || "Descrizione non disponibile"}`;
+                    lotsCount.textContent = data.limit_reached
+                        ? `${data.total} risultati mostrati (limite raggiunto)`
+                        : `${data.total} risultati`;
+                    if (data.quantity_summary) {
+                        const summary = data.quantity_summary;
+                        document.getElementById("storico-lotti-original").textContent = summary.original_quantity;
+                        document.getElementById("storico-lotti-available").textContent = summary.available_quantity;
+                        document.getElementById("storico-lotti-used").textContent = summary.used_quantity;
+                        document.getElementById("storico-lotti-summary-note").textContent =
+                            summary.original_source === "generated"
+                                ? "Quantità originale rilevata dai lotti generati."
+                                : "Quantità originale ricostruita da disponibilità e consumi registrati.";
+                        lotsSummary.classList.remove("d-none");
+                    }
+                    if (!data.rows.length) {
+                        lotsBody.innerHTML = `<tr><td colspan="10" class="text-center text-muted py-3">Nessun movimento registrato per la coppia lotto–materiale selezionata.</td></tr>`;
+                        return;
+                    }
+
+                    lotsBody.innerHTML = data.rows.map(row => `
+                        <tr>
+                            <td>${esc(row.kind_label)}</td>
+                            <td class="fw-semibold">${esc(row.lotto)}</td>
+                            <td>${esc(row.ordine)}</td>
+                            <td>${esc(row.id_documento)} / ${esc(row.id_riga)}</td>
+                            <td>${esc(row.articolo)}<div class="small text-muted">${esc(data.descrizione || "Descrizione non disponibile")}</div></td>
+                            <td>${esc(row.quantita)}</td>
+                            <td>${esc(window.phaseLabel(row.fase))}</td>
+                            <td>${esc(row.event_at_display)}</td>
+                            <td>${esc(row.utente)}</td>
+                            <td class="text-end">
+                                <button type="button"
+                                        class="btn btn-sm btn-outline-primary js-storico-detail"
+                                        data-kind="order"
+                                        data-key="order:${esc(row.id_documento)}|${esc(row.id_riga)}">
+                                    Dettaglio ordine
+                                </button>
+                            </td>
+                        </tr>
+                    `).join("");
+                } catch (err) {
+                    if (version !== lotRequestVersion) return;
+                    console.error("Errore ricerca storico lotti:", err);
+                    lotsResults.classList.remove("d-none");
+                    lotsCount.textContent = "";
+                    lotsBody.innerHTML = `<tr><td colspan="10" class="text-center text-danger py-3">Errore di comunicazione con il server.</td></tr>`;
+                }
+            }
+
+            function detailParams(btn) {
+                const p = new URLSearchParams({kind: btn.dataset.kind || "order"});
+                if (btn.dataset.kind === "group") {
+                    p.set("group_uid", btn.dataset.groupUid || "");
+                } else {
+                    const key = btn.dataset.key || "";
+                    const raw = key.replace(/^order:/, "");
+                    const parts = raw.split("|");
+                    p.set("id_documento", parts[0] || "");
+                    p.set("id_riga", parts[1] || "");
+                }
+                return p;
+            }
+
+            function table(headers, rows, renderRow) {
+                if (!rows.length) return `<div class="text-muted small py-2">Nessun dato.</div>`;
+                return `
+                    <div class="table-responsive mb-3">
+                        <table class="table table-sm align-middle">
+                            <thead class="table-light"><tr>${headers.map(h => `<th>${esc(h)}</th>`).join("")}</tr></thead>
+                            <tbody>${rows.map(renderRow).join("")}</tbody>
+                        </table>
+                    </div>
+                `;
+            }
+
+            function eventDetails(ev) {
+                const hasQuantity = ev.q_ok !== "" || ev.q_ko !== "";
+                const lots = (title, rows) => rows.length ? `<h4 class="h6 mt-2">${title}</h4>${table(
+                    ["Lotto / matricola", "Articolo", "Quantità", "Fase"], rows, row => `
+                        <tr><td>${esc(row.lotto)}</td><td>${esc(row.articolo)}</td>
+                        <td>${esc(row.quantita)}</td><td>${esc(window.phaseLabel(row.fase))}</td></tr>`
+                )}` : "";
+                const scope = {
+                    group: "Operazione di gruppo",
+                    single_member: "Operazione singola su un ordine del gruppo",
+                    single_before_group: "Lavorazione singola prima dell’ingresso nel gruppo",
+                    historical: "Gruppo associato · modalità storica non registrata",
+                }[ev.modalita] || "Operazione singola";
+                const currentPhase = ev.fase || ev.fase_pre;
+                const phaseLabel = phase => "Fase " + window.phaseLabel(phase);
+                let transition = "";
+                if (currentPhase && ev.fase_successiva) {
+                    transition = `${phaseLabel(currentPhase)} → ${phaseLabel(ev.fase_successiva)}`;
+                } else if (currentPhase && ev.categoria === "ordine_completato") {
+                    transition = `${phaseLabel(currentPhase)} → Ordine completato`;
+                } else if (currentPhase && ev.categoria === "chiusura_parziale") {
+                    transition = `${phaseLabel(currentPhase)} · Lavorazione da proseguire nella stessa fase`;
+                }
+                return `<div class="border-top pt-2 mt-2">
+                    <div class="small mb-1"><strong>${esc(scope)}</strong>${ev.group_uid ? ` · Gruppo ${esc(ev.group_uid)}` : ""}</div>
+                    ${transition ? `<div class="small text-primary fw-semibold mb-1">${esc(transition)}</div>` : ""}
+                    ${ev.orario_incoerente ? '<p class="small text-warning-emphasis mb-1">Nel log la chiusura precede l’ultima attivazione registrata. Verifica gli orari originali nei dettagli tecnici.</p>' : ""}
+                    ${ev.tecnico && ev.elapsed_seconds !== "" ? `<div class="small mb-1">Tempo attribuito: ${esc((Number(ev.elapsed_seconds) / 60).toLocaleString("it-IT", {maximumFractionDigits: 2}))} min</div>` : ""}
+                    <div class="small text-muted mb-2">Ordine ${esc(ev.ordine)} · ${esc(ev.articolo || "Articolo non disponibile")}${ev.num_progr_riga ? ` · Riga ERP ${esc(ev.num_progr_riga)}` : ev.id_riga ? ` · Riga ${esc(ev.id_riga)}` : ""}</div>
+                    <div class="row g-2 small mb-2">
+                        <div class="col-12 col-md-6">Registrato da: <strong>${esc(ev.utente || "Non disponibile")}</strong></div>
+                        <div class="col-12 col-md-6">Operatore della presa in carico: <strong>${esc(ev.operatore_in_carico || "Non disponibile")}</strong>${ev.presa_in_carico_ricostruita ? ' <span class="text-muted">(ricostruito)</span>' : ""}</div>
+                    </div>
+                    ${ev.causale ? `<div class="border-start border-warning border-3 ps-2 mb-2"><strong>Causale:</strong> ${esc(ev.causale)}</div>` : ""}
+                    ${ev.stato_pre || ev.stato_post ? `<div class="small">Stato: ${esc(ev.stato_pre || "Non disponibile")} → ${esc(ev.stato_post || "Non disponibile")}</div>` : ""}
+                    ${hasQuantity ? `<div class="small">Conformi: <strong>${esc(ev.q_ok || "0")}</strong> · Non conformi: <strong>${esc(ev.q_ko || "0")}</strong>${ev.quantita_residua !== "" ? ` · Quantità residua: ${esc(ev.quantita_residua)}` : ""}</div>` : ""}
+                    ${ev.tempo_lavorazione_ore ? `<div class="small">Tempo registrato nella fase: ${esc(ev.tempo_lavorazione_ore)} ore</div>` : ""}
+                    ${ev.tempo_non_funzionamento_minuti ? `<div class="small">Non funzionamento: ${esc(ev.tempo_non_funzionamento_minuti)} min</div>` : ""}
+                    ${ev.note ? `<div class="small mt-1" style="white-space: pre-wrap"><strong>Note:</strong> ${esc(ev.note)}</div>` : ""}
+                    ${(ev.documenti || []).length || (ev.lotti_usati || []).length || (ev.lotti_generati || []).length ? `
+                        <details class="mt-2"><summary class="small">Documenti e lotti collegati</summary>
+                            ${table(["Data", "Risorsa", "Matricola", "Note"], ev.documenti || [], row => `
+                                <tr><td>${esc(row.closed_at_display)}</td><td>${esc(row.risorsa)}</td><td>${esc(row.matricola)}</td><td style="white-space: pre-wrap">${esc(row.note)}</td></tr>`)}
+                            ${lots("Lotti usati", ev.lotti_usati || [])}
+                            ${lots("Lotti generati / matricole", ev.lotti_generati || [])}
+                        </details>` : ""}
+                    <details class="mt-2"><summary class="small text-muted">Dettagli tecnici</summary>
+                        <div class="small mt-1">${esc(ev.descrizione)}</div>
+                        <div class="small">Orario originale (${ev.source === "runtime" ? "EventAt" : "ClosedAt"}): <code>${esc(ev.event_at || "Non disponibile")}</code></div>
+                        ${ev.logged_at ? `<div class="small">Registrazione nel log: <code>${esc(ev.logged_at)}</code></div>` : ""}
+                        ${ev.activation_before ? `<div class="small">Attivazione precedente nel log: <code>${esc(ev.activation_before)}</code></div>` : ""}
+                        <pre class="bg-light border rounded p-2 mt-1 storico-payload">${esc(ev.payload_pretty || "Nessun dato aggiuntivo")}</pre>
+                    </details>
+                </div>`;
+            }
+
+            function renderDetail(data) {
+                const header = data.header || {};
+                detailTitle.textContent = header.title || "Storico lavorazione";
+                detailSubtitle.textContent = header.kind === "group"
+                    ? `${header.group_type || ""} ${header.status ? "- " + header.status : ""}`
+                    : `Percorso della riga ${header.num_progr_riga || header.id_riga || ""}`;
+
+                const membersHtml = header.members?.length ? `
+                    <h3 class="h6">Ordini del gruppo</h3>
+                    ${table(["Ordine", "N. riga ERP", "Articolo", "Ruolo", "Tempo", "Stato"], header.members, m => `
+                        <tr>
+                            <td>${esc(m.ordine)}</td>
+                            <td>${esc(m.num_progr_riga)}</td>
+                            <td>${esc(m.articolo)}<div class="small text-muted">${esc(m.descrizione)}</div></td>
+                            <td>${esc(m.ruolo)}</td>
+                            <td>${esc(m.time_share)}</td>
+                            <td>${esc(m.status)}</td>
+                        </tr>
+                    `)}
+                ` : "";
+
+                let previousPhase = null;
+                const timelineHtml = (data.passaggi || []).map(step => {
+                    const phaseHeading = step.fase !== previousPhase
+                        ? `<h3 class="h6 border-bottom pb-2 mt-3">Fase: ${esc(step.fase ? window.phaseLabel(step.fase) : "Non disponibile")}</h3>`
+                        : "";
+                    previousPhase = step.fase;
+                    return `${phaseHeading}<div class="storico-timeline-item">
+                        <div class="d-flex flex-wrap justify-content-between gap-2 mb-2">
+                            <div class="fw-semibold">${esc(step.azione_label)}</div>
+                            <div class="text-muted small">${esc(step.event_at_display)}</div>
+                        </div>
+                        ${step.eventi.length > 1 ? `
+                            <div class="small mb-2">Registrato da: <strong>${esc(step.utente || "Non disponibile")}</strong> · Operatore della presa in carico: <strong>${[...new Set(step.eventi.map(ev => ev.operatore_in_carico || "Non disponibile"))].map(esc).join(", ")}</strong></div>
+                            <details class="border rounded p-2">
+                                <summary>${step.eventi.length} ordini coinvolti — mostra esiti e prese in carico</summary>
+                                ${step.eventi.map(eventDetails).join("")}
+                            </details>
+                        ` : eventDetails(step.eventi[0])}
+                    </div>`;
+                }).join("") || '<p class="text-muted">Nessun passaggio operativo registrato.</p>';
+
+                const inputHtml = table(
+                    ["Data", "Ordine", "N. riga ERP", "Articolo", "Fase", "Risorsa", "OK", "KO", "Lavorazione (ore)", "Non funzionamento (min)", "Utente", "Matricola", "Note"],
+                    data.input_logs || [],
+                    row => `
+                        <tr>
+                            <td>${esc(row.closed_at_display)}</td>
+                            <td>${esc(row.ordine)}</td>
+                            <td>${esc(row.num_progr_riga)}</td>
+                            <td>${esc(row.articolo)}<div class="small text-muted">${esc(row.descrizione)}</div></td>
+                            <td>${esc(window.phaseLabel(row.fase))}</td>
+                            <td>${esc(row.risorsa)}</td>
+                            <td>${esc(row.q_ok)}</td>
+                            <td>${esc(row.q_ko)}</td>
+                            <td>${esc(row.tempo_finale)}</td>
+                            <td>${esc(row.tempo_non_funzionamento_minuti)}</td>
+                            <td>${esc(row.utente)}</td>
+                            <td>${esc(row.matricola)}</td>
+                            <td>${esc(row.note)}</td>
+                        </tr>
+                    `
+                );
+
+                const usedLotsHtml = table(
+                    ["Data", "Ordine", "Articolo", "Lotto", "Quantita", "Esito", "Fase", "Utente"],
+                    data.lotti_usati || [],
+                    row => `
+                        <tr>
+                            <td>${esc(row.closed_at_display)}</td>
+                            <td>${esc(row.ordine)}</td>
+                            <td>${esc(row.articolo)}</td>
+                            <td>${esc(row.lotto)}</td>
+                            <td>${esc(row.quantita)}</td>
+                            <td>${esc(row.esito)}</td>
+                            <td>${esc(window.phaseLabel(row.fase))}</td>
+                            <td>${esc(row.utente)}</td>
+                        </tr>
+                    `
+                );
+
+                const generatedLotsHtml = table(
+                    ["Data", "Ordine", "Articolo", "Lotto", "Quantita", "Fase", "Utente", "Etichetta"],
+                    data.lotti_generati || [],
+                    row => `
+                        <tr>
+                            <td>${esc(row.closed_at_display)}</td>
+                            <td>${esc(row.ordine)}</td>
+                            <td>${esc(row.articolo)}</td>
+                            <td>${esc(row.lotto)}</td>
+                            <td>${esc(row.quantita)}</td>
+                            <td>${esc(window.phaseLabel(row.fase))}</td>
+                            <td>${esc(row.utente)}</td>
+                            <td>${esc(row.label)}</td>
+                        </tr>
+                    `
+                );
+
+                detailContent.innerHTML = `
+                    ${header.kind === "group" && orderDetailKey ? `
+                        <button type="button" class="btn btn-sm btn-outline-secondary js-storico-detail mb-2"
+                                data-kind="order" data-key="${esc(orderDetailKey)}">Torna al percorso ordine</button>
+                    ` : ""}
+                    ${header.groups?.length ? `
+                        <div class="d-flex flex-wrap gap-2 mb-3">
+                            ${header.groups.map(uid => `<button type="button"
+                                class="btn btn-sm btn-outline-primary text-break js-storico-detail"
+                                data-kind="group" data-group-uid="${esc(uid)}">Percorso del gruppo ${esc(uid)}</button>`).join("")}
+                        </div>
+                    ` : ""}
+                    <p class="small text-muted">Orari di Roma. La presa in carico ricostruita deriva dagli eventi precedenti della stessa fase.</p>
+                    <h3 class="h6">${header.kind === "group" ? "Passaggi di tutti gli ordini del gruppo" : "Passaggi della riga d’ordine"}</h3>
+                    <div class="storico-timeline mb-3">${timelineHtml}</div>
+                    <details class="border rounded p-3">
+                        <summary class="fw-semibold">Documenti originali, lotti e composizione del gruppo</summary>
+                        <div class="mt-3">${membersHtml}</div>
+                        <h3 class="h6">Registrazioni originali</h3>${inputHtml}
+                        <h3 class="h6">Lotti usati</h3>${usedLotsHtml}
+                        <h3 class="h6">Lotti generati / matricole</h3>${generatedLotsHtml}
+                    </details>
+                `;
+            }
+
+            async function openDetail(btn) {
+                if (btn.dataset.kind !== "group") orderDetailKey = btn.dataset.key || "";
+                detailTitle.textContent = "Storico lavorazione";
+                detailSubtitle.textContent = "";
+                detailContent.innerHTML = "Caricamento...";
+                const detailModal = bootstrap.Modal.getOrCreateInstance(detailModalEl);
+                detailModal.show();
+
+                const detailSep = page.dataset.detailUrl.includes("?") ? "&" : "?";
+                const url = `${page.dataset.detailUrl}${detailSep}${detailParams(btn).toString()}`;
+
+                try {
+                    const resp = await window.avpFetch(url);
+                    const data = await resp.json().catch(() => ({
+                        ok: false,
+                        error: `Risposta non valida dal server (${resp.status})`,
+                    }));
+                    if (!resp.ok || !data.ok) {
+                        detailContent.innerHTML = `<div class="text-danger">${esc(data.error || "Errore caricamento dettaglio")}</div>`;
+                        return;
+                    }
+                    renderDetail(data);
+                } catch (err) {
+                    console.error("Errore dettaglio storico ordini:", err);
+                    detailContent.innerHTML = `<div class="text-danger">Errore di comunicazione con il server.</div>`;
+                }
+            }
+
+            document.getElementById("storico-filters").addEventListener("submit", event => {
+                event.preventDefault();
+                if (value("storico-q")) {
+                    const dates = ["storico-date-from", "storico-date-to"].map(id => document.getElementById(id));
+                    if (dates.every(input => input.value === input.defaultValue)) {
+                        dates.forEach(input => { input.value = ""; });
+                    }
+                }
+                currentPage = 1;
+                loadList();
+            });
+            lotInput.addEventListener("input", resetLotSearch);
+            lotMaterial.addEventListener("change", () => loadLots(true));
+            document.getElementById("storico-lotti-form").addEventListener("submit", event => {
+                event.preventDefault();
+                loadLots();
+            });
+            document.getElementById("storico-reset").addEventListener("click", () => {
+                document.getElementById("storico-filters").reset();
+                currentPage = 1;
+                loadList();
+            });
+            prevBtn.addEventListener("click", () => {
+                if (currentPage > 1) {
+                    currentPage -= 1;
+                    loadList();
+                }
+            });
+            nextBtn.addEventListener("click", () => {
+                if (currentPage < totalPages) {
+                    currentPage += 1;
+                    loadList();
+                }
+            });
+            detailContent.addEventListener("click", event => {
+                const btn = event.target.closest(".js-storico-detail");
+                if (btn) openDetail(btn);
+            });
+            body.addEventListener("click", event => {
+                const btn = event.target.closest(".js-storico-detail");
+                if (btn) openDetail(btn);
+            });
+            lotsBody.addEventListener("click", event => {
+                const btn = event.target.closest(".js-storico-detail");
+                if (btn) openDetail(btn);
+            });
+
+            loadList();
+        })();
+    </script>
+{% endblock %}

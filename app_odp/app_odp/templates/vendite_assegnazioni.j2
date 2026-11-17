@@ -1,0 +1,2679 @@
+{% extends "base.j2" %}
+
+{% block title %}Vendite{% endblock %}
+
+{% block styles %}
+    {{ super() }}
+    <style>
+        #vendite-assegnazioni-page .vendite-machines-panel-toggle {
+            position: absolute;
+            top: 4rem;
+            left: calc(var(--bs-gutter-x, 1.5rem) * .5);
+            z-index: 3;
+            width: 1.75rem;
+            height: 3rem;
+            padding: 0;
+            transform: translate(-50%, -50%);
+            font-size: 1.5rem;
+            line-height: 1;
+            border-radius: 0 .4rem .4rem 0;
+        }
+
+        #vendite-assegnazioni-page .vendite-auto-assignment-dot {
+            width: .7rem;
+            height: .7rem;
+            flex: 0 0 .7rem;
+            margin-top: .55rem;
+            border-radius: 50%;
+            background: #fd7e14;
+        }
+
+        #vendite-assegnazioni-page .vendite-customer-heading td {
+            padding-top: .55rem;
+            padding-bottom: .55rem;
+            outline: 1px solid var(--bs-border-color);
+            outline-offset: -1px;
+        }
+
+        #vendite-customer-orders-table > :not(caption) > * > * {
+            padding-top: 0;
+            padding-bottom: 0;
+        }
+
+        #vendite-assegnazioni-page .vendite-customer-heading-grouped td {
+            outline: 0;
+        }
+
+        #vendite-assegnazioni-page tr.vendite-order-italia > td {
+            color: #174c61 !important;
+            background-color: #dff3fb !important;
+            box-shadow: none !important;
+        }
+
+        #vendite-assegnazioni-page tr.vendite-order-estero > td {
+            color: #6d3441 !important;
+            background-color: #f9e1e7 !important;
+            box-shadow: none !important;
+        }
+
+        #vendite-assegnazioni-page tr.vendite-order-extracee > td {
+            background-color: #eee5ff !important;
+            box-shadow: none !important;
+        }
+
+        #vendite-assegnazioni-page tr.vendite-order-italia .text-muted,
+        #vendite-assegnazioni-page tr.vendite-order-estero .text-muted {
+            color: inherit !important;
+            opacity: .75;
+        }
+
+        #vendite-assegnazioni-page tr.vendite-order-italia .form-control,
+        #vendite-assegnazioni-page tr.vendite-order-italia .form-select {
+            background-color: #f0faff;
+            border-color: #9bd2e7;
+        }
+
+        #vendite-assegnazioni-page tr.vendite-order-estero .form-control,
+        #vendite-assegnazioni-page tr.vendite-order-estero .form-select {
+            background-color: #fff3f6;
+            border-color: #e5abb9;
+        }
+
+        #vendite-assegnazioni-page tr.vendite-order-extracee .form-control,
+        #vendite-assegnazioni-page tr.vendite-order-extracee .form-select {
+            background-color: #f6f1ff;
+        }
+
+        #vendite-assegnazioni-page tr.vendite-order-unread > td {
+            background-color: #fff3cd !important;
+            box-shadow: none !important;
+        }
+
+        #vendite-assegnazioni-page [data-customer-row-id] :is(.form-control, .form-select),
+        #vendite-assegnazioni-page [data-customer-row-id] :is(td, .text-muted, .btn:not([data-save-row])) {
+            color: #000 !important;
+            border-color: #000 !important;
+        }
+
+        #vendite-assegnazioni-page [data-customer-row-id] .vendite-field-modified {
+            background-color: #ffd9a8 !important;
+            border: 2px solid #dc3545 !important;
+        }
+
+        #vendite-assegnazioni-page [data-customer-row-id] .vendite-assignment-current {
+            color: transparent !important;
+            background-color: #d1e7dd !important;
+            border-color: #75b798 !important;
+            font-weight: 600;
+        }
+
+        #vendite-assegnazioni-page select.vendite-assignment-current option {
+            color: #000;
+            background-color: #fff;
+            font-weight: 400;
+        }
+
+        #vendite-assegnazioni-page .vendite-assignment-current-value {
+            position: absolute;
+            top: 50%;
+            right: 2rem;
+            left: .5rem;
+            overflow: hidden;
+            color: #0f5132;
+            font-weight: 600;
+            line-height: 1.5;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            pointer-events: none;
+            transform: translateY(-50%);
+        }
+
+        #vendite-assegnazioni-page option.vendite-machine-current {
+            color: #0f5132;
+            background-color: #d1e7dd;
+            font-weight: 600;
+        }
+
+        #vendite-assegnazioni-page [data-customer-row-id] .text-danger,
+        #vendite-assegnazioni-page [data-customer-row-id] .text-danger * {
+            color: var(--bs-danger) !important;
+        }
+
+        #vendite-assegnazioni-page tr.vendite-machine-completed > td {
+            color: #0f5132 !important;
+            background-color: #d1e7dd !important;
+            box-shadow: none !important;
+        }
+
+        #vendite-assegnazioni-page tr.vendite-machine-completed .text-muted {
+            color: #376f57 !important;
+        }
+
+        #vendite-assegnazioni-page tr.vendite-machine-completed .form-control,
+        #vendite-assegnazioni-page tr.vendite-machine-completed .form-select {
+            color: #0f5132;
+            background-color: #e8f5ee;
+            border-color: #75b798;
+        }
+
+        #vendite-assegnazioni-page tr.vendite-machine-optioned > td {
+            color: #664d03 !important;
+            background-color: #fff3cd !important;
+            box-shadow: none !important;
+        }
+
+        #vendite-assegnazioni-page .vendite-customer-heading {
+            display: none;
+        }
+
+        #vendite-assegnazioni-page .vendite-production-note > summary {
+            cursor: pointer;
+            list-style: none;
+            display: flex;
+            align-items: center;
+            gap: .35rem;
+        }
+
+        #vendite-assegnazioni-page .vendite-production-note > summary::-webkit-details-marker {
+            display: none;
+        }
+
+        #vendite-assegnazioni-page .vendite-production-note-preview {
+            min-width: 0;
+            max-width: 16rem;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+        }
+
+        #vendite-assegnazioni-page .vendite-production-note .vendite-note-collapse-label,
+        #vendite-assegnazioni-page .vendite-production-note[open] .vendite-note-expand-label {
+            display: none;
+        }
+
+        #vendite-assegnazioni-page .vendite-production-note[open] .vendite-note-collapse-label {
+            display: inline;
+        }
+
+        #vendite-assegnazioni-page .vendite-production-note[open] > summary {
+            margin-bottom: .25rem;
+        }
+
+        #vendite-assegnazioni-page .vendite-orders-legend {
+            display: grid !important;
+            grid-auto-flow: column;
+            grid-template-rows: repeat(2, auto);
+            gap: .25rem .4rem !important;
+            justify-content: start;
+        }
+
+        #vendite-assegnazioni-page .vendite-customer-orders-note-panel {
+            flex: 1 1 30rem;
+            min-width: 18rem;
+            border: 2px solid transparent;
+        }
+
+        #vendite-assegnazioni-page .vendite-customer-orders-note-unread {
+            background-color: #ffd9a8;
+            border-color: #dc3545;
+        }
+
+        .vendite-suplex-stage {
+            position: fixed;
+            left: calc(100vw + 1rem);
+            width: 13rem;
+            height: 8rem;
+            z-index: 1090;
+            pointer-events: none;
+            animation: vendite-suplex-stage 5s linear forwards;
+        }
+
+        .vendite-suplex-fighter {
+            position: absolute;
+            bottom: 1.1rem;
+            font-size: 3.2rem;
+            line-height: 1;
+            transform-origin: center bottom;
+            filter: drop-shadow(0 .2rem .12rem rgba(0, 0, 0, .25));
+        }
+
+        .vendite-suplex-attacker {
+            left: 1rem;
+            animation: vendite-suplex-attacker 5s ease-in-out forwards;
+        }
+
+        .vendite-suplex-victim {
+            left: 5rem;
+            animation: vendite-suplex-victim 5s ease-in-out forwards;
+        }
+
+        .vendite-suplex-impact {
+            position: absolute;
+            left: 1.2rem;
+            bottom: .3rem;
+            font-size: 3.4rem;
+            opacity: 0;
+            animation: vendite-suplex-impact 5s ease-out forwards;
+        }
+
+        @keyframes vendite-suplex-stage {
+            0% {
+                transform: translateX(0);
+            }
+            14%, 82% {
+                transform: translateX(-16rem);
+            }
+            100% {
+                transform: translateX(2rem);
+            }
+        }
+
+        @keyframes vendite-suplex-attacker {
+            0%, 28% {
+                transform: translate(0, 0) rotate(0);
+            }
+            36% {
+                transform: translateX(1.5rem) rotate(5deg);
+            }
+            42% {
+                transform: translate(2rem, .2rem) rotate(12deg) scaleY(.94);
+            }
+            50% {
+                transform: translate(1.2rem, .5rem) rotate(-25deg);
+            }
+            58% {
+                transform: translate(.4rem, .3rem) rotate(-42deg);
+            }
+            64% {
+                transform: translate(.2rem, 0) rotate(-12deg);
+            }
+            72% {
+                transform: translate(1.2rem, .4rem) rotate(38deg);
+            }
+            80%, 100% {
+                transform: translate(0, 0) rotate(0);
+            }
+        }
+
+        @keyframes vendite-suplex-victim {
+            0%, 30% {
+                transform: translate(0, 0) rotate(0);
+            }
+            38% {
+                transform: translate(-1.2rem, 0) rotate(-6deg);
+            }
+            46% {
+                transform: translate(-2rem, -1.2rem) rotate(-20deg);
+            }
+            54% {
+                transform: translate(-3.2rem, -2.8rem) rotate(-55deg);
+            }
+            60% {
+                transform: translate(-5rem, .9rem) rotate(-105deg);
+            }
+            70% {
+                transform: translate(-5rem, 1.2rem) rotate(-105deg);
+            }
+            78%, 100% {
+                transform: translate(-3.2rem, -.8rem) rotate(-90deg) scale(.72);
+            }
+        }
+
+        @keyframes vendite-suplex-impact {
+            0%, 58% {
+                opacity: 0;
+                transform: scale(.2);
+            }
+            60% {
+                opacity: 1;
+                transform: scale(1.35);
+            }
+            66%, 100% {
+                opacity: 0;
+                transform: scale(2);
+            }
+        }
+
+        .vendite-horse-stage {
+            position: fixed;
+            height: 5rem;
+            z-index: 1090;
+            pointer-events: none;
+            overflow: visible;
+        }
+
+        .vendite-horse {
+            position: absolute;
+            left: -3rem;
+            bottom: .15rem;
+            font-size: 2.8rem;
+            line-height: 1;
+            filter: drop-shadow(0 .2rem .12rem rgba(0, 0, 0, .25));
+            animation: vendite-horse-run 3s linear forwards;
+        }
+
+        .vendite-horse-obstacle {
+            position: absolute;
+            left: 68%;
+            bottom: 0;
+            font-size: 2.2rem;
+            line-height: 1;
+            opacity: 0;
+            animation: vendite-horse-obstacle 3s linear forwards;
+        }
+
+        @keyframes vendite-horse-run {
+            0% {
+                left: -3rem;
+                transform: translateY(0) scaleX(-1) rotate(0);
+            }
+            20% {
+                transform: translateY(-.18rem) scaleX(-1) rotate(-3deg);
+            }
+            48% {
+                left: 52%;
+                transform: translateY(0) scaleX(-1) rotate(0);
+            }
+            64% {
+                left: 65%;
+                transform: translateY(-3.6rem) scaleX(-1) rotate(-10deg);
+            }
+            74% {
+                left: 76%;
+                transform: translateY(0) scaleX(-1) rotate(4deg);
+            }
+            100% {
+                left: calc(100% + 3rem);
+                transform: translateY(0) scaleX(-1) rotate(0);
+            }
+        }
+
+        @keyframes vendite-horse-obstacle {
+            0%, 35% {
+                opacity: 0;
+            }
+            42%, 85% {
+                opacity: 1;
+            }
+            100% {
+                opacity: 0;
+            }
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+    <main class="container-fluid py-3"
+          id="vendite-assegnazioni-page"
+          data-api-url="{{ operator_url_for('main.api_vendite_assegnazioni') }}"
+          data-create-url="{{ operator_url_for('main.api_vendite_ordini_cliente_create') }}"
+          data-row-save-url-template="{{ operator_url_for('main.api_vendite_riga_salva', row_id=0) }}"
+          data-confirm-url-template="{{ operator_url_for('main.api_vendite_ordine_cliente_conferma_lettura', order_id=0) }}"
+          data-delete-url-template="{{ operator_url_for('main.api_vendite_ordine_cliente_delete', order_id=0) }}"
+          data-delete-row-url-template="{{ operator_url_for('main.api_vendite_riga_cliente_delete', row_id=0) }}"
+          data-order-details-url-template="{{ operator_url_for('main.api_vendite_ordine_cliente_dati', order_id=0) }}"
+          data-customer-orders-note-url="{{ operator_url_for('main.api_vendite_ordini_cliente_note_intestazione') }}"
+          data-customer-orders-note-confirm-url="{{ operator_url_for('main.api_vendite_ordini_cliente_note_intestazione_conferma') }}"
+          data-packaging-notes-url="{{ operator_url_for('main.api_vendite_note_imballaggio') }}"
+          data-can-assign-machines="{{ 'true' if can_assign_machines else 'false' }}"
+          data-can-edit-sales-notes="{{ 'true' if can_edit_sales_notes else 'false' }}"
+          data-can-edit-sales-note="{{ 'true' if can_edit_sales_note else 'false' }}"
+          data-can-edit-production-instructions="{{ 'true' if can_edit_production_instructions else 'false' }}"
+          data-can-delete-orders="{{ 'true' if can_create_customer_orders else 'false' }}"
+          data-can-edit-order-details="{{ 'true' if can_create_customer_orders else 'false' }}"
+          data-section-preference-user="{{ section_preference_user }}"
+          data-can-edit-customer-orders-note="{{ 'true' if can_edit_customer_orders_note else 'false' }}"
+          data-can-confirm-order-read="{{ 'true' if can_confirm_order_read else 'false' }}"
+          data-horse-save-animation="{{ 'true' if horse_save_animation else 'false' }}">
+        <div class="alert d-none"
+             id="vendite-assignments-alert"
+             role="alert"></div>
+
+        <ul class="nav nav-tabs mb-3"
+            role="tablist">
+            <li class="nav-item"
+                role="presentation">
+                <button class="nav-link{{ ' active' if request.args.get('vista', 'ordini') == 'ordini' or not can_view_packaging_notes else '' }}"
+                        id="vendite-orders-tab-button"
+                        data-bs-toggle="tab"
+                        data-bs-target="#vendite-orders-tab"
+                        type="button"
+                        role="tab"
+                        aria-controls="vendite-orders-tab"
+                        aria-selected="{{ 'true' if request.args.get('vista', 'ordini') == 'ordini' else 'false' }}">
+                    Ordini cliente
+                </button>
+            </li>
+            <li class="nav-item"
+                role="presentation">
+                <a class="nav-link"
+                   href="{{ operator_url_for('main.vendite_page', vista='matricola') }}">
+                    Situazione produzione per matricola
+                </a>
+            </li>
+            <li class="nav-item"
+                role="presentation">
+                <a class="nav-link"
+                   href="{{ operator_url_for('main.vendite_localizzazione_page') }}">
+                    Localizzazione ordini
+                </a>
+            </li>
+            {% if can_view_packaging_notes %}
+                <li class="nav-item"
+                    role="presentation">
+                    <button class="nav-link{{ ' active' if request.args.get('vista') == 'imballaggio' else '' }}"
+                            id="vendite-packaging-tab-button"
+                            data-bs-toggle="tab"
+                            data-bs-target="#vendite-packaging-tab"
+                            type="button"
+                            role="tab"
+                            aria-controls="vendite-packaging-tab"
+                            aria-selected="{{ 'true' if request.args.get('vista') == 'imballaggio' else 'false' }}">
+                        Note per imballo
+                    </button>
+                </li>
+            {% endif %}
+            {% if can_view_model_summary %}
+                <li class="nav-item"
+                    role="presentation">
+                    <a class="nav-link"
+                       href="{{ operator_url_for('main.vendite_page', vista='modello') }}">
+                        Situazione produzione per modello
+                    </a>
+                </li>
+            {% endif %}
+        </ul>
+
+        <div class="tab-content">
+            <div class="tab-pane fade{{ ' show active' if request.args.get('vista', 'ordini') == 'ordini' or not can_view_packaging_notes else '' }}"
+                 id="vendite-orders-tab"
+                 role="tabpanel"
+                 aria-labelledby="vendite-orders-tab-button">
+
+                <div{% if not can_create_customer_orders %} class="d-none"{% endif %}
+                                                            id="vendite-create-order-shell">
+                    <section class="card shadow-sm d-none mb-3"
+                             id="vendite-create-order-panel">
+                        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+                            <div>
+                                <div class="fw-semibold">Nuovo ordine manuale</div>
+                                <div class="small text-muted">
+                                    La quantità viene trasformata in singole righe assegnabili
+                                </div>
+                            </div>
+                        </div>
+                        <form id="vendite-customer-order-form">
+                            <div class="card-body">
+                                <div class="row g-3 mb-3">
+                                    <div class="col-12 col-md-6 col-xl-4">
+                                        <label class="form-label fw-semibold"
+                                               for="vendite-customer-name">
+                                            Nome cliente
+                                        </label>
+                                        <input class="form-control"
+                                               id="vendite-customer-name"
+                                               maxlength="160"
+                                               autocomplete="organization"
+                                               required>
+                                    </div>
+                                    <div class="col-12 col-md-6 col-xl-2">
+                                        <label class="form-label fw-semibold"
+                                               for="vendite-customer-reference">
+                                            Riferimento interno
+                                        </label>
+                                        <select class="form-select"
+                                                id="vendite-customer-reference"
+                                                required>
+                                            <option value="ITALIA">ITALIA</option>
+                                            <option value="ESTERO">ESTERO</option>
+                                            <option value="EXTRACEE">EXTRACEE</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div class="table-responsive">
+                                    <table class="table table-bordered align-middle mb-0 vendite-fit-table">
+                                        <thead class="table-light">
+                                        <tr>
+                                            <th scope="col"
+                                                style="min-width: 16rem;">Modello macchina
+                                            </th>
+                                            <th scope="col"
+                                                style="min-width: 20rem;">Matricola facoltativa
+                                            </th>
+                                            <th scope="col"
+                                                style="width: 8rem;">Quantità
+                                            </th>
+                                            <th scope="col"
+                                                style="min-width: 16rem;">Note di vendita
+                                            </th>
+                                            <th scope="col"
+                                                style="min-width: 16rem;">Note commerciali
+                                            </th>
+                                            <th scope="col"
+                                                style="min-width: 16rem;">Note per produzione
+                                            </th>
+                                            <th scope="col"
+                                                style="min-width: 11rem;">Data spedizione
+                                            </th>
+                                            <th scope="col"
+                                                class="text-end">Azioni
+                                            </th>
+                                        </tr>
+                                        </thead>
+                                        <tbody id="vendite-customer-lines"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <div class="card-footer d-flex flex-wrap justify-content-between align-items-center gap-2">
+                                <div class="small text-muted">
+                                    Le note e la matricola sono facoltative. Se si seleziona una matricola,
+                                    la quantità viene bloccata a 1.
+                                </div>
+                                <button class="btn btn-primary"
+                                        type="submit"
+                                        id="vendite-save-customer-order"
+                                        disabled>
+                                    Salva ordine cliente
+                                </button>
+                            </div>
+                        </form>
+                    </section>
+                </div>
+
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                    <div class="small text-muted"
+                         id="vendite-assignments-status"
+                         role="status"
+                         aria-live="polite">
+                        Caricamento...
+                    </div>
+                    <div class="d-flex flex-wrap align-items-center gap-2">
+                        {% if can_create_customer_orders %}
+                            <button class="btn btn-outline-primary btn-sm d-inline-flex align-items-center gap-1"
+                                    type="button"
+                                    id="vendite-create-order-panel-toggle"
+                                    aria-expanded="false"
+                                    aria-controls="vendite-create-order-panel"
+                                    aria-label="Mostra nuovo ordine cliente"
+                                    title="Mostra nuovo ordine cliente">
+                                <span aria-hidden="true">›</span>
+                                <span>Nuovo ordine manuale</span>
+                            </button>
+                        {% endif %}
+                        <button class="btn btn-outline-secondary btn-sm"
+                                type="button"
+                                id="vendite-assignments-refresh">
+                            Aggiorna ora
+                        </button>
+                        <div class="small text-muted">Aggiornamento automatico ogni 5 secondi</div>
+                    </div>
+                </div>
+
+                <div class="row g-3">
+                    <section class="col-12 col-xl-4 d-none"
+                             id="vendite-machines-panel">
+                        <div class="card shadow-sm h-100">
+                            <div class="card-header">
+                                <div class="fw-semibold">Matricole disponibili</div>
+                                <div class="small text-muted">
+                                    Le matricole già assegnate non vengono mostrate in questo elenco
+                                </div>
+                            </div>
+                            <div class="card-body py-2 border-bottom">
+                                <label class="visually-hidden"
+                                       for="vendite-machine-filter">
+                                    Filtra matricole
+                                </label>
+                                <input class="form-control form-control-sm"
+                                       type="search"
+                                       id="vendite-machine-filter"
+                                       placeholder="Filtra per modello, matricola, ordine o stato"
+                                       autocomplete="off">
+                            </div>
+                            <div class="table-responsive vendite-assignment-scroll">
+                                <table class="table table-sm table-hover align-middle small mb-0 vendite-data-table"
+                                       id="vendite-available-machines-table">
+                                    <thead class="table-light">
+                                    <tr>
+                                        <th>Modello</th>
+                                        <th>Matricola</th>
+                                        <th>Ordine</th>
+                                        <th>Fase</th>
+                                        <th>Note di produzione</th>
+                                        <th>Opzionamento</th>
+                                    </tr>
+                                    </thead>
+                                    <tbody id="vendite-machines-body">
+                                    <tr>
+                                        <td colspan="6"
+                                            class="text-center text-muted py-4">
+                                            Caricamento...
+                                        </td>
+                                    </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="col-12 col-xl-12 position-relative"
+                             id="vendite-customer-orders-panel">
+                        <button class="btn btn-light border vendite-machines-panel-toggle"
+                                type="button"
+                                id="vendite-machines-panel-toggle"
+                                aria-expanded="false"
+                                aria-controls="vendite-machines-panel"
+                                aria-label="Mostra matricole"
+                                title="Mostra matricole">
+                            <span aria-hidden="true">›</span>
+                        </button>
+                        <div class="card shadow-sm h-100">
+                            <div class="card-header d-flex flex-wrap justify-content-between align-items-start gap-2">
+                                <div class="flex-shrink-0">
+                                    <div class="fw-semibold">Righe ordini cliente</div>
+                                    <div class="small vendite-orders-legend mt-1"
+                                         aria-label="Legenda colori ordini">
+                                        <span class="badge border text-dark"
+                                              style="background:#dff3fb">ITALIA</span>
+                                        <span class="badge border text-dark"
+                                              style="background:#f9e1e7">ESTERO</span>
+                                        <span class="badge border text-dark"
+                                              style="background:#eee5ff">EXTRACEE</span>
+                                        <span class="badge border text-dark"
+                                              style="background:#fff3cd">Lettura da confermare</span>
+                                        <span class="badge border border-danger text-dark"
+                                              style="background:#ffd9a8">Campo modificato</span>
+                                        <span class="badge border text-dark"
+                                              style="background:#d1e7dd">Macchina imballata</span>
+                                    </div>
+                                </div>
+                                <div class="vendite-customer-orders-note-panel rounded px-2 py-1"
+                                     id="vendite-customer-orders-note-panel">
+                                    <label class="form-label small fw-semibold mb-1"
+                                           for="vendite-customer-orders-note">
+                                        Note
+                                    </label>
+                                    <div class="d-flex align-items-start gap-2">
+                                        {% if can_edit_customer_orders_note %}
+                                            <textarea class="form-control form-control-sm"
+                                                      id="vendite-customer-orders-note"
+                                                      maxlength="1000"
+                                                      rows="2"></textarea>
+                                            <button class="btn btn-sm btn-primary text-nowrap"
+                                                    type="button"
+                                                    id="vendite-save-customer-orders-note">
+                                                Salva
+                                            </button>
+                                        {% else %}
+                                            <div class="small text-break flex-grow-1"
+                                                 id="vendite-customer-orders-note"
+                                                 style="white-space:pre-wrap;"
+                                                 aria-live="polite">—
+                                            </div>
+                                        {% endif %}
+                                        {% if can_confirm_customer_orders_note %}
+                                            <button class="btn btn-sm btn-warning text-nowrap d-none"
+                                                    type="button"
+                                                    id="vendite-confirm-customer-orders-note">
+                                                Conferma lettura
+                                            </button>
+                                        {% endif %}
+                                    </div>
+                                    <div class="small text-muted mt-1"
+                                         id="vendite-customer-orders-note-meta"></div>
+                                </div>
+                                <div class="d-flex flex-wrap align-items-end gap-3">
+                                    <div id="vendite-first-section-control"
+                                         class="d-none">
+                                        <label class="form-label small mb-1"
+                                               for="vendite-first-section">
+                                            Prima sezione
+                                        </label>
+                                        <select class="form-select form-select-sm"
+                                                id="vendite-first-section">
+                                            <option value="">Ordine predefinito</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-check form-switch mb-1">
+                                        <input class="form-check-input"
+                                               type="checkbox"
+                                               role="switch"
+                                               id="vendite-group-by-customer">
+                                        <label class="form-check-label"
+                                               for="vendite-group-by-customer">
+                                            Raggruppa per cliente
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card-body py-2 border-bottom">
+                                <label class="visually-hidden"
+                                       for="vendite-demand-filter">
+                                    Filtra ordini cliente
+                                </label>
+                                <input class="form-control form-control-sm"
+                                       type="search"
+                                       id="vendite-demand-filter"
+                                       placeholder="Filtra per cliente, ordine, riferimento, modello, note o matricola"
+                                       autocomplete="off">
+                            </div>
+                            <div class="table-responsive vendite-assignment-scroll">
+                                <table class="table table-sm table-hover align-middle mb-0 vendite-data-table"
+                                       id="vendite-customer-orders-table">
+                                    <thead class="table-light">
+                                    <tr>
+                                        <th>#</th>
+                                        <th class="vendite-inline-customer-column">N. ordine</th>
+                                        <th class="vendite-inline-customer-column">Cliente</th>
+                                        <th class="vendite-inline-customer-column">Tipologia</th>
+                                        <th>Modello</th>
+                                        <th id="vendite-delivery-sort-heading"
+                                            aria-sort="none">
+                                            <button class="btn btn-sm border-0 p-0 fw-semibold text-body"
+                                                    type="button"
+                                                    id="vendite-delivery-sort"
+                                                    title="Ordina per data di consegna">
+                                                Spedizione <span id="vendite-delivery-sort-indicator"
+                                                                 aria-hidden="true">↕</span>
+                                            </button>
+                                        </th>
+                                        <th>Note di vendita</th>
+                                        <th>Note commerciali</th>
+                                        <th>Matricola assegnata</th>
+                                        <th>Note di produzione</th>
+                                        <th>Note per produzione</th>
+                                        <th>Note per imballo</th>
+                                        <th>Azioni</th>
+                                    </tr>
+                                    </thead>
+                                    <tbody id="vendite-customer-orders-body">
+                                    <tr>
+                                        <td colspan="13"
+                                            class="text-center text-muted py-4">
+                                            Caricamento...
+                                        </td>
+                                    </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+            </div>
+
+            {% if can_view_packaging_notes %}
+                <div class="tab-pane fade{{ ' show active' if request.args.get('vista') == 'imballaggio' else '' }}"
+                     id="vendite-packaging-tab"
+                     role="tabpanel"
+                     aria-labelledby="vendite-packaging-tab-button">
+                    <section class="card shadow-sm">
+                        <div class="card-header">
+                            <div class="fw-semibold">Note per riferimento interno</div>
+                            <div class="small text-muted">
+                                La nota viene proposta sulle righe degli ordini e resta modificabile.
+                            </div>
+                        </div>
+                        <div class="table-responsive vendite-packaging-scroll">
+                            <table class="table table-bordered align-middle mb-0 vendite-data-table"
+                                   id="vendite-packaging-notes-table">
+                                <thead class="table-light">
+                                <tr>
+                                    <th style="width: 12rem;">Riferimento</th>
+                                    <th>Nota per imballo predefinita</th>
+                                    <th style="width: 16rem;">Ultima modifica</th>
+                                </tr>
+                                </thead>
+                                <tbody id="vendite-packaging-notes-body"></tbody>
+                            </table>
+                        </div>
+                        {% if can_create_customer_orders %}
+                            <div class="card-footer text-end">
+                                <button class="btn btn-primary"
+                                        type="button"
+                                        id="vendite-save-packaging-notes">
+                                    Salva note per imballo
+                                </button>
+                            </div>
+                        {% endif %}
+                    </section>
+                </div>
+            {% endif %}
+        </div>
+    </main>
+
+    <template id="vendite-customer-line-template">
+        <tr>
+            <td>
+                <select class="form-select vendite-line-model"
+                        required></select>
+            </td>
+            <td>
+                <select class="form-select vendite-line-machine"></select>
+            </td>
+            <td>
+                <input class="form-control vendite-line-quantity"
+                       type="number"
+                       min="1"
+                       max="500"
+                       step="1"
+                       value="1"
+                       required>
+            </td>
+            <td>
+                <textarea class="form-control vendite-line-note"
+                          maxlength="1000"
+                          rows="1"></textarea>
+            </td>
+            <td>
+                <textarea class="form-control vendite-line-commercial-note"
+                          maxlength="1000"
+                          rows="1"></textarea>
+            </td>
+            <td>
+                <textarea class="form-control vendite-line-production-instructions"
+                          maxlength="1000"
+                          rows="1"></textarea>
+            </td>
+            <td>
+                <input class="form-control vendite-line-delivery"
+                       type="date"
+                       required>
+            </td>
+            <td class="text-end">
+                <div class="d-flex justify-content-end gap-1">
+                    <button class="btn btn-sm btn-outline-primary"
+                            type="button"
+                            data-add-customer-line
+                            aria-label="Aggiungi riga"
+                            title="Aggiungi riga">
+                        +
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger"
+                            type="button"
+                            data-remove-customer-line>
+                        Rimuovi
+                    </button>
+                </div>
+            </td>
+        </tr>
+    </template>
+{% endblock %}
+
+{% block extra_js %}
+    {{ super() }}
+    <script>
+        (() => {
+            const page = document.getElementById("vendite-assegnazioni-page");
+            if (!page) return;
+
+            const POLL_MS = 5000;
+            const alertBox = document.getElementById("vendite-assignments-alert");
+            const statusBox = document.getElementById("vendite-assignments-status");
+            const refreshButton = document.getElementById("vendite-assignments-refresh");
+            const createOrderPanel = document.getElementById("vendite-create-order-panel");
+            const createOrderPanelToggle = document.getElementById("vendite-create-order-panel-toggle");
+            const createForm = document.getElementById("vendite-customer-order-form");
+            const customerName = document.getElementById("vendite-customer-name");
+            const customerReference = document.getElementById("vendite-customer-reference");
+            const createLines = document.getElementById("vendite-customer-lines");
+            const createLineTemplate = document.getElementById("vendite-customer-line-template");
+            const saveOrderButton = document.getElementById("vendite-save-customer-order");
+            const machinesBody = document.getElementById("vendite-machines-body");
+            const customerOrdersBody = document.getElementById("vendite-customer-orders-body");
+            const deliverySortButton = document.getElementById("vendite-delivery-sort");
+            const deliverySortHeading = document.getElementById("vendite-delivery-sort-heading");
+            const deliverySortIndicator = document.getElementById("vendite-delivery-sort-indicator");
+            const machinesPanel = document.getElementById("vendite-machines-panel");
+            const customerOrdersPanel = document.getElementById("vendite-customer-orders-panel");
+            const machinesPanelToggle = document.getElementById("vendite-machines-panel-toggle");
+            const machineFilter = document.getElementById("vendite-machine-filter");
+            const demandFilter = document.getElementById("vendite-demand-filter");
+            const groupByCustomerToggle = document.getElementById("vendite-group-by-customer");
+            const firstSectionControl = document.getElementById("vendite-first-section-control");
+            const firstSectionSelect = document.getElementById("vendite-first-section");
+            const packagingNotesBody = document.getElementById("vendite-packaging-notes-body");
+            const savePackagingNotesButton = document.getElementById("vendite-save-packaging-notes");
+            const customerOrdersNotePanel = document.getElementById("vendite-customer-orders-note-panel");
+            const customerOrdersNote = document.getElementById("vendite-customer-orders-note");
+            const customerOrdersNoteMeta = document.getElementById("vendite-customer-orders-note-meta");
+            const saveCustomerOrdersNoteButton = document.getElementById("vendite-save-customer-orders-note");
+            const confirmCustomerOrdersNoteButton = document.getElementById("vendite-confirm-customer-orders-note");
+            const canEditCustomerOrdersNote = page.dataset.canEditCustomerOrdersNote === "true";
+            const canAssignMachines = page.dataset.canAssignMachines === "true";
+            const canEditSalesNotes = page.dataset.canEditSalesNotes === "true";
+            const canEditSalesNote = page.dataset.canEditSalesNote === "true";
+            const canEditProductionInstructions = page.dataset.canEditProductionInstructions === "true";
+            const canDeleteOrders = page.dataset.canDeleteOrders === "true";
+            const canEditOrderDetails = page.dataset.canEditOrderDetails === "true";
+            const canConfirmOrderRead = page.dataset.canConfirmOrderRead === "true";
+            const horseSaveAnimation = page.dataset.horseSaveAnimation === "true";
+
+            let models = [];
+            let machines = [];
+            let assignmentMachines = [];
+            let currentGrouping = {groups: [], families: []};
+            let currentCustomerOrders = [];
+            let groupCustomerOrders = false;
+            let customerOrderDeliverySort = "asc";
+            let formDirty = false;
+            let loadInFlight = false;
+            let mutationInFlight = false;
+            const dirtyAssignments = new Set();
+            const dirtyNotes = new Set();
+            const dirtyDates = new Set();
+            const dirtyOrderDetails = new Set();
+            const collapsedOrders = new Set();
+            const collapsedCustomerGroups = new Set();
+            let packagingNotesDirty = false;
+            let customerOrdersNoteDirty = false;
+            let alertTimeoutId = null;
+
+            function esc(value) {
+                return String(value ?? "").replace(/[&<>"']/g, character => ({
+                    "&": "&amp;",
+                    "<": "&lt;",
+                    ">": "&gt;",
+                    '"': "&quot;",
+                    "'": "&#39;",
+                }[character]));
+            }
+
+            function showAlert(type, message) {
+                if (alertTimeoutId !== null) window.clearTimeout(alertTimeoutId);
+                alertBox.className = `alert alert-${type}`;
+                alertBox.textContent = window.phaseText(message);
+                alertBox.classList.remove("d-none");
+                alertTimeoutId = type === "success"
+                    ? window.setTimeout(clearAlert, 15000)
+                    : null;
+            }
+
+            function clearAlert() {
+                if (alertTimeoutId !== null) window.clearTimeout(alertTimeoutId);
+                alertTimeoutId = null;
+                alertBox.classList.add("d-none");
+                alertBox.textContent = "";
+            }
+
+            function setCreateOrderPanelExpanded(expanded) {
+                createOrderPanel.classList.toggle("d-none", !expanded);
+                createOrderPanelToggle.setAttribute("aria-expanded", String(expanded));
+                const label = expanded
+                    ? "Nascondi nuovo ordine cliente"
+                    : "Mostra nuovo ordine cliente";
+                createOrderPanelToggle.setAttribute("aria-label", label);
+                createOrderPanelToggle.title = label;
+                createOrderPanelToggle.querySelector("span").textContent = expanded
+                    ? "‹"
+                    : "›";
+            }
+
+            function setMachinesPanelExpanded(expanded) {
+                machinesPanel.classList.toggle("d-none", !expanded);
+                customerOrdersPanel.classList.toggle("col-xl-8", expanded);
+                customerOrdersPanel.classList.toggle("col-xl-12", !expanded);
+                machinesPanelToggle.setAttribute("aria-expanded", String(expanded));
+                const label = expanded
+                    ? "Nascondi matricole"
+                    : "Mostra matricole";
+                machinesPanelToggle.setAttribute("aria-label", label);
+                machinesPanelToggle.title = label;
+                machinesPanelToggle.querySelector("span").textContent = expanded
+                    ? "‹"
+                    : "›";
+            }
+
+            function modelLabel(item) {
+                const variant = item.variant
+                    ? ` <span class="badge text-bg-light border">${esc(item.variant)}</span>`
+                    : "";
+                const description = item.description
+                    ? `<div class="small text-muted">${esc(item.description)}</div>`
+                    : "";
+                return `<div class="fw-semibold">${esc(item.model_code)}${variant}</div>${description}`;
+            }
+
+            function modelOptionLabel(item) {
+                const variant = item.variant ? ` - ${item.variant}` : "";
+                const description = item.description ? ` · ${item.description}` : "";
+                return `${item.model_code}${variant}${description}`;
+            }
+
+            function stateBadge(state) {
+                const classes = {
+                    "Attivo": "text-bg-success",
+                    "Chiusa": "text-bg-success",
+                    "Imballata": "text-bg-success",
+                    "In Sospeso": "text-bg-warning",
+                    "Pianificata": "text-bg-secondary",
+                };
+                return `<span class="badge ${classes[state] || "text-bg-info"}">${esc(state)}</span>`;
+            }
+
+            function formatDate(value) {
+                if (!value) return "-";
+                const parts = String(value).split("-");
+                if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+                return String(value);
+            }
+
+            function formatDateTime(value, timeStyle = "medium") {
+                const date = new Date(value);
+                if (Number.isNaN(date.getTime())) return String(value || "");
+                return new Intl.DateTimeFormat("it-IT", {
+                    dateStyle: "short",
+                    timeStyle,
+                }).format(date);
+            }
+
+            function referenceClass(reference) {
+                return `vendite-order-${String(reference || "ITALIA").toLowerCase()}`;
+            }
+
+            function orderDetails(order) {
+                const reference = String(order.internal_reference || "ITALIA").toUpperCase();
+                if (order.managed) {
+                    return `<span class="badge text-bg-primary">Gestionale · ${esc(order.customer_code)}</span>
+                            <span class="badge text-bg-light border">${esc(reference)}</span>`;
+                }
+                return canEditOrderDetails
+                    ? `
+                        <label class="visually-hidden" for="vendite-order-reference-${esc(order.id)}">
+                            Riferimento interno
+                        </label>
+                        <select class="form-select form-select-sm w-auto"
+                                id="vendite-order-reference-${esc(order.id)}"
+                                data-order-reference="${esc(order.id)}"
+                                data-original-value="${esc(reference)}">
+                            ${["ITALIA", "ESTERO", "EXTRACEE"].map(item => `
+                                <option value="${item}"${item === reference ? " selected" : ""}>
+                                    ${item}
+                                </option>`).join("")}
+                        </select>
+                        <button class="btn btn-sm btn-outline-primary text-nowrap"
+                                type="button"
+                                data-save-order-details="${esc(order.id)}">
+                            Salva riferimento
+                        </button>`
+                    : `<span class="badge text-bg-light border">${esc(reference)}</span>`;
+            }
+
+            function modelOptions(selectedValue = "") {
+                return [
+                    '<option value="">Seleziona modello...</option>',
+                    ...models.map(model => `
+                        <option value="${esc(model.key)}"${String(model.key) === String(selectedValue) ? " selected" : ""}>
+                            ${esc(modelOptionLabel(model))}
+                        </option>`),
+                ].join("");
+            }
+
+            function createMachineOptions(modelKey, selectedValue = "") {
+                const compatible = machines.filter(machine => (
+                    machine.has_serial
+                    && String(machine.model_key) === String(modelKey)
+                ));
+                const emptyLabel = compatible.length
+                    ? "Nessuna matricola assegnata"
+                    : "Nessuna matricola disponibile";
+                return [
+                    `<option value="">${emptyLabel}</option>`,
+                    ...compatible.map(machine => {
+                        const identity = machineIdentity(machine);
+                        return `
+                            <option value="${esc(identity)}"
+                                    data-id-documento="${esc(machine.id_documento)}"
+                                    data-id-riga="${esc(machine.id_riga)}"
+                                    ${identity === selectedValue ? "selected" : ""}>
+                                ${esc(machineOptionLabel(machine))}
+                            </option>`;
+                    }),
+                ].join("");
+            }
+
+            function refreshCreateLineMachineOptions(row, selectedValue = "") {
+                const modelKey = row.querySelector(".vendite-line-model").value;
+                const select = row.querySelector(".vendite-line-machine");
+                select.innerHTML = createMachineOptions(modelKey, selectedValue);
+                select.disabled = !modelKey;
+                syncLineQuantity(row);
+            }
+
+            function syncLineQuantity(row) {
+                const quantity = row.querySelector(".vendite-line-quantity");
+                const hasMachine = Boolean(
+                    row.querySelector(".vendite-line-machine").value
+                );
+                if (hasMachine) quantity.value = 1;
+                quantity.disabled = hasMachine;
+            }
+
+            function updateCreateLineLabels() {
+                [...createLines.rows].forEach((row, index) => {
+                    const number = index + 1;
+                    row.querySelector(".vendite-line-model").setAttribute("aria-label", `Modello riga ${number}`);
+                    row.querySelector(".vendite-line-machine").setAttribute("aria-label", `Matricola riga ${number}`);
+                    row.querySelector(".vendite-line-quantity").setAttribute("aria-label", `Quantità riga ${number}`);
+                    row.querySelector(".vendite-line-note").setAttribute("aria-label", `Note di vendita riga ${number}`);
+                    row.querySelector(".vendite-line-commercial-note").setAttribute("aria-label", `Note commerciali riga ${number}`);
+                    row.querySelector(".vendite-line-production-instructions").setAttribute("aria-label", `Note per produzione riga ${number}`);
+                    row.querySelector(".vendite-line-delivery").setAttribute("aria-label", `Data spedizione riga ${number}`);
+                });
+            }
+
+            function addCreateLine(values = {}, {
+                focus = true,
+                dirty = true,
+                afterRow = null,
+            } = {}) {
+                const fragment = createLineTemplate.content.cloneNode(true);
+                const row = fragment.querySelector("tr");
+                row.querySelector(".vendite-line-model").innerHTML = modelOptions(values.model_key);
+                row.querySelector(".vendite-line-quantity").value = values.quantity || 1;
+                row.querySelector(".vendite-line-note").value = values.note || "";
+                row.querySelector(".vendite-line-commercial-note").value = values.commercial_note || "";
+                row.querySelector(".vendite-line-production-instructions").value = values.production_instructions || "";
+                row.querySelector(".vendite-line-delivery").value = values.delivery_date || "";
+                refreshCreateLineMachineOptions(row, values.machine_identity || "");
+                if (afterRow) {
+                    afterRow.after(fragment);
+                } else {
+                    createLines.appendChild(fragment);
+                }
+                updateCreateLineLabels();
+                if (dirty) formDirty = true;
+                if (focus) row.querySelector("select").focus();
+            }
+
+            function refreshCreateModelOptions() {
+                [...createLines.rows].forEach(row => {
+                    const modelSelect = row.querySelector(".vendite-line-model");
+                    const selectedModel = modelSelect.value;
+                    const selectedMachine = row.querySelector(".vendite-line-machine").value;
+                    modelSelect.innerHTML = modelOptions(selectedModel);
+                    refreshCreateLineMachineOptions(row, selectedMachine);
+                });
+                const enabled = models.length > 0;
+                createLines.querySelectorAll("[data-add-customer-line]").forEach(button => {
+                    button.disabled = !enabled;
+                });
+                saveOrderButton.disabled = !enabled;
+            }
+
+            function resetCreateForm() {
+                createForm.reset();
+                createLines.innerHTML = "";
+                addCreateLine({}, {focus: false, dirty: false});
+                formDirty = false;
+            }
+
+            function machineIdentity(item) {
+                return JSON.stringify([
+                    String(item?.id_documento || ""),
+                    String(item?.id_riga || ""),
+                ]);
+            }
+
+            function assignmentIdentity(assignment) {
+                return assignment ? machineIdentity(assignment) : "";
+            }
+
+            function machineOptionLabel(machine) {
+                const option = machine.option?.optioned_by_name
+                    ? ` ·${machine.option.optioned_by_name}` : "";
+                return (machine.serial_number || "Senza matricola") + option;
+            }
+
+            function assignmentSelect(row) {
+                const automaticMarker = row.assignment?.automatic
+                    ? `<span class="vendite-auto-assignment-dot"
+                             role="img"
+                             aria-label="Matricola assegnata automaticamente"
+                             title="Matricola assegnata automaticamente"></span>`
+                    : "";
+                if (!canAssignMachines) {
+                    if (!row.assignment) {
+                        return '<span class="text-muted">Non assegnata</span>';
+                    }
+                    return `
+                        <div class="d-flex align-items-start gap-2">
+                            ${automaticMarker}
+                            <div class="fw-semibold">${esc(row.assignment.serial_number)}</div>
+                        </div>`;
+                }
+                const currentIdentity = assignmentIdentity(row.assignment);
+                const currentSerial = String(
+                    row.assignment?.serial_number || ""
+                ).trim().toLocaleLowerCase("it");
+                const compatible = assignmentMachines.filter(machine => (
+                    machine.has_serial
+                    && String(machine.model_key) === String(row.model_key)
+                ));
+                const currentMachine = compatible.find(machine => (
+                    machineIdentity(machine) === currentIdentity
+                    || (currentSerial && String(machine.serial_number || "")
+                        .trim().toLocaleLowerCase("it") === currentSerial)
+                ));
+                const selectedIdentity = currentMachine
+                    ? machineIdentity(currentMachine) : currentIdentity;
+
+                const options = ['<option value="">Non assegnata</option>'];
+                compatible.forEach(machine => {
+                    const identity = machineIdentity(machine);
+                    const isCurrent = identity === selectedIdentity;
+                    const assignedElsewhere = (
+                        machine.assigned
+                        && String(machine.assigned_row_id) !== String(row.id)
+                    );
+                    const label = isCurrent
+                        ? `${machineOptionLabel(machine)} · Attualmente assegnata`
+                        : assignedElsewhere
+                            ? `⚠ ${machineOptionLabel(machine)} · Cliente: ${machine.assigned_customer_name || "-"}`
+                            : machineOptionLabel(machine);
+                    options.push(`
+                        <option value="${esc(identity)}"
+                                class="${isCurrent ? "vendite-machine-current" : assignedElsewhere ? "vendite-machine-assigned" : ""}"
+                                data-id-documento="${esc(machine.id_documento)}"
+                                data-id-riga="${esc(machine.id_riga)}"
+                                data-assigned-customer-name="${esc(machine.assigned_customer_name || "")}"
+                                title="${esc(label)}"
+                                ${isCurrent ? "selected" : ""}>
+                            ${esc(label)}
+                        </option>`);
+                });
+
+                if (row.assignment && !currentMachine) {
+                    options.push(`
+                        <option value="${esc(currentIdentity)}"
+                                class="vendite-machine-current"
+                                data-id-documento="${esc(row.assignment.id_documento)}"
+                                data-id-riga="${esc(row.assignment.id_riga)}"
+                                selected>
+                            ${esc(row.assignment.serial_number || "Senza matricola")} · Attualmente assegnata
+                        </option>`);
+                }
+                const currentDisplay = currentMachine?.serial_number
+                    || row.assignment?.serial_number
+                    || "";
+
+                return `
+                    <div class="d-flex align-items-start gap-2">
+                        ${automaticMarker}
+                        <div class="position-relative flex-grow-1">
+                            <select class="form-select form-select-sm vendite-assignment-select${row.assignment ? " vendite-assignment-current" : ""}${(row.modified_fields || []).includes("assignment") ? " vendite-field-modified" : ""}"
+                                    data-assignment-row-id="${esc(row.id)}"
+                                    data-version="${esc(row.version)}"
+                                    data-original-value="${esc(selectedIdentity)}"
+                                    aria-label="Matricola per riga ${esc(row.position)}">
+                                ${options.join("")}
+                            </select>
+                            ${row.assignment ? `<span class="vendite-assignment-current-value" aria-hidden="true">${esc(currentDisplay)}</span>` : ""}
+                        </div>
+                    </div>
+                    ${row.assignment && !row.assignment.completed
+                && row.assignment.open === false
+                    ? '<div class="small text-danger mt-1">Matricola non più presente tra quelle disponibili.</div>'
+                    : ""}
+                    ${auditLine(row, "assignment")}`;
+            }
+
+            function auditLine(row, field) {
+                const audit = row.field_audit?.[field];
+                if (!audit) return "";
+                return `<div class="small text-muted mt-1">
+                    <strong>${esc(audit.changed_by_name)}</strong>
+                    · ${esc(formatDateTime(audit.changed_at, "short"))}
+                </div>`;
+            }
+
+            function noteContent(value, emptyValue = "—") {
+                const note = String(value || "");
+                if (!note) return emptyValue;
+                const lines = note.split(/\r?\n/);
+                if (note.length <= 80 && lines.length <= 2) {
+                    return `<div style="white-space: pre-wrap">${esc(note)}</div>`;
+                }
+                return `
+                    <details class="vendite-production-note">
+                        <summary title="Espandi o riduci il testo">
+                            <span class="vendite-production-note-preview">${esc(lines.slice(0, 2).join(" "))}</span>
+                            <span class="badge text-bg-light border vendite-note-expand-label">Espandi</span>
+                            <span class="badge text-bg-light border vendite-note-collapse-label">Riduci</span>
+                        </summary>
+                        <div style="white-space: pre-wrap">${esc(note)}</div>
+                    </details>`;
+            }
+
+            function noteTextarea(row, field, label, editable) {
+                const modified = (row.modified_fields || []).includes(field);
+                if (!editable) {
+                    return `${noteContent(row[field])}${auditLine(row, field)}`;
+                }
+                return `
+                    <textarea class="form-control form-control-sm vendite-row-note${modified ? " vendite-field-modified" : ""}"
+                              data-note-row-id="${esc(row.id)}"
+                              data-note-field="${esc(field)}"
+                              data-original-value="${esc(row[field] || "")}"
+                              maxlength="1000"
+                              rows="1"
+                              aria-label="${esc(label)} riga ${esc(row.position)}"
+                              ${editable ? "" : "readonly"}>${esc(row[field] || "")}</textarea>
+                    ${auditLine(row, field)}`;
+            }
+
+            function productionNoteCell(row) {
+                return noteContent(
+                    row.production_note,
+                    (row.missing_components || []).length ? "" : "—"
+                );
+            }
+
+            function dateInput(row, field, label, editable) {
+                const modified = (row.modified_fields || []).includes(field);
+                if (!editable) {
+                    return `<div>${esc(formatDate(row[field]))}</div>${auditLine(row, field)}`;
+                }
+                return `
+                    <input class="form-control form-control-sm${modified ? " vendite-field-modified" : ""}"
+                           data-date-row-id="${esc(row.id)}"
+                           data-date-field="${esc(field)}"
+                           data-original-value="${esc(row[field] || "")}"
+                           type="date"
+                           value="${esc(row[field] || "")}"
+                           aria-label="${esc(label)} riga ${esc(row.position)}"
+                           ${editable ? "" : "readonly"}>
+                    ${auditLine(row, field)}`;
+            }
+
+            function rowActions(row, order, showConfirmation) {
+                const save = canAssignMachines || canEditSalesNote || canEditSalesNotes || canEditProductionInstructions
+                    ? `<button class="btn btn-sm btn-outline-primary"
+                               type="button"
+                               data-save-row="${esc(row.id)}">
+                           Salva
+                       </button>`
+                    : "";
+                const confirm = canConfirmOrderRead && !row.read_confirmed
+                    ? `<button class="btn btn-sm btn-warning"
+                               type="button"
+                               data-confirm-order-read="${esc(order.id)}"
+                               data-confirm-row-id="${esc(row.id)}"
+                               data-read-revisions="${esc(JSON.stringify(
+                        row.pending_read_revisions || {}
+                    ))}">
+                           Conferma lettura
+                       </button>`
+                    : "";
+                const packaging = row.packaged ? `
+                    <div class="d-flex flex-column align-items-start">
+                        <span class="badge text-bg-success">Macchina imballata</span>
+                        <div class="small text-muted mt-1">
+                            ${esc(formatDateTime(row.packaging?.confirmed_at, "short"))}
+                        </div>
+                        ${row.packaging?.confirmed_by_name ? `<div class="small text-muted">${esc(row.packaging.confirmed_by_name)}</div>` : ""}
+                    </div>` : "";
+                const deleteRow = canDeleteOrders && !order.managed
+                    ? `<button class="btn btn-sm btn-outline-danger"
+                               type="button"
+                               data-choose-delete-row="${esc(row.id)}"
+                               data-order-id="${esc(order.id)}"
+                               data-customer-name="${esc(order.customer_name)}"
+                               data-customer-order="${esc(order.customer_order)}">
+                           Elimina
+                       </button>`
+                    : "";
+                const primaryControls = save || confirm
+                    ? `<div class="d-flex flex-wrap gap-2 mw-100">${save}${confirm}</div>`
+                    : "";
+                const controls = primaryControls || deleteRow
+                    ? `<div class="d-flex flex-column align-items-start gap-2 mw-100">${primaryControls}${deleteRow}</div>`
+                    : "";
+                return `<div class="d-flex flex-wrap align-items-start gap-2">${controls}<div class="flex-grow-1">${packaging}</div></div>`;
+            }
+
+            function syncRowVersion(data, rowId) {
+                const updated = (data?.customer_orders || [])
+                    .flatMap(order => order.rows || [])
+                    .find(row => String(row.id) === String(rowId));
+                const tableRow = customerOrdersBody.querySelector(
+                    `[data-customer-row-id="${CSS.escape(String(rowId))}"]`
+                );
+                if (!updated || !tableRow) return;
+                tableRow.dataset.version = String(updated.version);
+                tableRow.querySelector("[data-assignment-row-id]")
+                    ?.setAttribute("data-version", String(updated.version));
+            }
+
+            function syncOrderRowVersions(data, orderId) {
+                const order = (data?.customer_orders || []).find(item => (
+                    String(item.id) === String(orderId)
+                ));
+                (order?.rows || []).forEach(row => syncRowVersion(data, row.id));
+            }
+
+            function renderPackagingNotes(items) {
+                if (!packagingNotesBody) return;
+                const byReference = Object.fromEntries(
+                    (items || []).map(item => [item.reference, item])
+                );
+                packagingNotesBody.innerHTML = ["ITALIA", "ESTERO", "EXTRACEE"]
+                    .map(reference => {
+                        const item = byReference[reference] || {};
+                        const modified = item.updated_at
+                            ? `${formatDateTime(item.updated_at)}${item.updated_by_name ? ` · ${item.updated_by_name}` : ""}`
+                            : "-";
+                        return `
+                            <tr>
+                                <td class="fw-semibold">${reference}</td>
+                                <td>${canEditOrderDetails ? `
+                                    <textarea class="form-control"
+                                              data-packaging-reference="${reference}"
+                                              maxlength="1000"
+                                              rows="2">${esc(item.note || "")}</textarea>
+                                    ` : noteContent(item.note)}
+                                </td>
+                                <td class="small text-muted">${esc(modified)}</td>
+                            </tr>`;
+                    }).join("");
+                packagingNotesDirty = false;
+            }
+
+            function renderCustomerOrdersNote(item = {}) {
+                const text = item.note || "";
+                if (canEditCustomerOrdersNote) {
+                    if (!customerOrdersNoteDirty) customerOrdersNote.value = text;
+                } else {
+                    customerOrdersNote.textContent = text || "—";
+                }
+                customerOrdersNoteMeta.textContent = item.updated_at
+                    ? `Ultima modifica: ${formatDateTime(item.updated_at, "short")}${item.updated_by_name ? ` · ${item.updated_by_name}` : ""}`
+                    : "";
+                customerOrdersNotePanel.classList.toggle(
+                    "vendite-customer-orders-note-unread",
+                    Boolean(text && confirmCustomerOrdersNoteButton && !item.read_confirmed)
+                );
+                if (!confirmCustomerOrdersNoteButton) return;
+                confirmCustomerOrdersNoteButton.classList.toggle("d-none", !text);
+                confirmCustomerOrdersNoteButton.disabled = Boolean(item.read_confirmed);
+                confirmCustomerOrdersNoteButton.classList.toggle("btn-warning", !item.read_confirmed);
+                confirmCustomerOrdersNoteButton.classList.toggle("btn-success", Boolean(item.read_confirmed));
+                confirmCustomerOrdersNoteButton.textContent = item.read_confirmed
+                    ? "Lettura confermata"
+                    : "Conferma lettura";
+            }
+
+            function renderMachines() {
+                if (!machines.length) {
+                    machinesBody.innerHTML = `
+                        <tr>
+                            <td colspan="6" class="text-center text-muted py-4">
+                                Nessuna matricola disponibile.
+                            </td>
+                        </tr>`;
+                    return;
+                }
+
+                machinesBody.innerHTML = machines.map(machine => {
+                    const search = [
+                        machine.model_code,
+                        machine.variant,
+                        machine.description,
+                        machine.serial_number,
+                        machine.order,
+                        machine.phase,
+                        window.phaseLabel(machine.phase),
+                        machine.state,
+                        machine.production_note,
+                        machine.option?.optioned_by_name,
+                        machine.option?.note,
+                    ].join(" ").toLocaleLowerCase("it");
+                    const rowClass = machine.option
+                        ? "vendite-machine-optioned"
+                        : machine.state === "Imballata" ? "vendite-machine-completed" : "";
+                    return `
+                        <tr class="${rowClass}"
+                            data-machine-search="${esc(search)}">
+                            <td class="vendite-model-cell">${modelLabel(machine)}</td>
+                            <td class="fw-semibold">${esc(machine.serial_number || "-")}</td>
+                            <td>${esc(machine.order)}</td>
+                            <td>${esc(machine.state === "Imballata"
+                        ? "Imballata" : window.phaseLabel(machine.phase))}</td>
+                            <td class="vendite-note-cell">${productionNoteCell(machine)}</td>
+                            <td class="vendite-note-cell">${machine.option ? `
+                                <div class="fw-semibold">${esc(machine.option.optioned_by_name || "-")}</div>
+                                ${noteContent(machine.option.note, "")}
+                            ` : "—"}</td>
+                        </tr>`;
+                }).join("");
+                applyMachineFilter();
+            }
+
+            function customerOrderDeliveryDate(order) {
+                return (order.rows || [])
+                    .map(row => String(row.delivery_date || ""))
+                    .filter(Boolean)
+                    .sort()[0] || "";
+            }
+
+            function sortCustomerOrdersByDelivery(orders) {
+                if (!customerOrderDeliverySort) return orders;
+                return [...orders].sort((leftOrder, rightOrder) => {
+                    const leftDate = customerOrderDeliveryDate(leftOrder);
+                    const rightDate = customerOrderDeliveryDate(rightOrder);
+                    if (!leftDate) return rightDate ? 1 : 0;
+                    if (!rightDate) return -1;
+                    const comparison = leftDate.localeCompare(rightDate);
+                    return customerOrderDeliverySort === "asc"
+                        ? comparison
+                        : -comparison;
+                });
+            }
+
+            function updateDeliverySortIndicator() {
+                const ascending = customerOrderDeliverySort === "asc";
+                deliverySortHeading.setAttribute("aria-sort", ascending ? "ascending" : "descending");
+                deliverySortIndicator.textContent = ascending ? "▲" : "▼";
+                deliverySortButton.title = `Ordina per data di consegna ${ascending ? "decrescente" : "crescente"}`;
+            }
+
+            function customerOrderSections(customerOrders, groups) {
+                if (groupCustomerOrders) {
+                    const customers = new Map();
+                    customerOrders.forEach(order => {
+                        const identity = String(order.customer_name || "")
+                            .trim().toLocaleLowerCase("it");
+                        const section = customers.get(identity) || {
+                            key: `customer-${identity}`,
+                            name: order.customer_name || "Cliente non indicato",
+                            orders: [],
+                        };
+                        section.orders.push(order);
+                        customers.set(identity, section);
+                    });
+                    return [...customers.values()];
+                }
+                if (!groups.length) {
+                    return [{key: "all", name: null, orders: customerOrders}];
+                }
+
+                const claimedRows = new Set();
+                const groupedFamilies = new Set(groups.flatMap(group => (
+                    group.family_codes || []
+                )).map(String));
+                const makeOrders = predicate => customerOrders.flatMap(order => {
+                    const rows = (order.rows || []).filter(row => {
+                        const rowKey = String(row.id);
+                        if (claimedRows.has(rowKey) || !predicate(row)) return false;
+                        claimedRows.add(rowKey);
+                        return true;
+                    });
+                    if (!rows.length) return [];
+                    return [{
+                        ...order,
+                        rows,
+                        total_rows: rows.length,
+                        assigned_rows: rows.filter(row => row.assignment).length,
+                        packaged_rows: rows.filter(row => row.packaged).length,
+                        packaged: rows.every(row => row.packaged),
+                    }];
+                });
+
+                const sections = groups.map(group => {
+                    const families = new Set((group.family_codes || []).map(String));
+                    return {
+                        key: `group-${group.id}`,
+                        name: group.name,
+                        orders: makeOrders(row => families.has(String(row.family_code || ""))),
+                    };
+                });
+                sections.push({
+                    key: "ungrouped",
+                    name: "Senza raggruppamento",
+                    orders: makeOrders(row => !groupedFamilies.has(String(row.family_code || ""))),
+                });
+                return sections;
+            }
+
+            function firstSectionStorageKey() {
+                const mode = groupCustomerOrders ? "customer" : "family";
+                return `vendite:first-section:${page.dataset.sectionPreferenceUser}:${mode}`;
+            }
+
+            function preferredFirstSection() {
+                try {
+                    return window.localStorage.getItem(firstSectionStorageKey()) || "";
+                } catch (_error) {
+                    return "";
+                }
+            }
+
+            function prioritizeCustomerOrderSections(sections) {
+                const available = sections.filter(section => (
+                    section.name !== null && section.orders.length
+                ));
+                const preferred = preferredFirstSection();
+                firstSectionControl.classList.toggle("d-none", available.length < 2);
+                firstSectionSelect.innerHTML = `
+                    <option value="">Ordine predefinito</option>
+                    ${available.map(section => `
+                        <option value="${esc(section.key)}">${esc(section.name)}</option>
+                    `).join("")}`;
+                firstSectionSelect.value = available.some(section => section.key === preferred)
+                    ? preferred
+                    : "";
+                const preferredIndex = sections.findIndex(section => section.key === preferred);
+                return preferredIndex > 0
+                    ? [sections[preferredIndex], ...sections.slice(0, preferredIndex), ...sections.slice(preferredIndex + 1)]
+                    : sections;
+            }
+
+            function renderCustomerOrders(customerOrders) {
+                const columnCount = [...customerOrdersBody.closest("table").tHead.rows[0].cells]
+                    .filter(cell => getComputedStyle(cell).display !== "none").length;
+                if (!customerOrders.length) {
+                    firstSectionControl.classList.add("d-none");
+                    customerOrdersBody.innerHTML = `
+                        <tr><td colspan="${columnCount}" class="text-center text-muted py-4">
+                                Nessun ordine cliente inserito.
+                            </td>
+                        </tr>`;
+                    return;
+                }
+
+                const html = [];
+                const groups = Array.isArray(currentGrouping.groups)
+                    ? currentGrouping.groups
+                    : [];
+                const renderedHeadings = new Set();
+                const sections = prioritizeCustomerOrderSections(customerOrderSections(customerOrders, groups));
+                sections.forEach(section => {
+                    const sectionOrders = sortCustomerOrdersByDelivery(section.orders);
+                    if (section.name !== null) {
+                        const expanded = !collapsedCustomerGroups.has(section.key);
+                        html.push(`
+                            <tr class="table-secondary" data-customer-group-heading
+                                data-customer-group-key="${esc(section.key)}">
+                                <th colspan="${columnCount}" scope="rowgroup" class="fw-semibold">
+                                    <button type="button" class="btn text-start fw-semibold w-100 p-0"
+                                            data-toggle-customer-group="${esc(section.key)}"
+                                            aria-expanded="${expanded}"
+                                            aria-label="${expanded ? "Riduci" : "Espandi"} raggruppamento ${esc(section.name)}">
+                                        <span aria-hidden="true">${expanded ? "▾" : "▸"}</span>
+                                        ${esc(section.name)} (${sectionOrders.reduce((count, order) => count + order.rows.length, 0)})
+                                    </button>
+                                </th>
+                            </tr>`);
+                    }
+                    sectionOrders.forEach(order => {
+                        const primaryHeading = !renderedHeadings.has(String(order.id));
+                        renderedHeadings.add(String(order.id));
+                        const neutralClass = referenceClass(order.internal_reference);
+                        const orderClass = !order.read_confirmed
+                            ? "vendite-order-unread"
+                            : order.packaged
+                                ? "vendite-machine-completed"
+                                : neutralClass;
+                        const deleteButton = primaryHeading && !order.managed && canDeleteOrders
+                            ? `<button class="btn btn-sm btn-outline-danger text-nowrap"
+                                   type="button"
+                                   data-delete-customer-order="${esc(order.id)}"
+                                   data-customer-name="${esc(order.customer_name)}"
+                                   data-customer-order="${esc(order.customer_order)}">
+                               Elimina
+                           </button>`
+                            : "";
+                        const orderSearch = [
+                            order.customer_name,
+                            order.customer_order,
+                            order.internal_reference,
+                            order.created_by_name,
+                        ].join(" ").toLocaleLowerCase("it");
+                        const collapseKey = `${section.key}:${order.id}`;
+                        const rowsExpanded = !collapsedOrders.has(collapseKey);
+                        const details = primaryHeading
+                            ? orderDetails(order)
+                            : `<span class="badge text-bg-light border">${esc(
+                                order.internal_reference || "ITALIA"
+                            )}</span>`;
+                        html.push(`
+                        <tr class="${orderClass} vendite-customer-heading${groupCustomerOrders ? " vendite-customer-heading-grouped" : ""}"
+                            data-demand-search="${esc(orderSearch)}"
+                            data-customer-order-id="${esc(order.id)}"
+                            data-collapse-key="${esc(collapseKey)}"
+                            data-reference-class="${neutralClass}">
+                            <td colspan="${columnCount}">
+                                <div class="d-flex flex-wrap justify-content-between gap-2">
+                                    <div class="d-flex flex-wrap align-items-center gap-2">
+                                        <button class="btn btn-sm btn-outline-secondary"
+                                                type="button"
+                                                data-toggle-order-rows="${esc(collapseKey)}"
+                                                aria-expanded="${rowsExpanded}"
+                                                aria-label="${rowsExpanded ? "Chiudi" : "Apri"} righe ordine">
+                                            <span aria-hidden="true">${rowsExpanded ? "▾" : "▸"}</span>
+                                        </button>
+                                        <span class="fw-semibold">${esc(order.customer_name)}</span>
+                                        ${details}
+                                        <span class="text-muted"> · Ordine ${esc(order.customer_order)}</span>
+                                    </div>
+                                    <div class="d-flex flex-wrap align-items-center gap-2">
+                                        <div class="small text-muted">
+                                            ${Number(order.assigned_rows || 0)}/${Number(order.total_rows || 0)} assegnate
+                                            · ${Number(order.packaged_rows || 0)}/${Number(order.total_rows || 0)} imballate
+                                            ${order.created_at ? ` · ${esc(formatDateTime(order.created_at))}` : ""}
+                                            ${order.created_by_name ? ` · ${esc(order.created_by_name)}` : ""}
+                                        </div>
+                                        ${deleteButton}
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>`);
+
+                        (order.rows || []).forEach((row, rowIndex) => {
+                            const search = [
+                                order.customer_name,
+                                order.customer_order,
+                                order.internal_reference,
+                                row.model_code,
+                                row.variant,
+                                row.description,
+                                row.sales_note,
+                                row.commercial_note,
+                                row.production_note,
+                                ...(row.missing_components || []).map(component => [
+                                    component.code, component.description,
+                                ].filter(Boolean).join(" ")),
+                                row.production_instructions,
+                                row.shipping_note,
+                                row.delivery_date,
+                                row.assignment?.order,
+                                row.assignment?.serial_number,
+                            ].join(" ").toLocaleLowerCase("it");
+                            const rowClass = !row.read_confirmed
+                                ? "vendite-order-unread"
+                                : row.packaged
+                                    ? "vendite-machine-completed"
+                                    : neutralClass;
+                            html.push(`
+                            <tr class="${rowClass}"
+                                data-demand-search="${esc(search)}"
+                                data-customer-order-id="${esc(order.id)}"
+                                data-collapse-key="${esc(collapseKey)}"
+                                data-reference-class="${neutralClass}"
+                                data-customer-row-id="${esc(row.id)}"
+                                data-managed="${order.managed ? "true" : "false"}"
+                                data-version="${esc(row.version)}">
+                                <td class="fw-semibold">${esc(row.position)}</td>
+                                <td class="vendite-inline-customer-column">
+                                    <div class="fw-semibold">${esc(order.customer_order || "-")}</div>
+                                    <span class="badge ${order.managed ? "text-bg-primary" : "text-bg-secondary"}">${order.managed ? "Gestionale" : "Manuale"}</span>
+                                </td>
+                                <td class="vendite-inline-customer-column fw-semibold">${esc(order.customer_name)}</td>
+                                <td class="vendite-inline-customer-column">
+                                    <span class="badge text-bg-light border">${esc(order.internal_reference || "ITALIA")}</span>
+                                </td>
+                                <td class="vendite-model-cell${(row.modified_fields || []).includes("model") ? " vendite-field-modified" : ""}">${modelLabel(row)}</td>
+                                <td>${dateInput(row, "delivery_date", "Data di spedizione", !order.managed && canEditSalesNotes)}</td>
+                                <td class="vendite-note-cell">
+                                    ${noteTextarea(row, "sales_note", "Note di vendita", canEditSalesNote)}
+                                </td>
+                                <td class="vendite-note-cell">
+                                    ${noteTextarea(row, "commercial_note", "Note commerciali", canEditSalesNotes)}
+                                </td>
+                                <td>${assignmentSelect(row)}</td>
+                                <td class="vendite-note-cell">
+                                    ${(row.missing_components || []).length ? `
+                                        <div class="text-danger mb-1">
+                                            <strong>Materiali mancanti:</strong>
+                                            <ul class="mb-0 ps-3">${row.missing_components.map(component => `
+                                                <li><strong>${esc(component.code)} — ${esc(component.description)}</strong></li>
+                                            `).join("")}</ul>
+                                        </div>` : ""}
+                                    ${productionNoteCell(row)}
+                                </td>
+                                <td class="vendite-note-cell">
+                                    ${noteTextarea(row, "production_instructions", "Note per produzione", canEditProductionInstructions)}
+                                </td>
+                                <td class="vendite-note-cell">
+                                    ${noteTextarea(row, "shipping_note", "Note per imballo", canEditSalesNotes)}
+                                </td>
+                                <td>${rowActions(row, order, primaryHeading && rowIndex === 0)}</td>
+                            </tr>`);
+                        });
+                    });
+                });
+
+                customerOrdersBody.innerHTML = html.join("");
+                dirtyAssignments.clear();
+                dirtyNotes.clear();
+                dirtyDates.clear();
+                dirtyOrderDetails.clear();
+                applyDemandFilter();
+            }
+
+            function render(data) {
+                currentGrouping = data.grouping || {groups: [], families: []};
+                currentCustomerOrders = Array.isArray(data.customer_orders)
+                    ? data.customer_orders
+                    : [];
+                models = Array.isArray(data.models) ? data.models : [];
+                machines = Array.isArray(data.machines) ? data.machines : [];
+                assignmentMachines = Array.isArray(data.assignment_machines)
+                    ? data.assignment_machines
+                    : machines;
+                refreshCreateModelOptions();
+                renderMachines();
+                renderCustomerOrders(currentCustomerOrders);
+                renderPackagingNotes(Array.isArray(data.packaging_notes) ? data.packaging_notes : []);
+                renderCustomerOrdersNote(data.customer_orders_note || {});
+                statusBox.textContent = `Ultimo aggiornamento: ${formatDateTime(data.generated_at)}`;
+            }
+
+            function applyMachineFilter() {
+                const query = machineFilter.value.trim().toLocaleLowerCase("it");
+                machinesBody.querySelectorAll("tr[data-machine-search]").forEach(row => {
+                    row.hidden = Boolean(query) && !row.dataset.machineSearch.includes(query);
+                });
+            }
+
+            function applyDemandFilter() {
+                const query = demandFilter.value.trim().toLocaleLowerCase("it");
+                let currentHeading = null;
+                let currentOrderRows = [];
+
+                const flushOrder = () => {
+                    if (!currentHeading) return;
+                    const headingMatches = !query || currentHeading.dataset.demandSearch.includes(query);
+                    const anyRowMatches = currentOrderRows.some(row => (
+                        !query || row.dataset.demandSearch.includes(query)
+                    ));
+                    const collapsed = collapsedOrders.has(currentHeading.dataset.collapseKey);
+                    currentHeading.hidden = !headingMatches && !anyRowMatches;
+                    currentOrderRows.forEach(row => {
+                        row.hidden = collapsed || (
+                            !headingMatches
+                            && Boolean(query)
+                            && !row.dataset.demandSearch.includes(query)
+                        );
+                    });
+                };
+
+                customerOrdersBody.querySelectorAll("tr[data-demand-search]").forEach(row => {
+                    if (row.classList.contains("vendite-customer-heading")) {
+                        flushOrder();
+                        currentHeading = row;
+                        currentOrderRows = [];
+                    } else {
+                        currentOrderRows.push(row);
+                    }
+                });
+                flushOrder();
+
+                customerOrdersBody.querySelectorAll("[data-customer-group-heading]").forEach(heading => {
+                    const rows = [];
+                    let row = heading.nextElementSibling;
+                    let hasVisibleContent = false;
+                    while (row && !row.hasAttribute("data-customer-group-heading")) {
+                        rows.push(row);
+                        hasVisibleContent ||= !row.hidden;
+                        row = row.nextElementSibling;
+                    }
+                    heading.hidden = !hasVisibleContent;
+                    if (collapsedCustomerGroups.has(heading.dataset.customerGroupKey)) {
+                        rows.forEach(item => {
+                            item.hidden = true;
+                        });
+                    }
+                });
+            }
+
+            function hasFocusedEditor() {
+                const active = document.activeElement;
+                return Boolean(
+                    active
+                    && page.contains(active)
+                    && ["INPUT", "SELECT", "TEXTAREA"].includes(active.tagName)
+                );
+            }
+
+            function hasUnsavedChanges() {
+                return formDirty
+                    || dirtyAssignments.size > 0
+                    || dirtyNotes.size > 0
+                    || dirtyDates.size > 0
+                    || dirtyOrderDetails.size > 0
+                    || packagingNotesDirty
+                    || customerOrdersNoteDirty;
+            }
+
+            async function refresh({force = false} = {}) {
+                if (loadInFlight || mutationInFlight) return;
+                if (!force && (hasFocusedEditor() || hasUnsavedChanges())) {
+                    statusBox.textContent = hasUnsavedChanges()
+                        ? "Aggiornamento sospeso: ci sono modifiche non salvate."
+                        : "Aggiornamento sospeso durante la compilazione.";
+                    return;
+                }
+
+                loadInFlight = true;
+                refreshButton.disabled = true;
+                statusBox.textContent = "Aggiornamento in corso...";
+                try {
+                    const response = await window.avpFetch(page.dataset.apiUrl);
+                    const payload = await response.json().catch(() => ({}));
+                    if (!response.ok || !payload.ok) {
+                        throw new Error(payload.error || `Errore server (${response.status})`);
+                    }
+                    render(payload.data || {});
+                    if (alertBox.dataset.source === "load") clearAlert();
+                } catch (error) {
+                    console.error("Errore caricamento assegnazioni vendite:", error);
+                    alertBox.dataset.source = "load";
+                    showAlert("danger", error.message || "Impossibile aggiornare le assegnazioni.");
+                    statusBox.textContent = "Aggiornamento non riuscito";
+                } finally {
+                    loadInFlight = false;
+                    refreshButton.disabled = false;
+                }
+            }
+
+            async function createCustomerOrder(event) {
+                event.preventDefault();
+                if (mutationInFlight || !createForm.reportValidity()) return;
+
+                const lines = [...createLines.rows].map(row => {
+                    const selectedMachine = row.querySelector(
+                        ".vendite-line-machine"
+                    ).selectedOptions[0];
+                    return {
+                        model_key: row.querySelector(".vendite-line-model").value,
+                        id_documento: selectedMachine?.dataset.idDocumento || "",
+                        id_riga: selectedMachine?.dataset.idRiga || "",
+                        quantity: Number(row.querySelector(".vendite-line-quantity").value),
+                        sales_note: row.querySelector(".vendite-line-note").value.trim(),
+                        commercial_note: row.querySelector(".vendite-line-commercial-note").value.trim(),
+                        production_instructions: row.querySelector(".vendite-line-production-instructions").value.trim(),
+                        delivery_date: row.querySelector(".vendite-line-delivery").value,
+                    };
+                });
+                if (!lines.length || lines.some(line => !Number.isInteger(line.quantity) || line.quantity < 1)) {
+                    showAlert("warning", "Inserire almeno una riga con una quantità intera maggiore di zero.");
+                    return;
+                }
+
+                mutationInFlight = true;
+                saveOrderButton.disabled = true;
+                try {
+                    const response = await window.avpFetch(page.dataset.createUrl, {
+                        method: "POST",
+                        headers: {"Content-Type": "application/json"},
+                        body: JSON.stringify({
+                            customer_name: customerName.value.trim(),
+                            internal_reference: customerReference.value,
+                            lines,
+                        }),
+                    });
+                    const payload = await response.json().catch(() => ({}));
+                    if (!response.ok || !payload.ok) {
+                        throw new Error(payload.error || `Errore server (${response.status})`);
+                    }
+                    resetCreateForm();
+                    showAlert("success", payload.message || "Ordine cliente salvato.");
+                    alertBox.dataset.source = "mutation";
+                } catch (error) {
+                    console.error("Errore salvataggio ordine cliente:", error);
+                    showAlert("danger", error.message || "Impossibile salvare l'ordine cliente.");
+                    alertBox.dataset.source = "mutation";
+                } finally {
+                    mutationInFlight = false;
+                    saveOrderButton.disabled = models.length === 0;
+                }
+                if (!hasUnsavedChanges()) {
+                    await refresh({force: true});
+                } else {
+                    statusBox.textContent = "Aggiornamento sospeso: ci sono modifiche non salvate.";
+                }
+            }
+
+            async function saveOrderDetails(orderId, button) {
+                if (mutationInFlight) return;
+                const reference = customerOrdersBody.querySelector(
+                    `[data-order-reference="${CSS.escape(String(orderId))}"]`
+                );
+                if (!reference) return;
+
+                mutationInFlight = true;
+                button.disabled = true;
+                try {
+                    const url = page.dataset.orderDetailsUrlTemplate.replace(
+                        "/0/",
+                        `/${encodeURIComponent(orderId)}/`
+                    );
+                    const response = await window.avpFetch(url, {
+                        method: "POST",
+                        headers: {"Content-Type": "application/json"},
+                        body: JSON.stringify({
+                            internal_reference: reference.value,
+                        }),
+                    });
+                    const payload = await response.json().catch(() => ({}));
+                    if (!response.ok || !payload.ok) {
+                        throw new Error(payload.error || `Errore server (${response.status})`);
+                    }
+                    dirtyOrderDetails.delete(String(orderId));
+                    syncOrderRowVersions(payload.data, orderId);
+                    reference.dataset.originalValue = reference.value;
+                    showAlert("success", payload.message || "Dati ordine aggiornati.");
+                    alertBox.dataset.source = "mutation";
+                } catch (error) {
+                    console.error("Errore aggiornamento dati ordine:", error);
+                    showAlert("danger", error.message || "Impossibile aggiornare i dati dell'ordine.");
+                    alertBox.dataset.source = "mutation";
+                } finally {
+                    mutationInFlight = false;
+                    button.disabled = false;
+                }
+                if (!hasUnsavedChanges()) await refresh({force: true});
+            }
+
+            function rowSavePayload(rowId) {
+                const row = customerOrdersBody.querySelector(
+                    `[data-customer-row-id="${CSS.escape(String(rowId))}"]`
+                );
+                if (!row) return null;
+                const payload = rowNotesPayload(rowId) || {
+                    version: Number(row.dataset.version),
+                };
+                const managed = row.dataset.managed === "true";
+                const dateValue = field => row.querySelector(
+                    `[data-date-field="${CSS.escape(field)}"]`
+                )?.value || "";
+                if (!managed && canEditSalesNotes) {
+                    payload.delivery_date = dateValue("delivery_date");
+                }
+                const select = row.querySelector("[data-assignment-row-id]");
+                if (canAssignMachines && select) {
+                    const selected = select.selectedOptions[0];
+                    payload.assignment_changed = (
+                        select.value !== select.dataset.originalValue
+                    );
+                    payload.id_documento = selected?.dataset.idDocumento || "";
+                    payload.id_riga = selected?.dataset.idRiga || "";
+                }
+                return payload;
+            }
+
+            function playHorseSaveAnimation(row) {
+                if (!horseSaveAnimation || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+                    return Promise.resolve();
+                }
+                const bounds = row.getBoundingClientRect();
+                const left = Math.max(8, bounds.left);
+                const stage = document.createElement("div");
+                stage.className = "vendite-horse-stage";
+                stage.setAttribute("aria-hidden", "true");
+                stage.style.left = `${left}px`;
+                stage.style.top = `${Math.max(0, bounds.top - 48)}px`;
+                stage.style.width = `${Math.max(180, Math.min(bounds.width, window.innerWidth - left - 8))}px`;
+                stage.innerHTML = `
+                    <span class="vendite-horse">🐎</span>
+                    <span class="vendite-horse-obstacle">🚧</span>`;
+                document.body.appendChild(stage);
+                window.setTimeout(() => stage.remove(), 3100);
+                return new Promise(resolve => window.setTimeout(resolve, 2220));
+            }
+
+            async function saveRow(rowId, button) {
+                if (mutationInFlight) return;
+                const row = customerOrdersBody.querySelector(
+                    `[data-customer-row-id="${CSS.escape(String(rowId))}"]`
+                );
+                const body = rowSavePayload(rowId);
+                if (!row || !body) return;
+
+                mutationInFlight = true;
+                button.disabled = true;
+                await playHorseSaveAnimation(row);
+                try {
+                    const url = page.dataset.rowSaveUrlTemplate.replace(
+                        "/0/",
+                        `/${encodeURIComponent(rowId)}/`
+                    );
+                    const response = await window.avpFetch(url, {
+                        method: "POST",
+                        headers: {"Content-Type": "application/json"},
+                        body: JSON.stringify(body),
+                    });
+                    const payload = await response.json().catch(() => ({}));
+                    if (!response.ok || !payload.ok) {
+                        throw new Error(payload.error || `Errore server (${response.status})`);
+                    }
+                    dirtyAssignments.delete(String(rowId));
+                    dirtyNotes.delete(String(rowId));
+                    dirtyDates.delete(String(rowId));
+                    row.querySelectorAll("[data-date-field]").forEach(input => {
+                        input.dataset.originalValue = input.value;
+                    });
+                    const select = row.querySelector("[data-assignment-row-id]");
+                    if (select) select.dataset.originalValue = select.value;
+                    if (body.assignment_changed) {
+                        row.querySelector(".vendite-auto-assignment-dot")?.remove();
+                    }
+                    syncRowVersion(payload.data, rowId);
+                    showAlert("success", payload.message || "Riga aggiornata.");
+                    alertBox.dataset.source = "mutation";
+                } catch (error) {
+                    console.error("Errore aggiornamento riga:", error);
+                    showAlert("danger", error.message || "Impossibile aggiornare la riga.");
+                    alertBox.dataset.source = "mutation";
+                } finally {
+                    mutationInFlight = false;
+                    button.disabled = false;
+                }
+                if (!hasUnsavedChanges()) await refresh({force: true});
+            }
+
+            async function savePackagingNotes(button) {
+                if (mutationInFlight) return;
+                const notes = Object.fromEntries(
+                    [...packagingNotesBody.querySelectorAll("[data-packaging-reference]")]
+                        .map(input => [input.dataset.packagingReference, input.value.trim()])
+                );
+
+                mutationInFlight = true;
+                button.disabled = true;
+                try {
+                    const response = await window.avpFetch(page.dataset.packagingNotesUrl, {
+                        method: "POST",
+                        headers: {"Content-Type": "application/json"},
+                        body: JSON.stringify({notes}),
+                    });
+                    const payload = await response.json().catch(() => ({}));
+                    if (!response.ok || !payload.ok) {
+                        throw new Error(payload.error || `Errore server (${response.status})`);
+                    }
+                    packagingNotesDirty = false;
+                    showAlert("success", payload.message || "Note per imballo aggiornate.");
+                    alertBox.dataset.source = "mutation";
+                } catch (error) {
+                    console.error("Errore aggiornamento note per imballo:", error);
+                    showAlert("danger", error.message || "Impossibile aggiornare le note per imballo.");
+                    alertBox.dataset.source = "mutation";
+                } finally {
+                    mutationInFlight = false;
+                    button.disabled = false;
+                }
+                if (!hasUnsavedChanges()) await refresh({force: true});
+            }
+
+            async function saveCustomerOrdersNote(button) {
+                if (mutationInFlight) return;
+                mutationInFlight = true;
+                button.disabled = true;
+                try {
+                    const response = await window.avpFetch(page.dataset.customerOrdersNoteUrl, {
+                        method: "POST",
+                        headers: {"Content-Type": "application/json"},
+                        body: JSON.stringify({note: customerOrdersNote.value.trim()}),
+                    });
+                    const payload = await response.json().catch(() => ({}));
+                    if (!response.ok || !payload.ok) {
+                        throw new Error(payload.error || `Errore server (${response.status})`);
+                    }
+                    customerOrdersNoteDirty = false;
+                    render(payload.data || {});
+                    showAlert("success", payload.message || "Nota aggiornata.");
+                    alertBox.dataset.source = "mutation";
+                } catch (error) {
+                    console.error("Errore aggiornamento nota ordini cliente:", error);
+                    showAlert("danger", error.message || "Impossibile aggiornare la nota.");
+                    alertBox.dataset.source = "mutation";
+                } finally {
+                    mutationInFlight = false;
+                    button.disabled = false;
+                }
+            }
+
+            async function confirmCustomerOrdersNoteRead(button) {
+                if (mutationInFlight || button.disabled) return;
+                mutationInFlight = true;
+                button.disabled = true;
+                try {
+                    const response = await window.avpFetch(
+                        page.dataset.customerOrdersNoteConfirmUrl,
+                        {method: "POST"}
+                    );
+                    const payload = await response.json().catch(() => ({}));
+                    if (!response.ok || !payload.ok) {
+                        throw new Error(payload.error || `Errore server (${response.status})`);
+                    }
+                    render(payload.data || {});
+                    showAlert("success", payload.message || "Lettura confermata.");
+                    alertBox.dataset.source = "mutation";
+                } catch (error) {
+                    console.error("Errore conferma lettura nota ordini cliente:", error);
+                    showAlert("danger", error.message || "Impossibile confermare la lettura.");
+                    alertBox.dataset.source = "mutation";
+                    button.disabled = false;
+                } finally {
+                    mutationInFlight = false;
+                }
+            }
+
+            function rowNotesPayload(rowId) {
+                const row = customerOrdersBody.querySelector(
+                    `[data-customer-row-id="${CSS.escape(String(rowId))}"]`
+                );
+                if (!row) return null;
+                const value = field => row.querySelector(
+                    `[data-note-field="${CSS.escape(field)}"]`
+                )?.value.trim() || "";
+                const payload = {version: Number(row.dataset.version)};
+                if (canEditSalesNote) {
+                    payload.sales_note = value("sales_note");
+                }
+                if (canEditSalesNotes) {
+                    payload.commercial_note = value("commercial_note");
+                    payload.shipping_note = value("shipping_note");
+                }
+                if (canEditProductionInstructions) {
+                    payload.production_instructions = value("production_instructions");
+                }
+                return payload;
+            }
+
+            async function deleteCustomerOrder(orderId, button, confirmed = false) {
+                if (mutationInFlight) return;
+                if (hasUnsavedChanges()) {
+                    showAlert(
+                        "warning",
+                        "Salvare o annullare le modifiche in corso prima di eliminare un ordine."
+                    );
+                    return;
+                }
+                const label = [
+                    button.dataset.customerName,
+                    button.dataset.customerOrder,
+                ].filter(Boolean).join(" / ");
+                if (!confirmed && !window.confirm(
+                    `Eliminare l'ordine cliente ${label}? Verranno eliminate anche righe, note ed eventuali conferme di spedizione; le matricole torneranno disponibili.`
+                )) return;
+
+                mutationInFlight = true;
+                button.disabled = true;
+                try {
+                    const url = page.dataset.deleteUrlTemplate.replace(
+                        "/0/",
+                        `/${encodeURIComponent(orderId)}/`
+                    );
+                    const response = await window.avpFetch(url, {method: "DELETE"});
+                    const payload = await response.json().catch(() => ({}));
+                    if (!response.ok || !payload.ok) {
+                        throw new Error(
+                            payload.error || `Errore server (${response.status})`
+                        );
+                    }
+                    render(payload.data || {});
+                    showAlert("success", payload.message || "Ordine cliente eliminato.");
+                    alertBox.dataset.source = "mutation";
+                } catch (error) {
+                    console.error("Errore eliminazione ordine cliente:", error);
+                    showAlert("danger", error.message || "Impossibile eliminare l'ordine cliente.");
+                    alertBox.dataset.source = "mutation";
+                    button.disabled = false;
+                } finally {
+                    mutationInFlight = false;
+                }
+            }
+
+            async function deleteCustomerRow(rowId, button) {
+                mutationInFlight = true;
+                button.disabled = true;
+                try {
+                    const url = page.dataset.deleteRowUrlTemplate.replace(
+                        "/0/",
+                        `/${encodeURIComponent(rowId)}/`
+                    );
+                    const response = await window.avpFetch(url, {method: "DELETE"});
+                    const payload = await response.json().catch(() => ({}));
+                    if (!response.ok || !payload.ok) {
+                        throw new Error(payload.error || `Errore server (${response.status})`);
+                    }
+                    render(payload.data || {});
+                    showAlert("success", payload.message || "Riga cliente eliminata.");
+                    alertBox.dataset.source = "mutation";
+                } catch (error) {
+                    console.error("Errore eliminazione riga cliente:", error);
+                    showAlert("danger", error.message || "Impossibile eliminare la riga cliente.");
+                    alertBox.dataset.source = "mutation";
+                    button.disabled = false;
+                } finally {
+                    mutationInFlight = false;
+                }
+            }
+
+            function chooseDeletion(button) {
+                if (mutationInFlight || hasUnsavedChanges()) {
+                    showAlert("warning", "Salvare o annullare le modifiche prima di eliminare.");
+                    return;
+                }
+                if (window.confirm("Premere OK per eliminare l'intero ordine. Premere Annulla per scegliere la sola riga.")) {
+                    deleteCustomerOrder(button.dataset.orderId, button, true);
+                } else if (window.confirm("Eliminare solamente questa riga?")) {
+                    deleteCustomerRow(button.dataset.chooseDeleteRow, button);
+                }
+            }
+
+            function playReadConfirmationAnimation(button, onImpact) {
+                if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+                    onImpact();
+                    return Promise.resolve();
+                }
+                const anchor = button.closest("[data-customer-order-id]")?.getBoundingClientRect();
+                const stage = document.createElement("div");
+                stage.className = "vendite-suplex-stage";
+                stage.setAttribute("aria-hidden", "true");
+                stage.style.top = `${Math.max(8, Math.min(window.innerHeight - 130, (anchor?.top || 0) - 20))}px`;
+                stage.innerHTML = `
+                    <span class="vendite-suplex-fighter vendite-suplex-attacker">🧍</span>
+                    <span class="vendite-suplex-fighter vendite-suplex-victim">🧍</span>
+                    <span class="vendite-suplex-impact">💥</span>`;
+                document.body.appendChild(stage);
+                return new Promise(resolve => {
+                    let impacted = false;
+                    const impact = () => {
+                        if (impacted) return;
+                        impacted = true;
+                        onImpact();
+                    };
+                    const impactTimer = window.setTimeout(impact, 3000);
+                    window.setTimeout(() => {
+                        window.clearTimeout(impactTimer);
+                        impact();
+                        stage.remove();
+                        resolve();
+                    }, 5100);
+                });
+            }
+
+            async function confirmOrderRead(orderId, button) {
+                if (mutationInFlight) return;
+                mutationInFlight = true;
+                button.disabled = true;
+                try {
+                    const url = page.dataset.confirmUrlTemplate.replace(
+                        "/0/",
+                        `/${encodeURIComponent(orderId)}/`
+                    );
+                    const response = await window.avpFetch(url, {
+                        method: "POST",
+                        headers: {"Content-Type": "application/json"},
+                        body: JSON.stringify({
+                            row_id: Number(button.dataset.confirmRowId),
+                            revisions: JSON.parse(button.dataset.readRevisions),
+                        }),
+                    });
+                    const payload = await response.json().catch(() => ({}));
+                    if (!response.ok || !payload.ok) {
+                        throw new Error(
+                            payload.error || `Errore server (${response.status})`
+                        );
+                    }
+                    await playReadConfirmationAnimation(button, () => {
+                    });
+                    if (!hasUnsavedChanges() && !hasFocusedEditor()) {
+                        render(payload.data);
+                    }
+                    showAlert("success", payload.message || "Lettura confermata.");
+                    alertBox.dataset.source = "mutation";
+                } catch (error) {
+                    console.error("Errore conferma lettura ordine:", error);
+                    showAlert("danger", error.message || "Impossibile confermare la lettura.");
+                    alertBox.dataset.source = "mutation";
+                    button.disabled = false;
+                } finally {
+                    mutationInFlight = false;
+                }
+            }
+
+            createLines.addEventListener("click", event => {
+                const addButton = event.target.closest("[data-add-customer-line]");
+                if (addButton) {
+                    const row = addButton.closest("tr");
+                    addCreateLine({
+                        delivery_date: row.querySelector(
+                            ".vendite-line-delivery"
+                        ).value,
+                    }, {afterRow: row});
+                    return;
+                }
+                const button = event.target.closest("[data-remove-customer-line]");
+                if (!button) return;
+                const row = button.closest("tr");
+                if (createLines.rows.length === 1) {
+                    row.querySelector(".vendite-line-model").value = "";
+                    refreshCreateLineMachineOptions(row);
+                    row.querySelector(".vendite-line-quantity").value = 1;
+                    row.querySelector(".vendite-line-note").value = "";
+                    row.querySelector(".vendite-line-commercial-note").value = "";
+                    row.querySelector(".vendite-line-production-instructions").value = "";
+                    row.querySelector(".vendite-line-delivery").value = "";
+                    row.querySelector("select").focus();
+                } else {
+                    row.remove();
+                    updateCreateLineLabels();
+                }
+                formDirty = true;
+            });
+            createForm.addEventListener("input", () => {
+                formDirty = true;
+            });
+            createForm.addEventListener("change", event => {
+                formDirty = true;
+                if (event.target.classList.contains("vendite-line-model")) {
+                    refreshCreateLineMachineOptions(event.target.closest("tr"));
+                }
+                if (event.target.classList.contains("vendite-line-machine")) {
+                    syncLineQuantity(event.target.closest("tr"));
+                }
+            });
+            createForm.addEventListener("submit", createCustomerOrder);
+
+            function markRowPending(field) {
+                const changed = field.value !== field.dataset.originalValue;
+                field.classList.toggle("vendite-field-modified", changed);
+                if (changed) {
+                    field.closest("[data-customer-row-id]")?.classList.add("vendite-order-unread");
+                }
+            }
+
+            customerOrdersBody.addEventListener("input", event => {
+                const note = event.target.closest("[data-note-row-id]");
+                if (note) {
+                    dirtyNotes.add(String(note.dataset.noteRowId));
+                    markRowPending(note);
+                }
+            });
+            customerOrdersBody.addEventListener("change", event => {
+                const dateField = event.target.closest("[data-date-row-id]");
+                if (dateField) {
+                    markRowPending(dateField);
+                    const rowId = String(dateField.dataset.dateRowId);
+                    const fields = customerOrdersBody.querySelectorAll(
+                        `[data-date-row-id="${CSS.escape(rowId)}"]`
+                    );
+                    const changed = [...fields].some(field => (
+                        field.value !== field.dataset.originalValue
+                    ));
+                    if (changed) {
+                        dirtyDates.add(rowId);
+                    } else {
+                        dirtyDates.delete(rowId);
+                    }
+                    return;
+                }
+                const orderField = event.target.closest("[data-order-reference]");
+                if (orderField) {
+                    const orderId = String(orderField.dataset.orderReference);
+                    const fields = customerOrdersBody.querySelectorAll(
+                        `[data-order-reference="${CSS.escape(orderId)}"]`
+                    );
+                    const changed = [...fields].some(field => (
+                        field.value !== field.dataset.originalValue
+                    ));
+                    if (changed) dirtyOrderDetails.add(orderId);
+                    else dirtyOrderDetails.delete(orderId);
+                    return;
+                }
+                const select = event.target.closest("[data-assignment-row-id]");
+                if (!select) return;
+                markRowPending(select);
+                const current = select.value === select.dataset.originalValue;
+                select.classList.toggle("vendite-assignment-current", current);
+                select.parentElement.querySelector(".vendite-assignment-current-value")
+                    ?.classList.toggle("d-none", !current);
+                const rowId = String(select.dataset.assignmentRowId);
+                if (current) {
+                    dirtyAssignments.delete(rowId);
+                } else {
+                    dirtyAssignments.add(rowId);
+                }
+            });
+            customerOrdersBody.addEventListener("click", event => {
+                const groupButton = event.target.closest("[data-toggle-customer-group]");
+                if (groupButton) {
+                    const groupKey = groupButton.dataset.toggleCustomerGroup;
+                    if (collapsedCustomerGroups.has(groupKey)) {
+                        collapsedCustomerGroups.delete(groupKey);
+                    } else {
+                        collapsedCustomerGroups.add(groupKey);
+                    }
+                    const expanded = !collapsedCustomerGroups.has(groupKey);
+                    groupButton.setAttribute("aria-expanded", String(expanded));
+                    groupButton.setAttribute(
+                        "aria-label",
+                        `${expanded ? "Riduci" : "Espandi"} raggruppamento`
+                    );
+                    groupButton.querySelector("span").textContent = expanded ? "▾" : "▸";
+                    applyDemandFilter();
+                    return;
+                }
+                const toggleButton = event.target.closest("[data-toggle-order-rows]");
+                if (toggleButton) {
+                    const orderId = String(toggleButton.dataset.toggleOrderRows);
+                    if (collapsedOrders.has(orderId)) collapsedOrders.delete(orderId);
+                    else collapsedOrders.add(orderId);
+                    const expanded = !collapsedOrders.has(orderId);
+                    toggleButton.setAttribute("aria-expanded", String(expanded));
+                    toggleButton.setAttribute(
+                        "aria-label",
+                        `${expanded ? "Chiudi" : "Apri"} righe ordine`
+                    );
+                    toggleButton.querySelector("span").textContent = expanded ? "▾" : "▸";
+                    applyDemandFilter();
+                    return;
+                }
+                const saveButton = event.target.closest("[data-save-row]");
+                if (saveButton) {
+                    saveRow(saveButton.dataset.saveRow, saveButton);
+                    return;
+                }
+                const detailsButton = event.target.closest("[data-save-order-details]");
+                if (detailsButton) {
+                    saveOrderDetails(
+                        detailsButton.dataset.saveOrderDetails,
+                        detailsButton
+                    );
+                    return;
+                }
+                const chooseDeleteButton = event.target.closest("[data-choose-delete-row]");
+                if (chooseDeleteButton) {
+                    chooseDeletion(chooseDeleteButton);
+                    return;
+                }
+                const deleteButton = event.target.closest("[data-delete-customer-order]");
+                if (deleteButton) {
+                    deleteCustomerOrder(
+                        deleteButton.dataset.deleteCustomerOrder,
+                        deleteButton
+                    );
+                    return;
+                }
+                const confirmButton = event.target.closest("[data-confirm-order-read]");
+                if (confirmButton) {
+                    confirmOrderRead(
+                        confirmButton.dataset.confirmOrderRead,
+                        confirmButton
+                    );
+                    return;
+                }
+            });
+
+            machineFilter.addEventListener("input", applyMachineFilter);
+            demandFilter.addEventListener("input", applyDemandFilter);
+            deliverySortButton.addEventListener("click", () => {
+                customerOrderDeliverySort = customerOrderDeliverySort === "asc" ? "desc" : "asc";
+                updateDeliverySortIndicator();
+                renderCustomerOrders(currentCustomerOrders);
+            });
+            groupByCustomerToggle.addEventListener("change", () => {
+                groupCustomerOrders = groupByCustomerToggle.checked;
+                renderCustomerOrders(currentCustomerOrders);
+            });
+            firstSectionSelect.addEventListener("change", () => {
+                try {
+                    if (firstSectionSelect.value) {
+                        window.localStorage.setItem(firstSectionStorageKey(), firstSectionSelect.value);
+                    } else {
+                        window.localStorage.removeItem(firstSectionStorageKey());
+                    }
+                } catch (_error) {
+                    // localStorage può essere disabilitato dal browser.
+                }
+                renderCustomerOrders(currentCustomerOrders);
+            });
+            machinesPanelToggle.addEventListener("click", () => {
+                setMachinesPanelExpanded(
+                    machinesPanelToggle.getAttribute("aria-expanded") !== "true"
+                );
+            });
+            createOrderPanelToggle?.addEventListener("click", () => {
+                setCreateOrderPanelExpanded(
+                    createOrderPanelToggle.getAttribute("aria-expanded") !== "true"
+                );
+            });
+
+            packagingNotesBody?.addEventListener("input", event => {
+                if (event.target.matches("[data-packaging-reference]")) {
+                    packagingNotesDirty = true;
+                }
+            });
+            customerOrdersNote?.addEventListener("input", () => {
+                customerOrdersNoteDirty = true;
+            });
+            saveCustomerOrdersNoteButton?.addEventListener("click", () => {
+                saveCustomerOrdersNote(saveCustomerOrdersNoteButton);
+            });
+            confirmCustomerOrdersNoteButton?.addEventListener("click", () => {
+                confirmCustomerOrdersNoteRead(confirmCustomerOrdersNoteButton);
+            });
+            savePackagingNotesButton?.addEventListener("click", () => {
+                savePackagingNotes(savePackagingNotesButton);
+            });
+            refreshButton.addEventListener("click", () => refresh());
+            document.addEventListener("visibilitychange", () => {
+                if (!document.hidden) refresh();
+            });
+
+            updateDeliverySortIndicator();
+            addCreateLine({}, {focus: false, dirty: false});
+            const pollTimer = window.setInterval(() => {
+                if (!document.hidden) refresh();
+            }, POLL_MS);
+            window.addEventListener("beforeunload", () => window.clearInterval(pollTimer), {
+                once: true,
+            });
+            refresh();
+        })();
+    </script>
+{% endblock %}

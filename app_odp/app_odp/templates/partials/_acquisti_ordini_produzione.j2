@@ -1,0 +1,256 @@
+<style>
+    .acq-montaggio-stack {
+        min-height: 0;
+        height: 100%;
+    }
+
+    .acq-montaggio-sl-card {
+        flex: 0 1 auto;
+        min-height: 0;
+        max-height: calc((100% - 1rem) / 2);
+        overflow: hidden;
+    }
+
+    .acq-montaggio-m-card {
+        flex: 1 1 0;
+        min-height: 0;
+        overflow: hidden;
+    }
+
+    .acq-montaggio-sl-card .card-header,
+    .acq-montaggio-m-card .card-header {
+        flex: 0 0 auto;
+    }
+
+    .acq-montaggio-sl-card .card-body,
+    .acq-montaggio-m-card .card-body {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: hidden;
+    }
+
+    .acq-montaggio-sl-scroll,
+    .acq-montaggio-m-scroll {
+        overflow: auto;
+    }
+
+    .acq-montaggio-sl-scroll {
+        max-height: 100%;
+    }
+
+    .acq-montaggio-m-scroll {
+        height: 100%;
+    }
+
+    .acq-montaggio-sl-card table,
+    .acq-montaggio-m-card table {
+        height: auto !important;
+        margin-bottom: 0 !important;
+    }
+</style>
+<div class="container-fluid px-0 h-100">
+    <div class="row g-3 h-100">
+
+        <!-- Colonna Montaggio -->
+        <div class="col-12 col-xxl-4 d-flex flex-column h-100"
+             style="min-height: 0;">
+
+            <div class="d-flex flex-column flex-grow-1 gap-3 acq-montaggio-stack"
+                 style="min-height: 0;">
+
+                <div class="card shadow-sm d-flex flex-column acq-montaggio-sl-card">
+                    <div class="card-header flex-shrink-0">
+                        <h3 class="h6 mb-0">Ordini SL</h3>
+                    </div>
+                    <div class="card-body py-2 flex-grow-1 overflow-hidden">
+                        <div class="table-responsive acq-montaggio-sl-scroll">
+                            <table class="table table-sm text-center table-striped table-hover table-sortable table-selectable table-state-rowcolor align-middle mb-0"
+                                   id="acquisti_ordini_montaggio_sl_table">
+                                <thead>
+                                <tr>
+                                    <th data-sort="text">Ordine</th>
+                                    <th data-sort="text">Codice</th>
+                                    <th data-sort="text">Variante</th>
+                                    <th data-sort="text">Rev.</th>
+                                    <th data-sort="text">Descrizione</th>
+                                    <th data-sort="num">Qty</th>
+                                    <th data-sort="text">Stato</th>
+                                </tr>
+                                </thead>
+                                <tbody id="tbody_acquisti_ordini_montaggio_sl">
+                                {% if ordini_rows.montaggio_sl %}
+                                    {% for row in ordini_rows.montaggio_sl %}
+                                        <tr data-row-key="{{ row.OrdineProduzione|e }}"
+                                            data-ordineproduzione="{{ row.OrdineProduzione|e }}">
+                                            <td>{{ row.OrdineProduzione }}</td>
+                                            <td>{{ row.CodArt }}</td>
+                                            <td>{{ row.VarianteArt }}</td>
+                                            <td>{{ row.Revisione }}</td>
+                                            <td>{{ row.DesArt }}</td>
+                                            <td>{{ row.Qty }}</td>
+                                            <td data-col="stato">{{ row.Stato }}</td>
+                                        </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr>
+                                        <td colspan="7"
+                                            class="text-center text-muted py-3">
+                                            Nessun ordine SL.
+                                        </td>
+                                    </tr>
+                                {% endif %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card shadow-sm d-flex flex-column acq-montaggio-m-card">
+                    <div class="card-header flex-shrink-0">
+                        <h3 class="h6 mb-0">Ordini macchina</h3>
+                    </div>
+                    <div class="card-body py-2 flex-grow-1 overflow-hidden">
+                        <div class="table-responsive acq-montaggio-m-scroll">
+                            <table class="table table-sm text-center table-striped table-hover table-sortable table-selectable table-state-rowcolor align-middle mb-0"
+                                   id="acquisti_ordini_montaggio_m_table">
+                                <thead>
+                                <tr>
+                                    <th data-sort="text">Ordine</th>
+                                    <th data-sort="text">Codice</th>
+                                    <th data-sort="text">Descrizione</th>
+                                    <th data-sort="num">Qty</th>
+                                    <th data-sort="text">Stato</th>
+                                </tr>
+                                </thead>
+                                <tbody id="tbody_acquisti_ordini_montaggio_m">
+                                {% if ordini_rows.montaggio_m %}
+                                    {% for row in ordini_rows.montaggio_m %}
+                                        <tr data-row-key="{{ row.OrdineProduzione|e }}"
+                                            data-ordineproduzione="{{ row.OrdineProduzione|e }}">
+                                            <td>{{ row.OrdineProduzione }}</td>
+                                            <td>{{ row.CodArt }}</td>
+                                            <td>{{ row.DesArt }}</td>
+                                            <td>{{ row.Qty }}</td>
+                                            <td data-col="stato">{{ row.Stato }}</td>
+                                        </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr>
+                                        <td colspan="5"
+                                            class="text-center text-muted py-3">
+                                            Nessun ordine macchina.
+                                        </td>
+                                    </tr>
+                                {% endif %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- Colonna Officina -->
+        <div class="col-12 col-xxl-4 d-flex flex-column h-100">
+            <div class="card shadow-sm h-100 d-flex flex-column">
+                <div class="card-header">
+                    <h2 class="h5 mb-0">Officina</h2>
+                </div>
+                <div class="card-body py-2 flex-grow-1 overflow-hidden">
+                    <div class="table-responsive h-100"
+                         style="overflow: auto;">
+                        <table class="table table-sm text-center table-striped table-hover table-sortable table-selectable table-state-rowcolor align-middle mb-0"
+                               id="acquisti_ordini_officina_table">
+                            <thead>
+                            <tr>
+                                <th data-sort="text">Ordine</th>
+                                <th data-sort="text">Codice</th>
+                                <th data-sort="text">Variante</th>
+                                <th data-sort="text">Rev.</th>
+                                <th data-sort="text">Descrizione</th>
+                                <th data-sort="num">Qty</th>
+                                <th data-sort="text">Stato</th>
+                            </tr>
+                            </thead>
+                            <tbody id="tbody_acquisti_ordini_officina">
+                            {% if ordini_rows.officina %}
+                                {% for row in ordini_rows.officina %}
+                                    <tr data-row-key="{{ row.OrdineProduzione|e }}"
+                                            data-ordineproduzione="{{ row.OrdineProduzione|e }}">
+                                        <td>{{ row.OrdineProduzione }}</td>
+                                        <td>{{ row.CodArt }}</td>
+                                        <td>{{ row.VarianteArt }}</td>
+                                        <td>{{ row.Revisione }}</td>
+                                        <td>{{ row.DesArt }}</td>
+                                        <td>{{ row.Qty }}</td>
+                                        <td data-col="stato">{{ row.Stato }}</td>
+                                    </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="7"
+                                        class="text-center text-muted py-3">
+                                        Nessun ordine officina.
+                                    </td>
+                                </tr>
+                            {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Colonna Carpenteria -->
+        <div class="col-12 col-xxl-4 d-flex flex-column h-100">
+            <div class="card shadow-sm h-100 d-flex flex-column">
+                <div class="card-header">
+                    <h2 class="h5 mb-0">Carpenteria</h2>
+                </div>
+                <div class="card-body py-2 flex-grow-1 overflow-hidden">
+                    <div class="table-responsive h-100"
+                         style="overflow: auto;">
+                        <table class="table table-sm table-striped table-hover table-sortable table-selectable table-state-rowcolor align-middle mb-0"
+                               id="acquisti_ordini_carpenteria_table">
+                            <thead>
+                            <tr>
+                                <th data-sort="text">Ordine</th>
+                                <th data-sort="text">Codice</th>
+                                <th data-sort="text">Variante</th>
+                                <th data-sort="text">Rev.</th>
+                                <th data-sort="text">Descrizione</th>
+                                <th data-sort="num">Qty</th>
+                                <th data-sort="text">Stato</th>
+                            </tr>
+                            </thead>
+                            <tbody id="tbody_acquisti_ordini_carpenteria">
+                            {% if ordini_rows.carpenteria %}
+                                {% for row in ordini_rows.carpenteria %}
+                                    <tr data-row-key="{{ row.OrdineProduzione|e }}"
+                                            data-ordineproduzione="{{ row.OrdineProduzione|e }}">
+                                        <td>{{ row.OrdineProduzione }}</td>
+                                        <td>{{ row.CodArt }}</td>
+                                        <td>{{ row.VarianteArt }}</td>
+                                        <td>{{ row.Revisione }}</td>
+                                        <td>{{ row.DesArt }}</td>
+                                        <td>{{ row.Qty }}</td>
+                                        <td data-col="stato">{{ row.Stato }}</td>
+                                    </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="7"
+                                        class="text-center text-muted py-3">
+                                        Nessun ordine carpenteria.
+                                    </td>
+                                </tr>
+                            {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

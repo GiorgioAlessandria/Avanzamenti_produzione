@@ -1,0 +1,68 @@
+<div class="container-fluid px-0">
+    <div class="row mb-0 g-3 align-items-end">
+        <div class="col">
+            <input type="text"
+                   id="filter-acq-scorte-codart"
+                   class="form-control js-table-filter"
+                   placeholder="Filtra per codice..."
+                   data-target-table="acquisti_scorte_table"
+                   data-filter-mode="dataset"
+                   data-filter-key="codart"
+                   autocomplete="off">
+        </div>
+
+        <div class="col">
+            <input type="text"
+                   id="filter-acq-scorte-variante"
+                   class="form-control js-table-filter"
+                   placeholder="Filtra per variante..."
+                   data-target-table="acquisti_scorte_table"
+                   data-filter-mode="dataset"
+                   data-filter-key="variante"
+                   autocomplete="off">
+        </div>
+
+        <div class="col">
+            <input type="text"
+                   id="filter-acq-scorte-desart"
+                   class="form-control js-table-filter"
+                   placeholder="Filtra per descrizione..."
+                   data-target-table="acquisti_scorte_table"
+                   data-filter-mode="dataset"
+                   data-filter-key="desart"
+                   autocomplete="off">
+        </div>
+
+        <div class="col">
+            <input type="text"
+                   id="filter-acq-scorte-segnalato-da"
+                   class="form-control js-table-filter"
+                   placeholder="Filtra per operatore..."
+                   data-target-table="acquisti_scorte_table"
+                   data-filter-mode="dataset"
+                   data-filter-key="segnalatoda"
+                   autocomplete="off">
+        </div>
+
+        <div class="col">
+            <select id="filter-acq-scorte-stato"
+                    class="form-select js-table-filter"
+                    data-target-table="acquisti_scorte_table"
+                    data-filter-mode="dataset"
+                    data-filter-key="stato">
+                <option value="">Tutti gli stati</option>
+                <option value="Aperta">Aperte</option>
+                <option value="Ordinata">Ordinate</option>
+                <option value="Annullata">Annullate</option>
+            </select>
+        </div>
+
+        <div class="col">
+            <button class="btn btn-outline-success w-100"
+                    type="button"
+                    id="btn-export-acq-scorte">
+                Export Excel
+            </button>
+        </div>
+    </div>
+</div>

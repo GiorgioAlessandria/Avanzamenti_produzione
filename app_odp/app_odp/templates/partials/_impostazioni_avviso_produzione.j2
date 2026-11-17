@@ -1,0 +1,46 @@
+<section id="production-notice-settings" class="container-fluid mt-4 mb-4">
+    {% for category, message in get_flashed_messages(with_categories=true, category_filter=['production-notice-success', 'production-notice-error']) %}
+        <div class="alert alert-{{ 'success' if category == 'production-notice-success' else 'danger' }}" role="status">{{ message|e }}</div>
+    {% endfor %}
+    <div class="card shadow-sm">
+        <div class="card-header"><h3 class="mb-0">Avviso casuale in produzione</h3></div>
+        <form id="production-notice-form" class="card-body" method="post" action="{{ operator_url_for('main.impostazioni_avviso_produzione') }}">
+            <input type="hidden" name="csrf_token" value="{{ production_notice_csrf }}">
+            <div class="row g-3">
+                <div class="col-md-8">
+                    <label for="production-notice-user" class="form-label">Operatore</label>
+                    <select id="production-notice-user" class="form-select" name="user_id" required>
+                        <option value="">Seleziona un operatore</option>
+                        {% for id, username, notice in production_notice_users %}
+                            <option value="{{ id }}" data-message="{{ notice.get('message', '')|e }}" data-probability="{{ notice.get('probability', 30)|e }}">{{ username|e }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label for="production-notice-probability" class="form-label">Probabilità per clic (%)</label>
+                    <input id="production-notice-probability" type="number" name="probability" class="form-control" min="0" max="100" value="30" required aria-describedby="production-notice-probability-help">
+                    <div id="production-notice-probability-help" class="form-text">0% disattiva l’avviso. 100% lo mostra a ogni clic.</div>
+                </div>
+                <div class="col-12">
+                    <label for="production-notice-message" class="form-label">Messaggio</label>
+                    <textarea id="production-notice-message" class="form-control" name="message" rows="3" maxlength="500" aria-describedby="production-notice-message-help"></textarea>
+                    <div id="production-notice-message-help" class="form-text">Lascia il messaggio vuoto per rimuoverlo.</div>
+                </div>
+            </div>
+            <button class="btn btn-primary mt-3" type="submit">Salva avviso</button>
+        </form>
+    </div>
+</section>
+<script>
+    (() => {
+        const form = document.getElementById('production-notice-form');
+        const user = form.elements.user_id;
+        function loadNotice() {
+            const selected = user.selectedOptions[0];
+            form.elements.message.value = selected?.dataset.message ?? '';
+            form.elements.probability.value = selected?.dataset.probability ?? '30';
+        }
+        user.addEventListener('change', loadNotice);
+        loadNotice();
+    })();
+</script>

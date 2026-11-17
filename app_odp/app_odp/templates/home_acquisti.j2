@@ -1,0 +1,976 @@
+{% extends "base.j2" %}
+
+{% block title %}Acquisti{% endblock %}
+
+{% block content %}
+    <main class="container-fluid mt-2 mb-3 d-flex flex-column px-0"
+          id="acquisti-page"
+          data-bridge-url="{{ url_for('main.api_acquisti_bridge') }}"
+          style="height: calc(100vh - 140px); overflow: hidden; min-height: 0;">
+        <div class="d-flex flex-column gap-3 flex-grow-1"
+             style="min-height: 0;">
+
+            <div class="flex-shrink-0">
+                <div class="card shadow-sm">
+                    <div class="card-body py-2">
+                        <div class="align-items-center d-flex justify-content-between mb-0"
+                             id="acquisti-section-switch">
+                            <button class="btn btn-primary js-acq-section-btn active"
+                                    type="button"
+                                    data-section="giacenza">
+                                Giacenza
+                            </button>
+                            <button class="btn btn-outline-primary js-acq-section-btn"
+                                    type="button"
+                                    data-section="materiale">
+                                Materiale in ordine
+                            </button>
+                            <button class="btn btn-outline-primary js-acq-section-btn"
+                                    type="button"
+                                    data-section="ordini">
+                                Ordini produzione
+                            </button>
+                            <button class="btn btn-outline-primary js-acq-section-btn"
+                                    type="button"
+                                    data-section="scorte">
+                                Scorte segnalate
+                            </button>
+                            <a class="btn btn-outline-primary"
+                               href="{{ operator_url_for('main.acquisti_ordini_fornitore') }}">
+                                Ordini acquisto
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex-shrink-0">
+                <section class="card shadow-sm"
+                         id="acquisti-filters-container">
+                    <div class="card-body py-2">
+                        <div class="acq-filters-panel"
+                             data-section="giacenza">
+                            {% include "partials/_acquisti_filters_giacenza.j2" %}
+                        </div>
+
+                        <div class="acq-filters-panel d-none"
+                             data-section="materiale">
+                            {% include "partials/_acquisti_filters_materiale.j2" %}
+                        </div>
+
+                        <div class="acq-filters-panel d-none"
+                             data-section="ordini">
+                            {% include "partials/_acquisti_filters_ordini.j2" %}
+                        </div>
+                        <div class="acq-filters-panel d-none"
+                             data-section="scorte">
+                            {% include "partials/_acquisti_filters_scorte.j2" %}
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <div class="flex-grow-1 overflow-hidden"
+                 style="min-height: 0;">
+                <section id="acquisti-content-container"
+                         class="h-100 overflow-hidden"
+                         style="min-height: 0;">
+                    <div class="acq-section-panel h-100"
+                         data-section="giacenza"
+                         style="min-height: 0;">
+                        <div id="acquisti_giacenza_section"
+                             class="h-100"
+                             style="min-height: 0;">
+                            {% include "partials/_acquisti_giacenza.j2" %}
+                        </div>
+                    </div>
+
+                    <div class="acq-section-panel d-none h-100"
+                         data-section="materiale"
+                         style="min-height: 0;">
+                        {% include "partials/_acquisti_materiale_necessario.j2" %}
+                    </div>
+
+                    <div class="acq-section-panel d-none h-100"
+                         data-section="ordini"
+                         style="min-height: 0;">
+                        <div id="acquisti_ordini_section"
+                             class="h-100"
+                             style="min-height: 0;">
+                            {% include "partials/_acquisti_ordini_produzione.j2" %}
+                        </div>
+                    </div>
+                    <div class="acq-section-panel d-none h-100"
+                         data-section="scorte"
+                         style="min-height: 0;">
+                        {% include "partials/_acquisti_scorte.j2" %}
+                    </div>
+                </section>
+            </div>
+        </div>
+    </main>
+
+    <div class="modal fade"
+         id="modalAcqMateriale"
+         tabindex="-1"
+         aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        Dettaglio materiale
+                        <span id="modal-acq-materiale-title-extra"></span>
+                    </h5>
+                    <button type="button"
+                            class="btn-close"
+                            data-bs-dismiss="modal"
+                            aria-label="Close"></button>
+                </div>
+
+                <div class="modal-body">
+                    <div id="modal-acq-materiale-body"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <style>
+        #acquisti-page .table-responsive {
+            overflow: auto;
+        }
+
+        #acquisti-page table thead th {
+            position: sticky;
+            top: 0;
+            z-index: 20;
+            background: var(--bs-info);
+            color: #000;
+            box-shadow: inset 0 -1px 0 #000, inset 0 1px 0 #000;
+        }
+    </style>
+
+{% endblock %}
+
+{% block extra_js %}
+    {{ super() }}
+    <script>
+        (() => {
+            const sectionButtons = document.querySelectorAll(".js-acq-section-btn");
+            const headerButtons = document.querySelectorAll(".js-acq-section-btn-base");
+            const sectionPanels = document.querySelectorAll(".acq-section-panel");
+            const filterPanels = document.querySelectorAll(".acq-filters-panel");
+
+            function randomizeScorteSparkles(btn) {
+                for (let i = 1; i <= 10; i += 1) {
+                    btn.style.setProperty(`--acq-scorte-sparkle-${i}-x`, `${8 + Math.random() * 84}%`);
+                    btn.style.setProperty(`--acq-scorte-sparkle-${i}-y`, `${12 + Math.random() * 76}%`);
+                }
+            }
+
+            function updateScorteAlertState() {
+                const hasOverdueScorte = Boolean(
+                    document.querySelector("#acquisti_scorte_table tbody tr[data-scorta-overdue='1']")
+                );
+
+                [...sectionButtons, ...headerButtons]
+                    .filter((btn) => btn.dataset.section === "scorte")
+                    .forEach((btn) => {
+                        btn.classList.toggle("acq-scorte-alert", hasOverdueScorte);
+                        if (hasOverdueScorte) randomizeScorteSparkles(btn);
+                    });
+            }
+
+            function setButtonState(buttons, sectionName) {
+                buttons.forEach((btn) => {
+                    const isActive = btn.dataset.section === sectionName;
+                    btn.classList.toggle("active", isActive);
+                    btn.classList.toggle("btn-primary", isActive);
+                    btn.classList.toggle("btn-outline-primary", !isActive);
+                });
+            }
+
+            function setActiveSection(sectionName) {
+                setButtonState(sectionButtons, sectionName);
+                setButtonState(headerButtons, sectionName);
+                updateScorteAlertState();
+
+                sectionPanels.forEach((panel) => {
+                    panel.classList.toggle("d-none", panel.dataset.section !== sectionName);
+                });
+
+                filterPanels.forEach((panel) => {
+                    panel.classList.toggle("d-none", panel.dataset.section !== sectionName);
+                });
+            }
+
+            [...sectionButtons, ...headerButtons].forEach((btn) => {
+                btn.addEventListener("click", () => {
+                    setActiveSection(btn.dataset.section);
+                });
+            });
+
+            setActiveSection("giacenza");
+            window.setInterval(() => {
+                document.querySelectorAll(".js-acq-section-btn[data-section='scorte'].acq-scorte-alert")
+                    .forEach(randomizeScorteSparkles);
+            }, 650);
+            window.updateAcqScorteAlertState = updateScorteAlertState;
+        })();
+        (() => {
+            function applyAcqGiacenzaRowState() {
+                const table = document.getElementById("acquisti_giacenza_table");
+                if (!table) return;
+
+                const showDecimalControl = Boolean(table.querySelector("tbody tr[data-decimal-control='1']"));
+                table.querySelectorAll(".js-acq-decimal-control-col").forEach((cell) => {
+                    cell.classList.toggle("d-none", !showDecimalControl);
+                });
+
+                const emptyCell = table.querySelector("tbody tr[data-empty='1'] td");
+                if (emptyCell) emptyCell.colSpan = showDecimalControl ? 16 : 15;
+
+                table.querySelectorAll("tbody tr").forEach((row) => {
+                    row.classList.remove("row-acq-negative", "row-acq-understock");
+
+                    const isNegative = (row.dataset.negative || "") === "1";
+                    const isUnderstock = (row.dataset.understock || "") === "1";
+
+                    // precedenza assoluta al negativo
+                    if (isNegative) {
+                        row.classList.add("row-acq-negative");
+                    } else if (isUnderstock) {
+                        row.classList.add("row-acq-understock");
+                    }
+                });
+            }
+
+            document.addEventListener("DOMContentLoaded", applyAcqGiacenzaRowState);
+            window.applyAcqGiacenzaRowState = applyAcqGiacenzaRowState;
+        })();
+        (() => {
+            document.addEventListener("DOMContentLoaded", () => {
+                const root = document.getElementById("acquisti-page");
+                if (!root) return;
+
+                const bridgeUrl = root.dataset.bridgeUrl;
+                if (!bridgeUrl) return;
+
+                const POLL_MS = 5000;
+                let isRefreshing = false;
+                const REFRESH_IDLE_MS = 12000;
+                let lastUserActivityAt = 0;
+
+                function markUserActivity() {
+                    lastUserActivityAt = Date.now();
+                }
+
+                function userIsInteracting() {
+                    return Date.now() - lastUserActivityAt < REFRESH_IDLE_MS;
+                }
+
+                root.addEventListener("scroll", markUserActivity, true);
+                root.addEventListener("input", markUserActivity, true);
+                root.addEventListener("change", markUserActivity, true);
+                root.addEventListener("pointerdown", markUserActivity, true);
+                root.addEventListener("wheel", markUserActivity, {capture: true, passive: true});
+
+                function getAcquistiFilterSnapshot() {
+                    const snapshot = {};
+
+                    document.querySelectorAll(
+                        "#acquisti-filters-container .js-table-filter, " +
+                        "#acquisti-filters-container .js-table-filter-checkbox"
+                    ).forEach((el) => {
+                        const key = el.id || `${el.dataset.targetTable || ""}|${el.dataset.filterKey || ""}`;
+                        if (!key) return;
+
+                        if (el.classList.contains("js-table-filter-checkbox")) {
+                            snapshot[key] = Boolean(el.checked);
+                        } else {
+                            snapshot[key] = el.value ?? "";
+                        }
+                    });
+
+                    return snapshot;
+                }
+
+                function restoreAcquistiFilterSnapshot(snapshot) {
+                    document.querySelectorAll(
+                        "#acquisti-filters-container .js-table-filter, " +
+                        "#acquisti-filters-container .js-table-filter-checkbox"
+                    ).forEach((el) => {
+                        const key = el.id || `${el.dataset.targetTable || ""}|${el.dataset.filterKey || ""}`;
+                        if (!key || !(key in snapshot)) return;
+
+                        if (el.classList.contains("js-table-filter-checkbox")) {
+                            el.checked = Boolean(snapshot[key]);
+                        } else {
+                            el.value = snapshot[key];
+                        }
+                    });
+                }
+
+                function getAllAcquistiTargetTableIds() {
+                    const ids = new Set();
+
+                    document.querySelectorAll(
+                        "#acquisti-filters-container .js-table-filter[data-target-table], " +
+                        "#acquisti-filters-container .js-table-filter-checkbox[data-target-table]"
+                    ).forEach((el) => {
+                        const tableId = (el.dataset.targetTable || "").trim();
+                        if (tableId) ids.add(tableId);
+                    });
+
+                    return [...ids];
+                }
+
+                function parseDateDDMMYYYY(s) {
+                    const raw = String(s).trim();
+
+                    let m = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+                    if (m) {
+                        return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).getTime();
+                    }
+
+                    m = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?/);
+                    if (!m) return NaN;
+
+                    return new Date(
+                        Number(m[3]),
+                        Number(m[2]) - 1,
+                        Number(m[1]),
+                        m[4] ? Number(m[4]) : 0,
+                        m[5] ? Number(m[5]) : 0
+                    ).getTime();
+                }
+
+                function guessType(value) {
+                    const v = String(value).trim().replace(/\./g, "").replace(",", ".");
+                    if (v === "") return "text";
+                    if (!isNaN(Number(v))) return "num";
+                    if (!isNaN(parseDateDDMMYYYY(value))) return "date";
+                    return "text";
+                }
+
+                function cellValue(tr, colIndex) {
+                    const td = tr.children[colIndex];
+                    return td ? td.textContent.trim() : "";
+                }
+
+                function compareFactory(type, desc, colIndex) {
+                    return (a, b) => {
+                        const avRaw = cellValue(a, colIndex);
+                        const bvRaw = cellValue(b, colIndex);
+
+                        if (avRaw === "" && bvRaw === "") return 0;
+                        if (avRaw === "") return 1;
+                        if (bvRaw === "") return -1;
+
+                        let res = 0;
+
+                        if (type === "num") {
+                            const av = Number(avRaw.replace(/\./g, "").replace(",", "."));
+                            const bv = Number(bvRaw.replace(/\./g, "").replace(",", "."));
+                            res = av - bv;
+                        } else if (type === "date") {
+                            const av = parseDateDDMMYYYY(avRaw);
+                            const bv = parseDateDDMMYYYY(bvRaw);
+                            res = av - bv;
+                        } else {
+                            res = avRaw.localeCompare(bvRaw, undefined, {
+                                numeric: true,
+                                sensitivity: "base",
+                            });
+                        }
+
+                        return desc ? -res : res;
+                    };
+                }
+
+                function getAcquistiSortSnapshot() {
+                    const snapshot = {};
+
+                    document.querySelectorAll("#acquisti-content-container table.table-sortable[id]").forEach((table) => {
+                        const activeTh = table.querySelector("thead th[data-sort-dir]");
+                        if (!activeTh) return;
+
+                        const colIndex = activeTh.cellIndex;
+                        const dir = activeTh.getAttribute("data-sort-dir");
+                        const declaredType = (activeTh.getAttribute("data-sort") || "").toLowerCase();
+
+                        let type = declaredType;
+                        if (!type) {
+                            const tbody = table.tBodies[0];
+                            const rows = tbody ? Array.from(tbody.rows) : [];
+                            const sample = rows.map((r) => cellValue(r, colIndex)).find((v) => v !== "") || "";
+                            type = guessType(sample);
+                        }
+
+                        snapshot[table.id] = {
+                            colIndex,
+                            dir,
+                            type,
+                        };
+                    });
+
+                    return snapshot;
+                }
+
+                function restoreAcquistiSortSnapshot(snapshot) {
+                    Object.entries(snapshot || {}).forEach(([tableId, meta]) => {
+                        const table = document.getElementById(tableId);
+                        if (!table) return;
+
+                        const thead = table.tHead;
+                        const tbody = table.tBodies[0];
+                        if (!thead || !tbody) return;
+
+                        const ths = Array.from(thead.querySelectorAll("th"));
+                        ths.forEach((th, idx) => {
+                            if (idx === meta.colIndex) {
+                                th.setAttribute("data-sort-dir", meta.dir);
+                            } else {
+                                th.removeAttribute("data-sort-dir");
+                            }
+                        });
+
+                        const rows = Array.from(tbody.rows);
+                        const desc = meta.dir === "desc";
+
+                        rows.sort(compareFactory(meta.type || "text", desc, meta.colIndex));
+                        rows.forEach((row) => tbody.appendChild(row));
+                    });
+                }
+
+                function getAcquistiScrollSnapshot() {
+                    const snapshot = {};
+                    document.querySelectorAll("#acquisti-content-container table[id]").forEach((table) => {
+                        const scroller = table.closest(".table-responsive");
+                        if (!scroller) return;
+                        snapshot[table.id] = {
+                            top: scroller.scrollTop,
+                            left: scroller.scrollLeft,
+                        };
+                    });
+                    return snapshot;
+                }
+
+                function restoreAcquistiScrollSnapshot(snapshot) {
+                    const apply = () => {
+                        Object.entries(snapshot || {}).forEach(([tableId, pos]) => {
+                            const table = document.getElementById(tableId);
+                            const scroller = table?.closest(".table-responsive");
+                            if (!scroller) return;
+                            scroller.scrollTop = Number(pos.top) || 0;
+                            scroller.scrollLeft = Number(pos.left) || 0;
+                        });
+                    };
+                    window.requestAnimationFrame(() => {
+                        apply();
+                        window.setTimeout(apply, 50);
+                    });
+                }
+
+                function reapplyAllAcquistiFilters() {
+                    const tableIds = getAllAcquistiTargetTableIds();
+
+                    tableIds.forEach((tableId) => {
+                        window.applyFiltersToTable?.(tableId);
+                    });
+
+                    window.applyAcqGiacenzaRowState?.();
+                    window.applyRowColors?.();
+                    window.applyAcquistiOrdiniFilters?.();
+                    window.updateAcqScorteAlertState?.();
+                }
+
+                function hasUnsavedScortaNote() {
+                    return Boolean(document.querySelector(".js-acq-scorta-note[data-dirty='1']"));
+                }
+
+                async function refreshAcquistiTables(options = {}) {
+                    const force = Boolean(options.force);
+                    const allowScortaNoteRefresh = Boolean(options.allowScortaNoteRefresh);
+
+                    if (isRefreshing) {
+                        if (force) {
+                            setTimeout(
+                                () => refreshAcquistiTables({force: true, allowScortaNoteRefresh}),
+                                250
+                            );
+                        }
+                        return;
+                    }
+                    if (!allowScortaNoteRefresh && hasUnsavedScortaNote()) {
+                        return;
+                    }
+
+                    if (!force && userIsInteracting()) {
+                        return;
+                    }
+                    if (!force && document.querySelector("#modalAcqMateriale.show")) {
+                        return;
+                    }
+
+                    isRefreshing = true;
+                    const filterSnapshot = getAcquistiFilterSnapshot();
+                    const sortSnapshot = getAcquistiSortSnapshot();
+                    const scrollSnapshot = getAcquistiScrollSnapshot();
+
+                    try {
+                        const response = await window.avpFetch(bridgeUrl, {
+                            method: "GET",
+                            headers: {
+                                "Accept": "application/json",
+                                "X-Requested-With": "XMLHttpRequest",
+                            },
+                            credentials: "same-origin",
+                            cache: "no-store",
+                        });
+
+                        if (!response.ok) {
+                            console.error("Bridge acquisti non riuscito:", response.status, response.statusText);
+                            return;
+                        }
+
+                        const data = await response.json();
+
+                        if (!data || data.ok === false) {
+                            console.error("Risposta bridge acquisti non valida:", data);
+                            return;
+                        }
+
+                        const fragments = data.fragments || {};
+
+                        Object.entries(fragments).forEach(([targetId, html]) => {
+                            const target = document.getElementById(targetId);
+                            if (target) {
+                                target.innerHTML = html;
+                            } else {
+                                console.warn("Target fragment non trovato:", targetId);
+                            }
+                        });
+
+                        restoreAcquistiFilterSnapshot(filterSnapshot);
+                        restoreAcquistiSortSnapshot(sortSnapshot);
+                        reapplyAllAcquistiFilters();
+                        window.restoreSelectedRows?.();
+                        restoreAcquistiScrollSnapshot(scrollSnapshot);
+
+                    } catch (err) {
+                        console.error("Errore refresh acquisti:", err);
+
+                    } finally {
+                        isRefreshing = false;
+                    }
+                }
+
+                window.refreshAcquistiTables = refreshAcquistiTables;
+                window.setInterval(refreshAcquistiTables, POLL_MS);
+
+                function refreshScorteFromExternalEvent(eventData = {}) {
+                    if (eventData.type && eventData.type !== "scorta-segnalata") {
+                        return;
+                    }
+
+                    refreshAcquistiTables({force: true});
+                }
+
+                try {
+                    if (window.BroadcastChannel) {
+                        const channel = new BroadcastChannel("avp_acquisti_events");
+
+                        channel.addEventListener("message", (event) => {
+                            refreshScorteFromExternalEvent(event.data || {});
+                        });
+                    }
+
+                    window.addEventListener("storage", (event) => {
+                        if (event.key !== "avp_acquisti_scorte_changed") {
+                            return;
+                        }
+
+                        try {
+                            const data = JSON.parse(event.newValue || "{}");
+                            refreshScorteFromExternalEvent(data);
+                        } catch (err) {
+                            refreshAcquistiTables({force: true});
+                        }
+                    });
+
+                } catch (err) {
+                    console.warn("Listener notifiche scorte non attivato:", err);
+                }
+
+                // opzionale ma utile anche al primo caricamento
+                reapplyAllAcquistiFilters();
+            });
+        })();
+    </script>
+    <script>
+        (() => {
+            document.addEventListener("DOMContentLoaded", () => {
+                const sourceInput = document.getElementById("filter-acq-ordini-rifglobale");
+                if (!sourceInput) return;
+
+                const hiddenFilterIds = [
+                    "filter-acq-ordini-rif-montaggio-sl",
+                    "filter-acq-ordini-rif-montaggio-m",
+                    "filter-acq-ordini-rif-officina",
+                    "filter-acq-ordini-rif-carpenteria",
+                ];
+
+                const orderTableIds = [
+                    "acquisti_ordini_montaggio_sl_table",
+                    "acquisti_ordini_montaggio_m_table",
+                    "acquisti_ordini_officina_table",
+                    "acquisti_ordini_carpenteria_table",
+                ];
+
+                function applyAcquistiOrdiniFilters() {
+                    const value = sourceInput.value || "";
+
+                    hiddenFilterIds.forEach((id) => {
+                        const hiddenInput = document.getElementById(id);
+                        if (hiddenInput) hiddenInput.value = value;
+                    });
+
+                    orderTableIds.forEach((tableId) => {
+                        window.applyFiltersToTable?.(tableId);
+                    });
+                }
+
+                sourceInput.addEventListener("input", applyAcquistiOrdiniFilters);
+                window.applyAcquistiOrdiniFilters = applyAcquistiOrdiniFilters;
+
+                applyAcquistiOrdiniFilters();
+            });
+        })();
+    </script>
+    <script>
+        (() => {
+            function escHtml(value) {
+                return String(value ?? "")
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;")
+                    .replace(/"/g, "&quot;")
+                    .replace(/'/g, "&#039;");
+            }
+
+            function renderEmptyState(message) {
+                return `<div class="text-muted">${escHtml(message)}</div>`;
+            }
+
+            function renderRowsTable(title, rows, columns) {
+                if (!Array.isArray(rows) || rows.length === 0) {
+                    return `
+                    <div class="mb-3">
+                        <h6 class="mb-2">${escHtml(title)}</h6>
+                        ${renderEmptyState("Nessun dato disponibile.")}
+                    </div>
+                `;
+                }
+
+                const thead = columns.map(col => `<th>${escHtml(col.label)}</th>`).join("");
+                const tbody = rows.map(row => {
+                    const tds = columns.map(col => `<td>${escHtml(col.key === "Fase" ? window.phaseLabel(row?.[col.key]) : row?.[col.key] ?? "")}</td>`).join("");
+                    return `<tr>${tds}</tr>`;
+                }).join("");
+
+                return `
+                <div class="mb-3">
+                    <h6 class="mb-2">${escHtml(title)}</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-striped table-hover align-middle mb-0">
+                            <thead>
+                                <tr>${thead}</tr>
+                            </thead>
+                            <tbody>
+                                ${tbody}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+            }
+
+            document.addEventListener("click", (event) => {
+                const btn = event.target.closest(".js-open-acq-material-modal");
+                if (!btn) return;
+
+                const modalEl = document.getElementById("modalAcqMateriale");
+                const titleExtraEl = document.getElementById("modal-acq-materiale-title-extra");
+                const bodyEl = document.getElementById("modal-acq-materiale-body");
+
+                if (!modalEl || !titleExtraEl || !bodyEl) return;
+
+                let payload = {};
+                try {
+                    payload = JSON.parse(btn.dataset.material || "{}");
+                } catch (err) {
+                    console.error("Payload modal materiale non valido:", err);
+                    titleExtraEl.textContent = "";
+                    bodyEl.innerHTML = `<div class="alert alert-danger mb-0">Impossibile leggere il dettaglio materiale.</div>`;
+
+                    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+                    modal.show();
+                    return;
+                }
+
+                const codArt = payload.cod_art || "";
+                const variante = payload.variante_art || "";
+                const revisione = payload.indice_modifica || "";
+                const desArt = payload.des_art || "";
+                const magUm = payload.mag_um || "";
+
+                titleExtraEl.textContent = [codArt, variante, revisione].filter(Boolean).join(" - ");
+
+                const headerInfo = `
+                    <div class="mb-3">
+                        <div><strong>Codice:</strong> ${escHtml(codArt || "-")}</div>
+                        <div><strong>Variante:</strong> ${escHtml(variante || "-")}</div>
+                        <div><strong>Revisione:</strong> ${escHtml(revisione || "-")}</div>
+                        <div><strong>Descrizione:</strong> ${escHtml(desArt || "-")}</div>
+                        <div><strong>UdM:</strong> ${escHtml(magUm || "-")}</div>
+                    </div>
+                `;
+
+                const distintaHtml = renderRowsTable(
+                    "Impeghi in distinta",
+                    payload.in_distinta || [],
+                    [
+                        {key: "Ordine", label: "Ordine"},
+                        {key: "DescrizioneOrdine", label: "Descrizione ordine"},
+                        {key: "Stato", label: "Stato"},
+                        {key: "Fase", label: "Fase"},
+                        {key: "Quantita", label: "Quantità"},
+                        {key: "MagUM", label: "UdM"},
+                    ]
+                );
+
+                const ordineHtml = renderRowsTable(
+                    "Produzione prevista",
+                    payload.in_ordine || [],
+                    [
+                        {key: "Ordine", label: "Ordine"},
+                        {key: "DescrizioneOrdine", label: "Descrizione ordine"},
+                        {key: "Stato", label: "Stato"},
+                        {key: "Quantita", label: "Quantità"},
+                        {key: "Tipo", label: "Tipo"},
+                    ]
+                );
+
+                const acquistiHtml = renderRowsTable(
+                    "Acquisti in arrivo",
+                    payload.in_acquisto || [],
+                    [
+                        {key: "Ordine", label: "Ordine"},
+                        {key: "Fornitore", label: "Fornitore"},
+                        {key: "DataConsegna", label: "Arrivo previsto"},
+                        {key: "Quantita", label: "Quantità"},
+                        {key: "Stato", label: "Stato"},
+                    ]
+                );
+
+                bodyEl.innerHTML = headerInfo + distintaHtml + ordineHtml + acquistiHtml;
+
+                const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+                modal.show();
+            });
+        })();
+    </script>
+    <script>
+        (() => {
+            function getInputValue(id) {
+                return document.getElementById(id)?.value?.trim() || "";
+            }
+
+            function getCheckboxValue(id) {
+                return document.getElementById(id)?.checked ? "true" : "false";
+            }
+
+            function startAcquistiExcelExport(section) {
+                const params = new URLSearchParams();
+
+                if (section === "giacenza") {
+                    params.set("codart", getInputValue("filter-acq-giacenza-codart"));
+                    params.set("desart", getInputValue("filter-acq-giacenza-desart"));
+                    params.set("negative", getCheckboxValue("filter-acq-giacenza-negativi"));
+                    params.set("understock", getCheckboxValue("filter-acq-giacenza-understock"));
+                }
+
+                if (section === "materiale") {
+                    params.set("codart", getInputValue("filter-acq-materiale-codart"));
+                    params.set("variante", getInputValue("filter-acq-materiale-variante"));
+                    params.set("desart", getInputValue("filter-acq-materiale-desart"));
+                    params.set("critical", getCheckboxValue("filter-acq-materiale-critical"));
+                    params.set("understock", getCheckboxValue("filter-acq-materiale-understock"));
+                }
+
+                window.location.href = `/api/acquisti/export/${section}?${params.toString()}`;
+            }
+
+            document.addEventListener("click", (event) => {
+                const giacenzaBtn = event.target.closest("#btn-export-acq-giacenza");
+                if (giacenzaBtn) {
+                    startAcquistiExcelExport("giacenza");
+                    return;
+                }
+
+                const materialeBtn = event.target.closest("#btn-export-acq-materiale");
+                if (materialeBtn) {
+                    startAcquistiExcelExport("materiale");
+                    return;
+                }
+
+            });
+        })();
+    </script>
+    <script>
+        (() => {
+            function getInputValue(id) {
+                return document.getElementById(id)?.value?.trim() || "";
+            }
+
+            function startScorteExcelExport() {
+                const params = new URLSearchParams();
+                const stato = getInputValue("filter-acq-scorte-stato");
+
+                params.set("codart", getInputValue("filter-acq-scorte-codart"));
+                params.set("variante", getInputValue("filter-acq-scorte-variante"));
+                params.set("desart", getInputValue("filter-acq-scorte-desart"));
+                params.set("stato", stato);
+                params.set("segnalato_da", getInputValue("filter-acq-scorte-segnalato-da"));
+                params.set("include_annullate", stato === "" ? "true" : "false");
+
+                window.location.href = `/api/acquisti/export/scorte?${params.toString()}`;
+            }
+
+            function playScortaOrdinataAnimation(row, button) {
+                if (!row || !button || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+                    row?.classList.remove("table-danger");
+                    row?.classList.add("table-success");
+                    return Promise.resolve();
+                }
+
+                const cell = button.closest("td");
+                if (!cell) return Promise.resolve();
+
+                const scene = document.createElement("span");
+                scene.className = "acq-scorta-worker-scene";
+                scene.setAttribute("aria-hidden", "true");
+                scene.innerHTML = [
+                    '<span class="acq-scorta-red-button"></span>',
+                    '<span class="acq-scorta-stickman">',
+                    '<span class="acq-scorta-stickman-head"></span>',
+                    '<span class="acq-scorta-stickman-body"></span>',
+                    '<span class="acq-scorta-stickman-arm acq-scorta-stickman-arm-left"></span>',
+                    '<span class="acq-scorta-stickman-arm acq-scorta-stickman-arm-right"></span>',
+                    '<span class="acq-scorta-stickman-leg acq-scorta-stickman-leg-left"></span>',
+                    '<span class="acq-scorta-stickman-leg acq-scorta-stickman-leg-right"></span>',
+                    '</span>'
+                ].join("");
+
+                const cellRect = cell.getBoundingClientRect();
+                const buttonRect = button.getBoundingClientRect();
+                scene.style.left = `${Math.max(0, buttonRect.left - cellRect.left - 94)}px`;
+                scene.style.top = `${buttonRect.top - cellRect.top + buttonRect.height / 2}px`;
+
+                cell.classList.add("acq-scorta-action-anim-cell");
+                button.classList.add("acq-scorta-ordering-button");
+                cell.appendChild(scene);
+
+                window.setTimeout(() => {
+                    row.classList.remove("table-danger");
+                    row.classList.add("table-success", "acq-scorta-ordering-complete");
+                    row.dataset.scortaOverdue = "0";
+                }, 760);
+
+                return new Promise((resolve) => {
+                    window.setTimeout(() => {
+                        scene.remove();
+                        cell.classList.remove("acq-scorta-action-anim-cell");
+                        button.classList.remove("acq-scorta-ordering-button");
+                        resolve();
+                    }, 1550);
+                });
+            }
+
+            async function updateScorta(button) {
+                const id = button.dataset.id;
+                const action = button.dataset.action;
+                const row = button.closest("tr");
+                const note = row?.querySelector(".js-acq-scorta-note")?.value || "";
+                const animateOrdinata = action === "ordinata" && row?.dataset.scortaOverdue === "1";
+
+                if (!id || !action) return;
+
+                if (action === "annulla" && !confirm("Annullare questa segnalazione?")) {
+                    return;
+                }
+
+                button.disabled = true;
+
+                try {
+                    const response = await window.avpFetch(`/api/acquisti/scorte/${id}`, {
+                        method: "PATCH",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "X-Requested-With": "XMLHttpRequest"
+                        },
+                        credentials: "same-origin",
+                        body: JSON.stringify({action, note})
+                    });
+
+                    const data = await response.json();
+
+                    if (!response.ok || data.ok === false) {
+                        alert(data.error || "Errore durante l'aggiornamento della scorta.");
+                        return;
+                    }
+                    row?.querySelector(".js-acq-scorta-note")?.removeAttribute("data-dirty");
+
+                    if (animateOrdinata) {
+                        await playScortaOrdinataAnimation(row, button);
+                    }
+
+                    if (window.refreshAcquistiTables) {
+                        await window.refreshAcquistiTables({
+                            force: true,
+                            allowScortaNoteRefresh: true
+                        });
+                    } else {
+                        window.location.reload();
+                    }
+
+                } catch (err) {
+                    console.error("Errore aggiornamento scorta:", err);
+                    alert("Errore di comunicazione con il server.");
+
+                } finally {
+                    button.disabled = false;
+                }
+            }
+
+            document.addEventListener("input", (event) => {
+                const noteEl = event.target.closest(".js-acq-scorta-note");
+                if (noteEl) {
+                    noteEl.dataset.dirty = "1";
+                }
+            });
+
+            document.addEventListener("click", (event) => {
+                const exportBtn = event.target.closest("#btn-export-acq-scorte");
+                if (exportBtn) {
+                    startScorteExcelExport();
+                    return;
+                }
+
+                const actionBtn = event.target.closest(".js-acq-scorta-action");
+                if (actionBtn) {
+                    updateScorta(actionBtn);
+                }
+            });
+        })();
+    </script>
+{% endblock %}

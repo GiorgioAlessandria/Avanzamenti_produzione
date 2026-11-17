@@ -1,0 +1,440 @@
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+from app_odp.models import db
+
+
+ROME_TZ = ZoneInfo("Europe/Rome")
+VENDITE_INTERNAL_REFERENCES = ("ITALIA", "ESTERO", "EXTRACEE")
+VENDITE_DEFAULT_PACKAGING_NOTES = {
+    "ITALIA": "",
+    "ESTERO": "",
+    "EXTRACEE": "Inserire sacchetto anti-umidità",
+}
+
+
+def _rome_iso_now() -> str:
+    return datetime.now(ROME_TZ).isoformat(timespec="seconds")
+
+
+class VenditeRaggruppamento(db.Model):
+    __tablename__ = "vendite_raggruppamenti"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    nome = db.Column(db.String(80), nullable=False)
+    nome_chiave = db.Column(db.String(160), nullable=False, unique=True)
+    famiglie = db.Column(db.JSON, nullable=False, default=list)
+    versione = db.Column(db.Integer, nullable=False, default=1)
+
+    __mapper_args__ = {"version_id_col": versione}
+
+
+class VenditeClienteGeocodifica(db.Model):
+    __tablename__ = "vendite_clienti_geocodifica"
+
+    cliente_codice = db.Column(db.String(120), primary_key=True)
+    indirizzo_chiave = db.Column(db.String(64), nullable=False)
+    latitudine = db.Column(db.Float, nullable=True)
+    longitudine = db.Column(db.Float, nullable=True)
+    nome_luogo = db.Column(db.String(500), nullable=True)
+    precisione = db.Column(db.String(20), nullable=True)
+    aggiornato_il = db.Column(db.Text, nullable=False, default=_rome_iso_now)
+
+
+class VenditeNotaOrdiniCliente(db.Model):
+    __tablename__ = "vendite_nota_ordini_cliente"
+
+    id = db.Column(db.Integer, primary_key=True, default=1)
+    note = db.Column(db.String(1000), nullable=False, default="")
+    versione = db.Column(db.Integer, nullable=False, default=1)
+    aggiornata_il = db.Column(db.Text, nullable=False, default=_rome_iso_now)
+    aggiornata_da_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    aggiornata_da_nome = db.Column(db.String(120), nullable=False)
+
+    __mapper_args__ = {"version_id_col": versione}
+
+
+class VenditeNotaOrdiniClienteLettura(db.Model):
+    __tablename__ = "vendite_nota_ordini_cliente_letture"
+
+    operatore_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    versione_letta = db.Column(db.Integer, nullable=False)
+    letta_il = db.Column(
+        db.Text,
+        nullable=False,
+        default=_rome_iso_now,
+    )
+
+
+class VenditeNotaProduzioneMacchina(db.Model):
+    __tablename__ = "vendite_note_produzione_macchina"
+
+    # Indipendente dagli ODP, che la sincronizzazione può eliminare.
+    matricola = db.Column(db.String(200), primary_key=True)
+    note = db.Column(db.String(1000), nullable=False, default="")
+    versione = db.Column(db.Integer, nullable=False, default=1)
+
+    __mapper_args__ = {"version_id_col": versione}
+
+
+class VenditeOrdineCliente(db.Model):
+    __tablename__ = "vendite_ordini_cliente"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    cliente_nome = db.Column(
+        db.String(160, collation="NOCASE"),
+        nullable=False,
+    )
+    cliente_chiave = db.Column(db.String(320), nullable=False)
+    numero_ordine = db.Column(
+        db.String(120, collation="NOCASE"),
+        nullable=False,
+    )
+    numero_ordine_chiave = db.Column(db.String(240), nullable=False)
+    riferimento_interno = db.Column(
+        db.String(20),
+        nullable=False,
+        default="ITALIA",
+        index=True,
+    )
+    data_spedizione = db.Column(db.Date, nullable=True, index=True)
+    creato_il = db.Column(
+        db.Text,
+        nullable=False,
+        default=_rome_iso_now,
+        index=True,
+    )
+    creato_da_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    creato_da_nome = db.Column(db.String(120), nullable=False)
+    confermato_il = db.Column(db.Text, nullable=True)
+    confermato_da_nome = db.Column(db.String(120), nullable=True)
+    gestionale_cod_cliente = db.Column(db.String(120), nullable=True, index=True)
+
+    righe = db.relationship(
+        "VenditeOrdineClienteRiga",
+        back_populates="ordine_cliente",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+        order_by="VenditeOrdineClienteRiga.posizione",
+        passive_deletes=True,
+    )
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "cliente_chiave",
+            "numero_ordine_chiave",
+            name="uq_vendite_ordine_cliente_numero",
+        ),
+        db.UniqueConstraint(
+            "gestionale_cod_cliente",
+            name="uq_vendite_ordine_cliente_gestionale",
+        ),
+    )
+
+
+class VenditeOrdineClienteRiga(db.Model):
+    __tablename__ = "vendite_ordini_cliente_righe"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    ordine_cliente_id = db.Column(
+        db.Integer,
+        db.ForeignKey("vendite_ordini_cliente.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    posizione = db.Column(db.Integer, nullable=False)
+    modello_codice = db.Column(db.String(160), nullable=False, index=True)
+    modello_variante = db.Column(db.String(120), nullable=False, default="")
+    modello_descrizione = db.Column(db.String(500), nullable=True)
+    note = db.Column(db.String(1000), nullable=True)
+    note_commerciali = db.Column(db.String(1000), nullable=True)
+    note_produzione = db.Column(db.String(1000), nullable=True)
+    note_per_produzione = db.Column(db.String(1000), nullable=True)
+    note_spedizione = db.Column(db.String(1000), nullable=True)
+    campi_modificati = db.Column(db.JSON, nullable=False, default=list)
+    data_disponibile = db.Column(db.Date, nullable=True, index=True)
+    data_consegna = db.Column(db.Date, nullable=False, index=True)
+    versione = db.Column(db.Integer, nullable=False, default=1)
+    revisioni_lettura = db.Column(db.JSON, nullable=False, default=dict)
+
+    # Snapshot dell'ODP: nessuna FK, perché la sincronizzazione elimina gli ODP chiusi.
+    odp_id_documento = db.Column(db.Text, nullable=True)
+    odp_id_riga = db.Column(db.Text, nullable=True)
+    odp_rif_registraz = db.Column(db.Text, nullable=True)
+    odp_num_progr_riga = db.Column(db.Text, nullable=True)
+    odp_matricola = db.Column(db.String(200), nullable=True)
+    assegnata_il = db.Column(db.Text, nullable=True)
+    assegnata_da_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    assegnata_da_nome = db.Column(db.String(120), nullable=True)
+    assegnazione_automatica = db.Column(
+        db.Boolean,
+        nullable=False,
+        default=False,
+    )
+    gestionale_id_documento = db.Column(db.Text, nullable=True)
+    gestionale_id_riga = db.Column(db.Text, nullable=True)
+    gestionale_unita = db.Column(db.Integer, nullable=True)
+
+    ordine_cliente = db.relationship(
+        "VenditeOrdineCliente",
+        back_populates="righe",
+    )
+    spedizione = db.relationship(
+        "VenditeSpedizioneConfermata",
+        back_populates="riga_ordine_cliente",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        uselist=False,
+    )
+
+    __table_args__ = (
+        db.CheckConstraint(
+            "posizione > 0",
+            name="ck_vendite_ordine_cliente_riga_posizione",
+        ),
+        db.CheckConstraint(
+            "versione > 0",
+            name="ck_vendite_ordine_cliente_riga_versione",
+        ),
+        db.CheckConstraint(
+            "((odp_id_documento IS NULL AND odp_id_riga IS NULL) OR "
+            "(odp_id_documento IS NOT NULL AND odp_id_riga IS NOT NULL))",
+            name="ck_vendite_ordine_cliente_riga_odp",
+        ),
+        db.UniqueConstraint(
+            "ordine_cliente_id",
+            "posizione",
+            name="uq_vendite_ordine_cliente_riga_posizione",
+        ),
+        db.UniqueConstraint(
+            "odp_id_documento",
+            "odp_id_riga",
+            name="uq_vendite_ordine_cliente_riga_odp",
+        ),
+        db.UniqueConstraint(
+            "gestionale_id_documento",
+            "gestionale_id_riga",
+            "gestionale_unita",
+            name="uq_vendite_ordine_cliente_riga_gestionale",
+        ),
+    )
+    __mapper_args__ = {"version_id_col": versione}
+
+
+class VenditeRigaLettura(db.Model):
+    __tablename__ = "vendite_righe_letture"
+
+    riga_id = db.Column(
+        db.Integer,
+        db.ForeignKey("vendite_ordini_cliente_righe.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    operatore_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    permesso = db.Column(db.String(30), primary_key=True)
+    versione_letta = db.Column(db.Integer, nullable=False)
+    letta_il = db.Column(db.Text, nullable=False, default=_rome_iso_now)
+
+
+class VenditeOrdineClienteLog(db.Model):
+    __tablename__ = "vendite_ordini_cliente_log"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    ordine_cliente_riga_id = db.Column(db.Integer, nullable=True, index=True)
+    ordine_cliente_id = db.Column(db.Integer, nullable=True, index=True)
+    cliente_nome = db.Column(db.String(160), nullable=False)
+    numero_ordine = db.Column(db.String(120), nullable=False)
+    posizione = db.Column(db.Integer, nullable=True)
+    matricola = db.Column(db.String(200), nullable=True, index=True)
+    entita = db.Column(db.String(30), nullable=False, index=True)
+    evento = db.Column(db.String(20), nullable=False, index=True)
+    campo = db.Column(db.String(50), nullable=True, index=True)
+    valore_precedente = db.Column(db.String(1000), nullable=True)
+    valore_nuovo = db.Column(db.String(1000), nullable=True)
+    modificata_il = db.Column(
+        db.Text, nullable=False, default=_rome_iso_now, index=True
+    )
+    modificata_da_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    modificata_da_nome = db.Column(db.String(120), nullable=False)
+
+
+class VenditeMacchinaSpedibile(db.Model):
+    __tablename__ = "vendite_macchine_spedibili"
+
+    matricola_chiave = db.Column(db.String(200), primary_key=True)
+    matricola = db.Column(db.String(200), nullable=False)
+    modello = db.Column(db.String(160), nullable=False)
+    cliente = db.Column(db.String(160), nullable=False)
+    rilevata_il = db.Column(db.Text, nullable=False, default=_rome_iso_now)
+    motivo = db.Column(db.String(20), nullable=False)
+    spedita_il = db.Column(db.Text, nullable=True, index=True)
+
+
+class VenditeNotaImballoLettura(db.Model):
+    __tablename__ = "vendite_note_imballo_letture"
+
+    operatore_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    ordine_cliente_riga_id = db.Column(
+        db.Integer,
+        db.ForeignKey("vendite_ordini_cliente_righe.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    nota_firma = db.Column(db.String(64), nullable=False)
+    letta_il = db.Column(
+        db.Text,
+        nullable=False,
+        default=_rome_iso_now,
+    )
+
+
+class VenditeImballoMacchina(db.Model):
+    __tablename__ = "vendite_imballi_macchina"
+
+    # La conferma segue la matricola anche quando passa da STOCK a un ordine cliente.
+    matricola = db.Column(db.String(200), primary_key=True)
+    confermata_il = db.Column(db.Text, nullable=False, default=_rome_iso_now)
+    confermata_da_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    confermata_da_nome = db.Column(db.String(120), nullable=False)
+    sensori_antiribaltamento = db.Column(db.String(1000), nullable=True)
+
+
+class VenditeSensoriMacchina(db.Model):
+    __tablename__ = "vendite_sensori_macchina"
+
+    matricola = db.Column(db.String(200), primary_key=True)
+    sensori = db.Column(db.String(1000), nullable=False)
+    aggiornato_il = db.Column(db.Text, nullable=False, default=_rome_iso_now)
+    aggiornato_da_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    aggiornato_da_nome = db.Column(db.String(120), nullable=False)
+
+
+class VenditeSensoreAntiribaltamentoLog(db.Model):
+    __tablename__ = "vendite_sensori_antiribaltamento_log"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    matricola = db.Column(db.String(200), nullable=False, index=True)
+    sensore_seriale = db.Column(db.String(200), nullable=False, index=True)
+    registrato_il = db.Column(db.Text, nullable=False, default=_rome_iso_now)
+    registrato_da_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    registrato_da_nome = db.Column(db.String(120), nullable=False)
+
+
+class VenditeOpzioneMacchina(db.Model):
+    __tablename__ = "vendite_opzioni_macchina"
+
+    # L'opzione segue la matricola, non l'eventuale ordine cliente.
+    matricola = db.Column(db.String(200), primary_key=True)
+    opzionata_il = db.Column(db.Text, nullable=False, default=_rome_iso_now)
+    opzionata_da_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    opzionata_da_nome = db.Column(db.String(120), nullable=False)
+    nota = db.Column(db.String(1000), nullable=True)
+
+
+class VenditeSpedizioneConfermata(db.Model):
+    __tablename__ = "vendite_spedizioni_confermate"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    ordine_cliente_riga_id = db.Column(
+        db.Integer,
+        db.ForeignKey("vendite_ordini_cliente_righe.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    cliente_nome = db.Column(db.String(160), nullable=False)
+    numero_ordine = db.Column(db.String(120), nullable=False)
+    riferimento_interno = db.Column(db.String(20), nullable=False)
+    data_spedizione = db.Column(db.Date, nullable=True)
+    data_disponibile = db.Column(db.Date, nullable=True)
+    ordine_cliente_creato_il = db.Column(db.Text, nullable=False)
+    ordine_cliente_creato_da_nome = db.Column(db.String(120), nullable=False)
+    posizione = db.Column(db.Integer, nullable=False)
+    modello_codice = db.Column(db.String(160), nullable=False)
+    modello_variante = db.Column(db.String(120), nullable=False, default="")
+    modello_descrizione = db.Column(db.String(500), nullable=True)
+    data_consegna = db.Column(db.Date, nullable=False)
+    note_vendita = db.Column(db.String(1000), nullable=True)
+    note_produzione = db.Column(db.String(1000), nullable=True)
+    note_spedizione = db.Column(db.String(1000), nullable=True)
+    odp_id_documento = db.Column(db.Text, nullable=False)
+    odp_id_riga = db.Column(db.Text, nullable=False)
+    odp_rif_registraz = db.Column(db.Text, nullable=True)
+    odp_num_progr_riga = db.Column(db.Text, nullable=True)
+    odp_matricola = db.Column(db.String(200), nullable=False)
+    assegnata_il = db.Column(db.Text, nullable=True)
+    assegnata_da_nome = db.Column(db.String(120), nullable=True)
+    assegnazione_automatica = db.Column(db.Boolean, nullable=False, default=False)
+    confermata_il = db.Column(
+        db.Text,
+        nullable=False,
+        default=_rome_iso_now,
+        index=True,
+    )
+    confermata_da_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    confermata_da_nome = db.Column(db.String(120), nullable=False)
+
+    riga_ordine_cliente = db.relationship(
+        "VenditeOrdineClienteRiga",
+        back_populates="spedizione",
+    )
+
+
+class VenditeNotaImballaggio(db.Model):
+    __tablename__ = "vendite_note_imballaggio"
+
+    riferimento_interno = db.Column(db.String(20), primary_key=True)
+    note = db.Column(db.String(1000), nullable=True)
+    aggiornato_il = db.Column(db.Text, nullable=True)
+    aggiornato_da_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    aggiornato_da_nome = db.Column(db.String(120), nullable=True)

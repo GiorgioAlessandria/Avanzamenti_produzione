@@ -1,0 +1,482 @@
+{% extends "base.j2" %}
+
+{% block content %}
+    {% if lct_preview|default(false) %}
+        <div class="d-flex flex-wrap align-items-end justify-content-between gap-2 my-3">
+            {% if lct_configs %}
+                <form method="get" action="{{ url_for('main.home') }}" class="d-flex flex-wrap align-items-end gap-2">
+                    <input type="hidden" name="vista" value="lct">
+                    <input type="hidden" name="tab_session" value="{{ tab_session|e }}">
+                    <label class="form-label mb-0">Reparto
+                        <select class="form-select" name="tab" required>
+                            <option value="">Seleziona un reparto</option>
+                            {% for config in lct_configs %}
+                                <option value="{{ config.tab_code|e }}" {{ 'selected' if config.tab_code == active_tab }}>{{ config.label|e }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <button type="submit" class="btn btn-primary">Visualizza</button>
+                </form>
+            {% else %}
+                <p class="mb-0">Nessun reparto con vista di produzione standard disponibile.</p>
+            {% endif %}
+            <a class="btn btn-outline-secondary" href="{{ operator_url_for('main.home') }}">Torna alla produzione</a>
+        </div>
+    {% endif %}
+    {% if active_partial %}{% include active_partial %}{% endif %}
+
+    {% if production_notice and production_notice.message and production_notice.probability > 0 %}
+        <script>
+            window.addEventListener('click', (event) => {
+                const button = event.target.closest?.('[data-production-order-actions] button');
+                if (!button || button.disabled || !event.isTrusted) return;
+                if (Math.random() * 100 < {{ production_notice.probability|tojson }}) {
+                    window.alert({{ production_notice.message|tojson }});
+                }
+            }, true);
+        </script>
+    {% endif %}
+
+    {% if manutenzioni_da_eseguire %}
+        <div class="modal fade"
+             id="modalManutenzioniDaEseguire"
+             tabindex="-1"
+             aria-labelledby="modalManutenzioniDaEseguireLabel"
+             aria-hidden="true">
+            <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+                <div class="modal-content border-danger">
+                    <div class="modal-header bg-danger text-white">
+                        <h2 class="modal-title fs-5"
+                            id="modalManutenzioniDaEseguireLabel">
+                            <i class="bi bi-exclamation-triangle me-1"></i>
+                            Manutenzioni da eseguire
+                        </h2>
+
+                        <button type="button"
+                                class="btn-close btn-close-white"
+                                data-bs-dismiss="modal"
+                                aria-label="Chiudi">
+                        </button>
+                    </div>
+
+                    <div class="modal-body">
+                        <p>
+                            Sono presenti manutenzioni programmate per oggi
+                            o non ancora eseguite.
+                        </p>
+
+                        <div class="list-group">
+                            {% for evento in manutenzioni_da_eseguire %}
+                                <a href="{{ operator_url_for(
+                                        'main.manutenzioni_macchinario_detail',
+                                        macchinario_id=evento.macchinario_id,
+                                        view='programmate'
+                                    ) }}"
+                                   class="list-group-item list-group-item-action d-flex justify-content-between align-items-start gap-3">
+                                    <div>
+                                        <div class="fw-semibold">
+                                            {{ evento.macchinario_codice }}
+                                            - {{ evento.macchinario_descrizione }}
+                                        </div>
+
+                                        <div>
+                                            {{ evento.titolo }}
+                                        </div>
+
+                                        <div class="small text-muted">
+                                            Reparto {{ evento.reparto_codice }}
+                                            · Data {{ evento.data_programmata }}
+                                        </div>
+                                    </div>
+
+                                    {% if evento.data_programmata < oggi_manutenzioni %}
+                                        <span class="badge text-bg-danger">
+                                            Scaduta
+                                        </span>
+                                    {% else %}
+                                        <span class="badge text-bg-warning">
+                                            Oggi
+                                        </span>
+                                    {% endif %}
+                                </a>
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    <div class="modal-footer">
+                        <button type="button"
+                                class="btn btn-secondary"
+                                data-bs-dismiss="modal">
+                            Chiudi
+                        </button>
+                        <button type="button"
+                                class="btn btn-primary"
+                                id="conferma-manutenzioni-oggi">
+                            <i class="bi bi-check2 me-1"></i>
+                            Non mostrare più oggi
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    {% endif %}
+{% endblock %}
+
+{% block extra_js %}
+    {{ super() }}
+{% if production_button_animation|default(false) and not lct_home|default(false) %}
+<script>
+    (() => {
+        let movedButton;
+        let originalStyle;
+        let emptySpace;
+        let runnerLayer;
+        const viewport = window.visualViewport;
+
+        function restoreButton() {
+            if (!movedButton) return;
+            movedButton.style.cssText = originalStyle;
+            emptySpace.remove();
+            movedButton = undefined;
+        }
+
+        function showRunner(rect) {
+            runnerLayer?.remove();
+            const layer = document.createElement("div");
+            layer.setAttribute("aria-hidden", "true");
+            layer.dataset.productionRunner = "";
+            Object.assign(layer.style, {
+                position: "fixed",
+                left: `${viewport?.offsetLeft ?? 0}px`,
+                top: `${viewport?.offsetTop ?? 0}px`,
+                width: `${viewport?.width ?? document.documentElement.clientWidth}px`,
+                height: `${viewport?.height ?? document.documentElement.clientHeight}px`,
+                overflow: "hidden",
+                pointerEvents: "none",
+                zIndex: "1079",
+            });
+            const runner = document.createElement("span");
+            runner.textContent = "🧍";
+            const runnerBox = 34;
+            Object.assign(runner.style, {
+                position: "absolute",
+                left: `${rect.left + (rect.width - runnerBox) / 2 - (viewport?.offsetLeft ?? 0)}px`,
+                top: `${rect.top + (rect.height - runnerBox) / 2 - (viewport?.offsetTop ?? 0)}px`,
+                font: `32px/${runnerBox}px "Segoe UI Emoji", "Apple Color Emoji", sans-serif`,
+            });
+            layer.append(runner);
+            document.body.append(layer);
+            runnerLayer = layer;
+
+            if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+                window.setTimeout(() => layer.remove(), 400);
+                return;
+            }
+            const left = runner.offsetLeft;
+            const right = layer.clientWidth - left;
+            const distance = right > left ? right + runnerBox : -left - runnerBox;
+            const face = distance > 0 ? -1 : 1;
+            const standing = `translateX(0px) scaleX(${face})`;
+            const duration = 1050;
+            const pause = 0.2;
+            const run = runner.animate([
+                {transform: standing},
+                {transform: standing, offset: pause},
+                {transform: `translateX(${distance}px) scaleX(${face})`},
+            ], {duration});
+            window.setTimeout(() => { runner.textContent = "🏃"; }, duration * pause);
+            run.onfinish = () => layer.remove();
+        }
+
+        function moveProductionButton(event) {
+            const button = event.target.closest("[data-production-order-actions] button");
+            if (button !== movedButton) restoreButton();
+            if (!button || button.disabled) return;
+            const table = button.dataset.useSelected;
+            if ((table && !document.querySelector(table)?.querySelector("tbody tr.row-selected"))
+                || Math.random() >= 0.3) {
+                restoreButton();
+                return;
+            }
+
+            const rect = button.getBoundingClientRect();
+            const margin = 12;
+            const left = (viewport?.offsetLeft ?? 0) + margin;
+            const top = (viewport?.offsetTop ?? 0) + margin;
+            const horizontal = (viewport?.width ?? document.documentElement.clientWidth) - rect.width - 2 * margin;
+            const vertical = (viewport?.height ?? document.documentElement.clientHeight) - rect.height - 2 * margin;
+            if (horizontal < 0 || vertical < 0) {
+                restoreButton();
+                return;
+            }
+
+            let x = left + Math.random() * horizontal;
+            let y = top + Math.random() * vertical;
+            if (Math.hypot(x - rect.left, y - rect.top) < 48) {
+                x = left + (rect.left < left + horizontal / 2 ? horizontal : 0);
+                y = top + (rect.top < top + vertical / 2 ? vertical : 0);
+            }
+
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            if (!movedButton) {
+                movedButton = button;
+                originalStyle = button.style.cssText;
+                const style = getComputedStyle(button);
+                emptySpace = document.createElement("span");
+                emptySpace.setAttribute("aria-hidden", "true");
+                Object.assign(emptySpace.style, {
+                    flex: style.flex,
+                    width: `${rect.width}px`,
+                    height: `${rect.height}px`,
+                    margin: style.margin,
+                });
+                button.before(emptySpace);
+            }
+
+            Object.assign(button.style, {
+                position: "fixed",
+                left: `${x}px`,
+                top: `${y}px`,
+                width: `${rect.width}px`,
+                height: `${rect.height}px`,
+                zIndex: "1080",
+            });
+            button.style.setProperty("margin", "0", "important");
+            showRunner(rect);
+        }
+        window.addEventListener("resize", restoreButton);
+        viewport?.addEventListener("resize", restoreButton);
+        // Il sorteggio precede l'apertura dei toast e dei modali di gruppo.
+        window.addEventListener("click", moveProductionButton, true);
+    })();
+</script>
+{% endif %}
+    <script>
+        window.homeBridgeConfig = {
+            url: {{ bridge_url|tojson }},
+            lastEventId: {{ bridge_last_event_id|default("", true)|tojson }},
+            intervalMs: 2000
+        };
+
+        (() => {
+            const cfg = window.homeBridgeConfig;
+            if (!cfg || !cfg.url) return;
+
+            let lastEventId = String(cfg.lastEventId || "");
+            const intervalMs = Number(cfg.intervalMs || 2000);
+            let inFlight = false;
+
+            function parseDateDDMMYYYY(s) {
+                const m = String(s).trim().match(
+                    /^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?/
+                );
+
+                if (!m) return NaN;
+
+                const dd = Number(m[1]);
+                const mm = Number(m[2]) - 1;
+                const yyyy = Number(m[3]);
+                const hh = m[4] ? Number(m[4]) : 0;
+                const mi = m[5] ? Number(m[5]) : 0;
+
+                return new Date(yyyy, mm, dd, hh, mi).getTime();
+            }
+
+            function cellValue(tr, colIndex) {
+                const td = tr.children[colIndex];
+                return td ? (td.dataset.phaseCode ?? td.textContent).trim() : "";
+            }
+
+            function compareFactory(type, desc, colIndex) {
+                return (a, b) => {
+                    const avRaw = cellValue(a, colIndex);
+                    const bvRaw = cellValue(b, colIndex);
+
+                    if (avRaw === "" && bvRaw === "") return 0;
+                    if (avRaw === "") return 1;
+                    if (bvRaw === "") return -1;
+
+                    let res = 0;
+
+                    if (type === "num") {
+                        const av = Number(avRaw.replace(/\./g, "").replace(",", "."));
+                        const bv = Number(bvRaw.replace(/\./g, "").replace(",", "."));
+                        res = av - bv;
+                    } else if (type === "date") {
+                        const av = parseDateDDMMYYYY(avRaw);
+                        const bv = parseDateDDMMYYYY(bvRaw);
+                        res = av - bv;
+                    } else {
+                        res = avRaw.localeCompare(bvRaw, undefined, {
+                            numeric: true,
+                            sensitivity: "base",
+                        });
+                    }
+
+                    return desc ? -res : res;
+                };
+            }
+
+            function getHomeSortSnapshot() {
+                const snapshot = {};
+
+                document.querySelectorAll("table.table-sortable[id]").forEach((table) => {
+                    const activeTh = table.querySelector("thead th[data-sort-dir]");
+                    if (!activeTh) return;
+
+                    snapshot[table.id] = {
+                        colIndex: activeTh.cellIndex,
+                        dir: activeTh.getAttribute("data-sort-dir"),
+                        type: (activeTh.getAttribute("data-sort") || "text").toLowerCase(),
+                    };
+                });
+
+                return snapshot;
+            }
+
+            function restoreHomeSortSnapshot(snapshot) {
+                Object.entries(snapshot || {}).forEach(([tableId, meta]) => {
+                    const table = document.getElementById(tableId);
+                    if (!table) return;
+
+                    const thead = table.tHead;
+                    const tbody = table.tBodies[0];
+                    if (!thead || !tbody) return;
+
+                    const ths = Array.from(thead.querySelectorAll("th"));
+
+                    ths.forEach((th, index) => {
+                        if (index === meta.colIndex) {
+                            th.setAttribute("data-sort-dir", meta.dir);
+                        } else {
+                            th.removeAttribute("data-sort-dir");
+                        }
+                    });
+
+                    const rows = Array.from(tbody.rows);
+                    const desc = meta.dir === "desc";
+
+                    rows.sort(compareFactory(meta.type || "text", desc, meta.colIndex));
+                    rows.forEach((row) => tbody.appendChild(row));
+                });
+            }
+
+            function applyFragments(fragments) {
+                if (!fragments || typeof fragments !== "object") return;
+
+                const sortSnapshot = getHomeSortSnapshot();
+                const expandedGroups = new Set(Array.from(document.querySelectorAll(".wg-members details[open]"))
+                    .map(details => details.closest("tr").dataset.rowKey));
+
+                Object.entries(fragments).forEach(([targetId, html]) => {
+                    const el = document.getElementById(targetId);
+                    if (el) {
+                        el.innerHTML = html;
+                    }
+                });
+
+                document.querySelectorAll(".wg-members details").forEach(details => {
+                    details.open = expandedGroups.has(details.closest("tr").dataset.rowKey);
+                });
+
+                if (window.applyRowColors) window.applyRowColors();
+                if (window.restoreSelectedRows) window.restoreSelectedRows();
+
+                document.querySelectorAll(".js-table-filter").forEach((input) => {
+                    input.dispatchEvent(new Event("input", {bubbles: true}));
+                });
+
+                restoreHomeSortSnapshot(sortSnapshot);
+            }
+
+            window.applyHomeFragments = applyFragments;
+
+            async function fetchUpdates() {
+                if (inFlight) return;
+                inFlight = true;
+
+                try {
+                    const url = new URL(cfg.url, window.location.origin);
+                    url.searchParams.set("after", String(lastEventId));
+
+                    const res = await window.avpFetch(url.toString(), {
+                        method: "GET",
+                        headers: {
+                            "X-Requested-With": "XMLHttpRequest"
+                        },
+                        credentials: "same-origin",
+                        cache: "no-store"
+                    });
+
+                    if (!res.ok) {
+                        console.error("Errore bridge:", res.status, res.statusText);
+                        return;
+                    }
+
+                    const data = await res.json();
+
+                    if (data.last_event_id !== undefined && data.last_event_id !== null) {
+                        lastEventId = String(data.last_event_id);
+                    }
+
+                    if (!data.changed) return;
+
+                    applyFragments(data.fragments);
+                } catch (err) {
+                    console.error("Errore nel polling", err);
+                } finally {
+                    inFlight = false;
+                }
+            }
+
+            fetchUpdates();
+            setInterval(fetchUpdates, intervalMs);
+        })();
+    </script>
+
+    {% if manutenzioni_da_eseguire %}
+        <script>
+            document.addEventListener("DOMContentLoaded", () => {
+                const storageKey = (
+                    "avp_manutenzioni_confermate:"
+                    + {{ operator_user.username|tojson }}
+                );
+                const today = {{ oggi_manutenzioni|tojson }};
+                const modalElement = document.getElementById(
+                    "modalManutenzioniDaEseguire"
+                );
+                const confirmButton = document.getElementById(
+                    "conferma-manutenzioni-oggi"
+                );
+
+                if (!modalElement) {
+                    return;
+                }
+
+                const modal = bootstrap.Modal.getOrCreateInstance(
+                    modalElement
+                );
+
+                try {
+                    if (localStorage.getItem(storageKey) === today) {
+                        return;
+                    }
+                } catch (_) {
+                    // Lo storage può essere disabilitato dal browser.
+                }
+
+                confirmButton?.addEventListener("click", () => {
+                    try {
+                        localStorage.setItem(storageKey, today);
+                    } catch (_) {
+                        // La conferma vale almeno per la pagina corrente.
+                    }
+                    modal.hide();
+                });
+
+                modal.show();
+            });
+        </script>
+    {% endif %}
+{% endblock %}

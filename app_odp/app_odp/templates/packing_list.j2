@@ -1,0 +1,713 @@
+{% extends "base.j2" %}
+
+{% block title %}Packing list{% endblock %}
+
+{% block styles %}
+    {{ super() }}
+    <style>
+        .packing-items th:nth-child(1) { width: 18%; }
+        .packing-items th:nth-child(2) { width: 42%; }
+        .packing-items th:nth-child(3) { width: 24%; }
+        .packing-items th:nth-child(4) { width: 16%; }
+        .packing-items td { min-width: 9rem; }
+        .packing-items td:nth-child(2) { min-width: 18rem; }
+        .packing-scroll-table { height: 24rem; overflow: auto; }
+        #packing-list-page .form-label {
+            font-size: 1.05rem;
+            font-weight: 700;
+        }
+        #packing-list-page .card-header,
+        #packing-list-page h2.h6,
+        #packing-list-page legend.fs-6 {
+            font-size: 1.2rem !important;
+            font-weight: 700;
+        }
+        #packing-list-page th {
+            font-size: 1.05rem;
+            font-weight: 700;
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+    <main class="container-fluid py-3" id="packing-list-page">
+        <div class="card shadow-sm mb-3">
+            <div class="card-body py-2">
+                <div class="align-items-center d-flex justify-content-between mb-0">
+                    <a class="btn btn-outline-primary"
+                       href="{{ operator_url_for('main.logistica_page') }}">
+                        Carichi e scarichi
+                    </a>
+                    <a class="btn btn-primary active"
+                       href="{{ operator_url_for('main.packing_list_page') }}"
+                       aria-current="page">
+                        Packing list
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <div class="mb-3">
+            <h1 class="h4 mb-1">Packing list</h1>
+            <div class="text-muted small">
+                Anagrafica clienti, salvataggio e stampa PDF
+            </div>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button"
+                            class="btn-close"
+                            data-bs-dismiss="alert"
+                            aria-label="Chiudi"></button>
+                </div>
+            {% endfor %}
+        {% endwith %}
+
+        <form method="post"
+              action="{{ operator_url_for('main.packing_list_create') }}"
+              class="card shadow-sm mb-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span class="fw-bold">Nuova packing list</span>
+                <button class="btn btn-sm btn-outline-secondary"
+                        type="button"
+                        data-bs-toggle="modal"
+                        data-bs-target="#packing-header-modal">
+                    Modifica intestazione PDF
+                </button>
+            </div>
+            <div class="card-body">
+                <h2 class="h6 fw-bold mb-3">Cliente e indirizzi</h2>
+                <div class="row g-3 mb-3">
+                    <div class="col-12 col-lg-5">
+                        <label class="form-label" for="packing-client-search">Cerca cliente</label>
+                        <input class="form-control"
+                               type="search"
+                               id="packing-client-search"
+                               placeholder="Nome, indirizzo, provincia o Paese"
+                               autocomplete="off">
+                    </div>
+                    <div class="col-12 col-lg-7">
+                        <label class="form-label" for="packing-cliente">Cliente</label>
+                        <select class="form-select" id="packing-cliente" name="cliente_id" required>
+                            {% for cliente in clienti %}
+                                <option value="{{ cliente.id }}"
+                                        data-nome="{{ cliente.nome }}"
+                                        data-indirizzo="{{ cliente.indirizzo }}"
+                                        data-provincia="{{ cliente.provincia }}"
+                                        data-paese="{{ cliente.paese }}">
+                                    {{ cliente.nome }} - {{ cliente.provincia }}, {{ cliente.paese }}
+                                </option>
+                            {% endfor %}
+                            <option value="new" {% if not clienti %}selected{% endif %}>
+                                + Crea nuovo cliente
+                            </option>
+                        </select>
+                    </div>
+                </div>
+
+                <fieldset class="border rounded p-3 mb-3" id="packing-consignee">
+                    <legend class="float-none w-auto px-2 fs-6 fw-bold mb-0">Consignee name</legend>
+                    <div class="row g-3">
+                        <div class="col-12 col-md-6">
+                            <label class="form-label" for="packing-new-name">Customer</label>
+                            <input class="form-control"
+                                   id="packing-new-name"
+                                   name="nuovo_cliente_nome"
+                                   data-customer-field="nome"
+                                   maxlength="160"
+                                   autocomplete="organization"
+                                   required>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label" for="packing-new-address">Address</label>
+                            <input class="form-control"
+                                   id="packing-new-address"
+                                   name="nuovo_cliente_indirizzo"
+                                   data-customer-field="indirizzo"
+                                   maxlength="300"
+                                   autocomplete="street-address"
+                                   required>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label" for="packing-new-province">Province</label>
+                            <input class="form-control"
+                                   id="packing-new-province"
+                                   name="nuovo_cliente_provincia"
+                                   data-customer-field="provincia"
+                                   maxlength="100"
+                                   autocomplete="address-level1"
+                                   required>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label" for="packing-new-country">Country</label>
+                            <input class="form-control"
+                                   id="packing-new-country"
+                                   name="nuovo_cliente_paese"
+                                   data-customer-field="paese"
+                                   maxlength="100"
+                                   autocomplete="country-name"
+                                   required>
+                        </div>
+                    </div>
+                </fieldset>
+
+                <fieldset class="border rounded p-3 mb-3" id="packing-delivery-address">
+                    <legend class="float-none w-auto px-2 fs-6 fw-bold mb-0">Delivery address</legend>
+                    <div class="text-end mb-2">
+                        <button class="btn btn-sm btn-outline-secondary"
+                                type="button"
+                                id="packing-copy-delivery">
+                            Copia da Consignee
+                        </button>
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-12 col-md-6">
+                            <label class="form-label" for="packing-delivery-name">Customer</label>
+                            <input class="form-control"
+                                   id="packing-delivery-name"
+                                   name="delivery_nome"
+                                   data-delivery-field="nome"
+                                   maxlength="160"
+                                   autocomplete="shipping organization"
+                                   required>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label" for="packing-delivery-address-field">Address</label>
+                            <input class="form-control"
+                                   id="packing-delivery-address-field"
+                                   name="delivery_indirizzo"
+                                   data-delivery-field="indirizzo"
+                                   maxlength="300"
+                                   autocomplete="shipping street-address"
+                                   required>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label" for="packing-delivery-province">Province</label>
+                            <input class="form-control"
+                                   id="packing-delivery-province"
+                                   name="delivery_provincia"
+                                   data-delivery-field="provincia"
+                                   maxlength="100"
+                                   autocomplete="shipping address-level1"
+                                   required>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label" for="packing-delivery-country">Country</label>
+                            <input class="form-control"
+                                   id="packing-delivery-country"
+                                   name="delivery_paese"
+                                   data-delivery-field="paese"
+                                   maxlength="100"
+                                   autocomplete="shipping country-name"
+                                   required>
+                        </div>
+                    </div>
+                </fieldset>
+
+                <h2 class="h6 fw-bold mb-3">Dati documento e pesi</h2>
+                <div class="row g-3 mb-3">
+                    <div class="col-12 col-md-6 col-xl-4">
+                        <label class="form-label" for="packing-transport-document">Transport document</label>
+                        <input class="form-control"
+                               id="packing-transport-document"
+                               name="transport_document"
+                               maxlength="120"
+                               required>
+                    </div>
+                    <div class="col-12 col-md-6 col-xl-4">
+                        <label class="form-label" for="packing-invoice-number">Invoice number</label>
+                        <input class="form-control"
+                               id="packing-invoice-number"
+                               name="invoice_number"
+                               maxlength="120"
+                               required>
+                    </div>
+                    <div class="col-12 col-md-6 col-xl-4">
+                        <label class="form-label" for="packing-invoice-date">Invoice date</label>
+                        <input class="form-control"
+                               type="date"
+                               id="packing-invoice-date"
+                               name="invoice_date"
+                               value="{{ oggi.isoformat() }}"
+                               required>
+                    </div>
+                    <div class="col-12 col-md-4">
+                        <label class="form-label" for="packing-pallets">Total Nr. of pallets</label>
+                        <input class="form-control"
+                               type="number"
+                               id="packing-pallets"
+                               name="total_pallets"
+                               min="0"
+                               step="1"
+                               required>
+                    </div>
+                    <div class="col-12 col-md-4">
+                        <label class="form-label" for="packing-net-weight">Total net weight (Kg.)</label>
+                        <input class="form-control"
+                               type="number"
+                               id="packing-net-weight"
+                               name="total_net_weight"
+                               min="0"
+                               step="0.001"
+                               required>
+                    </div>
+                    <div class="col-12 col-md-4">
+                        <label class="form-label" for="packing-gross-weight">Total gross weight (Kg.)</label>
+                        <input class="form-control"
+                               type="number"
+                               id="packing-gross-weight"
+                               name="total_gross_weight"
+                               min="0"
+                               step="0.001"
+                               required>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label" for="packing-dimensions">Dimensions</label>
+                        <input class="form-control"
+                               type="text"
+                               id="packing-dimensions"
+                               name="dimensions"
+                               maxlength="500">
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label" for="packing-comments">Comments</label>
+                        <textarea class="form-control"
+                                  id="packing-comments"
+                                  name="comments"
+                                  maxlength="2000"
+                                  rows="2"></textarea>
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h2 class="h6 fw-bold mb-0">Materiale</h2>
+                    <button class="btn btn-sm btn-outline-primary"
+                            type="button"
+                            id="packing-add-row">
+                        Aggiungi riga
+                    </button>
+                </div>
+                <div class="table-responsive mb-3">
+                    <table class="table table-bordered align-middle packing-items mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th scope="col">Code</th>
+                                <th scope="col">Description</th>
+                                <th scope="col">Serial number</th>
+                                <th scope="col">Quantity</th>
+                                <th scope="col" class="text-end">Azioni</th>
+                            </tr>
+                        </thead>
+                        <tbody id="packing-item-rows">
+                            <tr>
+                                <td>
+                                    <input class="form-control"
+                                           name="item_code"
+                                           maxlength="120"
+                                           aria-label="Code riga 1"
+                                           required>
+                                </td>
+                                <td>
+                                    <input class="form-control"
+                                           name="item_description"
+                                           maxlength="500"
+                                           aria-label="Description riga 1"
+                                           required>
+                                </td>
+                                <td>
+                                    <input class="form-control"
+                                           name="item_serial_number"
+                                           maxlength="200"
+                                           aria-label="Serial number riga 1"
+                                           required>
+                                </td>
+                                <td>
+                                    <input class="form-control"
+                                           type="number"
+                                           name="item_quantity"
+                                           min="0.001"
+                                           step="0.001"
+                                           aria-label="Quantity riga 1"
+                                           required>
+                                </td>
+                                <td class="text-end text-nowrap">
+                                    <button class="btn btn-sm btn-outline-secondary"
+                                            type="button"
+                                            data-duplicate-row>
+                                        Duplica
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger"
+                                            type="button"
+                                            data-remove-row>
+                                        Rimuovi
+                                    </button>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <h2 class="h6 fw-bold mb-3">Condizioni di consegna</h2>
+                <div class="row g-3">
+                    <div class="col-12 col-md-6">
+                        <label class="form-label" for="packing-delivery-terms">Delivery terms</label>
+                        <input class="form-control"
+                               id="packing-delivery-terms"
+                               name="delivery_terms"
+                               maxlength="200"
+                               required>
+                    </div>
+                    <div class="col-12 col-md-6">
+                        <label class="form-label" for="packing-forwarder">Forwarder</label>
+                        <input class="form-control"
+                               id="packing-forwarder"
+                               name="forwarder"
+                               maxlength="200"
+                               required>
+                    </div>
+                    <div class="col-12 text-end">
+                        <button class="btn btn-primary" type="submit">Salva packing list</button>
+                    </div>
+                </div>
+            </div>
+        </form>
+
+        <section class="card shadow-sm mb-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span class="fw-bold">Packing list salvate e stampa PDF</span>
+                <span class="badge text-bg-secondary">{{ packing_lists|length }}</span>
+            </div>
+            <div class="packing-scroll-table table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Cliente</th>
+                            <th>Transport document</th>
+                            <th>Invoice number</th>
+                            <th>Invoice date</th>
+                            <th>Creata</th>
+                            <th>PDF</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for packing in packing_lists %}
+                            <tr>
+                                <td class="fw-semibold">{{ packing.id }}</td>
+                                <td>{{ packing.cliente.nome }}</td>
+                                <td>{{ packing.transport_document }}</td>
+                                <td>{{ packing.invoice_number }}</td>
+                                <td class="text-nowrap">{{ packing.invoice_date.strftime('%d/%m/%Y') }}</td>
+                                <td class="text-nowrap">
+                                    {{ packing.creato_il.strftime('%d/%m/%Y %H:%M') }}
+                                    - {{ packing.creato_da_nome }}
+                                </td>
+                                <td>
+                                    <a class="btn btn-sm btn-outline-primary text-nowrap"
+                                       target="_blank"
+                                       href="{{ operator_url_for('main.packing_list_pdf', packing_list_id=packing.id) }}">
+                                        Apri PDF
+                                    </a>
+                                </td>
+                            </tr>
+                        {% else %}
+                            <tr>
+                                <td colspan="7" class="text-center text-muted py-4">
+                                    Nessuna packing list salvata.
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="card shadow-sm">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span class="fw-bold">Anagrafica clienti</span>
+                <span class="badge text-bg-secondary">{{ clienti|length }}</span>
+            </div>
+            <div class="card-body border-bottom">
+                <form method="post"
+                      action="{{ operator_url_for('main.packing_list_cliente_create') }}"
+                      class="row g-2 align-items-end">
+                    <div class="col-12 col-md-6 col-xl-3">
+                        <label class="form-label" for="customer-name">Nome del cliente</label>
+                        <input class="form-control" id="customer-name" name="nome" maxlength="160" required>
+                    </div>
+                    <div class="col-12 col-md-6 col-xl-3">
+                        <label class="form-label" for="customer-address">Indirizzo</label>
+                        <input class="form-control" id="customer-address" name="indirizzo" maxlength="300" required>
+                    </div>
+                    <div class="col-12 col-md-5 col-xl-2">
+                        <label class="form-label" for="customer-province">Provincia</label>
+                        <input class="form-control" id="customer-province" name="provincia" maxlength="100" required>
+                    </div>
+                    <div class="col-12 col-md-5 col-xl-2">
+                        <label class="form-label" for="customer-country">Paese</label>
+                        <input class="form-control" id="customer-country" name="paese" maxlength="100" required>
+                    </div>
+                    <div class="col-12 col-md-2">
+                        <button class="btn btn-outline-primary w-100" type="submit">Aggiungi</button>
+                    </div>
+                </form>
+            </div>
+            <div class="packing-scroll-table table-responsive">
+                <table class="table table-striped table-hover align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Nome del cliente</th>
+                            <th>Indirizzo</th>
+                            <th>Provincia</th>
+                            <th>Paese</th>
+                            <th class="text-end">Azioni</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for cliente in clienti %}
+                            <tr>
+                                <td>
+                                    <input class="form-control form-control-sm"
+                                           form="packing-customer-update-{{ cliente.id }}"
+                                           name="nome"
+                                           value="{{ cliente.nome }}"
+                                           maxlength="160"
+                                           aria-label="Nome del cliente"
+                                           required>
+                                </td>
+                                <td>
+                                    <input class="form-control form-control-sm"
+                                           form="packing-customer-update-{{ cliente.id }}"
+                                           name="indirizzo"
+                                           value="{{ cliente.indirizzo }}"
+                                           maxlength="300"
+                                           aria-label="Indirizzo"
+                                           required>
+                                </td>
+                                <td>
+                                    <input class="form-control form-control-sm"
+                                           form="packing-customer-update-{{ cliente.id }}"
+                                           name="provincia"
+                                           value="{{ cliente.provincia }}"
+                                           maxlength="100"
+                                           aria-label="Provincia"
+                                           required>
+                                </td>
+                                <td>
+                                    <input class="form-control form-control-sm"
+                                           form="packing-customer-update-{{ cliente.id }}"
+                                           name="paese"
+                                           value="{{ cliente.paese }}"
+                                           maxlength="100"
+                                           aria-label="Paese"
+                                           required>
+                                </td>
+                                <td class="text-end text-nowrap">
+                                    <form id="packing-customer-update-{{ cliente.id }}"
+                                          method="post"
+                                          action="{{ operator_url_for('main.packing_list_cliente_update', cliente_id=cliente.id) }}"
+                                          class="d-inline">
+                                        <button class="btn btn-sm btn-outline-primary" type="submit">
+                                            Salva
+                                        </button>
+                                    </form>
+                                    <form method="post"
+                                          action="{{ operator_url_for('main.packing_list_cliente_delete', cliente_id=cliente.id) }}"
+                                          class="d-inline"
+                                          onsubmit="return confirm('Eliminare questo cliente?');">
+                                        <button class="btn btn-sm btn-outline-danger" type="submit">
+                                            Elimina
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                        {% else %}
+                            <tr>
+                                <td colspan="5" class="text-center text-muted py-4">
+                                    Nessun cliente presente.
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <div class="modal fade"
+             id="packing-header-modal"
+             tabindex="-1"
+             aria-labelledby="packing-header-modal-title"
+             aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <form method="post"
+                          action="{{ operator_url_for('main.packing_list_header_update') }}">
+                        <div class="modal-header">
+                            <h2 class="modal-title fs-5 fw-bold" id="packing-header-modal-title">
+                                Intestazione PDF
+                            </h2>
+                            <button class="btn-close"
+                                    type="button"
+                                    data-bs-dismiss="modal"
+                                    aria-label="Chiudi"></button>
+                        </div>
+                        <div class="modal-body">
+                            <label class="form-label" for="packing-company-header">
+                                Dati aziendali (prima riga in grassetto)
+                            </label>
+                            <textarea class="form-control"
+                                      id="packing-company-header"
+                                      name="company_header"
+                                      maxlength="1000"
+                                      rows="6"
+                                      required>{{ company_header }}</textarea>
+                            <div class="form-text">
+                                Massimo 6 righe e 160 caratteri per riga.
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn btn-outline-secondary"
+                                    type="button"
+                                    data-bs-dismiss="modal">
+                                Annulla
+                            </button>
+                            <button class="btn btn-primary" type="submit">
+                                Salva intestazione
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <template id="packing-item-row-template">
+        <tr>
+            <td><input class="form-control" name="item_code" maxlength="120" required></td>
+            <td><input class="form-control" name="item_description" maxlength="500" required></td>
+            <td><input class="form-control" name="item_serial_number" maxlength="200" required></td>
+            <td><input class="form-control" type="number" name="item_quantity" min="0.001" step="0.001" required></td>
+            <td class="text-end text-nowrap">
+                <button class="btn btn-sm btn-outline-secondary" type="button" data-duplicate-row>Duplica</button>
+                <button class="btn btn-sm btn-outline-danger" type="button" data-remove-row>Rimuovi</button>
+            </td>
+        </tr>
+    </template>
+{% endblock %}
+
+{% block extra_js %}
+    {{ super() }}
+    <script>
+        (() => {
+            const customerSearch = document.getElementById("packing-client-search");
+            const customerSelect = document.getElementById("packing-cliente");
+            const customerOptions = [...customerSelect.options]
+                .filter((option) => option.value !== "new");
+            const customerInputs = [...document.querySelectorAll("[data-customer-field]")];
+            const deliveryInputs = [...document.querySelectorAll("[data-delivery-field]")];
+            const rows = document.getElementById("packing-item-rows");
+            const rowTemplate = document.getElementById("packing-item-row-template");
+            let deliveryEdited = false;
+
+            const copyDelivery = () => {
+                customerInputs.forEach((input) => {
+                    const field = input.dataset.customerField;
+                    document.querySelector(`[data-delivery-field="${field}"]`).value = input.value;
+                });
+            };
+
+            const updateCustomerFields = () => {
+                const isNew = customerSelect.value === "new";
+                const option = customerSelect.selectedOptions[0];
+                customerInputs.forEach((input) => {
+                    input.readOnly = !isNew;
+                    input.value = isNew
+                        ? ""
+                        : option.dataset[input.dataset.customerField] || "";
+                });
+                deliveryEdited = false;
+                copyDelivery();
+            };
+
+            const filterCustomers = () => {
+                const query = customerSearch.value.trim().toLocaleLowerCase("it");
+                let firstMatch = null;
+                customerOptions.forEach((option) => {
+                    const searchable = [
+                        option.dataset.nome,
+                        option.dataset.indirizzo,
+                        option.dataset.provincia,
+                        option.dataset.paese,
+                    ].join(" ").toLocaleLowerCase("it");
+                    const matches = searchable.includes(query);
+                    option.hidden = !matches;
+                    option.disabled = !matches;
+                    if (matches && !firstMatch) firstMatch = option;
+                });
+                if (customerSelect.selectedOptions[0]?.disabled) {
+                    customerSelect.value = firstMatch?.value || "new";
+                    updateCustomerFields();
+                }
+            };
+
+            const updateRowLabels = () => {
+                [...rows.rows].forEach((row, index) => {
+                    row.querySelector('[name="item_code"]').setAttribute("aria-label", `Code riga ${index + 1}`);
+                    row.querySelector('[name="item_description"]').setAttribute("aria-label", `Description riga ${index + 1}`);
+                    row.querySelector('[name="item_serial_number"]').setAttribute("aria-label", `Serial number riga ${index + 1}`);
+                    row.querySelector('[name="item_quantity"]').setAttribute("aria-label", `Quantity riga ${index + 1}`);
+                });
+            };
+
+            customerSelect.addEventListener("change", updateCustomerFields);
+            customerSearch.addEventListener("input", filterCustomers);
+            customerInputs.forEach((input) => {
+                input.addEventListener("input", () => {
+                    if (!deliveryEdited) copyDelivery();
+                });
+            });
+            deliveryInputs.forEach((input) => {
+                input.addEventListener("input", () => { deliveryEdited = true; });
+            });
+            document.getElementById("packing-copy-delivery").addEventListener("click", () => {
+                deliveryEdited = false;
+                copyDelivery();
+            });
+            document.getElementById("packing-add-row").addEventListener("click", () => {
+                rows.append(rowTemplate.content.cloneNode(true));
+                updateRowLabels();
+                rows.lastElementChild.querySelector("input").focus();
+            });
+            rows.addEventListener("click", (event) => {
+                const button = event.target.closest("[data-duplicate-row], [data-remove-row]");
+                if (!button) return;
+                const row = button.closest("tr");
+                if (button.matches("[data-duplicate-row]")) {
+                    const duplicate = row.cloneNode(true);
+                    const duplicateInputs = duplicate.querySelectorAll("input");
+                    row.querySelectorAll("input").forEach((input, index) => {
+                        duplicateInputs[index].value = input.value;
+                    });
+                    row.after(duplicate);
+                    updateRowLabels();
+                    duplicate.querySelector("input").focus();
+                    return;
+                }
+                if (rows.rows.length === 1) {
+                    row.querySelectorAll("input").forEach((input) => { input.value = ""; });
+                    row.querySelector("input").focus();
+                    return;
+                }
+                row.remove();
+                updateRowLabels();
+            });
+
+            updateCustomerFields();
+            updateRowLabels();
+        })();
+    </script>
+{% endblock %}

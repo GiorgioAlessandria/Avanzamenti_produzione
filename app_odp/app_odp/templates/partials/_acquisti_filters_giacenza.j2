@@ -1,0 +1,61 @@
+<div class="container-fluid px-0">
+    <div class="row mb-0 g-3 align-items-end">
+        <div class="col">
+            <input type="text"
+                   id="filter-acq-giacenza-codart"
+                   class="form-control js-table-filter"
+                   placeholder="Filtra per codice..."
+                   data-target-table="acquisti_giacenza_table"
+                   data-filter-mode="dataset"
+                   data-filter-key="codart"
+                   autocomplete="off">
+        </div>
+
+        <div class="col">
+            <input type="text"
+                   id="filter-acq-giacenza-desart"
+                   class="form-control js-table-filter"
+                   placeholder="Filtra per descrizione..."
+                   data-target-table="acquisti_giacenza_table"
+                   data-filter-mode="dataset"
+                   data-filter-key="desart"
+                   autocomplete="off">
+        </div>
+
+        <div class="col">
+            <div class="form-check mb-2">
+                <input class="form-check-input js-table-filter-checkbox"
+                       type="checkbox"
+                       id="filter-acq-giacenza-negativi"
+                       data-target-table="acquisti_giacenza_table"
+                       data-filter-key="negative">
+                <label class="form-check-label"
+                       for="filter-acq-giacenza-negativi">
+                    Solo negativi mag. 0
+                </label>
+            </div>
+        </div>
+
+        <div class="col">
+            <div class="form-check mb-2">
+                <input class="form-check-input js-table-filter-checkbox"
+                       type="checkbox"
+                       id="filter-acq-giacenza-understock"
+                       data-target-table="acquisti_giacenza_table"
+                       data-filter-key="understock">
+                <label class="form-check-label"
+                       for="filter-acq-giacenza-understock">
+                    Sotto scorta mag. 0
+                </label>
+            </div>
+        </div>
+
+        <div class="col">
+            <button class="btn btn-outline-success w-100 w-xl-auto"
+                    type="button"
+                    id="btn-export-acq-giacenza">
+                Export Excel
+            </button>
+        </div>
+    </div>
+</div>

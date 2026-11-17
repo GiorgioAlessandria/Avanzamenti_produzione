@@ -1,0 +1,9 @@
+<div class="d-flex align-items-center gap-2 mb-3">
+ <nav class="nav nav-tabs flex-grow-1" aria-label="Sezioni Serbatoi" style="min-width: 0;">
+  {% for key, label in tabs.items() %}
+   <a class="nav-link {{ 'active' if key == tab }} {{ 'fw-semibold' if key == 'clienti' }}" {% if key == tab %}aria-current="page"{% endif %} href="{{ serbatoi_url(tab=key) }}">{{ label }}</a>
+  {% endfor %}
+  <a class="nav-link" href="{{ operator_url_for('main.serbatoi_qualita') }}">Controllo qualità</a>
+ </nav>
+ <a class="btn btn-outline-secondary flex-shrink-0" href="{{ serbatoi_url(tab=tab, id=selected.id if selected else '') }}">Aggiorna</a>
+</div>

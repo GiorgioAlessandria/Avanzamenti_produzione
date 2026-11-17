@@ -1,0 +1,2572 @@
+import json
+import re
+import unicodedata
+from datetime import date, datetime
+from sqlalchemy import func, or_, tuple_
+from sqlalchemy.orm import selectinload
+
+from app_odp.models import (
+    AcqArticoliLookup,
+    AcqClienteFornitore,
+    AcqMatricolaMacchina,
+    AcqMatricolaMacchinaUscita,
+    AcqOrdineClienteAperto,
+    InputOdp,
+    InputOdpLog,
+    db,
+)
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from app_odp.policy.policy import RbacPolicy
+from app_odp.vendite_models import VenditeRigaLettura
+from app_odp.ordine_ref import format_ordine_ref_display
+from app_odp.services.order_helpers import (
+    _fase_to_int,
+    _norm_text,
+    _now_rome_dt,
+    _ordine_ref_label,
+)
+from app_odp.services.ordini_query_service import _base_odp_query
+from app_odp.services.vendite_service import (
+    _canonical_state,
+    _is_phase_one_planned,
+    _missing_components_for_orders,
+    _packaging_confirmations,
+    _machine_options,
+    _phase_label,
+    INVENTORY_DOCUMENT,
+    is_open_machine_order,
+    load_inventory_machine_orders,
+    load_machine_orders,
+)
+from app_odp.vendite_models import (
+    VENDITE_DEFAULT_PACKAGING_NOTES,
+    VENDITE_INTERNAL_REFERENCES,
+    VenditeImballoMacchina,
+    VenditeMacchinaSpedibile,
+    VenditeNotaImballaggio,
+    VenditeNotaOrdiniCliente,
+    VenditeNotaOrdiniClienteLettura,
+    VenditeNotaProduzioneMacchina,
+    VenditeOpzioneMacchina,
+    VenditeOrdineCliente,
+    VenditeOrdineClienteLog,
+    VenditeOrdineClienteRiga,
+    VenditeSensoreAntiribaltamentoLog,
+    VenditeSensoriMacchina,
+)
+
+
+MAX_CUSTOMER_NAME = 160
+MAX_CUSTOMER_ORDER = 120
+MAX_NOTE = 1000
+MAX_EXPANDED_ROWS = 500
+LOG_QUERY_BATCH_SIZE = 400
+STOCK_LABEL = "STOCK"
+EU_COUNTRY_CODES = {
+    "AT",
+    "BE",
+    "BG",
+    "HR",
+    "CY",
+    "CZ",
+    "DK",
+    "EE",
+    "FI",
+    "FR",
+    "DE",
+    "GR",
+    "EL",
+    "HU",
+    "IE",
+    "IT",
+    "LV",
+    "LT",
+    "LU",
+    "MT",
+    "NL",
+    "PL",
+    "PT",
+    "RO",
+    "SK",
+    "SI",
+    "ES",
+    "SE",
+}
+
+
+class VenditeAssegnazioniError(ValueError):
+    pass
+
+
+class VenditeAssegnazioniConflictError(VenditeAssegnazioniError):
+    pass
+
+
+def _queue_row_read(row, user=None):
+    actor_id = getattr(user, "id", None)
+    permission = (
+        "utente_vendite"
+        if actor_id is not None and RbacPolicy(user).can("utente_produzione")
+        else "utente_produzione"
+    )
+    revisions = dict(row.revisioni_lettura or {})
+    revisions[permission] = revisions.get(permission, 0) + 1
+    row.revisioni_lettura = revisions
+
+
+def _row_read_states(rows, user):
+    actor_id = getattr(user, "id", None)
+    if actor_id is None:
+        return {row.id: {} for row in rows}
+
+    policy = RbacPolicy(user)
+    permissions = {
+        permission
+        for permission in ("utente_produzione", "utente_vendite")
+        if policy.can(permission)
+    }
+    readings = {
+        (item.riga_id, item.permesso): item.versione_letta
+        for item in VenditeRigaLettura.query.filter_by(operatore_id=actor_id).all()
+    }
+    return {
+        row.id: {
+            permission: revision
+            for permission, revision in (row.revisioni_lettura or {}).items()
+            if permission in permissions
+            and readings.get((row.id, permission), 0) < revision
+        }
+        for row in rows
+    }
+
+
+def confirm_customer_row_read(order_id, payload, user):
+    if not isinstance(payload, dict):
+        raise VenditeAssegnazioniError("Dati della conferma non validi.")
+
+    row_id = payload.get("row_id")
+    revisions = payload.get("revisions")
+    actor_id = getattr(user, "id", None)
+
+    if (
+        type(row_id) is not int
+        or actor_id is None
+        or not isinstance(revisions, dict)
+        or not revisions
+        or set(revisions) - {"utente_produzione", "utente_vendite"}
+        or any(type(value) is not int or value <= 0 for value in revisions.values())
+    ):
+        raise VenditeAssegnazioniError("Conferma della riga non valida.")
+
+    row = _customer_row(row_id)
+    if row.ordine_cliente_id != order_id:
+        raise VenditeAssegnazioniError("La riga non appartiene all'ordine.")
+
+    policy = RbacPolicy(user)
+    current = row.revisioni_lettura or {}
+
+    for permission, revision in revisions.items():
+        if not policy.can(permission):
+            raise VenditeAssegnazioniError("Conferma non consentita.")
+        if current.get(permission) != revision:
+            raise VenditeAssegnazioniConflictError(
+                "La riga è stata modificata. Aggiornare i dati e leggerla di nuovo."
+            )
+
+    read_at = _now_rome_dt().isoformat(timespec="seconds")
+    for permission, revision in revisions.items():
+        statement = sqlite_insert(VenditeRigaLettura).values(
+            riga_id=row.id,
+            operatore_id=actor_id,
+            permesso=permission,
+            versione_letta=revision,
+            letta_il=read_at,
+        )
+        db.session.execute(
+            statement.on_conflict_do_update(
+                index_elements=["riga_id", "operatore_id", "permesso"],
+                set_={
+                    "versione_letta": func.max(
+                        VenditeRigaLettura.versione_letta,
+                        statement.excluded.versione_letta,
+                    ),
+                    "letta_il": read_at,
+                },
+            )
+        )
+
+    _log_customer_change(
+        row.ordine_cliente,
+        user,
+        event="CONFERMA",
+        field="lettura",
+        current=json.dumps(revisions, sort_keys=True),
+        row=row,
+    )
+    db.session.flush()
+    return row
+
+
+def _required_text(value, label: str, max_length: int) -> str:
+    text = _norm_text(value)
+    if not text:
+        raise VenditeAssegnazioniError(f"{label} è obbligatorio.")
+    if len(text) > max_length:
+        raise VenditeAssegnazioniError(
+            f"{label} non può superare {max_length} caratteri."
+        )
+    return text
+
+
+def _optional_text(value, label: str, max_length: int) -> str:
+    text = _norm_text(value)
+    if len(text) > max_length:
+        raise VenditeAssegnazioniError(
+            f"{label} non può superare {max_length} caratteri."
+        )
+    return text
+
+
+def _positive_integer(value, label: str) -> int:
+    if isinstance(value, bool):
+        raise VenditeAssegnazioniError(
+            f"{label} deve essere un numero intero positivo."
+        )
+
+    if isinstance(value, int):
+        number = value
+    elif isinstance(value, str) and value.strip().isdigit():
+        try:
+            number = int(value.strip())
+        except ValueError as exc:
+            raise VenditeAssegnazioniError(
+                f"{label} deve essere un numero intero positivo."
+            ) from exc
+    else:
+        raise VenditeAssegnazioniError(
+            f"{label} deve essere un numero intero positivo."
+        )
+
+    if number <= 0:
+        raise VenditeAssegnazioniError(f"{label} deve essere maggiore di zero.")
+    return number
+
+
+def _delivery_date(value, label: str) -> date:
+    try:
+        parsed = date.fromisoformat(_norm_text(value))
+    except ValueError as exc:
+        raise VenditeAssegnazioniError(f"{label} deve essere una data valida.") from exc
+    return parsed
+
+
+def _optional_date(value, label: str) -> date | None:
+    return _delivery_date(value, label) if _norm_text(value) else None
+
+
+def _model_key(model_code, variant) -> str:
+    return json.dumps(
+        [
+            _norm_text(model_code).casefold(),
+            _norm_text(variant).casefold(),
+        ],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+
+
+def _normalized_key(value) -> str:
+    return unicodedata.normalize("NFKC", _norm_text(value)).casefold()
+
+
+def _machine_key(order) -> tuple[str, str]:
+    return (
+        _norm_text(getattr(order, "IdDocumento", "")),
+        _norm_text(getattr(order, "IdRiga", "")),
+    )
+
+
+def _actor(user) -> tuple[int | None, str]:
+    return (
+        getattr(user, "id", None),
+        _norm_text(getattr(user, "username", "")) or "utente",
+    )
+
+
+def _log_customer_change(
+    customer,
+    user,
+    *,
+    event=None,
+    field=None,
+    previous=None,
+    current=None,
+    row=None,
+    entity=None,
+) -> None:
+    actor_id, actor_name = _actor(user)
+    previous = (
+        previous.isoformat()
+        if isinstance(previous, date)
+        else (_norm_text(previous) or None)
+    )
+    current = (
+        current.isoformat()
+        if isinstance(current, date)
+        else (_norm_text(current) or None)
+    )
+    if event is None:
+        event = (
+            "INSERIMENTO"
+            if previous is None and current is not None
+            else "CANCELLAZIONE"
+            if previous is not None and current is None
+            else "MODIFICA"
+        )
+    if customer is not None and event != "CONFERMA":
+        if row is not None and event != "ELIMINAZIONE":
+            _queue_row_read(row, user)
+        else:
+            for affected_row in customer.righe:
+                if affected_row is not row:
+                    _queue_row_read(affected_row, user)
+    db.session.add(
+        VenditeOrdineClienteLog(
+            ordine_cliente_riga_id=row.id if row is not None else None,
+            ordine_cliente_id=customer.id if customer is not None else None,
+            cliente_nome=customer.cliente_nome if customer is not None else "",
+            numero_ordine=customer.numero_ordine if customer is not None else "",
+            posizione=row.posizione if row is not None else None,
+            matricola=row.odp_matricola if row is not None else None,
+            entita=entity or ("RIGA" if row is not None else "ORDINE"),
+            evento=event,
+            campo=field,
+            valore_precedente=previous,
+            valore_nuovo=current,
+            modificata_da_id=actor_id,
+            modificata_da_nome=actor_name,
+        )
+    )
+
+
+def _require_read_confirmation(customer: VenditeOrdineCliente) -> None:
+    customer.confermato_il = None
+    customer.confermato_da_nome = None
+
+
+def _mark_row_changed(row: VenditeOrdineClienteRiga, *fields: str) -> None:
+    row.campi_modificati = sorted(set(row.campi_modificati or ()) | set(fields))
+
+
+def _register_shippable_machine(
+    row: VenditeOrdineClienteRiga,
+    reason: str,
+    model: str,
+) -> VenditeMacchinaSpedibile | None:
+    serial = _norm_text(row.odp_matricola)
+    if not serial:
+        return None
+    key = _normalized_key(serial)
+    saved = db.session.get(VenditeMacchinaSpedibile, key)
+    if saved is None:
+        saved = VenditeMacchinaSpedibile(
+            matricola_chiave=key,
+            matricola=serial,
+            modello=_norm_text(model) or _norm_text(row.modello_codice),
+            cliente=_norm_text(row.ordine_cliente.cliente_nome),
+            motivo=reason,
+        )
+        db.session.add(saved)
+    return saved
+
+
+def sync_shippable_machines() -> list[VenditeMacchinaSpedibile]:
+    warehouse = {
+        _normalized_key(item.CodMatricola): item
+        for item in AcqMatricolaMacchina.query.all()
+    }
+    exits = {
+        _normalized_key(item.CodMatricola): item
+        for item in AcqMatricolaMacchinaUscita.query.all()
+    }
+    packaging = {
+        _normalized_key(item.matricola): item
+        for item in VenditeImballoMacchina.query.all()
+    }
+    rows = (
+        VenditeOrdineClienteRiga.query.options(
+            selectinload(VenditeOrdineClienteRiga.ordine_cliente)
+        )
+        .filter(VenditeOrdineClienteRiga.odp_matricola.is_not(None))
+        .all()
+    )
+    for row in rows:
+        key = _normalized_key(row.odp_matricola)
+        events = []
+        if key in packaging:
+            events.append(
+                (
+                    packaging[key].confermata_il,
+                    "IMBALLATA",
+                    getattr(warehouse.get(key), "CodArt", ""),
+                )
+            )
+        if key in exits:
+            events.append(
+                (
+                    exits[key].uscita_at,
+                    "USCITA_MAGAZZINO",
+                    exits[key].CodArt,
+                )
+            )
+        if events:
+            first = min(events)
+            _register_shippable_machine(row, first[1], first[2])
+    db.session.flush()
+    return (
+        VenditeMacchinaSpedibile.query.filter(
+            VenditeMacchinaSpedibile.spedita_il.is_(None)
+        )
+        .order_by(VenditeMacchinaSpedibile.cliente, VenditeMacchinaSpedibile.matricola)
+        .all()
+    )
+
+
+def _is_stock_machine(machine) -> bool:
+    return bool(getattr(machine, "IsStock", False))
+
+
+def _is_inventory_machine(machine) -> bool:
+    return bool(getattr(machine, "IsInventory", False))
+
+
+def _machine_order_label(machine) -> str:
+    if _is_inventory_machine(machine):
+        return "MAGAZZINO"
+    return STOCK_LABEL if _is_stock_machine(machine) else _ordine_ref_label(machine)
+
+
+def _machine_serial(machine) -> str:
+    return _norm_text(getattr(machine, "CodMatricola", ""))
+
+
+def _unique_machines_by_serial(machines) -> list:
+    unique = []
+    seen_keys = set()
+    seen_serials = set()
+    for machine in machines:
+        key = _machine_key(machine)
+        serial_key = _normalized_key(_machine_serial(machine))
+        if key in seen_keys or (serial_key and serial_key in seen_serials):
+            continue
+        unique.append(machine)
+        seen_keys.add(key)
+        if serial_key:
+            seen_serials.add(serial_key)
+    return unique
+
+
+def _customer_rows_for_machine(
+    id_documento: str,
+    id_riga: str,
+    serial_number: str,
+    *,
+    exclude_row_id: int | None = None,
+):
+    conditions = [
+        (
+            (VenditeOrdineClienteRiga.odp_id_documento == id_documento)
+            & (VenditeOrdineClienteRiga.odp_id_riga == id_riga)
+        )
+    ]
+    if serial_number:
+        conditions.append(VenditeOrdineClienteRiga.odp_matricola == serial_number)
+    query = VenditeOrdineClienteRiga.query.filter(or_(*conditions))
+    if exclude_row_id is not None:
+        query = query.filter(VenditeOrdineClienteRiga.id != exclude_row_id)
+    return query.all()
+
+
+def load_assignable_machine_orders() -> list:
+    return _unique_machines_by_serial(
+        load_inventory_machine_orders() + load_machine_orders()
+    )
+
+
+def _find_current_machine(id_documento: str, id_riga: str):
+    if id_documento == INVENTORY_DOCUMENT:
+        return next(
+            (
+                machine
+                for machine in load_inventory_machine_orders()
+                if _machine_key(machine) == (id_documento, id_riga)
+            ),
+            None,
+        )
+    return (
+        _base_odp_query()
+        .filter(
+            InputOdp.IdDocumento == id_documento,
+            InputOdp.IdRiga == id_riga,
+        )
+        .one_or_none()
+    )
+
+
+def _find_assignable_machine(id_documento: str, id_riga: str):
+    machine = _find_current_machine(id_documento, id_riga)
+    if machine is None or (
+        not _is_stock_machine(machine)
+        and not _is_inventory_machine(machine)
+        and not is_open_machine_order(machine)
+    ):
+        return None
+    return machine
+
+
+def _internal_reference(value) -> str:
+    reference = _norm_text(value).upper() or "ITALIA"
+    if reference not in VENDITE_INTERNAL_REFERENCES:
+        raise VenditeAssegnazioniError(
+            "Il riferimento interno deve essere ITALIA, ESTERO oppure EXTRACEE."
+        )
+    return reference
+
+
+def _internal_reference_for_country(value) -> str:
+    country_code = _norm_text(value).upper()
+    if country_code == "IT":
+        return "ITALIA"
+    if not country_code or country_code in EU_COUNTRY_CODES:
+        return "ESTERO"
+    return "EXTRACEE"
+
+
+def _packaging_notes_by_reference() -> dict[str, str]:
+    notes = dict(VENDITE_DEFAULT_PACKAGING_NOTES)
+    for item in VenditeNotaImballaggio.query.all():
+        if item.riferimento_interno in notes:
+            notes[item.riferimento_interno] = item.note or ""
+    return notes
+
+
+def _model_catalog(orders) -> dict[str, dict]:
+    catalog = {}
+    for order in orders:
+        code = _norm_text(getattr(order, "CodArt", ""))
+        if not code:
+            continue
+        variant = _norm_text(getattr(order, "VarianteArt", ""))
+        key = _model_key(code, variant)
+        catalog.setdefault(
+            key,
+            {
+                "key": key,
+                "model_code": code,
+                "variant": variant,
+                "description": _norm_text(getattr(order, "DesArt", "")),
+                "family_code": _norm_text(getattr(order, "CodFamiglia", "")),
+            },
+        )
+    return catalog
+
+
+def _available_model_catalog(open_machines) -> dict[str, dict]:
+    catalog = _model_catalog(open_machines)
+    known_machine_models = AcqArticoliLookup.query.filter(
+        func.lower(func.trim(func.coalesce(AcqArticoliLookup.GestioneMatricola, "")))
+        == "si"
+    ).all()
+    for key, model in _model_catalog(known_machine_models).items():
+        current = catalog.setdefault(key, model)
+        if not current["family_code"]:
+            current["family_code"] = model["family_code"]
+    return catalog
+
+
+def _next_manual_order_number() -> str:
+    values = (
+        VenditeOrdineCliente.query.with_entities(VenditeOrdineCliente.numero_ordine)
+        .filter(VenditeOrdineCliente.gestionale_cod_cliente.is_(None))
+        .all()
+    )
+    numbers = [int(value) for (value,) in values if _norm_text(value).isdigit()]
+    return str(max(numbers, default=0) + 1)
+
+
+def create_customer_order(payload, user, *, commit: bool = False):
+    if not isinstance(payload, dict):
+        raise VenditeAssegnazioniError("Dati dell'ordine cliente non validi.")
+
+    customer_name = _required_text(
+        payload.get("customer_name"),
+        "Il nome cliente",
+        MAX_CUSTOMER_NAME,
+    )
+    customer_order = _required_text(
+        _norm_text(payload.get("customer_order")) or _next_manual_order_number(),
+        "L'ordine cliente",
+        MAX_CUSTOMER_ORDER,
+    )
+    internal_reference = _internal_reference(payload.get("internal_reference"))
+    lines = payload.get("lines")
+    if not isinstance(lines, list) or not lines:
+        raise VenditeAssegnazioniError("Inserire almeno una riga macchina.")
+
+    customer_key = _normalized_key(customer_name)
+    order_key = _normalized_key(customer_order)
+    duplicate = VenditeOrdineCliente.query.filter_by(
+        cliente_chiave=customer_key,
+        numero_ordine_chiave=order_key,
+    ).first()
+    if duplicate is not None:
+        raise VenditeAssegnazioniConflictError("Questo ordine cliente è già presente.")
+
+    open_machines = load_assignable_machine_orders()
+    catalog = _available_model_catalog(open_machines)
+    machines_by_key = {_machine_key(machine): machine for machine in open_machines}
+    assigned_snapshots = (
+        VenditeOrdineClienteRiga.query.with_entities(
+            VenditeOrdineClienteRiga.odp_id_documento,
+            VenditeOrdineClienteRiga.odp_id_riga,
+            VenditeOrdineClienteRiga.odp_matricola,
+        )
+        .filter(
+            or_(
+                VenditeOrdineClienteRiga.odp_id_documento.is_not(None),
+                VenditeOrdineClienteRiga.odp_matricola.is_not(None),
+            )
+        )
+        .all()
+    )
+    already_assigned_keys = {
+        (id_documento, id_riga)
+        for id_documento, id_riga, _serial_number in assigned_snapshots
+        if id_documento and id_riga
+    }
+    already_assigned_serials = {
+        _normalized_key(serial_number)
+        for _id_documento, _id_riga, serial_number in assigned_snapshots
+        if _norm_text(serial_number)
+    }
+    selected_machine_keys = set()
+    selected_machine_serials = set()
+    expanded_rows = []
+    total_quantity = 0
+
+    for index, raw_line in enumerate(lines, start=1):
+        if not isinstance(raw_line, dict):
+            raise VenditeAssegnazioniError(f"Riga {index}: dati non validi.")
+
+        model_key = _required_text(
+            raw_line.get("model_key"),
+            f"Riga {index}: il modello",
+            500,
+        )
+        model = catalog.get(model_key)
+        if model is None:
+            raise VenditeAssegnazioniError(
+                f"Riga {index}: il modello selezionato non è disponibile in produzione."
+            )
+
+        quantity = _positive_integer(
+            raw_line.get("quantity"),
+            f"Riga {index}: la quantità",
+        )
+        total_quantity += quantity
+        if total_quantity > MAX_EXPANDED_ROWS:
+            raise VenditeAssegnazioniError(
+                f"Un ordine cliente può contenere al massimo {MAX_EXPANDED_ROWS} macchine."
+            )
+
+        note = _optional_text(
+            raw_line.get("sales_note", raw_line.get("note")),
+            f"Riga {index}: le note di vendita",
+            MAX_NOTE,
+        )
+        commercial_note = _optional_text(
+            raw_line.get("commercial_note"),
+            f"Riga {index}: le note commerciali",
+            MAX_NOTE,
+        )
+        instructions = _optional_text(
+            raw_line.get("production_instructions"),
+            f"Riga {index}: le note per produzione",
+            MAX_NOTE,
+        )
+        delivery = _delivery_date(
+            raw_line.get("delivery_date")
+            or payload.get("shipping_date")
+            or payload.get("delivery_date"),
+            f"Riga {index}: la data di consegna",
+        )
+        id_documento = _norm_text(raw_line.get("id_documento"))
+        id_riga = _norm_text(raw_line.get("id_riga"))
+        if bool(id_documento) != bool(id_riga):
+            raise VenditeAssegnazioniError(
+                f"Riga {index}: il riferimento della matricola non è completo."
+            )
+
+        selected_machine = None
+        if id_documento:
+            machine_key = (id_documento, id_riga)
+            selected_machine = machines_by_key.get(machine_key)
+            selected_serial = _normalized_key(_machine_serial(selected_machine))
+            if (
+                selected_machine is None
+                or machine_key in already_assigned_keys
+                or selected_serial in already_assigned_serials
+            ):
+                raise VenditeAssegnazioniConflictError(
+                    f"Riga {index}: la matricola selezionata non è più disponibile."
+                )
+            if not selected_serial:
+                raise VenditeAssegnazioniConflictError(
+                    f"Riga {index}: la matricola selezionata non è disponibile."
+                )
+            if (
+                machine_key in selected_machine_keys
+                or selected_serial in selected_machine_serials
+            ):
+                raise VenditeAssegnazioniConflictError(
+                    f"Riga {index}: la matricola è già selezionata in questo ordine."
+                )
+            if (
+                _model_key(
+                    selected_machine.CodArt,
+                    selected_machine.VarianteArt,
+                )
+                != model_key
+            ):
+                raise VenditeAssegnazioniConflictError(
+                    f"Riga {index}: la matricola non appartiene al modello selezionato."
+                )
+            if quantity != 1:
+                raise VenditeAssegnazioniError(
+                    f"Riga {index}: con una matricola selezionata la quantità deve essere 1."
+                )
+            selected_machine_keys.add(machine_key)
+            selected_machine_serials.add(selected_serial)
+
+        expanded_rows.append(
+            (model, note, delivery, selected_machine, instructions, commercial_note)
+        )
+        expanded_rows.extend(
+            (model, note, delivery, None, instructions, commercial_note)
+            for _ in range(quantity - 1)
+        )
+
+    shipping_date = min(item[2] for item in expanded_rows)
+    packaging_note = _packaging_notes_by_reference()[internal_reference]
+
+    actor_id, actor_name = _actor(user)
+    customer = VenditeOrdineCliente(
+        cliente_nome=customer_name,
+        cliente_chiave=customer_key,
+        numero_ordine=customer_order,
+        numero_ordine_chiave=order_key,
+        riferimento_interno=internal_reference,
+        data_spedizione=shipping_date,
+        creato_da_id=actor_id,
+        creato_da_nome=actor_name,
+    )
+    customer.righe = [
+        VenditeOrdineClienteRiga(
+            posizione=position,
+            modello_codice=model["model_code"],
+            modello_variante=model["variant"],
+            modello_descrizione=model["description"] or None,
+            note=note or None,
+            note_commerciali=commercial_note or None,
+            note_per_produzione=instructions or None,
+            note_spedizione=packaging_note or None,
+            data_disponibile=None,
+            data_consegna=delivery,
+        )
+        for position, (
+            model,
+            note,
+            delivery,
+            _machine,
+            instructions,
+            commercial_note,
+        ) in enumerate(
+            expanded_rows,
+            start=1,
+        )
+    ]
+    db.session.add(customer)
+    db.session.flush()
+    _log_customer_change(
+        customer,
+        user,
+        event="CREAZIONE",
+        field="ordine",
+        current=customer.numero_ordine,
+    )
+    for row in customer.righe:
+        initial_values = {
+            "model": row.modello_codice,
+            "sales_note": row.note,
+            "commercial_note": row.note_commerciali,
+            "production_instructions": row.note_per_produzione,
+            "shipping_note": row.note_spedizione,
+            "delivery_date": row.data_consegna.isoformat(),
+        }
+        for field, value in initial_values.items():
+            if value:
+                _log_customer_change(
+                    customer,
+                    user,
+                    event="INSERIMENTO",
+                    field=field,
+                    current=value,
+                    row=row,
+                )
+    for row, (
+        _model,
+        _note,
+        _delivery,
+        machine,
+        _instructions,
+        _commercial_note,
+    ) in zip(
+        customer.righe,
+        expanded_rows,
+    ):
+        if machine is not None:
+            set_machine_assignment(
+                row.id,
+                {
+                    "version": row.versione,
+                    "id_documento": machine.IdDocumento,
+                    "id_riga": machine.IdRiga,
+                },
+                user,
+            )
+    db.session.flush()
+    if commit:
+        db.session.commit()
+    return customer
+
+
+def _customer_row(row_id: int) -> VenditeOrdineClienteRiga:
+    row = db.session.get(VenditeOrdineClienteRiga, row_id)
+    if row is None:
+        raise VenditeAssegnazioniError("Riga dell'ordine cliente non trovata.")
+    return row
+
+
+def _require_manual_order(customer: VenditeOrdineCliente) -> None:
+    if customer.gestionale_cod_cliente:
+        raise VenditeAssegnazioniError(
+            "Gli ordini gestionali possono essere modificati solo dal gestionale."
+        )
+
+
+def _require_manual_row(row: VenditeOrdineClienteRiga) -> None:
+    if row.gestionale_id_documento:
+        raise VenditeAssegnazioniError(
+            "La riga gestionale non consente la modifica delle date."
+        )
+
+
+def _check_row_version(row: VenditeOrdineClienteRiga, payload) -> None:
+    expected_version = _positive_integer(
+        payload.get("version"),
+        "La versione della riga",
+    )
+    if expected_version != row.versione:
+        raise VenditeAssegnazioniConflictError(
+            "La riga è stata modificata da un altro operatore. Aggiornare la pagina."
+        )
+
+
+def _save_machine_production_note(serial_number: str, note: str):
+    key = _norm_text(serial_number).casefold()
+    item = db.session.get(VenditeNotaProduzioneMacchina, key)
+    if item is None:
+        item = VenditeNotaProduzioneMacchina(matricola=key)
+        db.session.add(item)
+    item.note = note or ""
+    return item
+
+
+def update_machine_production_note(payload, user=None):
+    if not isinstance(payload, dict) or not isinstance(
+        payload.get("production_note"), str
+    ):
+        raise VenditeAssegnazioniError("Note di produzione non valide.")
+    note = _optional_text(payload["production_note"], "Le note di produzione", MAX_NOTE)
+    expected_version = payload.get("version")
+    if type(expected_version) is not int or expected_version < 0:
+        raise VenditeAssegnazioniError("Versione delle note non valida.")
+    id_documento = _required_text(payload.get("id_documento"), "Il documento", 200)
+    id_riga = _required_text(payload.get("id_riga"), "La riga", 200)
+    serial = _required_text(payload.get("serial_number"), "La matricola", 200)
+    machine = _find_assignable_machine(id_documento, id_riga)
+    if machine is None or _machine_serial(machine).casefold() != serial.casefold():
+        raise VenditeAssegnazioniConflictError(
+            "La matricola non è più disponibile. Aggiornare la pagina."
+        )
+    item = db.session.get(VenditeNotaProduzioneMacchina, serial.casefold())
+    if (item.versione if item is not None else 0) != expected_version:
+        raise VenditeAssegnazioniConflictError(
+            "Le note sono state modificate da un altro operatore. Ricaricare i dati."
+        )
+    assigned_rows = _customer_rows_for_machine(id_documento, id_riga, serial)
+    if any(row.spedizione is not None for row in assigned_rows):
+        raise VenditeAssegnazioniConflictError("La matricola risulta già spedita.")
+    item = _save_machine_production_note(serial, note)
+    for row in assigned_rows:
+        value = note or None
+        if row.note_produzione != value:
+            previous = row.note_produzione
+            row.note_produzione = value
+            _mark_row_changed(row, "production_note")
+            _log_customer_change(
+                row.ordine_cliente,
+                user,
+                field="production_note",
+                previous=previous,
+                current=value,
+                row=row,
+            )
+    db.session.flush()
+    return item
+
+
+def _clear_assignment(row: VenditeOrdineClienteRiga) -> None:
+    if row.odp_matricola:
+        _save_machine_production_note(row.odp_matricola, row.note_produzione or "")
+        row.note_produzione = None
+    row.odp_id_documento = None
+    row.odp_id_riga = None
+    row.odp_rif_registraz = None
+    row.odp_num_progr_riga = None
+    row.odp_matricola = None
+    row.assegnata_il = None
+    row.assegnata_da_id = None
+    row.assegnata_da_nome = None
+    row.assegnazione_automatica = False
+
+
+def _assign_machine_snapshot(
+    row: VenditeOrdineClienteRiga,
+    machine,
+    *,
+    actor_id: int | None,
+    actor_name: str,
+    automatic: bool,
+) -> None:
+    old_serial = _norm_text(row.odp_matricola).casefold()
+    serial = _machine_serial(machine).casefold()
+    if old_serial and old_serial != serial:
+        _save_machine_production_note(old_serial, row.note_produzione or "")
+        row.note_produzione = None
+    machine_note = db.session.get(VenditeNotaProduzioneMacchina, serial)
+    if machine_note is None:
+        machine_note = _save_machine_production_note(serial, row.note_produzione or "")
+    row.note_produzione = machine_note.note or None
+    row.odp_id_documento = _norm_text(machine.IdDocumento)
+    row.odp_id_riga = _norm_text(machine.IdRiga)
+    row.odp_rif_registraz = _norm_text(machine.RifRegistraz) or None
+    row.odp_num_progr_riga = _norm_text(machine.NumProgrRiga) or None
+    row.odp_matricola = _norm_text(machine.CodMatricola) or None
+    row.assegnata_il = _now_rome_dt().isoformat(timespec="seconds")
+    row.assegnata_da_id = actor_id
+    row.assegnata_da_nome = actor_name
+    row.assegnazione_automatica = automatic
+
+
+def set_machine_assignment(
+    row_id: int,
+    payload,
+    user,
+    *,
+    commit: bool = False,
+):
+    if not isinstance(payload, dict):
+        raise VenditeAssegnazioniError("Dati dell'assegnazione non validi.")
+
+    row = _customer_row(row_id)
+    _check_row_version(row, payload)
+    id_documento = _norm_text(payload.get("id_documento"))
+    id_riga = _norm_text(payload.get("id_riga"))
+    old_assignment = (row.odp_id_documento, row.odp_id_riga, row.odp_matricola)
+
+    if not id_documento and not id_riga:
+        _clear_assignment(row)
+        if any(old_assignment):
+            _mark_row_changed(row, "assignment")
+            _require_read_confirmation(row.ordine_cliente)
+            _log_customer_change(
+                row.ordine_cliente,
+                user,
+                field="assignment",
+                previous=old_assignment[2],
+                row=row,
+            )
+        db.session.flush()
+        if commit:
+            db.session.commit()
+        return row
+
+    if not id_documento or not id_riga:
+        raise VenditeAssegnazioniError("Il riferimento della matricola non è completo.")
+
+    machine = _find_assignable_machine(id_documento, id_riga)
+    if machine is None:
+        raise VenditeAssegnazioniConflictError(
+            "La matricola non è più disponibile. Aggiornare la pagina e riprovare."
+        )
+    serial_number = _machine_serial(machine)
+    if not serial_number:
+        raise VenditeAssegnazioniConflictError(
+            "La matricola selezionata non è disponibile."
+        )
+
+    if _model_key(machine.CodArt, machine.VarianteArt) != _model_key(
+        row.modello_codice,
+        row.modello_variante,
+    ):
+        raise VenditeAssegnazioniConflictError(
+            "Il modello della matricola non corrisponde alla richiesta cliente."
+        )
+
+    already_assigned_rows = _customer_rows_for_machine(
+        id_documento,
+        id_riga,
+        serial_number,
+        exclude_row_id=row.id,
+    )
+    for already_assigned in already_assigned_rows:
+        previous_serial = already_assigned.odp_matricola
+        _clear_assignment(already_assigned)
+        _mark_row_changed(already_assigned, "assignment")
+        _require_read_confirmation(already_assigned.ordine_cliente)
+        _log_customer_change(
+            already_assigned.ordine_cliente,
+            user,
+            field="assignment",
+            previous=previous_serial,
+            row=already_assigned,
+        )
+    if already_assigned_rows:
+        db.session.flush()
+
+    actor_id, actor_name = _actor(user)
+    _assign_machine_snapshot(
+        row,
+        machine,
+        actor_id=actor_id,
+        actor_name=actor_name,
+        automatic=False,
+    )
+    if old_assignment != (row.odp_id_documento, row.odp_id_riga, row.odp_matricola):
+        _mark_row_changed(row, "assignment")
+        _require_read_confirmation(row.ordine_cliente)
+        _log_customer_change(
+            row.ordine_cliente,
+            user,
+            field="assignment",
+            previous=old_assignment[2],
+            current=row.odp_matricola,
+            row=row,
+        )
+    db.session.flush()
+    if commit:
+        db.session.commit()
+    return row
+
+
+def _snapshot_order_label(row: VenditeOrdineClienteRiga) -> str:
+    if _norm_text(row.odp_rif_registraz) == STOCK_LABEL:
+        return STOCK_LABEL
+    return format_ordine_ref_display(
+        row.odp_rif_registraz,
+        row.odp_num_progr_riga,
+        row.odp_id_riga,
+    ) or " ".join(value for value in (row.odp_id_documento, row.odp_id_riga) if value)
+
+
+def _phase_two_closed_keys(order_keys) -> set[tuple[str, str]]:
+    keys = sorted(
+        {
+            (_norm_text(id_documento), _norm_text(id_riga))
+            for id_documento, id_riga in order_keys
+            if _norm_text(id_documento) and _norm_text(id_riga)
+        }
+    )
+    latest = {}
+    for start in range(0, len(keys), LOG_QUERY_BATCH_SIZE):
+        batch = keys[start : start + LOG_QUERY_BATCH_SIZE]
+        logs = (
+            InputOdpLog.query.with_entities(
+                InputOdpLog.IdDocumento,
+                InputOdpLog.IdRiga,
+                InputOdpLog.FaseConsuntivata,
+                InputOdpLog.FaseAttiva,
+                InputOdpLog.StatoOrdinePost,
+            )
+            .filter(tuple_(InputOdpLog.IdDocumento, InputOdpLog.IdRiga).in_(batch))
+            .order_by(InputOdpLog.log_id.desc())
+            .all()
+        )
+        for log in logs:
+            key = (_norm_text(log.IdDocumento), _norm_text(log.IdRiga))
+            latest.setdefault(key, log)
+
+    return {
+        key
+        for key, log in latest.items()
+        if _fase_to_int(log.FaseConsuntivata or log.FaseAttiva) == 2
+        and _canonical_state(log.StatoOrdinePost).casefold() == "chiusa"
+    }
+
+
+def _assignment_payload(
+    row,
+    current_machine,
+    *,
+    completed_from_log: bool = False,
+) -> dict | None:
+    if not row.odp_id_documento or not row.odp_id_riga:
+        return None
+
+    is_stock = current_machine is not None and _is_stock_machine(current_machine)
+    assigned_from_stock = is_stock and _norm_text(row.odp_rif_registraz) == STOCK_LABEL
+    machine_is_open = current_machine is not None and (
+        is_stock
+        or _is_inventory_machine(current_machine)
+        or is_open_machine_order(current_machine)
+    )
+    machine_is_completed = (
+        is_stock
+        or completed_from_log
+        or bool(
+            current_machine is not None
+            and _fase_to_int(getattr(current_machine, "FaseAttiva", "")) == 2
+            and _canonical_state(getattr(current_machine, "StatoOrdine", "")).casefold()
+            == "chiusa"
+        )
+    )
+    return {
+        "id_documento": row.odp_id_documento,
+        "id_riga": row.odp_id_riga,
+        "order": (
+            (
+                _machine_order_label(current_machine)
+                if not is_stock or assigned_from_stock
+                else _snapshot_order_label(row)
+            )
+            if current_machine is not None
+            else _snapshot_order_label(row)
+        ),
+        "serial_number": (
+            _norm_text(getattr(current_machine, "CodMatricola", ""))
+            if current_machine is not None
+            else _norm_text(row.odp_matricola)
+        )
+        or "Non assegnata",
+        "phase": (
+            _phase_label(getattr(current_machine, "FaseAttiva", ""))
+            if current_machine is not None
+            else "2"
+            if completed_from_log
+            else ""
+        ),
+        "state": (
+            _canonical_state(getattr(current_machine, "StatoOrdine", ""))
+            if current_machine is not None
+            else "Chiusa"
+            if completed_from_log
+            else "Non presente"
+        ),
+        "present": current_machine is not None,
+        "open": machine_is_open,
+        "completed": machine_is_completed,
+        "automatic": bool(row.assegnazione_automatica),
+    }
+
+
+def _apply_note_updates(
+    row: VenditeOrdineClienteRiga,
+    payload,
+    *,
+    can_edit_sales: bool,
+    can_edit_sales_note: bool = False,
+    can_edit_production_instructions: bool = False,
+    user=None,
+) -> bool:
+    updated = False
+    changed = False
+    if (
+        can_edit_sales or can_edit_production_instructions
+    ) and "production_instructions" in payload:
+        previous = row.note_per_produzione
+        value = (
+            _optional_text(
+                payload.get("production_instructions"),
+                "Le note per produzione",
+                MAX_NOTE,
+            )
+            or None
+        )
+        field_changed = row.note_per_produzione != value
+        changed |= field_changed
+        row.note_per_produzione = value
+        if field_changed:
+            _mark_row_changed(row, "production_instructions")
+            _log_customer_change(
+                row.ordine_cliente,
+                user,
+                field="production_instructions",
+                previous=previous,
+                current=value,
+                row=row,
+            )
+        updated = True
+    if can_edit_sales and "commercial_note" in payload:
+        previous = row.note_commerciali
+        value = (
+            _optional_text(
+                payload.get("commercial_note"),
+                "Le note commerciali",
+                MAX_NOTE,
+            )
+            or None
+        )
+        field_changed = row.note_commerciali != value
+        changed |= field_changed
+        row.note_commerciali = value
+        if field_changed:
+            _mark_row_changed(row, "commercial_note")
+            _log_customer_change(
+                row.ordine_cliente,
+                user,
+                field="commercial_note",
+                previous=previous,
+                current=value,
+                row=row,
+            )
+        updated = True
+    if (can_edit_sales or can_edit_sales_note) and "sales_note" in payload:
+        previous = row.note
+        value = (
+            _optional_text(
+                payload.get("sales_note"),
+                "Le note di vendita",
+                MAX_NOTE,
+            )
+            or None
+        )
+        field_changed = row.note != value
+        changed |= field_changed
+        row.note = value
+        if field_changed:
+            _mark_row_changed(row, "sales_note")
+            _log_customer_change(
+                row.ordine_cliente,
+                user,
+                field="sales_note",
+                previous=previous,
+                current=value,
+                row=row,
+            )
+        updated = True
+    if can_edit_sales and "shipping_note" in payload:
+        previous = row.note_spedizione
+        value = (
+            _optional_text(
+                payload.get("shipping_note"),
+                "Le note per imballo",
+                MAX_NOTE,
+            )
+            or None
+        )
+        field_changed = row.note_spedizione != value
+        changed |= field_changed
+        row.note_spedizione = value
+        if field_changed:
+            _mark_row_changed(row, "shipping_note")
+            _log_customer_change(
+                row.ordine_cliente,
+                user,
+                field="shipping_note",
+                previous=previous,
+                current=value,
+                row=row,
+            )
+        updated = True
+    if not updated:
+        raise VenditeAssegnazioniError("Nessuna nota modificabile ricevuta.")
+    return changed
+
+
+def update_customer_row_notes(
+    row_id: int,
+    payload,
+    user=None,
+    *,
+    can_edit_sales: bool,
+    can_edit_sales_note: bool = False,
+    can_edit_production_instructions: bool = False,
+    commit: bool = False,
+) -> VenditeOrdineClienteRiga:
+    if not isinstance(payload, dict):
+        raise VenditeAssegnazioniError("Dati delle note non validi.")
+
+    row = _customer_row(row_id)
+    _check_row_version(row, payload)
+    changed = _apply_note_updates(
+        row,
+        payload,
+        can_edit_sales=can_edit_sales,
+        can_edit_sales_note=can_edit_sales_note,
+        can_edit_production_instructions=can_edit_production_instructions,
+        user=user,
+    )
+    if changed:
+        _require_read_confirmation(row.ordine_cliente)
+    db.session.flush()
+    if commit:
+        db.session.commit()
+    return row
+
+
+def _selected_machine(payload):
+    if not isinstance(payload, dict):
+        raise VenditeAssegnazioniError("Dati della macchina non validi.")
+    id_documento = _required_text(
+        payload.get("id_documento"), "L'ordine produzione", 200
+    )
+    id_riga = _required_text(payload.get("id_riga"), "La riga ordine", 200)
+    serial = _required_text(payload.get("serial_number"), "La matricola", 200)
+    machine = _find_current_machine(id_documento, id_riga)
+    if machine is None or _normalized_key(_machine_serial(machine)) != _normalized_key(
+        serial
+    ):
+        raise VenditeAssegnazioniConflictError(
+            "La matricola non corrisponde più alla macchina selezionata. Aggiornare la pagina."
+        )
+    return machine, _normalized_key(serial)
+
+
+def _save_machine_tilt_sensors(key, raw_value, user):
+    raw_sensors = str(raw_value or "").strip()
+    if len(raw_sensors) > MAX_NOTE:
+        raise VenditeAssegnazioniError(
+            "I seriali dei sensori antiribaltamento superano 1000 caratteri."
+        )
+    sensors = []
+    seen_sensors = set()
+    for value in re.split(r"[\r\n,;]+", raw_sensors):
+        sensor = value.strip()
+        sensor_key = sensor.casefold()
+        if not sensor or sensor_key in seen_sensors:
+            continue
+        if len(sensor) > 200:
+            raise VenditeAssegnazioniError(
+                "Ogni seriale del sensore può contenere al massimo 200 caratteri."
+            )
+        seen_sensors.add(sensor_key)
+        sensors.append(sensor)
+
+    actor_id, actor_name = _actor(user)
+    saved = db.session.get(VenditeSensoriMacchina, key)
+    joined = "\n".join(sensors)
+    if saved is None and joined:
+        saved = VenditeSensoriMacchina(
+            matricola=key,
+            sensori=joined,
+            aggiornato_il=_now_rome_dt().isoformat(timespec="seconds"),
+            aggiornato_da_id=actor_id,
+            aggiornato_da_nome=actor_name,
+        )
+        db.session.add(saved)
+    elif saved is not None and joined:
+        saved.sensori = joined
+        saved.aggiornato_il = _now_rome_dt().isoformat(timespec="seconds")
+        saved.aggiornato_da_id = actor_id
+        saved.aggiornato_da_nome = actor_name
+    elif saved is not None:
+        db.session.delete(saved)
+
+    logged = {
+        row.sensore_seriale.casefold()
+        for row in VenditeSensoreAntiribaltamentoLog.query.filter_by(
+            matricola=key
+        ).all()
+    }
+    for sensor in sensors:
+        if sensor.casefold() not in logged:
+            db.session.add(
+                VenditeSensoreAntiribaltamentoLog(
+                    matricola=key,
+                    sensore_seriale=sensor,
+                    registrato_da_id=actor_id,
+                    registrato_da_nome=actor_name,
+                )
+            )
+    return saved
+
+
+def confirm_machine_packaging(payload, user, *, commit: bool = False):
+    machine, key = _selected_machine(payload)
+    if _canonical_state(getattr(machine, "StatoOrdine", "")) != "Chiusa":
+        raise VenditeAssegnazioniError(
+            "La macchina può essere imballata solamente quando è in stato Chiusa."
+        )
+    confirmation = db.session.get(VenditeImballoMacchina, key)
+    actor_id, actor_name = _actor(user)
+    if confirmation is None:
+        confirmation = VenditeImballoMacchina(
+            matricola=key,
+            confermata_il=_now_rome_dt().isoformat(timespec="seconds"),
+            confermata_da_id=actor_id,
+            confermata_da_nome=actor_name,
+        )
+        db.session.add(confirmation)
+    if str((payload or {}).get("tilt_sensor_serials") or "").strip():
+        _save_machine_tilt_sensors(key, payload.get("tilt_sensor_serials"), user)
+    sync_shippable_machines()
+    if commit:
+        db.session.commit()
+    return confirmation
+
+
+def update_machine_tilt_sensors(payload, user, *, commit: bool = False):
+    _machine, key = _selected_machine(payload)
+    saved = _save_machine_tilt_sensors(
+        key, (payload or {}).get("tilt_sensor_serials"), user
+    )
+    if commit:
+        db.session.commit()
+    return saved
+
+
+def update_machine_option(payload, user, *, commit: bool = False):
+    _machine, key = _selected_machine(payload)
+    optioned = payload.get("optioned")
+    if not isinstance(optioned, bool):
+        raise VenditeAssegnazioniError("Lo stato dell'opzione non è valido.")
+    note = _optional_text(payload.get("note"), "La nota dell'opzione", MAX_NOTE)
+    actor_id, actor_name = _actor(user)
+    option = db.session.get(VenditeOpzioneMacchina, key)
+    owns_option = option is not None and (
+        option.opzionata_da_id == actor_id
+        if option.opzionata_da_id is not None
+        else option.opzionata_da_nome.casefold() == actor_name.casefold()
+    )
+    if optioned:
+        if option is not None and not owns_option:
+            raise VenditeAssegnazioniConflictError(
+                f"La macchina è già opzionata da {option.opzionata_da_nome}."
+            )
+        if option is None:
+            option = VenditeOpzioneMacchina(
+                matricola=key,
+                opzionata_il=_now_rome_dt().isoformat(timespec="seconds"),
+                opzionata_da_id=actor_id,
+                opzionata_da_nome=actor_name,
+                nota=note or None,
+            )
+            db.session.add(option)
+        else:
+            option.nota = note or None
+    elif option is not None:
+        if not owns_option:
+            raise VenditeAssegnazioniConflictError(
+                "L'opzione può essere rimossa solamente dall'utente che l'ha inserita."
+            )
+        db.session.delete(option)
+    db.session.flush()
+    if commit:
+        db.session.commit()
+    return option
+
+
+def update_customer_orders_note(
+    payload,
+    user,
+    *,
+    commit: bool = False,
+) -> VenditeNotaOrdiniCliente:
+    if not isinstance(payload, dict):
+        raise VenditeAssegnazioniError("Dati della nota non validi.")
+
+    text = _optional_text(payload.get("note"), "La nota", MAX_NOTE)
+    note = db.session.get(VenditeNotaOrdiniCliente, 1)
+    actor_id, actor_name = _actor(user)
+    if note is None:
+        note = VenditeNotaOrdiniCliente(
+            id=1,
+            note=text,
+            aggiornata_il=_now_rome_dt().isoformat(timespec="seconds"),
+            aggiornata_da_id=actor_id,
+            aggiornata_da_nome=actor_name,
+        )
+        db.session.add(note)
+    elif note.note != text:
+        note.note = text
+        note.aggiornata_il = _now_rome_dt().isoformat(timespec="seconds")
+        note.aggiornata_da_id = actor_id
+        note.aggiornata_da_nome = actor_name
+
+    db.session.flush()
+    if commit:
+        db.session.commit()
+    return note
+
+
+def confirm_customer_orders_note_read(
+    user,
+    *,
+    commit: bool = False,
+) -> VenditeNotaOrdiniClienteLettura:
+    note = db.session.get(VenditeNotaOrdiniCliente, 1)
+    if note is None or not _norm_text(note.note):
+        raise VenditeAssegnazioniError("Non ci sono note da confermare.")
+
+    actor_id, _actor_name = _actor(user)
+    if actor_id is None:
+        raise VenditeAssegnazioniError("Utente non valido.")
+
+    reading = db.session.get(VenditeNotaOrdiniClienteLettura, actor_id)
+    read_at = _now_rome_dt().isoformat(timespec="seconds")
+    if reading is None:
+        reading = VenditeNotaOrdiniClienteLettura(
+            operatore_id=actor_id,
+            versione_letta=note.versione,
+            letta_il=read_at,
+        )
+        db.session.add(reading)
+    else:
+        reading.versione_letta = note.versione
+        reading.letta_il = read_at
+
+    db.session.flush()
+    if commit:
+        db.session.commit()
+    return reading
+
+
+def confirm_customer_order_read(
+    order_id: int,
+    user,
+    *,
+    commit: bool = False,
+) -> VenditeOrdineCliente:
+    customer = db.session.get(VenditeOrdineCliente, order_id)
+    if customer is None:
+        raise VenditeAssegnazioniError("Ordine cliente non trovato.")
+
+    if not customer.confermato_il:
+        _actor_id, actor_name = _actor(user)
+        customer.confermato_il = _now_rome_dt().isoformat(timespec="seconds")
+        customer.confermato_da_nome = actor_name
+        _log_customer_change(
+            customer,
+            user,
+            event="CONFERMA",
+            field="lettura",
+            current=customer.confermato_il,
+        )
+        for row in customer.righe:
+            row.campi_modificati = []
+        db.session.flush()
+    if commit:
+        db.session.commit()
+    return customer
+
+
+def delete_customer_order(
+    order_id: int,
+    user=None,
+    *,
+    commit: bool = False,
+) -> VenditeOrdineCliente:
+    customer = db.session.get(VenditeOrdineCliente, order_id)
+    if customer is None:
+        raise VenditeAssegnazioniError("Ordine cliente non trovato.")
+    _require_manual_order(customer)
+
+    for row in customer.righe:
+        if row.odp_matricola:
+            _save_machine_production_note(row.odp_matricola, row.note_produzione or "")
+    _log_customer_change(
+        customer,
+        user,
+        event="ELIMINAZIONE",
+        field="ordine",
+        previous=customer.numero_ordine,
+    )
+    db.session.delete(customer)
+    db.session.flush()
+    if commit:
+        db.session.commit()
+    return customer
+
+
+def delete_customer_order_row(
+    row_id: int,
+    user=None,
+    *,
+    commit: bool = False,
+) -> VenditeOrdineCliente:
+    row = _customer_row(row_id)
+    customer = row.ordine_cliente
+    _require_manual_order(customer)
+
+    if row.odp_matricola:
+        _save_machine_production_note(row.odp_matricola, row.note_produzione or "")
+    removed_position = row.posizione
+    _log_customer_change(
+        customer,
+        user,
+        event="ELIMINAZIONE",
+        field="riga",
+        previous=str(removed_position),
+        row=row,
+    )
+    db.session.delete(row)
+    for remaining in customer.righe:
+        if remaining is not row and remaining.posizione > removed_position:
+            remaining.posizione -= 1
+    _require_read_confirmation(customer)
+    db.session.flush()
+    if commit:
+        db.session.commit()
+    return customer
+
+
+def update_customer_order_details(
+    order_id: int,
+    payload,
+    user=None,
+    *,
+    commit: bool = False,
+) -> VenditeOrdineCliente:
+    if not isinstance(payload, dict):
+        raise VenditeAssegnazioniError("Dati dell'ordine cliente non validi.")
+
+    customer = db.session.get(VenditeOrdineCliente, order_id)
+    if customer is None:
+        raise VenditeAssegnazioniError("Ordine cliente non trovato.")
+    _require_manual_order(customer)
+
+    new_reference = _internal_reference(payload.get("internal_reference"))
+    old_reference = customer.riferimento_interno or "ITALIA"
+    if new_reference != old_reference:
+        packaging_notes = _packaging_notes_by_reference()
+        old_default = _norm_text(packaging_notes.get(old_reference))
+        new_default = packaging_notes[new_reference]
+        for row in customer.righe:
+            current_note = _norm_text(row.note_spedizione)
+            if not current_note or current_note == old_default:
+                value = new_default or None
+                if row.note_spedizione != value:
+                    previous = row.note_spedizione
+                    row.note_spedizione = value
+                    _mark_row_changed(row, "shipping_note")
+                    _log_customer_change(
+                        customer,
+                        user,
+                        field="shipping_note",
+                        previous=previous,
+                        current=value,
+                        row=row,
+                    )
+        _log_customer_change(
+            customer,
+            user,
+            field="internal_reference",
+            previous=old_reference,
+            current=new_reference,
+        )
+        _require_read_confirmation(customer)
+
+    customer.riferimento_interno = new_reference
+    db.session.flush()
+    if commit:
+        db.session.commit()
+    return customer
+
+
+def update_customer_row_dates(
+    row_id: int,
+    payload,
+    user=None,
+    *,
+    can_edit_delivery: bool,
+    can_edit_available: bool,
+    commit: bool = False,
+) -> VenditeOrdineClienteRiga:
+    if not isinstance(payload, dict):
+        raise VenditeAssegnazioniError("Dati delle date non validi.")
+
+    row = _customer_row(row_id)
+    _require_manual_row(row)
+    _check_row_version(row, payload)
+
+    updated = False
+    changed = False
+    if can_edit_delivery and "delivery_date" in payload:
+        previous = row.data_consegna
+        value = _delivery_date(
+            payload.get("delivery_date"),
+            "La data di consegna",
+        )
+        field_changed = row.data_consegna != value
+        changed |= field_changed
+        row.data_consegna = value
+        if field_changed:
+            _mark_row_changed(row, "delivery_date")
+            _log_customer_change(
+                row.ordine_cliente,
+                user,
+                field="delivery_date",
+                previous=previous,
+                current=value,
+                row=row,
+            )
+        updated = True
+    if can_edit_available and "available_date" in payload:
+        previous = row.data_disponibile
+        value = _optional_date(
+            payload.get("available_date"),
+            "La data disponibile",
+        )
+        field_changed = row.data_disponibile != value
+        changed |= field_changed
+        row.data_disponibile = value
+        if field_changed:
+            _mark_row_changed(row, "available_date")
+            _log_customer_change(
+                row.ordine_cliente,
+                user,
+                field="available_date",
+                previous=previous,
+                current=value,
+                row=row,
+            )
+        updated = True
+    if not updated:
+        raise VenditeAssegnazioniError("Nessuna data modificabile ricevuta.")
+
+    row.ordine_cliente.data_spedizione = min(
+        item.data_consegna for item in row.ordine_cliente.righe
+    )
+    if changed:
+        _require_read_confirmation(row.ordine_cliente)
+    db.session.flush()
+    if commit:
+        db.session.commit()
+    return row
+
+
+def update_customer_row(
+    row_id: int,
+    payload,
+    user,
+    *,
+    can_edit_sales: bool,
+    can_edit_production: bool,
+    can_assign: bool,
+    can_edit_sales_note: bool = False,
+    can_edit_production_instructions: bool = False,
+    commit: bool = False,
+) -> VenditeOrdineClienteRiga:
+    if not isinstance(payload, dict):
+        raise VenditeAssegnazioniError("Dati della riga non validi.")
+
+    work_payload = dict(payload)
+    row = _customer_row(row_id)
+    _check_row_version(row, work_payload)
+    updated = False
+
+    if can_assign and work_payload.get("assignment_changed"):
+        row = set_machine_assignment(row_id, work_payload, user)
+        work_payload["version"] = row.versione
+        updated = True
+
+    if (can_edit_sales and "delivery_date" in work_payload) or (
+        can_edit_production and "available_date" in work_payload
+    ):
+        row = update_customer_row_dates(
+            row_id,
+            work_payload,
+            user,
+            can_edit_delivery=can_edit_sales,
+            can_edit_available=can_edit_production,
+        )
+        work_payload["version"] = row.versione
+        updated = True
+
+    sales_note_keys = {"sales_note", "commercial_note", "shipping_note"}
+    should_update_notes = (
+        can_edit_sales and bool(sales_note_keys & work_payload.keys())
+    ) or (
+        can_edit_sales_note and "sales_note" in work_payload
+    ) or (
+        can_edit_production_instructions and "production_instructions" in work_payload
+    )
+    if should_update_notes:
+        row = update_customer_row_notes(
+            row_id,
+            work_payload,
+            user,
+            can_edit_sales=can_edit_sales,
+            can_edit_sales_note=can_edit_sales_note,
+            can_edit_production_instructions=can_edit_production_instructions,
+        )
+        work_payload["version"] = row.versione
+        updated = True
+
+    if not updated:
+        raise VenditeAssegnazioniError("Nessun dato modificabile ricevuto.")
+    if commit:
+        db.session.commit()
+    return row
+
+
+def update_packaging_notes(
+    payload,
+    user,
+    *,
+    commit: bool = False,
+) -> list[VenditeNotaImballaggio]:
+    if not isinstance(payload, dict) or not isinstance(
+        payload.get("notes"),
+        dict,
+    ):
+        raise VenditeAssegnazioniError("Note per imballo non valide.")
+
+    raw_notes = payload["notes"]
+    if set(raw_notes) - set(VENDITE_INTERNAL_REFERENCES):
+        raise VenditeAssegnazioniError("Riferimento interno non valido.")
+
+    actor_id, actor_name = _actor(user)
+    updated_at = _now_rome_dt().isoformat(timespec="seconds")
+    items = []
+    for reference in VENDITE_INTERNAL_REFERENCES:
+        note = _optional_text(
+            raw_notes.get(reference),
+            f"Le note per imballo {reference}",
+            MAX_NOTE,
+        )
+        item = db.session.get(VenditeNotaImballaggio, reference)
+        old_default = _norm_text(
+            item.note
+            if item is not None
+            else VENDITE_DEFAULT_PACKAGING_NOTES[reference]
+        )
+        if old_default != note:
+            _log_customer_change(
+                None,
+                user,
+                field=f"packaging_note_{reference}",
+                previous=old_default,
+                current=note,
+                entity="CONFIGURAZIONE",
+            )
+        for row in (
+            VenditeOrdineClienteRiga.query.join(VenditeOrdineCliente)
+            .filter(VenditeOrdineCliente.riferimento_interno == reference)
+            .all()
+        ):
+            current_note = _norm_text(row.note_spedizione)
+            if (
+                not current_note or current_note == old_default
+            ) and current_note != note:
+                row.note_spedizione = note or None
+                _mark_row_changed(row, "shipping_note")
+                _log_customer_change(
+                    row.ordine_cliente,
+                    user,
+                    field="shipping_note",
+                    previous=current_note,
+                    current=note,
+                    row=row,
+                )
+        if item is None:
+            item = VenditeNotaImballaggio(riferimento_interno=reference)
+            db.session.add(item)
+        item.note = note or None
+        item.aggiornato_il = updated_at
+        item.aggiornato_da_id = actor_id
+        item.aggiornato_da_nome = actor_name
+        items.append(item)
+
+    db.session.flush()
+    if commit:
+        db.session.commit()
+    return items
+
+
+def _synced_date(value) -> date | None:
+    raw = _norm_text(value)
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00")).date()
+    except ValueError:
+        try:
+            return date.fromisoformat(raw[:10])
+        except ValueError:
+            return None
+
+
+def _synced_row_retention_key(row: VenditeOrdineClienteRiga) -> tuple:
+    notes = (
+        row.note,
+        row.note_commerciali,
+        row.note_produzione,
+        row.note_per_produzione,
+        row.note_spedizione,
+    )
+    return (
+        bool(_norm_text(row.odp_matricola)),
+        sum(bool(_norm_text(note)) for note in notes),
+        -(row.gestionale_unita or 0),
+    )
+
+
+def _synced_read_snapshot(row):
+    customer = row.ordine_cliente
+    return (
+        row.ordine_cliente_id,
+        customer.cliente_nome,
+        customer.numero_ordine,
+        customer.riferimento_interno,
+        customer.data_spedizione,
+        row.posizione,
+        row.modello_codice,
+        row.modello_variante,
+        row.modello_descrizione,
+        row.data_consegna,
+        row.data_disponibile,
+        row.note,
+        row.note_commerciali,
+        row.note_per_produzione,
+        row.note_produzione,
+        row.note_spedizione,
+        row.odp_matricola,
+    )
+
+
+def _sync_open_customer_orders() -> None:
+    query = (
+        VenditeOrdineClienteRiga.query.join(VenditeOrdineCliente)
+        .options(selectinload(VenditeOrdineClienteRiga.ordine_cliente))
+        .filter(VenditeOrdineCliente.gestionale_cod_cliente.is_not(None))
+    )
+    before = {row.id: _synced_read_snapshot(row) for row in query.all()}
+
+    _sync_open_customer_orders_data()
+
+    rows = query.all()
+    remaining_ids = {row.id for row in rows}
+    reduced_orders = {
+        snapshot[0]
+        for row_id, snapshot in before.items()
+        if row_id not in remaining_ids
+    }
+
+    for row in rows:
+        if (
+            before.get(row.id) != _synced_read_snapshot(row)
+            or row.ordine_cliente_id in reduced_orders
+        ):
+            _queue_row_read(row)
+    db.session.flush()
+
+
+def _sync_open_customer_orders_data() -> None:
+    packaging_notes = _packaging_notes_by_reference()
+    machine_model_codes = {
+        _normalized_key(code)
+        for (code,) in db.session.query(AcqArticoliLookup.CodArt)
+        .filter(
+            func.lower(
+                func.trim(func.coalesce(AcqArticoliLookup.GestioneMatricola, ""))
+            )
+            == "si"
+        )
+        .distinct()
+        if _norm_text(code)
+    }
+    clients = {
+        _norm_text(item.CodCliFor): (
+            _norm_text(item.RagioneSociale),
+            _norm_text(item.CodStato).upper(),
+        )
+        for item in AcqClienteFornitore.query.filter(
+            func.trim(func.coalesce(AcqClienteFornitore.TipoAnagrafica, "")) == "1"
+        ).all()
+    }
+    source_by_client = {}
+    for item in AcqOrdineClienteAperto.query.all():
+        client_code = _norm_text(item.CodCliFor)
+        model_code = _norm_text(item.CodArt)
+        delivery_date = _synced_date(item.DataConsegna)
+        try:
+            quantity = int(float(item.QTA_ORD or 0))
+        except (TypeError, ValueError):
+            quantity = 0
+        if (
+            not client_code
+            or _normalized_key(model_code) not in machine_model_codes
+            or delivery_date is None
+            or quantity <= 0
+        ):
+            continue
+        source_by_client.setdefault(client_code, []).append(
+            (delivery_date, item, quantity)
+        )
+
+    managed_orders = {
+        item.gestionale_cod_cliente: item
+        for item in VenditeOrdineCliente.query.options(
+            selectinload(VenditeOrdineCliente.righe)
+        )
+        .filter(VenditeOrdineCliente.gestionale_cod_cliente.is_not(None))
+        .all()
+    }
+    changed = False
+    for client_code, source_rows in source_by_client.items():
+        customer = managed_orders.pop(client_code, None)
+        customer_name, country_code = clients.get(client_code, (client_code, ""))
+        customer_name = customer_name or client_code
+        internal_reference = _internal_reference_for_country(country_code)
+        if customer is None:
+            customer = VenditeOrdineCliente(
+                cliente_nome=customer_name,
+                cliente_chiave=_normalized_key(customer_name),
+                numero_ordine=f"GESTIONALE:{client_code}",
+                numero_ordine_chiave=_normalized_key(f"GESTIONALE:{client_code}"),
+                riferimento_interno=internal_reference,
+                creato_da_nome="Sincronizzazione gestionale",
+                gestionale_cod_cliente=client_code,
+            )
+            db.session.add(customer)
+            changed = True
+        elif customer.cliente_nome != customer_name:
+            customer.cliente_nome = customer_name
+            customer.cliente_chiave = _normalized_key(customer_name)
+            changed = True
+        if customer.riferimento_interno != internal_reference:
+            customer.riferimento_interno = internal_reference
+            changed = True
+
+        existing = {
+            (
+                _norm_text(row.gestionale_id_documento),
+                _norm_text(row.gestionale_id_riga),
+                row.gestionale_unita,
+            ): row
+            for row in customer.righe
+            if row.gestionale_id_documento
+        }
+        source_rows.sort(
+            key=lambda value: (
+                value[0],
+                _norm_text(value[1].IdDocumento),
+                _norm_text(value[1].IdRigaDoc),
+            )
+        )
+        expanded_rows = [
+            (delivery_date, item, unit)
+            for delivery_date, item, quantity in source_rows
+            for unit in range(1, quantity + 1)
+        ]
+        desired_keys = [
+            (
+                _norm_text(item.IdDocumento),
+                _norm_text(item.IdRigaDoc),
+                unit,
+            )
+            for _delivery_date, item, unit in expanded_rows
+        ]
+
+        # Se la quantità ERP diminuisce, conserva prima le unità già assegnate
+        # o annotate e rinumerale invece di eliminare sempre quella più alta.
+        for _delivery_date, item, quantity in source_rows:
+            document = _norm_text(item.IdDocumento)
+            source_row = _norm_text(item.IdRigaDoc)
+            current = [
+                (key, row)
+                for key, row in existing.items()
+                if key[:2] == (document, source_row)
+            ]
+            if len(current) <= quantity:
+                continue
+            survivors = sorted(
+                current,
+                key=lambda value: _synced_row_retention_key(value[1]),
+                reverse=True,
+            )[:quantity]
+            expected = {(document, source_row, unit) for unit in range(1, quantity + 1)}
+            survivor_keys = {key for key, _row in survivors}
+            if survivor_keys == expected:
+                continue
+
+            for key, row in current:
+                existing.pop(key)
+                if key not in survivor_keys:
+                    customer.righe.remove(row)
+            db.session.flush()
+            for temporary_unit, (_key, row) in enumerate(survivors, start=1):
+                row.gestionale_unita = -temporary_unit
+            db.session.flush()
+            for unit, (_key, row) in enumerate(survivors, start=1):
+                row.gestionale_unita = unit
+                existing[(document, source_row, unit)] = row
+            db.session.flush()
+            changed = True
+
+        for key in set(existing) - set(desired_keys):
+            customer.righe.remove(existing.pop(key))
+            changed = True
+        if changed:
+            db.session.flush()
+
+        positions_changed = any(
+            key in existing and existing[key].posizione != position
+            for position, key in enumerate(desired_keys, start=1)
+        )
+        if positions_changed:
+            offset = max(
+                [row.posizione for row in existing.values()] + [len(desired_keys)]
+            )
+            for temporary_position, row in enumerate(existing.values(), start=1):
+                row.posizione = offset + temporary_position
+            db.session.flush()
+            changed = True
+
+        for position, ((delivery_date, item, unit), key) in enumerate(
+            zip(expanded_rows, desired_keys), start=1
+        ):
+            row = existing.get(key)
+            if row is None:
+                row = VenditeOrdineClienteRiga(
+                    ordine_cliente=customer,
+                    gestionale_id_documento=key[0],
+                    gestionale_id_riga=key[1],
+                    gestionale_unita=unit,
+                    modello_codice=_norm_text(item.CodArt),
+                    modello_variante="",
+                    modello_descrizione=_norm_text(item.DesArt) or None,
+                    note_spedizione=packaging_notes[internal_reference] or None,
+                    data_consegna=delivery_date,
+                    posizione=position,
+                )
+                db.session.add(row)
+                changed = True
+            for field, value in {
+                "posizione": position,
+                "modello_codice": _norm_text(item.CodArt),
+                "modello_descrizione": _norm_text(item.DesArt) or None,
+                "data_consegna": delivery_date,
+            }.items():
+                if getattr(row, field) != value:
+                    setattr(row, field, value)
+                    if field == "data_consegna":
+                        _mark_row_changed(row, "delivery_date")
+                    elif field in {"modello_codice", "modello_descrizione"}:
+                        _mark_row_changed(row, "model")
+                    _require_read_confirmation(customer)
+                    changed = True
+        shipping_date = min(value[0] for value in source_rows)
+        if customer.data_spedizione != shipping_date:
+            customer.data_spedizione = shipping_date
+            changed = True
+
+    for stale_order in managed_orders.values():
+        db.session.delete(stale_order)
+        changed = True
+
+    if changed:
+        db.session.flush()
+
+
+def build_assignment_dashboard(*, include_planned: bool = True, viewer=None) -> dict:
+    sync_shippable_machines()
+    _sync_open_customer_orders()
+    production_machines = load_machine_orders(include_closed=True)
+    inventory_machines = load_inventory_machine_orders()
+    all_machines = _unique_machines_by_serial(inventory_machines + production_machines)
+    all_machine_map = {_machine_key(machine): machine for machine in all_machines}
+    all_machine_by_serial = {
+        _normalized_key(_machine_serial(machine)): machine
+        for machine in all_machines
+        if _machine_serial(machine)
+    }
+    open_machines = _unique_machines_by_serial(
+        inventory_machines
+        + [machine for machine in production_machines if is_open_machine_order(machine)]
+    )
+    if not include_planned:
+        open_machines = [
+            machine
+            for machine in open_machines
+            if not _is_phase_one_planned(
+                machine.StatoOrdine,
+                machine.FaseAttiva,
+            )
+        ]
+    model_catalog = _available_model_catalog(open_machines)
+    customer_orders = (
+        VenditeOrdineCliente.query.options(selectinload(VenditeOrdineCliente.righe))
+        .order_by(
+            VenditeOrdineCliente.creato_il.desc(),
+            VenditeOrdineCliente.id.desc(),
+        )
+        .all()
+    )
+    read_states = _row_read_states(
+        [row for customer in customer_orders for row in customer.righe],
+        viewer,
+    )
+    customer_row_ids = [
+        row.id for customer in customer_orders for row in customer.righe
+    ]
+    latest_field_logs = {}
+    if customer_row_ids:
+        latest_ids = (
+            db.session.query(func.max(VenditeOrdineClienteLog.id))
+            .filter(
+                VenditeOrdineClienteLog.ordine_cliente_riga_id.in_(customer_row_ids)
+            )
+            .group_by(
+                VenditeOrdineClienteLog.ordine_cliente_riga_id,
+                VenditeOrdineClienteLog.campo,
+            )
+        )
+        latest_field_logs = {
+            (item.ordine_cliente_riga_id, item.campo): {
+                "event": item.evento,
+                "changed_at": item.modificata_il,
+                "changed_by_name": item.modificata_da_nome,
+            }
+            for item in VenditeOrdineClienteLog.query.filter(
+                VenditeOrdineClienteLog.id.in_(latest_ids)
+            ).all()
+        }
+    missing_components = _missing_components_for_orders(
+        (row.odp_id_documento, row.odp_id_riga)
+        for customer in customer_orders
+        for row in customer.righe
+    )
+    missing_assigned_keys = {
+        key
+        for customer in customer_orders
+        for row in customer.righe
+        for key in [(row.odp_id_documento, row.odp_id_riga)]
+        if row.odp_id_documento
+        and row.odp_id_riga
+        and key not in all_machine_map
+        and _normalized_key(row.odp_matricola) not in all_machine_by_serial
+    }
+    completed_missing_keys = _phase_two_closed_keys(missing_assigned_keys)
+    packaging_by_serial = _packaging_confirmations(
+        {row.odp_matricola for customer in customer_orders for row in customer.righe}
+        | {_machine_serial(machine) for machine in all_machines}
+    )
+    options_by_serial = _machine_options(
+        _machine_serial(machine) for machine in all_machines
+    )
+    production_notes_by_serial = {
+        item.matricola: item.note or ""
+        for item in VenditeNotaProduzioneMacchina.query.filter(
+            VenditeNotaProduzioneMacchina.matricola.in_(
+                {
+                    _normalized_key(_machine_serial(machine))
+                    for machine in all_machines
+                    if _machine_serial(machine)
+                }
+            )
+        ).all()
+    }
+
+    assigned_by_machine = {}
+    assigned_by_serial = {}
+    total_demand = 0
+    assigned_demand = 0
+    customer_payload = []
+
+    for customer in customer_orders:
+        rows_payload = []
+        customer_assigned = 0
+        customer_packaged = 0
+        for row in customer.righe:
+            current_machine = all_machine_map.get(
+                (row.odp_id_documento, row.odp_id_riga)
+            )
+            if current_machine is None and row.odp_matricola:
+                current_machine = all_machine_by_serial.get(
+                    _normalized_key(row.odp_matricola)
+                )
+            assignment = _assignment_payload(
+                row,
+                current_machine,
+                completed_from_log=(
+                    (row.odp_id_documento, row.odp_id_riga) in completed_missing_keys
+                ),
+            )
+            if (
+                not include_planned
+                and assignment
+                and _is_phase_one_planned(assignment["state"], assignment["phase"])
+            ):
+                continue
+            total_demand += 1
+            if assignment is not None:
+                assigned_demand += 1
+                customer_assigned += 1
+                assigned_by_machine[(row.odp_id_documento, row.odp_id_riga)] = (
+                    customer,
+                    row,
+                )
+                if row.odp_matricola:
+                    assigned_by_serial[_normalized_key(row.odp_matricola)] = (
+                        customer,
+                        row,
+                    )
+            packaging = packaging_by_serial.get(_normalized_key(row.odp_matricola))
+            packaged = packaging is not None
+            if packaged:
+                if assignment is not None:
+                    assignment["state"] = "Imballata"
+                customer_packaged += 1
+            row_missing_components = []
+            if assignment is not None:
+                for component in missing_components.get(
+                    (
+                        row.odp_id_documento,
+                        row.odp_id_riga,
+                        assignment["phase"],
+                    ),
+                    [],
+                ):
+                    code = _norm_text(component.get("code"))
+                    description = _norm_text(component.get("description"))
+                    if code and description:
+                        row_missing_components.append(
+                            {"code": code, "description": description}
+                        )
+
+            row_model_key = _model_key(
+                row.modello_codice,
+                row.modello_variante,
+            )
+            row_model = model_catalog.get(row_model_key, {})
+            rows_payload.append(
+                {
+                    "id": row.id,
+                    "position": row.posizione,
+                    "version": row.versione,
+                    "model_key": row_model_key,
+                    "family_code": row_model.get("family_code")
+                    or _norm_text(getattr(current_machine, "CodFamiglia", "")),
+                    "model_code": row.modello_codice,
+                    "variant": row.modello_variante or "",
+                    "description": row.modello_descrizione or "",
+                    "sales_note": row.note or "",
+                    "commercial_note": row.note_commerciali or "",
+                    "field_audit": {
+                        field: latest_field_logs.get((row.id, field))
+                        for field in (
+                            "sales_note",
+                            "commercial_note",
+                            "production_instructions",
+                            "shipping_note",
+                            "delivery_date",
+                            "available_date",
+                            "assignment",
+                        )
+                    },
+                    "production_note": row.note_produzione or "",
+                    "missing_components": row_missing_components,
+                    "production_instructions": row.note_per_produzione or "",
+                    "shipping_note": row.note_spedizione or "",
+                    "modified_fields": (
+                        row.campi_modificati or [] if read_states.get(row.id) else []
+                    ),
+                    "available_date": (
+                        row.data_disponibile.isoformat() if row.data_disponibile else ""
+                    ),
+                    "delivery_date": row.data_consegna.isoformat(),
+                    "packaged": packaged,
+                    "packaging": packaging,
+                    "assignment": assignment,
+                    "pending_read_revisions": read_states.get(row.id, {}),
+                    "read_confirmed": not read_states.get(row.id, {}),
+                }
+            )
+
+        if not rows_payload:
+            continue
+        customer_payload.append(
+            {
+                "id": customer.id,
+                "customer_name": customer.cliente_nome,
+                "customer_order": (
+                    "Gestionale"
+                    if customer.gestionale_cod_cliente
+                    else customer.numero_ordine
+                ),
+                "managed": bool(customer.gestionale_cod_cliente),
+                "customer_code": customer.gestionale_cod_cliente or "",
+                "internal_reference": customer.riferimento_interno or "ITALIA",
+                "created_at": customer.creato_il,
+                "created_by_name": customer.creato_da_nome,
+                "read_confirmed": all(item["read_confirmed"] for item in rows_payload),
+                "confirmed_at": customer.confermato_il or "",
+                "confirmed_by_name": customer.confermato_da_nome or "",
+                "total_rows": len(rows_payload),
+                "assigned_rows": customer_assigned,
+                "packaged_rows": customer_packaged,
+                "packaged": bool(
+                    rows_payload and customer_packaged == len(rows_payload)
+                ),
+                "rows": rows_payload,
+            }
+        )
+
+    customer_payload.sort(
+        key=lambda item: (
+            min(row["delivery_date"] for row in item["rows"]),
+            item["customer_name"].casefold(),
+            item["customer_order"].casefold(),
+        )
+    )
+
+    assignment_machines_payload = []
+    for machine in open_machines:
+        key = _machine_key(machine)
+        assigned = assigned_by_machine.get(key) or assigned_by_serial.get(
+            _normalized_key(_machine_serial(machine))
+        )
+        assigned_customer, assigned_row = assigned or (None, None)
+        assignment_machines_payload.append(
+            {
+                "id_documento": key[0],
+                "id_riga": key[1],
+                "order": _machine_order_label(machine),
+                "is_stock": _is_stock_machine(machine),
+                "model_key": _model_key(machine.CodArt, machine.VarianteArt),
+                "model_code": _norm_text(machine.CodArt),
+                "variant": _norm_text(machine.VarianteArt),
+                "description": _norm_text(machine.DesArt),
+                "serial_number": _norm_text(machine.CodMatricola) or "Non assegnata",
+                "has_serial": bool(_norm_text(machine.CodMatricola)),
+                "phase": _phase_label(machine.FaseAttiva),
+                "state": (
+                    "Imballata"
+                    if _normalized_key(_machine_serial(machine)) in packaging_by_serial
+                    else _canonical_state(machine.StatoOrdine)
+                ),
+                "production_note": production_notes_by_serial.get(
+                    _normalized_key(_machine_serial(machine)),
+                    "",
+                ),
+                "assigned": assigned is not None,
+                "assigned_row_id": assigned_row.id if assigned_row else None,
+                "assigned_customer_name": (
+                    assigned_customer.cliente_nome if assigned_customer else ""
+                ),
+                "assigned_customer_order": (
+                    assigned_customer.numero_ordine if assigned_customer else ""
+                ),
+                "option": options_by_serial.get(
+                    _normalized_key(_machine_serial(machine))
+                ),
+            }
+        )
+
+    assignment_machines_payload.sort(
+        key=lambda item: (
+            item["model_code"].casefold(),
+            item["variant"].casefold(),
+            item["serial_number"].casefold(),
+            item["order"].casefold(),
+        )
+    )
+    machines_payload = [
+        machine for machine in assignment_machines_payload if not machine["assigned"]
+    ]
+    models = sorted(
+        model_catalog.values(),
+        key=lambda item: (
+            item["model_code"].casefold(),
+            item["variant"].casefold(),
+            item["description"].casefold(),
+        ),
+    )
+    configured_notes = {
+        item.riferimento_interno: item for item in VenditeNotaImballaggio.query.all()
+    }
+    page_note = db.session.get(VenditeNotaOrdiniCliente, 1)
+    page_note_reading = (
+        db.session.get(
+            VenditeNotaOrdiniClienteLettura,
+            getattr(viewer, "id", None),
+        )
+        if getattr(viewer, "id", None) is not None
+        else None
+    )
+    page_note_text = page_note.note if page_note is not None else ""
+    page_note_version = page_note.versione if page_note is not None else 0
+
+    return {
+        "generated_at": _now_rome_dt().isoformat(timespec="seconds"),
+        "summary": {
+            "open_machines": len(machines_payload),
+            "total_demand": total_demand,
+            "assigned_demand": assigned_demand,
+            "unassigned_demand": total_demand - assigned_demand,
+        },
+        "models": models,
+        "machines": machines_payload,
+        "assignment_machines": assignment_machines_payload,
+        "customer_orders": customer_payload,
+        "customer_orders_note": {
+            "note": page_note_text,
+            "version": page_note_version,
+            "updated_at": (page_note.aggiornata_il if page_note is not None else ""),
+            "updated_by_name": (
+                page_note.aggiornata_da_nome if page_note is not None else ""
+            ),
+            "read_confirmed": (
+                not _norm_text(page_note_text)
+                or (
+                    page_note_reading is not None
+                    and page_note_reading.versione_letta == page_note_version
+                )
+            ),
+            "read_at": page_note_reading.letta_il if page_note_reading else "",
+        },
+        "packaging_notes": [
+            {
+                "reference": reference,
+                "note": (
+                    configured_notes[reference].note or ""
+                    if reference in configured_notes
+                    else VENDITE_DEFAULT_PACKAGING_NOTES[reference]
+                ),
+                "updated_at": (
+                    configured_notes[reference].aggiornato_il or ""
+                    if reference in configured_notes
+                    else ""
+                ),
+                "updated_by_name": (
+                    configured_notes[reference].aggiornato_da_nome or ""
+                    if reference in configured_notes
+                    else ""
+                ),
+            }
+            for reference in VENDITE_INTERNAL_REFERENCES
+        ],
+    }

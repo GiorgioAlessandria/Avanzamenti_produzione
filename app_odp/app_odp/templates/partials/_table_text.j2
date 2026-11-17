@@ -1,0 +1,5 @@
+{% macro wrap_plus(value) -%}
+    {%- for part in (value|string).split('+') -%}
+        {{- part|e -}}{% if not loop.last %}+<br>{% endif %}
+    {%- endfor -%}
+{%- endmacro %}

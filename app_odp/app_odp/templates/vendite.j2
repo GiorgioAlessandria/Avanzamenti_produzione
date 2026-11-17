@@ -1,0 +1,1256 @@
+{% extends "base.j2" %}
+
+{% block title %}Vendite{% endblock %}
+
+{% block content %}
+    <main class="container-fluid py-3"
+          id="vendite-page"
+          data-api-url="{{ operator_url_for('main.api_vendite_ordini_macchina') }}"
+          data-groups-url="{{ operator_url_for('main.api_vendite_raggruppamenti_save') }}"
+          data-group-delete-url="{{ operator_url_for('main.api_vendite_raggruppamenti_delete', group_id=0) }}"
+          data-note-url="{{ operator_url_for('main.api_vendite_macchina_note_produzione') }}"
+          data-packaging-url="{{ operator_url_for('main.api_vendite_macchina_conferma_imballo') }}"
+          data-sensor-url="{{ operator_url_for('main.api_vendite_macchina_sensori_antiribaltamento') }}"
+          data-option-url="{{ operator_url_for('main.api_vendite_macchina_opzione') }}"
+          data-priority-operators-url="{{ operator_url_for('main.api_priorita_operatori') }}"
+          data-priority-orders-url="{{ operator_url_for('main.api_priorita_ordini_operatore', operatore_id=0) }}"
+          data-priority-save-url="{{ operator_url_for('main.api_priorita_salva_operatore', operatore_id=0) }}"
+          data-can-edit-production-notes="{{ 'true' if can_edit_production_notes else 'false' }}"
+          data-can-confirm-packaging="{{ 'true' if can_confirm_packaging else 'false' }}"
+          data-can-option-machines="{{ 'true' if can_option_machines else 'false' }}"
+          data-can-view-options="{{ 'true' if can_view_options else 'false' }}"
+          data-can-view-production-instructions="{{ 'true' if can_view_production_instructions else 'false' }}"
+          data-can-manage-sales-priorities="{{ 'true' if can_manage_sales_priorities else 'false' }}">
+        <div class="alert alert-danger d-none"
+             id="vendite-error"
+             role="alert"></div>
+
+        <ul class="nav nav-tabs"
+            id="vendite-tabs"
+            role="tablist">
+            {% if can_view_customer_orders|default(true) %}
+            <li class="nav-item"
+                role="presentation">
+                <a class="nav-link"
+                   href="{{ operator_url_for('main.vendite_assegnazioni_page', vista='ordini') }}">
+                    Ordini cliente
+                </a>
+            </li>
+            {% endif %}
+            <li class="nav-item"
+                role="presentation">
+                <button class="nav-link{{ ' active' if request.args.get('vista') == 'matricola' or not can_view_model_summary else '' }}"
+                        id="vendite-matricole-tab"
+                        data-bs-toggle="tab"
+                        data-bs-target="#vendite-matricole-pane"
+                        type="button"
+                        role="tab"
+                        aria-controls="vendite-matricole-pane"
+                        aria-selected="{{ 'true' if request.args.get('vista') == 'matricola' else 'false' }}">
+                    Situazione produzione per matricola
+                </button>
+            </li>
+            {% if can_view_customer_orders|default(true) %}
+            <li class="nav-item" role="presentation">
+                <a class="nav-link"
+                   href="{{ operator_url_for('main.vendite_localizzazione_page') }}">
+                    Localizzazione ordini
+                </a>
+            </li>
+            {% endif %}
+            {% if can_view_packaging_notes %}
+            <li class="nav-item"
+                role="presentation">
+                <a class="nav-link"
+                   href="{{ operator_url_for('main.vendite_assegnazioni_page', vista='imballaggio') }}">
+                    Note per imballo
+                </a>
+            </li>
+            {% endif %}
+            {% if can_view_model_summary %}
+            <li class="nav-item"
+                role="presentation">
+                <button class="nav-link{{ ' active' if request.args.get('vista', 'modello') == 'modello' else '' }}"
+                        id="vendite-modelli-tab"
+                        data-bs-toggle="tab"
+                        data-bs-target="#vendite-modelli-pane"
+                        type="button"
+                        role="tab"
+                        aria-controls="vendite-modelli-pane"
+                        aria-selected="{{ 'true' if request.args.get('vista', 'modello') == 'modello' else 'false' }}">
+                    Situazione produzione per modello
+                </button>
+            </li>
+            {% endif %}
+        </ul>
+
+        <div class="tab-content border border-top-0 rounded-bottom bg-white shadow-sm"
+             id="vendite-tab-content">
+            {% if can_view_model_summary %}
+            <section class="tab-pane fade{{ ' show active' if request.args.get('vista', 'modello') == 'modello' else '' }}"
+                     id="vendite-modelli-pane"
+                     role="tabpanel"
+                     aria-labelledby="vendite-modelli-tab"
+                     tabindex="0">
+                <div class="p-3 border-bottom">
+                    <div class="d-flex flex-wrap justify-content-between align-items-baseline gap-2">
+                        <h2 class="h6 mb-1">Riepilogo per modello macchina</h2>
+                        <div class="d-flex flex-wrap gap-3 small text-muted">
+                            <span data-vendite-status role="status" aria-live="polite">Caricamento...</span>
+                            <span>Aggiornamento automatico ogni 5 secondi</span>
+                        </div>
+                    </div>
+                    <div class="small text-muted">
+                        Numero di macchine per fase e stato di produzione
+                    </div>
+                </div>
+                <div class="table-responsive vendite-table-scroll">
+                    <table class="table table-striped table-hover align-middle mb-0 vendite-summary-table vendite-data-table">
+                        <thead class="table-light"
+                               id="vendite-summary-head"></thead>
+                        <tbody id="vendite-summary-body">
+                        <tr>
+                            <td class="text-center text-muted py-4">Caricamento...</td>
+                        </tr>
+                        </tbody>
+                        <tfoot class="table-light fw-semibold"
+                               id="vendite-summary-foot"></tfoot>
+                    </table>
+                </div>
+            </section>
+            {% endif %}
+
+            <section class="tab-pane fade{{ ' show active' if request.args.get('vista') == 'matricola' or not can_view_model_summary else '' }}"
+                     id="vendite-matricole-pane"
+                     role="tabpanel"
+                     aria-labelledby="vendite-matricole-tab"
+                     tabindex="0">
+                <div class="p-3 border-bottom">
+                    <div class="d-flex flex-wrap justify-content-between align-items-baseline gap-2">
+                        <div class="d-flex flex-wrap align-items-center gap-3">
+                            <h2 class="h6 mb-1">Dettaglio per matricola</h2>
+                            <div id="vendite-group-filters" class="d-flex flex-wrap gap-3" role="group" aria-label="Raggruppamenti da visualizzare"></div>
+                        </div>
+                        <div class="d-flex flex-wrap gap-3 small text-muted">
+                            <span data-vendite-status role="status" aria-live="polite">Caricamento...</span>
+                            <span>Aggiornamento automatico ogni 5 secondi</span>
+                        </div>
+                    </div>
+                    <div class="small text-muted">
+                        Seleziona i raggruppamenti per una tabella unica; senza selezioni sono mostrate tutte le macchine.
+                    </div>
+                    <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
+                        <div class="flex-grow-1" style="max-width: 36rem;">
+                            <label class="visually-hidden" for="vendite-machine-search">
+                                Cerca per matricola, modello, descrizione, ordine produzione o cliente
+                            </label>
+                            <input type="search"
+                                   class="form-control"
+                                   id="vendite-machine-search"
+                                   placeholder="Cerca matricola, modello, descrizione, ordine produzione o cliente...">
+                        </div>
+                        <div class="d-flex flex-wrap justify-content-end align-items-center gap-2 ms-auto">
+                            <button type="button"
+                                    class="btn btn-outline-primary btn-sm"
+                                    id="vendite-refresh">
+                                Aggiorna ora
+                            </button>
+                            {% if can_manage_sales_priorities and request.args.get('vista') == 'matricola' %}
+                            <label class="form-check d-flex align-items-center mb-0 ms-1">
+                                <input class="form-check-input mt-0" type="checkbox" id="vendite-priority-mode">
+                                <span class="form-check-label ms-2">Modalità priorità</span>
+                            </label>
+                            <div id="vendite-priority-controls" class="d-none flex-wrap gap-2">
+                                <select id="vendite-priority-operator" class="form-select form-select-sm" aria-label="Operatore di montaggio">
+                                    <option value="">Seleziona operatore di montaggio...</option>
+                                </select>
+                                <button type="button" class="btn btn-primary btn-sm" id="vendite-priority-save" disabled>
+                                    Salva priorità
+                                </button>
+                            </div>
+                            {% endif %}
+                            {% if can_manage_groups %}
+                            <details id="vendite-group-manager" class="border rounded p-2">
+                                <summary class="small">Gestisci raggruppamenti</summary>
+                                <form id="vendite-group-form" class="mt-2" style="min-width: 280px; max-width: 520px;">
+                                    <fieldset id="vendite-group-fields" disabled>
+                                        <label class="form-label" for="vendite-group-select">Raggruppamento</label>
+                                        <select id="vendite-group-select" class="form-select mb-2">
+                                            <option value="">Nuovo raggruppamento</option>
+                                        </select>
+                                        <label class="form-label" for="vendite-group-name">Nome</label>
+                                        <input id="vendite-group-name" class="form-control mb-2" maxlength="80" required>
+                                        <fieldset class="mb-2">
+                                            <legend class="fs-6">Famiglie delle macchine</legend>
+                                            <div id="vendite-group-families" class="border rounded p-2" style="max-height: 260px; overflow: auto;"></div>
+                                        </fieldset>
+                                        <div class="small text-muted mb-2">Condivisi fra gli utenti. Una famiglia può appartenere a più raggruppamenti.</div>
+                                        <button class="btn btn-primary btn-sm" type="submit">Salva raggruppamento</button>
+                                        <button id="vendite-group-delete" class="btn btn-outline-danger btn-sm" type="button" disabled>Elimina</button>
+                                        <button id="vendite-group-cancel" class="btn btn-outline-secondary btn-sm" type="button">Annulla modifiche</button>
+                                    </fieldset>
+                                    <div id="vendite-group-message" class="small mt-2" role="status" aria-live="polite"></div>
+                                </form>
+                            </details>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                <div class="table-responsive vendite-table-scroll">
+                    <table id="vendite-machines-table" class="table table-striped table-hover table-state-rowcolor align-middle mb-0 vendite-data-table">
+                        <thead class="table-light">
+                        <tr>
+                            {% for key, label in [
+                                ('model_code', 'Modello'), ('serial_number', 'Matricola'),
+                                ('order', 'Ordine produzione'), ('customer_name', 'Cliente'),
+                                ('shipping_date', 'Data spedizione'), ('phase', 'Fase'), ('state', 'Stato'),
+                                ('last_suspension_cause', 'Note / ultima causale di sospensione'),
+                                ('production_note', 'Note di produzione'), ('production_instructions', 'Note per produzione'),
+                                ('packaging_note', 'Note per imballo'), ('packaged', 'Imballo'),
+                                ('optioned_at', 'Opzione')
+                            ] %}
+                            {% if (key != 'optioned_at' or can_view_options) and (key != 'production_instructions' or can_view_production_instructions) %}
+                            <th class="{{ 'vendite-model-column' if key == 'model_code' else 'vendite-note-column' if key in ['last_suspension_cause', 'production_note', 'production_instructions', 'packaging_note'] else '' }}{{ ' vendite-normal-only' if key in ['packaged', 'optioned_at'] else '' }}"
+                                aria-sort="none">
+                                <button type="button" class="btn btn-link text-body fw-semibold p-0 text-start"
+                                        data-machine-sort="{{ key }}" aria-label="Ordina per {{ label }}">
+                                    {{ label }} <span data-sort-marker aria-hidden="true"></span>
+                                </button>
+                            </th>
+                            {% endif %}
+                            {% endfor %}
+                            <th class="vendite-priority-only d-none">Priorità</th>
+                        </tr>
+                        </thead>
+                        <tbody id="vendite-machines-body">
+                        <tr>
+                            <td colspan="{{ 11 + (1 if can_view_options else 0) + (1 if can_view_production_instructions else 0) }}"
+                                class="text-center text-muted py-4">Caricamento...</td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+    </main>
+{% endblock %}
+
+{% block extra_js %}
+    {{ super() }}
+    <script>
+        (function () {
+            const page = document.getElementById("vendite-page");
+            if (!page) return;
+
+            const POLL_MS = 5000;
+            const refreshButton = document.getElementById("vendite-refresh");
+            const statusElements = page.querySelectorAll("[data-vendite-status]");
+            const canEditNotes = page.dataset.canEditProductionNotes === "true";
+            const canConfirmPackaging = page.dataset.canConfirmPackaging === "true";
+            const canOptionMachines = page.dataset.canOptionMachines === "true";
+            const canViewOptions = page.dataset.canViewOptions === "true";
+            const canViewProductionInstructions = page.dataset.canViewProductionInstructions === "true";
+            const canManageSalesPriorities = page.dataset.canManageSalesPriorities === "true";
+            const errorElement = document.getElementById("vendite-error");
+            const summaryHead = document.getElementById("vendite-summary-head");
+            const summaryBody = document.getElementById("vendite-summary-body");
+            const summaryFoot = document.getElementById("vendite-summary-foot");
+            const machinesBody = document.getElementById("vendite-machines-body");
+            let inFlight = false;
+            let savingNote = false;
+            let packagingInFlight = false;
+            let optionInFlight = false;
+            let noteRevision = 0;
+            const machinesTable = document.getElementById("vendite-machines-table");
+            const machineSearchInput = document.getElementById("vendite-machine-search");
+            const groupFilters = document.getElementById("vendite-group-filters");
+            const priorityModeInput = document.getElementById("vendite-priority-mode");
+            const priorityControls = document.getElementById("vendite-priority-controls");
+            const priorityOperator = document.getElementById("vendite-priority-operator");
+            const prioritySave = document.getElementById("vendite-priority-save");
+            const groupForm = document.getElementById("vendite-group-form");
+            const groupSelect = document.getElementById("vendite-group-select");
+            const groupFields = document.getElementById("vendite-group-fields");
+            const groupName = document.getElementById("vendite-group-name");
+            const groupFamilies = document.getElementById("vendite-group-families");
+            const groupDelete = document.getElementById("vendite-group-delete");
+            const groupMessage = document.getElementById("vendite-group-message");
+            let groups = [], families = [];
+            const selectedGroups = new Set();
+            const collapsedGroups = new Set();
+            let showAllGroups = false;
+            let currentData = {machines: []};
+            let priorityMode = false, priorityDirty = false;
+            let priorityData = {available: [], prioritized: []};
+            let sortKey = "model_code", sortDirection = 1;
+            let groupFormDirty = false, groupMutation = false;
+            let sensorFieldFocused = false;
+
+            function setStatus(message) {
+                statusElements.forEach(element => element.textContent = message);
+            }
+
+            function hasUnsavedNotes() {
+                return Array.from(machinesBody.querySelectorAll(
+                    "[data-production-note], [data-machine-option-note], [data-tilt-sensor-serials]"
+                ))
+                    .some(field => field.value !== field.dataset.originalValue);
+            }
+
+            function editingNotes() {
+                return savingNote || sensorFieldFocused || hasUnsavedNotes()
+                    || priorityDirty
+                    || Boolean(document.activeElement?.matches(
+                        "[data-production-note], [data-machine-option-note], [data-tilt-sensor-serials]"
+                    ));
+            }
+
+            function esc(value) {
+                return String(value ?? "").replace(/[&<>"']/g, char => ({
+                    "&": "&amp;",
+                    "<": "&lt;",
+                    ">": "&gt;",
+                    '"': "&quot;",
+                    "'": "&#39;",
+                }[char]));
+            }
+
+            function modelLabel(row) {
+                const variant = row.variant
+                    ? ` <span class="badge text-bg-light border">${esc(row.variant)}</span>`
+                    : "";
+                const description = row.description
+                    ? `<div class="small text-muted">${esc(row.description)}</div>`
+                    : "";
+                return `<div class="fw-semibold">${esc(row.model_code)}${variant}</div>${description}`;
+            }
+
+            function stateBadge(state) {
+                const classes = {
+                    "Attivo": "text-bg-success",
+                    "In Sospeso": "text-bg-warning",
+                    "Pianificata": "text-bg-secondary",
+                };
+                return `<span class="badge ${classes[state] || "text-bg-info"}">${esc(state)}</span>`;
+            }
+
+            function countCell(value) {
+                const count = Number(value || 0);
+                const positiveClass = count > 0
+                    ? "vendite-count-positive"
+                    : "vendite-count-empty";
+                return `<td class="vendite-count ${positiveClass}">${count || "-"}</td>`;
+            }
+
+            function renderSummary(data) {
+                const columns = Array.isArray(data.columns) ? data.columns : [];
+                const models = Array.isArray(data.models) ? data.models : [];
+
+                if (!columns.length && !models.length) {
+                    summaryHead.innerHTML = `
+                        <tr>
+                            <th class="vendite-model-column">Modello</th>
+                            <th>Stock</th>
+                            <th>Totale</th>
+                        </tr>`;
+                    summaryBody.innerHTML = `
+                        <tr>
+                            <td colspan="3" class="text-center text-muted py-4">
+                                Nessun ordine macchina presente.
+                            </td>
+                        </tr>`;
+                    summaryFoot.innerHTML = "";
+                    return;
+                }
+
+                if (!columns.length) {
+                    summaryHead.innerHTML = `
+                        <tr>
+                            <th class="vendite-model-column">Modello</th>
+                            <th>Stock</th>
+                            <th>Totale</th>
+                        </tr>`;
+                    summaryBody.innerHTML = models.map(model => `
+                        <tr>
+                            <td>${modelLabel(model)}</td>
+                            ${countCell(model.stock_count)}
+                            ${countCell(Number(model.total || 0) + Number(model.stock_count || 0))}
+                        </tr>
+                    `).join("");
+                    summaryFoot.innerHTML = `
+                        <tr>
+                            <td>Totale</td>
+                            ${countCell(data.total_stock)}
+                            ${countCell(Number(data.total_machines || 0) + Number(data.total_stock || 0))}
+                        </tr>`;
+                    return;
+                }
+
+                const phaseGroups = [];
+                columns.forEach(column => {
+                    const previous = phaseGroups[phaseGroups.length - 1];
+                    if (previous && previous.phase === column.phase) {
+                        previous.count += 1;
+                    } else {
+                        phaseGroups.push({phase: column.phase, count: 1});
+                    }
+                });
+
+                summaryHead.innerHTML = `
+                    <tr>
+                        <th class="vendite-model-column" rowspan="2">Modello</th>
+                        ${phaseGroups.map(group => `
+                            <th colspan="${group.count}">${esc(window.phaseLabel(group.phase))}</th>
+                        `).join("")}
+                        <th rowspan="2">Stock</th>
+                        <th rowspan="2">Totale</th>
+                    </tr>
+                    <tr>
+                        ${columns.map(column => `<th>${esc(column.state)}</th>`).join("")}
+                    </tr>`;
+
+                summaryBody.innerHTML = models.map(model => `
+                    <tr>
+                        <td>${modelLabel(model)}</td>
+                        ${(model.counts || []).map(countCell).join("")}
+                        ${countCell(model.stock_count)}
+                        ${countCell(Number(model.total || 0) + Number(model.stock_count || 0))}
+                    </tr>
+                `).join("");
+
+                const columnTotals = columns.map((_, index) => models.reduce(
+                    (total, model) => total + Number((model.counts || [])[index] || 0),
+                    0
+                ));
+                summaryFoot.innerHTML = `
+                    <tr>
+                        <td>Totale</td>
+                        ${columnTotals.map(countCell).join("")}
+                        ${countCell(data.total_stock)}
+                        ${countCell(Number(data.total_machines || 0) + Number(data.total_stock || 0))}
+                    </tr>`;
+            }
+
+            function productionNoteCell(machine) {
+                const note = machine.production_note || "";
+                if (!canEditNotes || !machine.has_serial) {
+                    return `<div style="white-space: pre-wrap">${esc(note || "—")}</div>`;
+                }
+                return `
+                    <textarea class="form-control form-control-sm" rows="2" maxlength="1000"
+                              data-production-note data-original-value="${esc(note)}"
+                              data-id-documento="${esc(machine.id_documento)}"
+                              data-id-riga="${esc(machine.id_riga)}"
+                              data-serial="${esc(machine.serial_number)}"
+                              data-version="${esc(machine.production_note_version)}"
+                              aria-label="Note di produzione matricola ${esc(machine.serial_number)}">${esc(note)}</textarea>
+                    <div class="d-flex gap-2 mt-1">
+                        <button type="button" class="btn btn-primary btn-sm" data-save-production-note>Salva</button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" data-cancel-production-note>Annulla</button>
+                    </div>`;
+            }
+
+            function formatShippingDate(value) {
+                return value ? value.split("-").reverse().join("/") : "—";
+            }
+
+            function packagingCell(machine) {
+                if (machine.packaged) {
+                    const sensors = machine.tilt_sensor_serials;
+                    return `
+                        <span class="badge text-bg-success">Macchina imballata</span>
+                        <div class="small text-muted mt-1">
+                            ${esc(formatUpdateTime(machine.packaging?.confirmed_at))}
+                            ${machine.packaging?.confirmed_by_name ? ` · ${esc(machine.packaging.confirmed_by_name)}` : ""}
+                        </div>
+                        ${canConfirmPackaging ? `
+                            <div class="d-flex flex-wrap align-items-end gap-1 mt-1">
+                                <div class="flex-grow-1">
+                                    <label class="form-label small mb-1">Seriali sensori antiribaltamento</label>
+                                    <input class="form-control form-control-sm" data-tilt-sensor-serials
+                                           data-original-value="${esc(sensors || "")}" value="${esc(sensors || "")}"
+                                           maxlength="1000" placeholder="Facoltativi, separati da virgola">
+                                </div>
+                                <button type="button" class="btn btn-primary btn-sm text-nowrap"
+                                        data-save-tilt-sensors
+                                        data-id-documento="${esc(machine.id_documento)}"
+                                        data-id-riga="${esc(machine.id_riga)}"
+                                        data-serial="${esc(machine.serial_number)}">Salva sensori</button>
+                            </div>
+                        ` : ""}`;
+                }
+                if (!canConfirmPackaging || !machine.has_serial || machine.state !== "Chiusa") return "—";
+                const sensors = machine.tilt_sensor_serials || "";
+                return `<div class="d-flex flex-wrap align-items-end gap-1">
+                            <div class="flex-grow-1">
+                                <label class="form-label small mb-1">Seriali sensori antiribaltamento</label>
+                                <input class="form-control form-control-sm" data-tilt-sensor-serials
+                                       data-original-value="${esc(sensors)}" value="${esc(sensors)}"
+                                       maxlength="1000" placeholder="Facoltativi, separati da virgola">
+                            </div>
+                            <button type="button" class="btn btn-primary btn-sm text-nowrap"
+                                    data-save-tilt-sensors
+                                    data-id-documento="${esc(machine.id_documento)}"
+                                    data-id-riga="${esc(machine.id_riga)}"
+                                    data-serial="${esc(machine.serial_number)}">Salva sensori</button>
+                            <button type="button" class="btn btn-success btn-sm text-nowrap"
+                                    data-confirm-packaging
+                                    data-id-documento="${esc(machine.id_documento)}"
+                                    data-id-riga="${esc(machine.id_riga)}"
+                                    data-serial="${esc(machine.serial_number)}">
+                                Imballo
+                            </button>
+                        </div>`;
+            }
+
+            function optionCell(machine) {
+                if (machine.option) {
+                    const canEdit = canOptionMachines && machine.option.can_remove;
+                    return `
+                        <span class="badge text-bg-warning">Opzionata</span>
+                        <div class="small text-muted mt-1">
+                            ${esc(machine.option.optioned_by_name)} · ${esc(formatUpdateTime(machine.option.optioned_at))}
+                        </div>
+                        <textarea class="form-control form-control-sm mt-1" rows="2" maxlength="1000"
+                                  aria-label="Nota opzione matricola ${esc(machine.serial_number)}"
+                                  data-machine-option-note
+                                  data-original-value="${esc(machine.option.note || "")}"${canEdit ? "" : " readonly"}>${esc(machine.option.note || "")}</textarea>
+                        ${canEdit ? `
+                            <button type="button" class="btn btn-primary btn-sm text-nowrap mt-1"
+                                    data-machine-option="true"
+                                    data-save-machine-option-note
+                                    data-id-documento="${esc(machine.id_documento)}"
+                                    data-id-riga="${esc(machine.id_riga)}"
+                                    data-serial="${esc(machine.serial_number)}">
+                                Salva nota
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary btn-sm text-nowrap mt-1"
+                                    data-machine-option="false"
+                                    data-id-documento="${esc(machine.id_documento)}"
+                                    data-id-riga="${esc(machine.id_riga)}"
+                                    data-serial="${esc(machine.serial_number)}">
+                                Rimuovi opzione
+                            </button>` : ""}`;
+                }
+                if (!canOptionMachines || !machine.has_serial) return "—";
+                return `<button type="button" class="btn btn-dark btn-sm text-nowrap"
+                                data-machine-option="true"
+                                data-id-documento="${esc(machine.id_documento)}"
+                                data-id-riga="${esc(machine.id_riga)}"
+                                data-serial="${esc(machine.serial_number)}">
+                            Opziona
+                        </button>`;
+            }
+
+            function priorityKey(row) {
+                return [row.id_documento, row.id_riga, row.phase ?? row.fase ?? "1"].join("|");
+            }
+
+            function priorityQueue() {
+                return [
+                    ...(priorityData.prioritized || []),
+                    ...(priorityData.available || []),
+                ];
+            }
+
+            function priorityCell(machine, item) {
+                const value = item?.priorita || "";
+                return `<input class="form-control form-control-sm" type="number" min="1" step="1" data-priority-level
+                                data-position="${esc(item?.posizione || "")}"
+                                data-id-documento="${esc(machine.id_documento)}"
+                                data-id-riga="${esc(machine.id_riga)}"
+                                data-fase="${esc(machine.phase)}"
+                                value="${esc(value)}"
+                                placeholder="Nessuna"
+                                aria-label="Priorità ordine ${esc(machine.order)}">`;
+            }
+
+            function machineRow(machine, priorityItem = null) {
+                return `<tr data-priorita="${esc(priorityItem?.priorita || "")}">
+                    <td>${modelLabel(machine)}</td>
+                    <td class="fw-semibold">${esc(machine.serial_number)}</td>
+                    <td>${esc(machine.order)}</td>
+                    <td>${esc(machine.customer_name || "—")}</td>
+                    <td class="text-nowrap">${esc(formatShippingDate(machine.shipping_date))}</td>
+                    <td data-phase-code="${esc(machine.phase)}">${esc(window.phaseLabel(machine.phase))}</td>
+                    <td data-col="stato">${stateBadge(machine.state)}</td>
+                    <td class="vendite-note-column">
+                        ${(machine.missing_components || []).length ? `
+                            <div class="text-danger mb-1">
+                                <strong>Materiali mancanti:</strong>
+                                <ul class="mb-0 ps-3">${machine.missing_components.map(component => `
+                                    <li>${esc([component.code, component.variant, component.description].filter(Boolean).join(" — "))}</li>
+                                `).join("")}</ul>
+                            </div>` : ""}
+                        ${esc(machine.last_suspension_cause || ((machine.missing_components || []).length ? "" : "—"))}
+                    </td>
+                    <td class="vendite-note-column">${productionNoteCell(machine)}</td>
+                    ${canViewProductionInstructions ? `<td class="vendite-note-column" style="white-space: pre-wrap">${esc(machine.production_instructions || "—")}</td>` : ""}
+                    <td class="vendite-note-column" style="white-space: pre-wrap">${esc(machine.packaging_note || "—")}</td>
+                    <td class="vendite-normal-only${priorityMode ? " d-none" : ""}">${packagingCell(machine)}</td>
+                    ${canViewOptions ? `<td class="vendite-normal-only${priorityMode ? " d-none" : ""}">${optionCell(machine)}</td>` : ""}
+                    <td class="vendite-priority-only${priorityMode ? "" : " d-none"}">${priorityCell(machine, priorityItem)}</td>
+                </tr>`;
+            }
+
+            function filteredMachines(machines, query) {
+                if (!query) return machines;
+                return machines.filter(machine => [
+                    machine.serial_number,
+                    machine.model_code,
+                    machine.description,
+                    machine.order,
+                    machine.customer_name,
+                    machine.customer_order,
+                ].some(value => String(value || "").toLocaleLowerCase("it").includes(query)));
+            }
+
+            function machineSections(machines, allGroups, selected, separate) {
+                if (separate) {
+                    const assigned = new Set(allGroups.flatMap(group => group.family_codes));
+                    const sections = allGroups.map(group => ({
+                        key: String(group.id),
+                        name: group.name,
+                        machines: machines.filter(machine => group.family_codes.includes(machine.family_code)),
+                    }));
+                    const remaining = machines.filter(machine => !assigned.has(machine.family_code));
+                    if (remaining.length || !sections.length) {
+                        sections.push({key: "ungrouped", name: "Senza raggruppamento", machines: remaining});
+                    }
+                    return sections;
+                }
+                const codes = new Set(allGroups.filter(group => selected.has(String(group.id)))
+                    .flatMap(group => group.family_codes));
+                return [{name: null, machines: selected.size
+                    ? machines.filter(machine => codes.has(machine.family_code)) : machines}];
+            }
+
+            function sortedMachines(machines, key, direction) {
+                return [...machines].sort((a, b) => {
+                    const left = String(a[key] ?? ""), right = String(b[key] ?? "");
+                    // Le date ISO si ordinano cronologicamente; i valori vuoti restano in fondo.
+                    if (!left || !right) return Number(!left) - Number(!right);
+                    return left.localeCompare(right, "it", {numeric: true, sensitivity: "base"}) * direction;
+                });
+            }
+
+            function renderGroupEditor() {
+                if (!groupForm) return;
+                const selectedId = groupSelect.value;
+                groupSelect.innerHTML = '<option value="">Nuovo raggruppamento</option>' +
+                    groups.map(group => `<option value="${group.id}">${esc(group.name)}</option>`).join("");
+                groupSelect.value = groups.some(group => String(group.id) === selectedId) ? selectedId : "";
+                groupSelect.dataset.previousValue = groupSelect.value;
+                const group = groups.find(item => String(item.id) === groupSelect.value);
+                groupForm.dataset.version = group?.version || "";
+                groupName.value = group?.name || "";
+                groupFamilies.innerHTML = families.map((family, index) => `
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="vendite-family-${index}"
+                               value="${esc(family.code)}" ${group?.family_codes.includes(family.code) ? "checked" : ""}>
+                        <label class="form-check-label" for="vendite-family-${index}">${esc(family.code)}${family.description ? " — " + esc(family.description) : ""}</label>
+                    </div>`).join("") || '<div class="text-muted">Nessuna famiglia disponibile.</div>';
+                groupDelete.disabled = !group;
+            }
+
+            function renderGrouping(config) {
+                groups = config.groups || [];
+                families = config.families || [];
+                const ids = new Set(groups.map(group => String(group.id)));
+                for (const id of selectedGroups) if (!ids.has(id)) selectedGroups.delete(id);
+                for (const id of collapsedGroups) {
+                    if (id !== "ungrouped" && !ids.has(id)) collapsedGroups.delete(id);
+                }
+                groupFilters.innerHTML = `
+                    <label class="form-check mb-0">
+                        <input class="form-check-input" type="checkbox" data-show-all-groups ${showAllGroups ? "checked" : ""}>
+                        <span class="form-check-label">Tutti i raggruppamenti, separati</span>
+                    </label>` + groups.map(group => `
+                    <label class="form-check mb-0">
+                        <input class="form-check-input" type="checkbox" data-group-filter="${group.id}"
+                               ${selectedGroups.has(String(group.id)) ? "checked" : ""} ${showAllGroups ? "disabled" : ""}>
+                        <span class="form-check-label">${esc(group.name)}</span>
+                    </label>`).join("");
+                if (groupForm && !groupFormDirty && !groupMutation) {
+                    groupFields.disabled = false;
+                    renderGroupEditor();
+                }
+            }
+
+            function canChangeMachineView() {
+                if (savingNote || hasUnsavedNotes()) {
+                    errorElement.textContent = "Salvare o annullare le note prima di cambiare vista o raggruppamento.";
+                    errorElement.classList.remove("d-none");
+                    return false;
+                }
+                if (priorityDirty) {
+                    errorElement.textContent = "Salvare le priorità prima di cambiare vista, operatore o modalità.";
+                    errorElement.classList.remove("d-none");
+                    return false;
+                }
+                return true;
+            }
+
+            async function mutateGroup(deleting) {
+                if (groupMutation || !canChangeMachineView()) return;
+                const id = groupSelect.value;
+                if (deleting && (!id || !window.confirm("Eliminare questo raggruppamento? Le macchine non verranno eliminate."))) return;
+                const body = {
+                    id: id ? Number(id) : null,
+                    version: Number(groupForm.dataset.version),
+                    name: groupName.value,
+                    family_codes: Array.from(groupFamilies.querySelectorAll("input:checked"), input => input.value),
+                };
+                groupMutation = true;
+                noteRevision += 1;
+                groupFields.disabled = true;
+                groupMessage.textContent = "";
+                try {
+                    const url = deleting
+                        ? page.dataset.groupDeleteUrl.replace("/0", "/" + encodeURIComponent(id))
+                        : page.dataset.groupsUrl;
+                    const response = await window.avpFetch(url, {
+                        method: deleting ? "DELETE" : "POST",
+                        headers: {"Content-Type": "application/json"},
+                        body: JSON.stringify(body),
+                    });
+                    const payload = await response.json().catch(() => ({}));
+                    if (!response.ok || !payload.ok) throw new Error(payload.error || "Salvataggio non riuscito.");
+                    groupFormDirty = false;
+                    groupMutation = false;
+                    if (deleting) groupSelect.value = "";
+                    renderGrouping(payload.data || {});
+                    if (!editingNotes()) renderMachines(currentData);
+                    groupMessage.textContent = payload.message;
+                } catch (error) {
+                    groupMessage.textContent = error.message;
+                } finally {
+                    groupMutation = false;
+                    groupFields.disabled = false;
+                }
+            }
+
+            function renderMachines(data) {
+                machinesTable.querySelectorAll(".vendite-normal-only").forEach(cell => {
+                    cell.classList.toggle("d-none", priorityMode);
+                });
+                machinesTable.querySelectorAll(".vendite-priority-only").forEach(cell => {
+                    cell.classList.toggle("d-none", !priorityMode);
+                });
+                const columnCount = [...machinesTable.querySelectorAll("thead th")]
+                    .filter(cell => !cell.classList.contains("d-none")).length;
+                groupFilters.classList.toggle("d-none", priorityMode);
+
+                const searchQuery = machineSearchInput.value.trim().toLocaleLowerCase("it");
+                const visibleMachines = filteredMachines(data.machines || [], searchQuery);
+                if (priorityMode) {
+                    const machinesByKey = new Map(
+                        visibleMachines
+                            .filter(machine => ["pianificata", "attivo", "in sospeso"].includes(String(machine.state || "").toLowerCase()))
+                            .map(machine => [priorityKey(machine), machine])
+                    );
+                    const rows = priorityQueue().flatMap(item => {
+                        const machine = machinesByKey.get(priorityKey(item));
+                        return machine ? [machineRow(machine, item)] : [];
+                    });
+                    machinesBody.innerHTML = rows.join("") || `
+                        <tr><td colspan="${columnCount}" class="text-center text-muted py-4">
+                            ${searchQuery ? "Nessuna macchina corrisponde alla ricerca." : priorityOperator?.value ? "Nessun ordine prioritizzabile assegnato al montaggio per questo operatore." : "Seleziona un operatore di montaggio."}
+                        </td></tr>`;
+                    if (typeof window.applyRowColors === "function") window.applyRowColors();
+                    return;
+                }
+
+                let sections = machineSections(visibleMachines, groups, selectedGroups, showAllGroups);
+                if (searchQuery) {
+                    sections = sections.filter(section => section.machines.length);
+                }
+                const rowsHtml = sections.map(section => {
+                    const expanded = Boolean(searchQuery) || section.name === null || !collapsedGroups.has(section.key);
+                    const header = section.name === null ? "" : `
+                        <tr class="table-secondary" data-group-heading>
+                            <th colspan="${columnCount}" scope="rowgroup">
+                                <button type="button" class="btn text-start fw-semibold w-100 p-0"
+                                        data-toggle-machine-group="${esc(section.key)}"
+                                        aria-expanded="${expanded}"
+                                        aria-label="${expanded ? "Riduci" : "Espandi"} raggruppamento ${esc(section.name)}">
+                                    <span aria-hidden="true">${expanded ? "▾" : "▸"}</span>
+                                    ${esc(section.name)} (${section.machines.length})
+                                </button>
+                            </th>
+                        </tr>`;
+                    if (!expanded) return header;
+                    const rows = sortedMachines(section.machines, sortKey, sortDirection);
+                    return header + (rows.length ? rows.map(machine => machineRow(machine)).join("") : `<tr><td colspan="${columnCount}" class="text-center text-muted py-4">Nessuna macchina presente.</td></tr>`);
+                }).join("");
+                machinesBody.innerHTML = rowsHtml || `
+                    <tr><td colspan="${columnCount}" class="text-center text-muted py-4">
+                        Nessuna macchina corrisponde alla ricerca.
+                    </td></tr>`;
+
+                if (typeof window.applyRowColors === "function") {
+                    window.applyRowColors();
+                }
+            }
+
+            function formatUpdateTime(value) {
+                const date = new Date(value);
+                if (Number.isNaN(date.getTime())) return String(value || "");
+                return new Intl.DateTimeFormat("it-IT", {
+                    dateStyle: "short",
+                    timeStyle: "medium",
+                }).format(date);
+            }
+
+            function priorityUrl(template, operatorId) {
+                return template.replace(/\/0(?=\/|\?|$)/, `/${encodeURIComponent(operatorId)}`);
+            }
+
+            async function loadPriorityOperators() {
+                if (!canManageSalesPriorities || priorityOperator.options.length > 1) return;
+                const url = new URL(page.dataset.priorityOperatorsUrl, window.location.origin);
+                url.searchParams.set("montaggio", "1");
+                const response = await window.avpFetch(url.toString());
+                const payload = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(payload.error || "Errore caricamento operatori di montaggio.");
+                priorityOperator.innerHTML = '<option value="">Seleziona operatore di montaggio...</option>';
+                for (const operator of payload.operatori || []) {
+                    priorityOperator.insertAdjacentHTML(
+                        "beforeend",
+                        `<option value="${esc(operator.id)}">${esc(operator.username)}</option>`
+                    );
+                }
+                if (priorityOperator.options.length > 1) priorityOperator.selectedIndex = 1;
+            }
+
+            async function loadPriorityData() {
+                if (!priorityMode || !priorityOperator?.value) {
+                    priorityData = {available: [], prioritized: []};
+                    return;
+                }
+                const response = await window.avpFetch(priorityUrl(
+                    page.dataset.priorityOrdersUrl,
+                    priorityOperator.value
+                ));
+                const payload = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(payload.error || "Errore caricamento priorità.");
+                priorityData = payload;
+            }
+
+            async function savePriorities() {
+                if (!priorityMode || !priorityOperator?.value || !priorityDirty) return;
+                const staged = Array.from(machinesBody.querySelectorAll("tr"), row => {
+                    const level = row.querySelector("[data-priority-level]");
+                    if (!level?.value) return null;
+                    return {
+                        id_documento: level.dataset.idDocumento,
+                        id_riga: level.dataset.idRiga,
+                        fase: level.dataset.fase,
+                        priorita: Number(level.value),
+                    };
+                }).filter(Boolean);
+                const numeri = staged.map(item => item.priorita).sort((a, b) => a - b);
+                if (numeri.some((numero, index) => !Number.isInteger(numero) || numero !== index + 1)) {
+                    throw new Error("Le priorità devono essere univoche e consecutive da 1.");
+                }
+                const items = staged
+                    .sort((a, b) => a.priorita - b.priorita)
+                    .map(item => ({
+                        id_documento: item.id_documento,
+                        id_riga: item.id_riga,
+                        fase: item.fase,
+                        priorita: item.priorita,
+                        posizione: item.priorita,
+                    }));
+                const response = await window.avpFetch(priorityUrl(
+                    page.dataset.prioritySaveUrl,
+                    priorityOperator.value
+                ), {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({items}),
+                });
+                const payload = await response.json().catch(() => ({}));
+                if (!response.ok || !payload.ok) throw new Error(payload.error || "Errore salvataggio priorità.");
+                priorityDirty = false;
+                prioritySave.disabled = true;
+                await refresh();
+                setStatus("Priorità salvate.");
+            }
+
+            function render(data) {
+                currentData = data;
+                if (summaryHead) renderSummary(data);
+                if (data.grouping) renderGrouping(data.grouping);
+                renderMachines(data);
+                setStatus(`Ultimo aggiornamento: ${formatUpdateTime(data.generated_at)}`);
+            }
+
+            async function refresh() {
+                if (inFlight || groupMutation || packagingInFlight || optionInFlight || editingNotes()) return;
+                const revision = noteRevision;
+                inFlight = true;
+                refreshButton.disabled = true;
+                setStatus("Aggiornamento in corso...");
+
+                try {
+                    if (priorityMode) await loadPriorityData();
+                    const dataUrl = new URL(page.dataset.apiUrl, window.location.origin);
+                    if (priorityMode) dataUrl.searchParams.set("priorita", "1");
+                    const response = await window.avpFetch(dataUrl.toString());
+                    const payload = await response.json().catch(() => ({}));
+                    if (!response.ok || !payload.ok) {
+                        throw new Error(payload.error || `Errore server (${response.status})`);
+                    }
+
+                    // La richiesta può essere partita prima che l'utente inizi a scrivere.
+                    if (editingNotes() || revision !== noteRevision) return;
+                    render(payload.data || {});
+                    errorElement.classList.add("d-none");
+                    errorElement.textContent = "";
+                } catch (error) {
+                    console.error("Errore aggiornamento vendite:", error);
+                    errorElement.textContent = "Impossibile aggiornare i dati vendite. Riprovo automaticamente.";
+                    errorElement.classList.remove("d-none");
+                    setStatus("Aggiornamento non riuscito");
+                } finally {
+                    inFlight = false;
+                    refreshButton.disabled = false;
+                }
+            }
+
+            machinesBody.addEventListener("click", async event => {
+                const sensorSaveButton = event.target.closest("[data-save-tilt-sensors]");
+                if (sensorSaveButton) {
+                    if (packagingInFlight || !canConfirmPackaging) return;
+                    const field = sensorSaveButton.closest("td")
+                        ?.querySelector("[data-tilt-sensor-serials]");
+                    packagingInFlight = true;
+                    sensorSaveButton.disabled = true;
+                    try {
+                        const response = await window.avpFetch(page.dataset.sensorUrl, {
+                            method: "POST",
+                            headers: {"Content-Type": "application/json"},
+                            body: JSON.stringify({
+                                id_documento: sensorSaveButton.dataset.idDocumento,
+                                id_riga: sensorSaveButton.dataset.idRiga,
+                                serial_number: sensorSaveButton.dataset.serial,
+                                tilt_sensor_serials: field?.value || "",
+                            }),
+                        });
+                        const payload = await response.json().catch(() => ({}));
+                        if (!response.ok || !payload.ok) throw new Error(
+                            payload.error || `Errore server (${response.status})`
+                        );
+                        noteRevision += 1;
+                        render(payload.data);
+                        errorElement.classList.add("d-none");
+                        setStatus(payload.message || "Sensori antiribaltamento salvati.");
+                    } catch (error) {
+                        errorElement.textContent = error.message || "Impossibile salvare i sensori.";
+                        errorElement.classList.remove("d-none");
+                        sensorSaveButton.disabled = false;
+                    } finally {
+                        packagingInFlight = false;
+                    }
+                    return;
+                }
+                const optionButton = event.target.closest("[data-machine-option]");
+                if (optionButton) {
+                    const savingOptionNote = optionButton.hasAttribute(
+                        "data-save-machine-option-note"
+                    );
+                    if (optionInFlight || !canOptionMachines
+                        || (!savingOptionNote && !canChangeMachineView())) return;
+                    const optioned = optionButton.dataset.machineOption === "true";
+                    const action = optioned ? "opzionare" : "rimuovere l'opzione dalla";
+                    if (!savingOptionNote && !window.confirm(`Confermare di ${action} matricola ${optionButton.dataset.serial}?`)) return;
+                    const noteField = optionButton.closest("td")?.querySelector("[data-machine-option-note]");
+                    optionInFlight = true;
+                    optionButton.disabled = true;
+                    try {
+                        const response = await window.avpFetch(page.dataset.optionUrl, {
+                            method: "POST",
+                            headers: {"Content-Type": "application/json"},
+                            body: JSON.stringify({
+                                id_documento: optionButton.dataset.idDocumento,
+                                id_riga: optionButton.dataset.idRiga,
+                                serial_number: optionButton.dataset.serial,
+                                optioned,
+                                note: noteField?.value || "",
+                            }),
+                        });
+                        const payload = await response.json().catch(() => ({}));
+                        if (!response.ok || !payload.ok) throw new Error(payload.error || `Errore server (${response.status})`);
+                        noteRevision += 1;
+                        render(payload.data);
+                        errorElement.classList.add("d-none");
+                        setStatus(payload.message || "Opzione macchina aggiornata.");
+                    } catch (error) {
+                        errorElement.textContent = error.message || "Impossibile aggiornare l'opzione.";
+                        errorElement.classList.remove("d-none");
+                        optionButton.disabled = false;
+                    } finally {
+                        optionInFlight = false;
+                    }
+                    return;
+                }
+                const packagingButton = event.target.closest("[data-confirm-packaging]");
+                if (packagingButton) {
+                    if (packagingInFlight || !canConfirmPackaging || !canChangeMachineView()) return;
+                    if (!window.confirm(`Confermare che la matricola ${packagingButton.dataset.serial} è imballata?`)) return;
+                    packagingInFlight = true;
+                    packagingButton.disabled = true;
+                    try {
+                        const response = await window.avpFetch(page.dataset.packagingUrl, {
+                            method: "POST",
+                            headers: {"Content-Type": "application/json"},
+                            body: JSON.stringify({
+                                id_documento: packagingButton.dataset.idDocumento,
+                                id_riga: packagingButton.dataset.idRiga,
+                                serial_number: packagingButton.dataset.serial,
+                                tilt_sensor_serials: packagingButton.closest("td")
+                                    ?.querySelector("[data-tilt-sensor-serials]")?.value || "",
+                            }),
+                        });
+                        const payload = await response.json().catch(() => ({}));
+                        if (!response.ok || !payload.ok) throw new Error(payload.error || `Errore server (${response.status})`);
+                        noteRevision += 1;
+                        render(payload.data);
+                        errorElement.classList.add("d-none");
+                        setStatus(payload.message || "Macchina segnalata come imballata.");
+                    } catch (error) {
+                        errorElement.textContent = error.message || "Impossibile confermare l'imballo.";
+                        errorElement.classList.remove("d-none");
+                        packagingButton.disabled = false;
+                    } finally {
+                        packagingInFlight = false;
+                    }
+                    return;
+                }
+                const toggle = event.target.closest("[data-toggle-machine-group]");
+                if (toggle) {
+                    if (!canChangeMachineView()) return;
+                    const key = toggle.dataset.toggleMachineGroup;
+                    if (collapsedGroups.has(key)) collapsedGroups.delete(key);
+                    else collapsedGroups.add(key);
+                    renderMachines(currentData);
+                    machinesBody.querySelector(`[data-toggle-machine-group="${CSS.escape(key)}"]`)?.focus();
+                    return;
+                }
+                const save = event.target.closest("[data-save-production-note]");
+                const cancel = event.target.closest("[data-cancel-production-note]");
+                if ((!save && !cancel) || savingNote || !canEditNotes) return;
+                const cell = (save || cancel).closest("td");
+                const field = cell.querySelector("[data-production-note]");
+                if (cancel) {
+                    machinesBody.querySelectorAll("[data-production-note]").forEach(copy => {
+                        if (copy.dataset.serial === field.dataset.serial) copy.value = copy.dataset.originalValue;
+                    });
+                    await refresh();
+                    return;
+                }
+                savingNote = true;
+                noteRevision += 1;
+                machinesBody.querySelectorAll("[data-production-note]").forEach(copy => {
+                    if (copy.dataset.serial === field.dataset.serial) copy.disabled = true;
+                });
+                save.disabled = true;
+                try {
+                    const response = await window.avpFetch(page.dataset.noteUrl, {
+                        method: "POST",
+                        headers: {"Content-Type": "application/json"},
+                        body: JSON.stringify({
+                            id_documento: field.dataset.idDocumento,
+                            id_riga: field.dataset.idRiga,
+                            serial_number: field.dataset.serial,
+                            version: Number(field.dataset.version),
+                            production_note: field.value,
+                        }),
+                    });
+                    const payload = await response.json().catch(() => ({}));
+                    if (!response.ok || !payload.ok) {
+                        throw new Error(payload.error || `Errore server (${response.status})`);
+                    }
+                    const saved = (payload.data?.machines || []).find(machine =>
+                        machine.serial_number === field.dataset.serial
+                    );
+                    if (!saved) throw new Error("Nota salvata, ma la matricola non è più nella vista. Ricaricare i dati.");
+                    currentData.machines = (currentData.machines || []).map(machine =>
+                        machine.serial_number === saved.serial_number ? saved : machine);
+                    machinesBody.querySelectorAll("[data-production-note]").forEach(copy => {
+                        if (copy.dataset.serial !== saved.serial_number) return;
+                        copy.value = saved.production_note || "";
+                        copy.dataset.originalValue = copy.value;
+                        copy.dataset.version = saved.production_note_version;
+                    });
+                    errorElement.classList.add("d-none");
+                    setStatus("Note di produzione salvate.");
+                } catch (error) {
+                    errorElement.textContent = error.message || "Impossibile salvare le note.";
+                    errorElement.classList.remove("d-none");
+                } finally {
+                    savingNote = false;
+                    machinesBody.querySelectorAll("[data-production-note]").forEach(copy => {
+                        if (copy.dataset.serial === field.dataset.serial) copy.disabled = false;
+                    });
+                    save.disabled = false;
+                }
+            });
+
+            machinesBody.addEventListener("input", event => {
+                if (event.target.matches("[data-production-note]")) {
+                    machinesBody.querySelectorAll("[data-production-note]").forEach(copy => {
+                        if (copy !== event.target && copy.dataset.serial === event.target.dataset.serial) {
+                            copy.value = event.target.value;
+                        }
+                    });
+                    setStatus("Modifiche non salvate: salvare o annullare per riprendere l'aggiornamento.");
+                }
+            });
+            machinesBody.addEventListener("change", event => {
+                if (!event.target.matches("[data-priority-level]")) return;
+                priorityDirty = true;
+                prioritySave.disabled = false;
+                setStatus("Priorità modificate: salvare per riprendere l'aggiornamento.");
+            });
+            machinesBody.addEventListener("focusin", event => {
+                if (event.target.matches("[data-tilt-sensor-serials]")) {
+                    sensorFieldFocused = true;
+                }
+            });
+            machinesBody.addEventListener("focusout", event => {
+                if (event.target.matches("[data-tilt-sensor-serials]")) {
+                    sensorFieldFocused = false;
+                }
+            });
+            machinesBody.addEventListener("input", event => {
+                if (event.target.matches("[data-tilt-sensor-serials]")) {
+                    noteRevision += 1;
+                }
+            });
+            window.addEventListener("beforeunload", event => {
+                if (savingNote || hasUnsavedNotes() || priorityDirty || groupFormDirty || groupMutation) {
+                    event.preventDefault();
+                    event.returnValue = "";
+                }
+            });
+
+            machineSearchInput.addEventListener("input", () => {
+                if (hasUnsavedNotes()) {
+                    setStatus("Salvare o annullare le note prima di applicare la ricerca.");
+                    return;
+                }
+                renderMachines(currentData);
+            });
+
+            groupFilters.addEventListener("change", event => {
+                const input = event.target;
+                if (!input.matches("[data-show-all-groups], [data-group-filter]")) return;
+                if (canChangeMachineView()) {
+                    if (input.matches("[data-show-all-groups]")) showAllGroups = input.checked;
+                    else if (input.checked) selectedGroups.add(input.dataset.groupFilter);
+                    else selectedGroups.delete(input.dataset.groupFilter);
+                    renderMachines(currentData);
+                }
+                renderGrouping({groups, families});
+            });
+            machinesTable.tHead.addEventListener("click", event => {
+                const button = event.target.closest("[data-machine-sort]");
+                if (!button || priorityMode || !canChangeMachineView()) return;
+                const key = button.dataset.machineSort;
+                sortDirection = sortKey === key ? -sortDirection : 1;
+                sortKey = key;
+                machinesTable.querySelectorAll("[data-machine-sort]").forEach(item => {
+                    item.closest("th").setAttribute("aria-sort", item === button
+                        ? (sortDirection === 1 ? "ascending" : "descending") : "none");
+                    item.querySelector("[data-sort-marker]").textContent = item === button
+                        ? (sortDirection === 1 ? "↑" : "↓") : "";
+                });
+                renderMachines(currentData);
+            });
+            if (groupForm) {
+                groupForm.addEventListener("input", event => {
+                    if (event.target !== groupSelect) groupFormDirty = true;
+                });
+                groupSelect.addEventListener("change", () => {
+                    if (groupFormDirty && !window.confirm("Abbandonare le modifiche al raggruppamento?")) {
+                        groupSelect.value = groupSelect.dataset.previousValue || "";
+                        return;
+                    }
+                    groupFormDirty = false;
+                    groupSelect.dataset.previousValue = groupSelect.value;
+                    renderGroupEditor();
+                    groupMessage.textContent = "";
+                });
+                document.getElementById("vendite-group-cancel").addEventListener("click", () => {
+                    groupFormDirty = false;
+                    renderGroupEditor();
+                    groupMessage.textContent = "";
+                });
+                groupForm.addEventListener("submit", event => {
+                    event.preventDefault();
+                    mutateGroup(false);
+                });
+                groupDelete.addEventListener("click", () => mutateGroup(true));
+            }
+
+            refreshButton.addEventListener("click", () => {
+                if (editingNotes()) {
+                    setStatus("Salvare o annullare le modifiche prima di aggiornare.");
+                } else {
+                    refresh();
+                }
+            });
+            if (priorityModeInput) {
+                priorityModeInput.addEventListener("change", async () => {
+                    if (!canChangeMachineView()) {
+                        priorityModeInput.checked = priorityMode;
+                        return;
+                    }
+                    priorityMode = priorityModeInput.checked;
+                    priorityControls.classList.toggle("d-none", !priorityMode);
+                    priorityControls.classList.toggle("d-flex", priorityMode);
+                    try {
+                        if (priorityMode) await loadPriorityOperators();
+                        priorityOperator.dataset.previousValue = priorityOperator.value;
+                        await refresh();
+                    } catch (error) {
+                        errorElement.textContent = error.message;
+                        errorElement.classList.remove("d-none");
+                    }
+                });
+                priorityOperator.addEventListener("change", async () => {
+                    if (!canChangeMachineView()) {
+                        priorityOperator.value = priorityOperator.dataset.previousValue || "";
+                        return;
+                    }
+                    priorityOperator.dataset.previousValue = priorityOperator.value;
+                    await refresh();
+                });
+                prioritySave.addEventListener("click", async () => {
+                    prioritySave.disabled = true;
+                    try {
+                        await savePriorities();
+                        errorElement.classList.add("d-none");
+                    } catch (error) {
+                        errorElement.textContent = error.message;
+                        errorElement.classList.remove("d-none");
+                        prioritySave.disabled = false;
+                    }
+                });
+            }
+            document.addEventListener("visibilitychange", () => {
+                if (!document.hidden) refresh();
+            });
+            const pollTimer = window.setInterval(() => {
+                if (!document.hidden) refresh();
+            }, POLL_MS);
+            window.addEventListener("pagehide", () => window.clearInterval(pollTimer), {
+                once: true,
+            });
+
+            refresh();
+        })();
+    </script>
+{% endblock %}

@@ -1,0 +1,2003 @@
+from __future__ import annotations
+from datetime import datetime
+from zoneinfo import ZoneInfo
+from flask_login import UserMixin
+import uuid
+import json
+from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import and_
+from sqlalchemy.orm import foreign
+import hashlib
+from werkzeug.security import generate_password_hash, check_password_hash
+import re
+
+LOGIN_CODE_MIN_LENGTH = 6
+
+db = SQLAlchemy()
+
+# --- Tabelle di associazione ---
+roles_famiglia = db.Table(
+    "roles_famiglia",
+    db.Column(
+        "roles_id",
+        db.Integer,
+        db.ForeignKey("roles.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    db.Column(
+        "famiglia_id",
+        db.Integer,
+        db.ForeignKey("famiglia.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+)
+
+roles_ineritance = db.Table(
+    "roles_ineritance",
+    db.Column("role_id", db.Integer, db.ForeignKey("roles.id"), primary_key=True),
+    db.Column("included_role", db.Integer, db.ForeignKey("roles.id"), primary_key=True),
+)
+
+roles_lavorazioni = db.Table(
+    "roles_lavorazioni",
+    db.Column(
+        "roles_id",
+        db.Integer,
+        db.ForeignKey("roles.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    db.Column(
+        "lavorazioni_id",
+        db.Integer,
+        db.ForeignKey("lavorazioni.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+)
+
+roles_macrofamiglia = db.Table(
+    "roles_macrofamiglia",
+    db.Column(
+        "roles_id",
+        db.Integer,
+        db.ForeignKey("roles.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    db.Column(
+        "macrofamiglia_id",
+        db.Integer,
+        db.ForeignKey("macrofamiglia.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+)
+
+roles_magazzini = db.Table(
+    "roles_magazzini",
+    db.Column(
+        "roles_id",
+        db.Integer,
+        db.ForeignKey("roles.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    db.Column(
+        "magazzini_id",
+        db.Integer,
+        db.ForeignKey("magazzini.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+)
+
+roles_permission = db.Table(
+    "roles_permission",
+    db.Column(
+        "role_id",
+        db.Integer,
+        db.ForeignKey("roles.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    db.Column(
+        "permission_id",
+        db.Integer,
+        db.ForeignKey("permissions.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+)
+
+roles_reparti = db.Table(
+    "roles_reparti",
+    db.Column(
+        "roles_id",
+        db.Integer,
+        db.ForeignKey("roles.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    db.Column(
+        "reparto_id",
+        db.Integer,
+        db.ForeignKey("reparti.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+)
+
+roles_risorse = db.Table(
+    "roles_risorse",
+    db.Column(
+        "roles_id",
+        db.Integer,
+        db.ForeignKey("roles.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    db.Column(
+        "risorse_id",
+        db.Integer,
+        db.ForeignKey("risorse.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+)
+
+user_roles = db.Table(
+    "user_roles",
+    db.Column(
+        "user_id",
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    db.Column(
+        "role_id",
+        db.Integer,
+        db.ForeignKey("roles.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+)
+
+users_lavorazioni = db.Table(
+    "users_lavorazioni",
+    db.Column(
+        "user_id",
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    db.Column(
+        "lavorazioni_id",
+        db.Integer,
+        db.ForeignKey("lavorazioni.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+)
+
+users_risorse = db.Table(
+    "users_risorse",
+    db.Column(
+        "user_id",
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    db.Column(
+        "risorse_id",
+        db.Integer,
+        db.ForeignKey("risorse.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+)
+
+roles_manageable_roles = db.Table(
+    "roles_manageable_roles",
+    db.Column(
+        "manager_role_id",
+        db.Integer,
+        db.ForeignKey("roles.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    db.Column(
+        "managed_role_id",
+        db.Integer,
+        db.ForeignKey("roles.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+)
+
+
+# --- Modelli ---
+
+
+class Causaliattivita(db.Model):
+    __tablename__ = "causaliattivita"
+
+    id = db.Column(db.Integer, primary_key=True)
+    DesCausaleAttivita = db.Column(db.Text, nullable=False)
+    TipoCausale = db.Column(db.Text, nullable=False)
+    CausaleAttivita = db.Column(db.Text, nullable=False)
+    CodCategoriaAttivita = db.Column(db.Text, nullable=False)
+
+    def __repr__(self):
+        return f"<Causaliattivita {self.__dict__}>"
+
+
+class Famiglia(db.Model):
+    __tablename__ = "famiglia"
+
+    id = db.Column(db.Integer, primary_key=True)
+    Codice = db.Column(db.Text, nullable=False)
+    Descrizione = db.Column(db.Text, nullable=False)
+
+    def __repr__(self):
+        return f"<Famiglia {self.__dict__}>"
+
+
+class GiacenzaMateriale(db.Model):
+    __tablename__ = "giacenza_materiale"
+
+    CodArt = db.Column(db.Text)
+    CodMag = db.Column(db.Text)
+    Giacenza = db.Column(db.Text, nullable=False)
+    RifLottoAlfa = db.Column(db.Text, nullable=False)
+    DesArt = db.Column(db.Text, nullable=False)
+
+    __table_args__ = (db.PrimaryKeyConstraint("CodArt", "CodMag"),)
+
+    def __repr__(self):
+        return f"<GiacenzaMateriale {self.__dict__}>"
+
+
+class InputOdpLog(db.Model):
+    __bind_key__ = "log"
+    __tablename__ = "input_odp_log"
+
+    log_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    logged_at = db.Column(
+        db.Text,
+        nullable=False,
+        default=lambda: datetime.now(ZoneInfo("Europe/Rome")).isoformat(
+            timespec="seconds"
+        ),
+    )
+
+    OperationGroupId = db.Column(db.Text, nullable=False, index=True)
+
+    # chiavi ordine
+    IdDocumento = db.Column(db.Text, nullable=False, index=True)
+    IdRiga = db.Column(db.Text, nullable=False, index=True)
+    RifRegistraz = db.Column(db.Text)
+
+    # snapshot ERP/input
+    CodArt = db.Column(db.Text)
+    DesArt = db.Column(db.Text)
+    Quantita = db.Column(db.Text)
+    NumFase = db.Column(db.Text)
+    CodLavorazione = db.Column(db.Text)
+    CodRisorsaProd = db.Column(db.Text)
+    DataInizioSched = db.Column(db.Text)
+    DataFineSched = db.Column(db.Text)
+    GestioneLotto = db.Column(db.Text)
+    GestioneMatricola = db.Column(db.Text)
+    DistintaMateriale = db.Column(db.Text)
+    CodMatricola = db.Column(db.Text)
+    StatoRiga = db.Column(db.Text)
+    CodFamiglia = db.Column(db.Text)
+    CodMacrofamiglia = db.Column(db.Text)
+    CodMagPrincipale = db.Column(db.Text)
+    CodReparto = db.Column(db.Text)
+    TempoPrevistoLavoraz = db.Column(db.Text)
+    CodClassifTecnica = db.Column(db.Text)
+    CodTipoDoc = db.Column(db.Text)
+
+    # stato ordine/runtime al momento della chiusura
+    FaseAttiva = db.Column(db.Text)
+    QtyDaLavorare = db.Column(db.Text)
+    RisorsaAttiva = db.Column(db.Text)
+    LavorazioneAttiva = db.Column(db.Text)
+    AttrezzaggioAttivo = db.Column(db.Text)
+    RifOrdinePrinc = db.Column(db.Text)
+    Note = db.Column(db.Text)
+
+    # dati specifici della consuntivazione
+    FaseConsuntivata = db.Column(db.Text)
+    QuantitaConforme = db.Column(db.Text)
+    QuantitaNonConforme = db.Column(db.Text)
+    TempoFunzionamentoFinale = db.Column(db.Text)
+    TempoNonFunzionamentoMinuti = db.Column(db.Text)
+    TempoNonFunzionamentoSecondi = db.Column(db.Text)
+    ChiusuraParziale = db.Column(db.Text)
+    NoteChiusura = db.Column(db.Text)
+
+    # delta pre/post operazione
+    StatoOrdinePre = db.Column(db.Text)
+    StatoOrdinePost = db.Column(db.Text)
+    QtyDaLavorarePre = db.Column(db.Text)
+    QtyDaLavorarePost = db.Column(db.Text)
+
+    ActorPublicId = db.Column(db.Text)
+    ClosedBy = db.Column(db.Text)
+    ClosedAt = db.Column(db.Text, nullable=False, index=True)
+    VarianteArt = db.Column(db.Text)
+
+    __table_args__ = (db.Index("ix_input_odp_log_doc_riga", "IdDocumento", "IdRiga"),)
+
+    def __repr__(self):
+        return f"<InputOdpLog {self.log_id} {self.IdDocumento}/{self.IdRiga}>"
+
+
+class OdpRuntimeLog(db.Model):
+    __bind_key__ = "log"
+    __tablename__ = "odp_runtime_log"
+
+    log_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    logged_at = db.Column(
+        db.Text,
+        nullable=False,
+        default=lambda: datetime.now(ZoneInfo("Europe/Rome")).isoformat(
+            timespec="seconds"
+        ),
+    )
+
+    OperationGroupId = db.Column(db.Text, index=True)
+    EventSequence = db.Column(db.Integer)
+
+    Topic = db.Column(db.Text, index=True)  # ex ChangeEvent.topic
+    Scope = db.Column(db.Text, index=True)  # ex ChangeEvent.scope
+    CodArt = db.Column(db.Text, index=True)
+    CodReparto = db.Column(db.Text, index=True)
+    PayloadJson = db.Column(db.Text)  # extra leggibile/debug
+
+    IdDocumento = db.Column(db.Text, nullable=False, index=True)
+    IdRiga = db.Column(db.Text, nullable=False, index=True)
+    RifRegistraz = db.Column(db.Text)
+
+    Azione = db.Column(db.Text, nullable=False, index=True)
+    Motivo = db.Column(db.Text)
+    ActorPublicId = db.Column(db.Text)
+    UtenteOperazione = db.Column(db.Text)
+    EventAt = db.Column(db.Text, nullable=False, index=True)
+
+    StatoOdpPre = db.Column(db.Text)
+    StatoOdpPost = db.Column(db.Text)
+
+    StatoOrdinePre = db.Column(db.Text)
+    StatoOrdinePost = db.Column(db.Text)
+
+    FasePre = db.Column(db.Text)
+    FasePost = db.Column(db.Text)
+
+    DataInCaricoPre = db.Column(db.Text)
+    DataInCaricoPost = db.Column(db.Text)
+
+    DataUltimaAttivazionePre = db.Column(db.Text)
+    DataUltimaAttivazionePost = db.Column(db.Text)
+
+    TempoFunzionamentoPre = db.Column(db.Text)
+    TempoFunzionamentoPost = db.Column(db.Text)
+
+    ElapsedSeconds = db.Column(db.Text)
+    TempoNonFunzionamentoMinuti = db.Column(db.Text)
+    TempoNonFunzionamentoSecondi = db.Column(db.Text)
+
+    QtyDaLavorarePre = db.Column(db.Text)
+    QtyDaLavorarePost = db.Column(db.Text)
+
+    QuantitaConforme = db.Column(db.Text)
+    QuantitaNonConforme = db.Column(db.Text)
+
+    Causale = db.Column(db.Text)
+    Note = db.Column(db.Text)
+    RifOrdinePrinc = db.Column(db.Text)
+    VarianteArt = db.Column(db.Text)
+    NumProgrRiga = db.Column(db.Text)
+
+    __table_args__ = (
+        db.Index("ix_odp_runtime_log_doc_riga", "IdDocumento", "IdRiga"),
+        db.Index("ix_odp_runtime_log_topic", "Topic"),
+        db.Index("ix_odp_runtime_log_scope", "Scope"),
+    )
+
+
+class Lavorazioni(db.Model):
+    __tablename__ = "lavorazioni"
+
+    id = db.Column(db.Integer, primary_key=True)
+    Codice = db.Column(db.Text, nullable=False)
+    Descrizione = db.Column(db.Text, nullable=False)
+
+    def __repr__(self):
+        return f"<Lavorazioni {self.__dict__}>"
+
+
+class Macrofamiglia(db.Model):
+    __tablename__ = "macrofamiglia"
+
+    id = db.Column(db.Integer, primary_key=True)
+    Codice = db.Column(db.Text, nullable=False)
+    Descrizione = db.Column(db.Text, nullable=False)
+
+    def __repr__(self):
+        return f"<Macrofamiglia {self.__dict__}>"
+
+
+class Magazzini(db.Model):
+    __tablename__ = "magazzini"
+
+    id = db.Column(db.Integer, primary_key=True)
+    Codice = db.Column(db.Text, nullable=False)
+    Descrizione = db.Column(db.Text, nullable=False)
+
+    def __repr__(self):
+        return f"<Magazzini {self.__dict__}>"
+
+
+class Permissions(db.Model):
+    __tablename__ = "permissions"
+
+    id = db.Column(db.Integer, primary_key=True)
+    Codice = db.Column(db.Text, nullable=False)
+    Descrizione = db.Column(db.Text)
+
+    def __repr__(self):
+        return f"<Permissions {self.__dict__}>"
+
+
+class Reparti(db.Model):
+    __tablename__ = "reparti"
+
+    id = db.Column(db.Integer, primary_key=True)
+    Codice = db.Column(db.Text, nullable=False)
+    Descrizione = db.Column(db.Text)
+
+    def __repr__(self):
+        return f"<Reparti {self.__dict__}>"
+
+
+class Risorse(db.Model):
+    __tablename__ = "risorse"
+
+    id = db.Column(db.Integer, primary_key=True)
+    Codice = db.Column(db.Text, nullable=False)
+    Descrizione = db.Column(db.Text, nullable=False)
+
+    def __repr__(self):
+        return f"<Risorse {self.__dict__}>"
+
+
+class Roles(db.Model):
+    __tablename__ = "roles"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.Text, nullable=False)
+    description = db.Column(db.Text)
+    permissions = db.relationship(
+        "Permissions",
+        secondary=roles_permission,
+        backref=db.backref("roles", lazy="dynamic"),
+        lazy="dynamic",
+    )
+    reparti = db.relationship(
+        "Reparti",
+        secondary=roles_reparti,
+        lazy="selectin",
+    )
+    risorse = db.relationship(
+        "Risorse",
+        secondary=roles_risorse,
+        lazy="selectin",
+    )
+    lavorazioni = db.relationship(
+        "Lavorazioni",
+        secondary=roles_lavorazioni,
+        lazy="selectin",
+    )
+    magazzini = db.relationship(
+        "Magazzini",
+        secondary=roles_magazzini,
+        lazy="selectin",
+    )
+    famiglia = db.relationship(
+        "Famiglia",
+        secondary=roles_famiglia,
+        lazy="selectin",
+    )
+    macrofamiglia = db.relationship(
+        "Macrofamiglia",
+        secondary=roles_macrofamiglia,
+        lazy="selectin",
+    )
+    included_roles = db.relationship(
+        "Roles",
+        secondary=roles_ineritance,
+        primaryjoin=(id == roles_ineritance.c.role_id),
+        secondaryjoin=(id == roles_ineritance.c.included_role),
+        lazy="selectin",
+        backref=db.backref("included_by", lazy="selectin"),
+    )
+    manageable_roles = db.relationship(
+        "Roles",
+        secondary=roles_manageable_roles,
+        primaryjoin=(id == roles_manageable_roles.c.manager_role_id),
+        secondaryjoin=(id == roles_manageable_roles.c.managed_role_id),
+        lazy="selectin",
+        backref=db.backref("managed_by_roles", lazy="selectin"),
+    )
+
+    def iter_manageable_roles(self):
+        seen = set()
+        stack = list(self.manageable_roles or [])
+        while stack:
+            role = stack.pop()
+            if role is None or role.id in seen:
+                continue
+            seen.add(role.id)
+            yield role
+            stack.extend(getattr(role, "manageable_roles", []) or [])
+
+    def iter_self_and_included(self):
+        """Ritorna questo ruolo + tutti i ruoli inclusi (ricorsivo), evitando cicli."""
+        seen = set()
+        stack = [self]
+        while stack:
+            r = stack.pop()
+            if r is None or r.id in seen:
+                continue
+            seen.add(r.id)
+            yield r
+            stack.extend(getattr(r, "included_roles", []) or [])
+
+    @property
+    def effective_reparti(self):
+        out = {}
+        for r in self.iter_self_and_included():
+            for rep in r.reparti or []:
+                out[rep.id] = rep
+        return list(out.values())
+
+    @property
+    def effective_risorse(self):
+        out = {}
+        for r in self.iter_self_and_included():
+            for x in r.risorse or []:
+                out[x.id] = x
+        return list(out.values())
+
+    @property
+    def effective_lavorazioni(self):
+        out = {}
+        for r in self.iter_self_and_included():
+            for x in r.lavorazioni or []:
+                out[x.id] = x
+        return list(out.values())
+
+    @property
+    def effective_magazzini(self):
+        out = {}
+        for r in self.iter_self_and_included():
+            for x in r.magazzini or []:
+                out[x.id] = x
+        return list(out.values())
+
+    @property
+    def effective_famiglia(self):
+        out = {}
+        for r in self.iter_self_and_included():
+            for x in r.famiglia or []:
+                out[x.id] = x
+        return list(out.values())
+
+    @property
+    def effective_macrofamiglia(self):
+        out = {}
+        for r in self.iter_self_and_included():
+            for x in r.macrofamiglia or []:
+                out[x.id] = x
+        return list(out.values())
+
+    def add_permission(self, permission: "Permissions"):
+        if not self.permissions.filter_by(id=permission.id).first():
+            self.permissions.append(permission)
+
+    def remove_permission(self, permission: "Permissions"):
+        if self.permissions.filter_by(id=permission.id).first():
+            self.permissions.remove(permission)
+
+    def __repr__(self):
+        return f"<Roles {self.__dict__}>"
+
+
+users_famiglia = db.Table(
+    "users_famiglia",
+    db.Column(
+        "user_id",
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    db.Column(
+        "famiglia_id",
+        db.Integer,
+        db.ForeignKey("famiglia.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+)
+
+
+class User(UserMixin, db.Model):
+    __tablename__ = "users"
+
+    id = db.Column(db.Integer, primary_key=True)
+    public_id = db.Column(
+        db.String,
+        unique=True,
+        nullable=False,
+        default=lambda: str(uuid.uuid4()),
+    )
+    username = db.Column(db.String, unique=True, nullable=False)
+
+    login_code_lookup = db.Column(db.String(64), unique=True, index=True)
+    login_code_hash = db.Column(db.String(255))
+
+    active = db.Column(
+        db.Boolean, nullable=False, default=True, server_default=db.text("1")
+    )
+    preference = db.Column(db.Text)
+    genere = db.Column(db.Text)
+    RepartoPrinc = db.Column(db.Text)
+
+    roles = db.relationship(
+        "Roles",
+        secondary=user_roles,
+        backref=db.backref("users", lazy="dynamic"),
+        lazy="joined",
+    )
+    lavorazioni = db.relationship(
+        "Lavorazioni",
+        secondary=users_lavorazioni,
+        lazy="joined",
+    )
+    risorse = db.relationship(
+        "Risorse",
+        secondary=users_risorse,
+        lazy="joined",
+    )
+    famiglie = db.relationship(
+        "Famiglia",
+        secondary=users_famiglia,
+        lazy="joined",
+    )
+
+    @staticmethod
+    def validate_login_code(raw_code: str) -> str:
+        code = User._normalize_login_code(raw_code)
+
+        if not code:
+            raise ValueError("Il login_code è obbligatorio.")
+
+        if len(code) < LOGIN_CODE_MIN_LENGTH:
+            raise ValueError(
+                f"Il login_code deve contenere almeno {LOGIN_CODE_MIN_LENGTH} caratteri."
+            )
+
+        if not re.fullmatch(r"[A-Z0-9]+", code):
+            raise ValueError(
+                "Il login_code deve essere alfanumerico e contenere solo lettere e numeri."
+            )
+
+        return code
+
+    @staticmethod
+    def _normalize_login_code(raw_code: str) -> str:
+        return (raw_code or "").strip().upper()
+
+    def set_login_code(self, raw_code: str) -> None:
+        code = self.validate_login_code(raw_code)
+
+        self.login_code_lookup = User.login_code_lookup_for(code)
+        self.login_code_hash = generate_password_hash(code)
+
+    def check_login_code(self, raw_code: str) -> bool:
+        code = self._normalize_login_code(raw_code)
+        if not code or not self.login_code_hash:
+            return False
+        return check_password_hash(self.login_code_hash, code)
+
+    @staticmethod
+    def login_code_lookup_for(raw_code: str) -> str:
+        code = User.validate_login_code(raw_code)
+        return hashlib.sha256(code.encode("utf-8")).hexdigest()
+
+    @property
+    def is_active(self):
+        return bool(self.active)
+
+    @property
+    def is_active(self):
+        return bool(self.active)
+
+    # --- helper per preferences (JSON) ---
+    @property
+    def manageable_roles(self):
+        out = {}
+        for role in self._iter_roles(include_inherited=True):
+            for managed in getattr(role, "iter_manageable_roles", lambda: [])():
+                out[managed.id] = managed
+        return list(out.values())
+
+    @property
+    def manageable_role_ids(self) -> set[int]:
+        return {r.id for r in self.manageable_roles}
+
+    def has_management_scope(self) -> bool:
+        return bool(self.manageable_role_ids)
+
+    def can_manage_role(self, role) -> bool:
+        role_id = role.id if hasattr(role, "id") else int(role)
+        return role_id in self.manageable_role_ids
+
+    @property
+    def preferences(self) -> dict:
+        if not self.preference:
+            return {}
+        try:
+            return json.loads(self.preference)
+        except json.JSONDecodeError:
+            return {}
+
+    @preferences.setter
+    def preferences(self, value: dict):
+        self.preference = json.dumps(value or {})
+
+    def get_pref(self, key, default=None):
+        return self.preferences.get(key, default)
+
+    def set_pref(self, key, value):
+        prefs = self.preferences
+        prefs[key] = value
+        self.preferences = prefs
+
+    # --- helper policy ---
+
+    def has_role(self, role_name: str) -> bool:
+        return any(r.name == role_name for r in self.roles)
+
+    def _iter_roles(self, include_inherited: bool = True):
+        """Itera i ruoli dell'utente; opzionalmente include ruoli ereditati (included_roles)."""
+        seen = set()
+        stack = list(self.roles or [])
+        while stack:
+            role = stack.pop()
+            if role is None or role.id in seen:
+                continue
+            seen.add(role.id)
+            yield role
+            if include_inherited:
+                stack.extend(getattr(role, "included_roles", []) or [])
+
+    def has_permission(self, permission) -> bool:
+        if permission is None:
+            return False
+        if isinstance(permission, Permissions):
+            perm_id = permission.id
+            perm_code = permission.Codice
+        else:
+            perm_code = str(permission).strip()
+            try:
+                perm_id = int(perm_code)
+            except (TypeError, ValueError):
+                perm_id = None
+
+        for role in self._iter_roles(include_inherited=True):
+            q = role.permissions  # lazy="dynamic" => query
+            if perm_id is not None and q.filter_by(id=perm_id).first():
+                return True
+            if perm_code and q.filter_by(Codice=perm_code).first():
+                return True
+
+        return False
+
+    def __repr__(self):
+        return f"<Users {self.__dict__}>"
+
+
+class HomeRepartoConfig(db.Model):
+    """
+    Configurazione dinamica delle home operative per reparto.
+
+    Sostituisce la logica hardcoded tipo:
+    - HOME_TABS
+    - TAB_TO_TEMPLATE
+    - BRIDGE_CONFIG
+
+    Una riga = una voce reparto nel menu/home.
+    """
+
+    __tablename__ = "home_reparto_config"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+
+    reparto_id = db.Column(
+        db.Integer,
+        db.ForeignKey("reparti.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    tab_code = db.Column(db.Text, nullable=False, unique=True, index=True)
+    label = db.Column(db.Text, nullable=False)
+
+    template = db.Column(db.Text, nullable=False)
+    renderer = db.Column(db.Text, nullable=False)
+
+    permesso = db.Column(db.Text, nullable=False, default="home", server_default="home")
+
+    ordine_menu = db.Column(
+        db.Integer, nullable=False, default=100, server_default="100"
+    )
+    attivo = db.Column(
+        db.Boolean, nullable=False, default=True, server_default=db.text("1")
+    )
+
+    # Titoli standard del layout. Possono essere sovrascritti da home_visibility_rules per ruolo/utente.
+    titolo_macchine_da_eseguire = db.Column(db.Text)
+    titolo_macchine_attive = db.Column(db.Text)
+    titolo_semilavorati_da_eseguire = db.Column(db.Text)
+    titolo_semilavorati_attivi = db.Column(db.Text)
+
+    # Testi standard dei pulsanti. Possono essere sovrascritti da home_visibility_rules.
+    testo_presa_macchina = db.Column(db.Text)
+    testo_sospendi_macchina = db.Column(db.Text)
+    testo_riattiva_macchina = db.Column(db.Text)
+    testo_chiudi_macchina = db.Column(db.Text)
+
+    # Gestione documentale/metodi.
+    metodo_documentale_tipo = db.Column(
+        db.Text,
+        nullable=False,
+        default="montaggio",
+        server_default="montaggio",
+    )
+    metodo_documentale_prefisso = db.Column(db.Text)
+    metodo_documentale_path_key = db.Column(db.Text)
+
+    created_at = db.Column(
+        db.Text,
+        nullable=False,
+        default=lambda: datetime.now(ZoneInfo("Europe/Rome")).isoformat(
+            timespec="seconds"
+        ),
+    )
+    updated_at = db.Column(db.Text)
+    updated_by = db.Column(db.Text)
+
+    reparto = db.relationship("Reparti", lazy="selectin")
+
+    __table_args__ = (
+        db.CheckConstraint(
+            "renderer IN ('montaggio', 'standard', 'empty')",
+            name="ck_home_reparto_config_renderer",
+        ),
+        db.CheckConstraint(
+            "metodo_documentale_tipo IN ('montaggio', 'collaudo', 'nessuno')",
+            name="ck_home_reparto_config_metodo_tipo",
+        ),
+        db.Index("ix_home_reparto_config_attivo_ordine", "attivo", "ordine_menu"),
+    )
+
+    def __repr__(self):
+        return f"<HomeRepartoConfig {self.tab_code} reparto_id={self.reparto_id}>"
+
+
+class HomeVisibilityRule(db.Model):
+    """
+    Regole di visibilità aggiuntive per ruolo o utente.
+
+    Non sostituisce roles_reparti / roles_risorse / roles_lavorazioni:
+    aggiunge solo regole più specifiche, soprattutto sulla fase attiva e sugli override UI.
+
+    Regola scelta:
+    - role_id valorizzato = regola per ruolo
+    - user_id valorizzato = regola per utente
+    - se esistono entrambe, l'utente può solo restringere ulteriormente
+    """
+
+    __tablename__ = "home_visibility_rules"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+
+    reparto_id = db.Column(
+        db.Integer,
+        db.ForeignKey("reparti.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    role_id = db.Column(
+        db.Integer,
+        db.ForeignKey("roles.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+
+    apply_to = db.Column(
+        db.Text,
+        nullable=False,
+        default="macchine",
+        server_default="macchine",
+    )
+    # valori: all, macchine, semilavorati
+
+    phase_mode = db.Column(
+        db.Text,
+        nullable=False,
+        default="all",
+        server_default="all",
+    )
+    # valori:
+    # all         -> nessun filtro fase
+    # exact       -> una fase esatta, es. ["2"]
+    # list        -> lista di fasi, es. ["2", "3"]
+    # last        -> ultima fase secondo NumFase
+    # not_first   -> tutte tranne la prima
+
+    phase_values = db.Column(db.Text)
+    # JSON testuale, es. ["2"] oppure ["2", "3"]
+
+    attivo = db.Column(
+        db.Boolean, nullable=False, default=True, server_default=db.text("1")
+    )
+
+    # Override UI per ruolo/utente.
+    titolo_macchine_da_eseguire = db.Column(db.Text)
+    titolo_macchine_attive = db.Column(db.Text)
+    testo_presa_macchina = db.Column(db.Text)
+    testo_sospendi_macchina = db.Column(db.Text)
+    testo_riattiva_macchina = db.Column(db.Text)
+    testo_chiudi_macchina = db.Column(db.Text)
+
+    # Override documentale per ruolo/utente.
+    # Per collaudo: metodo_documentale_tipo='collaudo', metodo_documentale_prefisso='COLLAUDO_'
+    metodo_documentale_tipo = db.Column(db.Text)
+    metodo_documentale_prefisso = db.Column(db.Text)
+    metodo_documentale_path_key = db.Column(db.Text)
+
+    created_at = db.Column(
+        db.Text,
+        nullable=False,
+        default=lambda: datetime.now(ZoneInfo("Europe/Rome")).isoformat(
+            timespec="seconds"
+        ),
+    )
+    updated_at = db.Column(db.Text)
+    updated_by = db.Column(db.Text)
+
+    reparto = db.relationship("Reparti", lazy="selectin")
+    role = db.relationship("Roles", lazy="selectin")
+    user = db.relationship("User", lazy="selectin")
+
+    __table_args__ = (
+        db.CheckConstraint(
+            "((role_id IS NOT NULL AND user_id IS NULL) OR "
+            "(role_id IS NULL AND user_id IS NOT NULL))",
+            name="ck_home_visibility_rules_role_xor_user",
+        ),
+        db.CheckConstraint(
+            "apply_to IN ('all', 'macchine', 'semilavorati')",
+            name="ck_home_visibility_rules_apply_to",
+        ),
+        db.CheckConstraint(
+            "phase_mode IN ('all', 'exact', 'list', 'last', 'not_first')",
+            name="ck_home_visibility_rules_phase_mode",
+        ),
+        db.CheckConstraint(
+            "metodo_documentale_tipo IS NULL OR metodo_documentale_tipo IN ('montaggio', 'collaudo', 'nessuno')",
+            name="ck_home_visibility_rules_metodo_tipo",
+        ),
+        db.Index(
+            "ix_home_visibility_rules_scope",
+            "reparto_id",
+            "role_id",
+            "user_id",
+            "attivo",
+        ),
+    )
+
+    @property
+    def phase_values_list(self) -> list[str]:
+        if not self.phase_values:
+            return []
+
+        try:
+            parsed = json.loads(self.phase_values)
+        except json.JSONDecodeError:
+            parsed = [self.phase_values]
+
+        if not isinstance(parsed, list):
+            parsed = [parsed]
+
+        out = []
+        for item in parsed:
+            value = str(item or "").strip()
+            if value:
+                out.append(value)
+
+        return out
+
+    @phase_values_list.setter
+    def phase_values_list(self, values):
+        clean = []
+        for item in values or []:
+            value = str(item or "").strip()
+            if value:
+                clean.append(value)
+        self.phase_values = json.dumps(clean, ensure_ascii=False)
+
+    def __repr__(self):
+        scope = f"role_id={self.role_id}" if self.role_id else f"user_id={self.user_id}"
+        return f"<HomeVisibilityRule reparto_id={self.reparto_id} {scope} {self.phase_mode}>"
+
+
+class ConfigAuditLog(db.Model):
+    """
+    Log modifiche configurazioni amministrative.
+    Da usare quando si modificheranno da UI:
+    - home_reparto_config
+    - home_visibility_rules
+    - collegamenti RBAC/ABAC rilevanti
+    """
+
+    __tablename__ = "config_audit_log"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+
+    entity_type = db.Column(db.Text, nullable=False, index=True)
+    entity_id = db.Column(db.Text, nullable=False, index=True)
+
+    action = db.Column(db.Text, nullable=False, index=True)
+    old_payload = db.Column(db.Text)
+    new_payload = db.Column(db.Text)
+
+    changed_by_user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    changed_by_username = db.Column(db.Text)
+
+    changed_at = db.Column(
+        db.Text,
+        nullable=False,
+        default=lambda: datetime.now(ZoneInfo("Europe/Rome")).isoformat(
+            timespec="seconds"
+        ),
+        index=True,
+    )
+
+    note = db.Column(db.Text)
+
+    changed_by_user = db.relationship("User", lazy="selectin")
+
+    __table_args__ = (
+        db.CheckConstraint(
+            "action IN ('create', 'update', 'delete', 'seed', 'enable', 'disable')",
+            name="ck_config_audit_log_action",
+        ),
+        db.Index("ix_config_audit_log_entity", "entity_type", "entity_id"),
+    )
+
+    def __repr__(self):
+        return f"<ConfigAuditLog {self.action} {self.entity_type}:{self.entity_id}>"
+
+
+class BrowserTabSession(db.Model):
+    __tablename__ = "browser_tab_sessions"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    token_hash = db.Column(
+        db.String(64),
+        unique=True,
+        nullable=False,
+        index=True,
+    )
+
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    created_at = db.Column(db.DateTime, nullable=False)
+    last_seen_at = db.Column(db.DateTime, nullable=False)
+    revoked_at = db.Column(db.DateTime)
+
+    ip_address = db.Column(db.Text)
+    user_agent = db.Column(db.Text)
+
+    user = db.relationship("User")
+
+    def __repr__(self):
+        return f"<BrowserTabSession user_id={self.user_id} revoked={self.revoked_at is not None}>"
+
+
+class GiacenzaLotti(db.Model):
+    __tablename__ = "giacenza_lotti"
+
+    CodArt = db.Column(db.Text, primary_key=True)
+    RifLottoAlfa = db.Column(db.Text, primary_key=True)
+    CodMag = db.Column(db.Text, primary_key=True)
+    Giacenza = db.Column(db.Text, nullable=False)
+
+
+class TipologieStato(db.Model):
+    __tablename__ = "tipologie_stato"
+
+    id = db.Column(db.Integer, primary_key=True)
+    tipo = db.Column(db.Integer)
+
+    def __repr__(self):
+        return f"<TipologieStato {self.__dict__}>"
+
+
+class InputOdp(db.Model):
+    __tablename__ = "input_odp"
+
+    IdDocumento = db.Column(db.Text)
+    IdRiga = db.Column(db.Text)
+    RifRegistraz = db.Column(db.Text)
+    CodArt = db.Column(db.Text)
+    DesArt = db.Column(db.Text)
+    Quantita = db.Column(db.Text)
+    NumFase = db.Column(db.Text)
+    CodLavorazione = db.Column(db.Text)
+    CodRisorsaProd = db.Column(db.Text)
+    DataInizioSched = db.Column(db.Text)
+    DataFineSched = db.Column(db.Text)
+    GestioneLotto = db.Column(db.Text)
+    GestioneMatricola = db.Column(db.Text)
+    DistintaMateriale = db.Column(db.Text)
+    CodMatricola = db.Column(db.Text)
+    StatoRiga = db.Column(db.Text)
+    CodFamiglia = db.Column(db.Text)
+    CodMacrofamiglia = db.Column(db.Text)
+    CodMagPrincipale = db.Column(db.Text)
+    CodReparto = db.Column(db.Text)
+    TempoPrevistoLavoraz = db.Column(db.Text)
+    IndiceModifica = db.Column(db.Text)
+    StatoOrdineErp = db.Column("StatoOrdine", db.Text)
+    CodClassifTecnica = db.Column(db.Text)
+    CodTipoDoc = db.Column(db.Text)
+    TempoAttrezzaggio = db.Column(db.Text)
+    VarianteArt = db.Column(db.Text)
+    NumProgrRiga = db.Column(db.Text)
+
+    __table_args__ = (db.PrimaryKeyConstraint("IdDocumento", "IdRiga"),)
+
+    runtime_row = db.relationship(
+        "InputOdpRuntime",
+        uselist=False,
+        lazy="selectin",
+        cascade="all, delete-orphan",
+        single_parent=True,
+        primaryjoin=lambda: and_(
+            InputOdp.IdDocumento == foreign(InputOdpRuntime.IdDocumento),
+            InputOdp.IdRiga == foreign(InputOdpRuntime.IdRiga),
+        ),
+    )
+
+    @staticmethod
+    def _text(value) -> str:
+        return str(value or "").strip()
+
+    def _ensure_runtime_row(self) -> InputOdpRuntime:
+        row = self.runtime_row
+        if row is None:
+            row = InputOdpRuntime(
+                IdDocumento=self.IdDocumento,
+                IdRiga=self.IdRiga,
+                RifRegistraz=self.RifRegistraz,
+            )
+            self.runtime_row = row
+            db.session.add(row)
+        return row
+
+    @staticmethod
+    def _active_value_from_phase_list(raw_value, fase_attiva) -> str:
+        raw = InputOdp._text(raw_value)
+        if not raw:
+            return ""
+
+        try:
+            parsed = json.loads(raw)
+        except Exception:
+            return raw
+
+        if not isinstance(parsed, list):
+            return InputOdp._text(parsed)
+
+        try:
+            idx = int(float(InputOdp._text(fase_attiva))) - 1
+        except (TypeError, ValueError):
+            idx = 0
+
+        if 0 <= idx < len(parsed):
+            return InputOdp._text(parsed[idx])
+
+        return InputOdp._text(parsed[0]) if parsed else ""
+
+    @property
+    def StatoOrdine(self) -> str:
+        stato_runtime = self._text(getattr(self.runtime_row, "Stato_odp", ""))
+        if stato_runtime:
+            return stato_runtime
+
+        stato_erp = self._text(self.StatoOrdineErp)
+        if stato_erp:
+            return stato_erp
+
+        return "Pianificata"
+
+    @StatoOrdine.setter
+    def StatoOrdine(self, value):
+        row = self._ensure_runtime_row()
+        row.Stato_odp = self._text(value)
+
+    @property
+    def FaseAttiva(self) -> str:
+        fase_runtime = self._text(getattr(self.runtime_row, "FaseAttiva", ""))
+        if fase_runtime:
+            return fase_runtime
+        return "1"
+
+    @FaseAttiva.setter
+    def FaseAttiva(self, value):
+        value = self._text(value)
+        stato = self._ensure_runtime_row()
+        stato.FaseAttiva = value
+
+    @property
+    def Note(self) -> str:
+        return self._text(getattr(self.runtime_row, "Note", ""))
+
+    @Note.setter
+    def Note(self, value):
+        rt = self._ensure_runtime_row()
+        rt.Note = self._text(value)
+
+    @property
+    def QtyDaLavorare(self) -> str:
+        qty_runtime = self._text(getattr(self.runtime_row, "QtyDaLavorare", ""))
+        if qty_runtime:
+            return qty_runtime
+        return self._text(self.Quantita)
+
+    @QtyDaLavorare.setter
+    def QtyDaLavorare(self, value):
+        rt = self._ensure_runtime_row()
+        rt.QtyDaLavorare = self._text(value)
+
+    @property
+    def RisorsaAttiva(self) -> str:
+        return self._text(getattr(self.runtime_row, "RisorsaAttiva", ""))
+
+    @RisorsaAttiva.setter
+    def RisorsaAttiva(self, value):
+        rt = self._ensure_runtime_row()
+        rt.RisorsaAttiva = self._text(value)
+
+    @property
+    def AttrezzaggioAttivo(self) -> str:
+        valore_runtime = self._text(getattr(self.runtime_row, "AttrezzaggioAttivo", ""))
+        if valore_runtime:
+            return valore_runtime
+
+        return self._active_value_from_phase_list(
+            self.TempoAttrezzaggio,
+            self.FaseAttiva,
+        )
+
+    @AttrezzaggioAttivo.setter
+    def AttrezzaggioAttivo(self, value):
+        rt = self._ensure_runtime_row()
+        rt.AttrezzaggioAttivo = self._text(value)
+
+    def __repr__(self):
+        return f"<{self.__dict__}>"
+
+    @property
+    def LavorazioneAttiva(self) -> str:
+        return self._text(getattr(self.runtime_row, "LavorazioneAttiva", ""))
+
+    @LavorazioneAttiva.setter
+    def LavorazioneAttiva(self, value):
+        rt = self._ensure_runtime_row()
+        rt.LavorazioneAttiva = self._text(value)
+
+    @property
+    def RifOrdinePrinc(self) -> str:
+        return self._text(getattr(self.runtime_row, "RifOrdinePrinc", ""))
+
+    @RifOrdinePrinc.setter
+    def RifOrdinePrinc(self, value):
+        rt = self._ensure_runtime_row()
+        rt.RifOrdinePrinc = self._text(value)
+
+
+class LottiUsatiLog(db.Model):
+    __bind_key__ = "log"
+    __tablename__ = "lotti_usati_log"
+
+    log_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    logged_at = db.Column(
+        db.Text,
+        nullable=False,
+        default=lambda: datetime.now(ZoneInfo("Europe/Rome")).isoformat(
+            timespec="seconds"
+        ),
+    )
+
+    OperationGroupId = db.Column(db.Text, index=True)
+
+    IdDocumento = db.Column(db.Text, nullable=False, index=True)
+    IdRiga = db.Column(db.Text, nullable=False, index=True)
+    RifRegistraz = db.Column(db.Text)
+
+    CodArt = db.Column(db.Text, nullable=False, index=True)
+    RifLottoAlfa = db.Column(db.Text, nullable=False, index=True)
+    Quantita = db.Column(db.Text, nullable=False)
+    Esito = db.Column(db.Text)
+
+    ActorPublicId = db.Column(db.Text)
+    ClosedBy = db.Column(db.Text)
+    ClosedAt = db.Column(db.Text)
+    Fase = db.Column(db.Text)
+
+    __table_args__ = (
+        db.Index("ix_lotti_usati_log_doc_riga", "IdDocumento", "IdRiga"),
+        db.Index(
+            "ix_lotti_usati_log_doc_riga_codart",
+            "IdDocumento",
+            "IdRiga",
+            "CodArt",
+        ),
+    )
+
+    def __repr__(self):
+        return (
+            f"<LottiUsatiLog {self.log_id} "
+            f"{self.IdDocumento}/{self.IdRiga} {self.CodArt} {self.RifLottoAlfa}>"
+        )
+
+
+class ErpOutbox(db.Model):
+    __bind_key__ = "log"
+    __tablename__ = "erp_outbox"
+
+    outbox_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    created_at = db.Column(
+        db.Text,
+        nullable=False,
+        default=lambda: datetime.now(ZoneInfo("Europe/Rome")).isoformat(
+            timespec="seconds"
+        ),
+    )
+
+    kind = db.Column(db.Text, nullable=False)  # "consuntivo_fase"
+    status = db.Column(db.Text, nullable=False, default="pending")
+
+    IdDocumento = db.Column(db.Text, nullable=False)
+    IdRiga = db.Column(db.Text, nullable=False)
+    RifRegistraz = db.Column(db.Text)
+    CodArt = db.Column(db.Text)
+    Fase = db.Column(db.Text, nullable=False)
+    payload_json = db.Column(db.Text, nullable=False)
+    attempts = db.Column(db.Integer, nullable=False, default=0)
+    last_error = db.Column(db.Text)
+    exported_at = db.Column(db.Text)
+
+
+class LottiGeneratiLog(db.Model):
+    __bind_key__ = "log"
+    __tablename__ = "lotti_generati_log"
+
+    log_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    logged_at = db.Column(
+        db.Text,
+        nullable=False,
+        default=lambda: datetime.now(ZoneInfo("Europe/Rome")).isoformat(
+            timespec="seconds"
+        ),
+    )
+    LabelFilename = db.Column(db.Text)
+
+    OperationGroupId = db.Column(db.Text, index=True)
+
+    IdDocumento = db.Column(db.Text, nullable=False, index=True)
+    IdRiga = db.Column(db.Text, nullable=False, index=True)
+    RifRegistraz = db.Column(db.Text)
+
+    CodArt = db.Column(db.Text, nullable=False, index=True)
+    RifLottoAlfa = db.Column(db.Text, nullable=False, index=True)
+    Quantita = db.Column(db.Text, nullable=False)
+    Fase = db.Column(db.Text)
+
+    ActorPublicId = db.Column(db.Text)
+    ClosedBy = db.Column(db.Text)
+    ClosedAt = db.Column(db.Text)
+
+    __table_args__ = (
+        db.Index("ix_lotti_generati_log_doc_riga", "IdDocumento", "IdRiga"),
+    )
+
+    def __repr__(self):
+        return (
+            f"<LottiGeneratiLog {self.log_id} "
+            f"{self.IdDocumento}/{self.IdRiga} {self.CodArt} {self.RifLottoAlfa}>"
+        )
+
+
+class InputOdpRuntime(db.Model):
+    __tablename__ = "input_odp_runtime"
+    IdDocumento = db.Column(db.Text, primary_key=True)
+    IdRiga = db.Column(db.Text, primary_key=True)
+    RifRegistraz = db.Column(db.Text)
+    Stato_odp = db.Column(db.Text)
+    Data_in_carico = db.Column(db.Text)
+    Tempo_funzionamento = db.Column(db.Text)
+    Utente_operazione = db.Column(db.Text)
+    FaseAttiva = db.Column(db.Text)
+    data_ultima_attivazione = db.Column(db.Text)
+    Note = db.Column(db.Text)
+    QtyDaLavorare = db.Column(db.Text)
+    RisorsaAttiva = db.Column(db.Text)
+    LavorazioneAttiva = db.Column(db.Text)
+    RifOrdinePrinc = db.Column(db.Text)
+    AttrezzaggioAttivo = db.Column(db.Text)
+    VarianteArt = db.Column(db.Text)
+    PrioritaInCarico = db.Column(db.Integer)
+    PrioritaOperatoreIdInCarico = db.Column(db.Integer)
+    PrioritaPresaInCaricoAt = db.Column(db.Text)
+
+    __table_args__ = (
+        db.ForeignKeyConstraint(
+            ["IdDocumento", "IdRiga"],
+            ["input_odp.IdDocumento", "input_odp.IdRiga"],
+            ondelete="CASCADE",
+        ),
+    )
+
+    def __repr__(self):
+        return f"<InputOdpRuntime {self.__dict__}>"
+
+
+class OdpDistintaMancante(db.Model):
+    __tablename__ = "odp_distinta_mancante"
+
+    IdDocumento = db.Column(db.Text, primary_key=True)
+    IdRiga = db.Column(db.Text, primary_key=True)
+    Fase = db.Column(db.Text, primary_key=True)
+    CodArt = db.Column(db.Text, primary_key=True)
+    VarianteArt = db.Column(db.Text, primary_key=True, nullable=False, default="")
+    DesArt = db.Column(db.Text)
+    Quantita = db.Column(db.Text, nullable=False)
+    GestioneLotto = db.Column(db.Text)
+    TecniciUm = db.Column(db.Text)
+    ProgressivoRiga = db.Column(db.Text)
+
+    __table_args__ = (
+        db.ForeignKeyConstraint(
+            ["IdDocumento", "IdRiga"],
+            ["input_odp.IdDocumento", "input_odp.IdRiga"],
+            ondelete="CASCADE",
+        ),
+    )
+
+
+class AcqArticoli(db.Model):
+    __bind_key__ = "acq"
+    __tablename__ = "acq_articoli"
+
+    CodArt = db.Column(db.Text, primary_key=True)
+    DesArt = db.Column(db.Text)
+    MagUM = db.Column(db.Text)
+    LottoRiordino = db.Column(db.Float)
+    PuntoRiordino = db.Column(db.Float)
+    PianTempoApprovFisso = db.Column(db.Integer)
+    DataPrevistaApprovvigionamento = db.Column(db.Text)
+    IndiceModifica = db.Column(db.Text)
+    synced_at = db.Column(db.Text)
+
+
+class AcqGiacenze(db.Model):
+    __bind_key__ = "acq"
+    __tablename__ = "acq_giacenze"
+
+    CodArt = db.Column(db.Text, primary_key=True)
+    VarianteArt = db.Column(db.Text, primary_key=True, nullable=False, default="")
+    CodMag = db.Column(db.Text, primary_key=True)
+    Giacenza = db.Column(db.Float)
+    synced_at = db.Column(db.Text)
+
+
+class AcqFabbisognoOdp(db.Model):
+    __bind_key__ = "acq"
+    __tablename__ = "acq_fabbisogno_odp"
+
+    IdDocumento = db.Column(db.Text, primary_key=True)
+    IdRiga = db.Column(db.Text, primary_key=True)
+    NumFase = db.Column(db.Text, primary_key=True)
+    CodArt = db.Column(db.Text, primary_key=True)
+    VarianteArt = db.Column(db.Text, primary_key=True)
+    QuantitaNecessaria = db.Column(db.Float)
+    synced_at = db.Column(db.Text)
+
+
+class AcqRiepilogoMateriali(db.Model):
+    __bind_key__ = "acq"
+    __tablename__ = "acq_riepilogo_materiali"
+
+    IdDocumento = db.Column(db.Text, primary_key=True)
+    IdRiga = db.Column(db.Text, primary_key=True)
+    NumFase = db.Column(db.Text, primary_key=True)
+    CodArt = db.Column(db.Text, primary_key=True)
+    VarianteArt = db.Column(db.Text, primary_key=True)
+    QuantitaNecessaria = db.Column(db.Float)
+    GiacenzaTotale = db.Column(db.Float)
+    LottoRiordino = db.Column(db.Float)
+    PuntoRiordino = db.Column(db.Float)
+    PianTempoApprovFisso = db.Column(db.Integer)
+    DataPrevistaApprovvigionamento = db.Column(db.Text)
+    synced_at = db.Column(db.Text)
+
+
+class AcqArticoliLookup(db.Model):
+    __bind_key__ = "acq"
+    __tablename__ = "acq_articoli_lookup"
+
+    CodArt = db.Column(db.Text, primary_key=True)
+    VarianteArt = db.Column(db.Text, primary_key=True)
+    IndiceModifica = db.Column(db.Text, primary_key=True)
+
+    DesArt = db.Column(db.Text)
+    GestioneLotto = db.Column(db.Text)
+    GestioneMatricola = db.Column(db.Text)
+    GestioneQualita = db.Column(db.Text)
+    CodFamiglia = db.Column(db.Text)
+    CodClassifTecnica = db.Column(db.Text)
+    MagUM = db.Column(db.Text)
+    TecniciUm = db.Column(db.Text)
+    TecniciCoeffUmDen = db.Column(db.Text)
+    TecniciCoeffUmNum = db.Column(db.Text)
+    PuntoRiordino = db.Column(db.Float)
+    LottoRiordino = db.Column(db.Float)
+    PianTempoApprovFisso = db.Column(db.Integer)
+    DataPrevistaApprovvigionamento = db.Column(db.Text)
+    synced_at = db.Column(db.Text)
+
+
+class AcqScortaSegnalata(db.Model):
+    __bind_key__ = "acq"
+    __tablename__ = "acq_scorte_segnalate"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+
+    DataLettura = db.Column(db.Text, nullable=False)
+    RawQrCode = db.Column(db.Text, nullable=False)
+
+    CodArt = db.Column(db.Text, nullable=False)
+    VarianteArt = db.Column(db.Text, nullable=False, default="")
+    IndiceModifica = db.Column(db.Text, nullable=False, default="")
+
+    DesArt = db.Column(db.Text)
+    PuntoRiordino = db.Column(db.Float)
+    LottoRiordino = db.Column(db.Float)
+    PianTempoApprovFisso = db.Column(db.Integer)
+
+    Stato = db.Column(db.Text, nullable=False, default="Aperta")
+    Annullata = db.Column(db.Boolean, nullable=False, default=False)
+
+    Note = db.Column(db.Text)
+
+    SegnalatoDa = db.Column(db.Text, nullable=False)
+    RepartoSegnalatore = db.Column(db.Text)
+
+    LookupTrovato = db.Column(db.Boolean, nullable=False, default=False)
+    StatoChangedAt = db.Column(db.Text)
+
+
+class AcqClienteFornitore(db.Model):
+    __bind_key__ = "acq"
+    __tablename__ = "clienti_fornitori"
+
+    TipoAnagrafica = db.Column(db.Text, primary_key=True)
+    CodCliFor = db.Column(db.Text, primary_key=True)
+    RagioneSociale = db.Column(db.Text)
+    Indirizzo = db.Column(db.Text)
+    Cap = db.Column(db.Text)
+    Localita = db.Column(db.Text)
+    Provincia = db.Column(db.Text)
+    CodStato = db.Column(db.Text)
+    synced_at = db.Column(db.Text)
+
+
+class AcqMatricolaMacchina(db.Model):
+    __bind_key__ = "acq"
+    __tablename__ = "matricole_macchine"
+
+    CodMatricola = db.Column(db.Text, primary_key=True)
+    CodArt = db.Column(db.Text, nullable=False)
+    CodMag = db.Column(db.Text, nullable=False)
+    CodAreaMag = db.Column(db.Text)
+    synced_at = db.Column(db.Text)
+
+
+class AcqMatricolaMacchinaUscita(db.Model):
+    __bind_key__ = "acq"
+    __tablename__ = "matricole_macchine_uscite"
+
+    CodMatricola = db.Column(db.Text, primary_key=True)
+    CodArt = db.Column(db.Text, nullable=False)
+    uscita_at = db.Column(db.Text, nullable=False)
+
+
+class AcqOrdineClienteAperto(db.Model):
+    __bind_key__ = "acq"
+    __tablename__ = "ordini_cliente_aperti"
+
+    IdDocumento = db.Column(db.Text, primary_key=True)
+    IdRigaDoc = db.Column(db.Text, primary_key=True)
+    CodTipoDoc = db.Column(db.Text)
+    DataRegistrazione = db.Column(db.Text)
+    CodSerie = db.Column(db.Text)
+    NumRegistraz = db.Column(db.Text)
+    NumDocOriginale = db.Column(db.Text)
+    DataOriginale = db.Column(db.Text)
+    CodCliFor = db.Column(db.Text)
+    TipoRigaDoc = db.Column(db.Text)
+    CodArt = db.Column(db.Text)
+    DesArt = db.Column(db.Text)
+    DesEstesa = db.Column(db.Text)
+    DataConsegna = db.Column(db.Text)
+    UmDoc = db.Column(db.Text)
+    QTA_ORD = db.Column(db.Float)
+    QTA_CONS = db.Column(db.Float)
+    QTA_SALDO_DOC = db.Column(db.Float)
+    Commento_Riga_Saldata = db.Column(db.Text)
+    NotaInterna = db.Column(db.Text)
+    synced_at = db.Column(db.Text)
+
+
+class AcqOrdineFornitoreAperto(db.Model):
+    __bind_key__ = "acq"
+    __tablename__ = "ordini_for_clav_aperti"
+
+    IdDocumento = db.Column(db.Text, primary_key=True)
+    IdRigaDoc = db.Column(db.Text, primary_key=True)
+    GruppoDoc = db.Column(db.Text)
+    CodTipoDoc = db.Column(db.Text)
+    DataRegistrazione = db.Column(db.Text)
+    CodSerie = db.Column(db.Text)
+    NumRegistraz = db.Column(db.Text)
+    NumDocOriginale = db.Column(db.Text)
+    DataOriginale = db.Column(db.Text)
+    TipoAnagrafica = db.Column(db.Text)
+    CodCliFor = db.Column(db.Text)
+    TipoRigaDoc = db.Column(db.Text)
+    CodArt = db.Column(db.Text)
+    DesArt = db.Column(db.Text)
+    DesEstesa = db.Column(db.Text)
+    DataConsegna = db.Column(db.Text)
+    UmDoc = db.Column(db.Text)
+    QTA_ORD = db.Column(db.Float)
+    QTA_CONS = db.Column(db.Float)
+    QTA_SALDO_DOC = db.Column(db.Float)
+    Commento_Riga_Saldata = db.Column(db.Text)
+    NotaInterna = db.Column(db.Text)
+    synced_at = db.Column(db.Text)
+
+
+class AcqOrdineFornitoreMeta(db.Model):
+    __bind_key__ = "acq"
+    __tablename__ = "acq_ordini_fornitore_meta"
+
+    IdDocumento = db.Column(db.Text, primary_key=True)
+    IdRigaDoc = db.Column(db.Text, primary_key=True)
+    Note = db.Column(db.Text)
+    Sollecitato = db.Column(db.Boolean, nullable=False, default=False)
+    SollecitatoAt = db.Column(db.Text)
+    NumeroSolleciti = db.Column(db.Integer, nullable=False, default=0)
+
+
+
+class OdpWorkGroup(db.Model):
+    """
+    Gruppo operativo interno per ordini multipli e ordini mascherati.
+    Il gestionale continua a ricevere export per singolo ordine.
+    """
+    __tablename__ = "odp_work_group"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    GroupUid = db.Column(db.Text, nullable=False, unique=True, index=True)
+    GroupType = db.Column(db.Text, nullable=False, index=True)  # MULTIPLO / MASCHERATO
+    Status = db.Column(db.Text, nullable=False, default="Attivo", index=True)
+
+    CreatedAt = db.Column(db.Text, nullable=False)
+    StartedAt = db.Column(db.Text)
+    LastActivationAt = db.Column(db.Text)
+    SuspendedAt = db.Column(db.Text)
+    ClosedAt = db.Column(db.Text)
+    DissolvedAt = db.Column(db.Text)
+
+    OperatoreId = db.Column(db.Integer)
+    OperatoreUsername = db.Column(db.Text)
+    Reparto = db.Column(db.Text)
+    Fase = db.Column(db.Text)
+    CausaleSospensione = db.Column(db.Text)
+    Note = db.Column(db.Text)
+
+    TotalRuntimeSeconds = db.Column(db.Integer, nullable=False, default=0)
+    InitialMemberCount = db.Column(db.Integer, nullable=False, default=1)
+
+    members = db.relationship(
+        "OdpWorkGroupMember",
+        primaryjoin="OdpWorkGroup.GroupUid == foreign(OdpWorkGroupMember.GroupUid)",
+        lazy="selectin",
+        cascade="all, delete-orphan",
+    )
+
+    __table_args__ = (
+        db.CheckConstraint(
+            "GroupType IN ('MULTIPLO', 'MASCHERATO')",
+            name="ck_odp_work_group_type",
+        ),
+        db.CheckConstraint(
+            "Status IN ('Attivo', 'In Sospeso', 'Chiuso', 'Sciolto')",
+            name="ck_odp_work_group_status",
+        ),
+        db.CheckConstraint(
+            "InitialMemberCount >= 1",
+            name="ck_odp_work_group_initial_member_count",
+        ),
+        db.CheckConstraint(
+            "TotalRuntimeSeconds >= 0",
+            name="ck_odp_work_group_total_runtime_seconds",
+        ),
+    )
+
+    def __repr__(self):
+        return f"<OdpWorkGroup {self.GroupUid} {self.GroupType} {self.Status}>"
+
+
+class OdpWorkGroupMember(db.Model):
+    """
+    Membro di un gruppo operativo.
+    TimeShareMode:
+    - SPLIT: tempo gruppo diviso sul numero iniziale membri;
+    - FULL: tutto il tempo gruppo va a questo ordine;
+    - ZERO: nessuna riga tempo/ore attribuite.
+    """
+    __tablename__ = "odp_work_group_member"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    GroupUid = db.Column(db.Text, nullable=False, index=True)
+
+    IdDocumento = db.Column(db.Text, nullable=False, index=True)
+    IdRiga = db.Column(db.Text, nullable=False, index=True)
+    NumProgrRiga = db.Column(db.Text)
+    RifRegistraz = db.Column(db.Text)
+
+    CodArt = db.Column(db.Text)
+    VarianteArt = db.Column(db.Text)
+    IndiceModifica = db.Column(db.Text)
+    DesArt = db.Column(db.Text)
+    Fase = db.Column(db.Text)
+
+    Role = db.Column(db.Text, nullable=False, default="MEMBER")  # MAIN / MASKED / MEMBER
+    TimeShareMode = db.Column(db.Text, nullable=False, default="SPLIT")  # SPLIT / FULL / ZERO
+    RuntimeSecondsAssigned = db.Column(db.Integer, nullable=False, default=0)
+    Status = db.Column(db.Text, nullable=False, default="Attivo", index=True)
+
+    QtyConforme = db.Column(db.Text)
+    QtyNonConforme = db.Column(db.Text)
+    Note = db.Column(db.Text)
+
+    CreatedAt = db.Column(db.Text, nullable=False)
+    ClosedAt = db.Column(db.Text)
+    SuspendedAt = db.Column(db.Text)
+    DissolvedAt = db.Column(db.Text)
+
+    __table_args__ = (
+        db.ForeignKeyConstraint(
+            ["GroupUid"],
+            ["odp_work_group.GroupUid"],
+            ondelete="CASCADE",
+        ),
+        db.UniqueConstraint(
+            "GroupUid",
+            "IdDocumento",
+            "IdRiga",
+            name="uq_odp_work_group_member_order",
+        ),
+        db.CheckConstraint(
+            "Role IN ('MAIN', 'MASKED', 'MEMBER')",
+            name="ck_odp_work_group_member_role",
+        ),
+        db.CheckConstraint(
+            "TimeShareMode IN ('SPLIT', 'FULL', 'ZERO')",
+            name="ck_odp_work_group_member_time_share",
+        ),
+        db.CheckConstraint(
+            "Status IN ('Attivo', 'In Sospeso', 'Chiuso', 'Sciolto')",
+            name="ck_odp_work_group_member_status",
+        ),
+        db.CheckConstraint(
+            "RuntimeSecondsAssigned >= 0",
+            name="ck_odp_work_group_member_runtime_seconds",
+        ),
+        db.Index("ix_odp_work_group_member_order_key", "IdDocumento", "IdRiga"),
+    )
+
+    def __repr__(self):
+        return f"<OdpWorkGroupMember {self.GroupUid} {self.IdDocumento}/{self.IdRiga}>"
+
+
+class OdpPriorita(db.Model):
+    __tablename__ = "odp_priorita"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+
+    operatore_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    IdDocumento = db.Column(db.Text, nullable=False, index=True)
+    IdRiga = db.Column(db.Text, nullable=False, index=True)
+    Fase = db.Column(db.Text, nullable=False, index=True)
+
+    Priorita = db.Column(db.Integer, nullable=False, index=True)
+    Posizione = db.Column(db.Integer, nullable=False, default=0)
+
+    created_at = db.Column(db.Text, nullable=False)
+    updated_at = db.Column(db.Text, nullable=False)
+    updated_by = db.Column(db.Text)
+
+    operatore = db.relationship("User", lazy="selectin")
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "operatore_id",
+            "IdDocumento",
+            "IdRiga",
+            "Fase",
+            name="uq_odp_priorita_operatore_ordine_fase",
+        ),
+        db.UniqueConstraint(
+            "operatore_id",
+            "Priorita",
+            name="uq_odp_priorita_operatore_numero",
+        ),
+        db.CheckConstraint("Priorita >= 1", name="ck_odp_priorita_valore"),
+        db.CheckConstraint("Posizione >= 0", name="ck_odp_priorita_posizione"),
+    )
+
+
+class ProductionCapacityCalendar(db.Model):
+    __tablename__ = "production_capacity_calendar"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+
+    scope_type = db.Column(
+        db.Text, nullable=False, default="global", server_default="global"
+    )
+    # global / reparto / risorsa
+
+    scope_code = db.Column(db.Text, nullable=False, default="*", server_default="*")
+    # "*" oppure CodReparto / CodRisorsa
+
+    weekday = db.Column(db.Integer, nullable=False)
+    # 0 = lunedì, 6 = domenica
+
+    hours_capacity = db.Column(
+        db.Float, nullable=False, default=0.0, server_default="0"
+    )
+
+    active = db.Column(
+        db.Boolean, nullable=False, default=True, server_default=db.text("1")
+    )
+
+    created_at = db.Column(
+        db.Text,
+        nullable=False,
+        default=lambda: datetime.now(ZoneInfo("Europe/Rome")).isoformat(
+            timespec="seconds"
+        ),
+    )
+    updated_at = db.Column(db.Text)
+    updated_by = db.Column(db.Text)
+
+    __table_args__ = (
+        db.CheckConstraint(
+            "scope_type IN ('operatore')",
+            name="ck_production_capacity_calendar_scope_type",
+        ),
+        db.CheckConstraint(
+            "weekday >= 0 AND weekday <= 6",
+            name="ck_production_capacity_calendar_weekday",
+        ),
+        db.CheckConstraint(
+            "hours_capacity >= 0",
+            name="ck_production_capacity_calendar_hours_capacity",
+        ),
+        db.UniqueConstraint(
+            "scope_type",
+            "scope_code",
+            "weekday",
+            name="uq_production_capacity_calendar_scope_weekday",
+        ),
+    )
+
+
+class ProductionKpiSnapshot(db.Model):
+    __tablename__ = "production_kpi_snapshot"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+
+    snapshot_month = db.Column(db.Text, nullable=False, index=True)
+    # YYYY-MM
+
+    scope_type = db.Column(
+        db.Text, nullable=False, default="global", server_default="global"
+    )
+    scope_code = db.Column(db.Text, nullable=False, default="*", server_default="*")
+
+    period_start = db.Column(db.Text, nullable=False)
+    period_end = db.Column(db.Text, nullable=False)
+
+    ordini_chiusi = db.Column(db.Integer, nullable=False, default=0, server_default="0")
+    ordini_in_ritardo = db.Column(
+        db.Integer, nullable=False, default=0, server_default="0"
+    )
+    macchine_prodotte = db.Column(
+        db.Float, nullable=False, default=0.0, server_default="0"
+    )
+    percentuale_ritardo = db.Column(db.Float)
+
+    giorni_medi_ritardo = db.Column(db.Float)
+
+    tempo_previsto_totale = db.Column(db.Float)
+    tempo_reale_totale = db.Column(db.Float)
+    scostamento_totale = db.Column(db.Float)
+    scostamento_percentuale = db.Column(db.Float)
+
+    tempo_medio_ordine = db.Column(db.Float)
+    tempo_medio_fase = db.Column(db.Float)
+
+    payload_json = db.Column(db.Text)
+
+    created_at = db.Column(
+        db.Text,
+        nullable=False,
+        default=lambda: datetime.now(ZoneInfo("Europe/Rome")).isoformat(
+            timespec="seconds"
+        ),
+    )
+    created_by = db.Column(db.Text)
+
+    __table_args__ = (
+        db.CheckConstraint(
+            "scope_type IN ('global', 'reparto', 'risorsa', 'lavorazione', 'operatore', 'articolo')",
+            name="ck_production_kpi_snapshot_scope_type",
+        ),
+        db.UniqueConstraint(
+            "snapshot_month",
+            "scope_type",
+            "scope_code",
+            name="uq_production_kpi_snapshot_month_scope",
+        ),
+    )

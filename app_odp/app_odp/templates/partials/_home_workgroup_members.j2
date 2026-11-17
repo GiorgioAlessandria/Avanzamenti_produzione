@@ -1,0 +1,18 @@
+<div class="wg-members">
+    <strong>{{ singolo_odp.WorkGroupMembers|length }} ordini · {{ singolo_odp.WorkGroupTypeLabel|e }}</strong>
+    <details>
+        <summary>Quantità e fasi per ordine</summary>
+        {% for child in singolo_odp.DettaglioGruppoVisuale %}
+            <div class="wg-member">
+                <div class="wg-member-title">{{ child.ordine|e }} · {{ child.cod_art|e }}</div>
+                <div class="wg-member-meta">{{ child.descrizione|e }}</div>
+                <div class="wg-member-meta">Residuo {{ child.quantita|e }} · {{ phase_label(child.fase)|e }}</div>
+                <div class="wg-member-meta">
+                    {% if child.time_share_mode == 'ZERO' %}Mascherato
+                    {% elif child.time_share_mode == 'FULL' %}Principale
+                    {% else %}Membro{% endif %}
+                </div>
+            </div>
+        {% endfor %}
+    </details>
+</div>

@@ -1,0 +1,69 @@
+{% set group_row = ordine if ordine is defined else singolo_odp %}
+<div class="workgroup-detail-card border rounded bg-white p-2 m-2 text-start">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <div>
+            <strong>Dettaglio gruppo</strong>
+            <span class="badge bg-light text-dark border ms-2">
+                {{ group_row.WorkGroupUid }}
+            </span>
+        </div>
+        <div class="small text-muted">
+            {{ group_row.WorkGroupMembers|default([])|length }} ordini collegati
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-sm table-bordered align-middle mb-0">
+            <thead class="table-light">
+            <tr>
+                <th>Ruolo</th>
+                <th>Ordine</th>
+                <th>Codice</th>
+                <th>Var.</th>
+                <th>Rev.</th>
+                <th>Descrizione</th>
+                <th>Fase</th>
+                <th>Gestione tempo</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for child in group_row.DettaglioGruppoVisuale|default([]) %}
+                <tr>
+                    <td>
+                        {% if child.ruolo == 'MAIN' %}
+                            <span class="badge bg-success">Principale</span>
+                        {% elif child.ruolo == 'MASKED' %}
+                            <span class="badge bg-secondary">Mascherato</span>
+                        {% else %}
+                            <span class="badge bg-primary">Membro</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ child.ordine }}</td>
+                    <td>{{ child.cod_art }}</td>
+                    <td>{{ child.variante }}</td>
+                    <td>{{ child.revisione }}</td>
+                    <td>{{ child.descrizione }}</td>
+                    <td>{{ child.fase }}</td>
+                    <td>
+                        {% if child.time_share_mode == 'FULL' %}
+                            Tutto sul principale
+                        {% elif child.time_share_mode == 'ZERO' %}
+                            0 ore
+                        {% elif child.time_share_mode == 'SPLIT' %}
+                            Tempo diviso
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+                </tr>
+            {% else %}
+                <tr>
+                    <td colspan="8" class="text-center text-muted py-2">
+                        Dettaglio membri non disponibile.
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
