@@ -2383,6 +2383,7 @@
                         return;
                     }
 
+                    if (data.export_error) alert(data.export_error);
                     const toastEl = document.querySelector(cfg.toastSelector);
                     if (toastEl) {
                         bootstrap.Toast.getOrCreateInstance(toastEl).hide();
@@ -2623,6 +2624,7 @@
                         return;
                     }
 
+                    if (data.export_error) alert(data.export_error);
                     const modal = document.getElementById("modalWorkgroupDetail");
                     if (modal) bootstrap.Modal.getOrCreateInstance(modal).hide();
 

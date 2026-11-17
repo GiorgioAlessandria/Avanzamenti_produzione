@@ -2184,6 +2184,7 @@
                 }
 
 
+                if (data.export_error) alert(data.export_error);
                 const exportResult = await exportAvpTxt({
                     suffix: "officina",
                     outboxId: data.outbox_id
@@ -2943,7 +2944,7 @@
                     return;
                 }
 
-                const exportErrors = [];
+                const exportErrors = data.export_error ? [data.export_error] : [];
                 for (const exportRow of (data.exports || [])) {
                     const exportResult = await exportAvpTxt({
                         suffix: exportRow.suffix || "officina",

@@ -229,7 +229,7 @@
             if (!response.ok || data.ok === false) throw new Error(data.error || "Errore apertura gruppo");
             if (data.fragments && window.applyHomeFragments) window.applyHomeFragments(data.fragments);
             bootstrap.Modal.getOrCreateInstance(document.getElementById("modalWorkgroupOpen")).hide();
-            alert(data.message || "Gruppo avviato correttamente");
+            alert([data.message || "Gruppo avviato correttamente", data.export_error].filter(Boolean).join("\n"));
         } catch (error) { feedback(error.message || "Errore di comunicazione con il server"); }
         finally { submitting = false; updateOpen(); }
     }

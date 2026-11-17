@@ -376,7 +376,9 @@ def _queue_phase_export(ordine, fase_corrente: str, payload: dict):
     return outbox
 
 
-def _queue_suspension_export(ordine, fase_corrente: str, tempo: str, causale: str, now_dt: datetime):
+def _queue_suspension_export(
+    ordine, fase_corrente: str, tempo: str, causale: str, now_dt: datetime, *, risorsa=None,
+):
     payload = _build_phase_payload(
         ordine=ordine,
         distinta_base=[],
@@ -390,7 +392,7 @@ def _queue_suspension_export(ordine, fase_corrente: str, tempo: str, causale: st
         now_iso=now_dt.isoformat(timespec="seconds"),
         chiusura_parziale=True,
         tipo_documento=ordine.CodTipoDoc,
-        risorsa=ordine.RisorsaAttiva,
+        risorsa=ordine.RisorsaAttiva if risorsa is None else risorsa,
         magazzino=ordine.CodMagPrincipale,
         variante=ordine.VarianteArt,
         emit_product_line=False,

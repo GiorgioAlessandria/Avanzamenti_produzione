@@ -13,6 +13,7 @@ from app_odp.models import (
     InputOdpRuntime,
     InputOdpLog,
     OdpRuntimeLog,
+    OdpWorkGroup,
     OdpWorkGroupMember,
 )
 from decimal import Decimal, ROUND_HALF_UP
@@ -73,6 +74,7 @@ from app_odp.services.ordini_gruppi_service import (
     get_active_group_for_order,
     group_members_for_close_payload,
     group_to_dict,
+    is_pure_multiple,
     mark_group_member_closed,
     mark_group_member_partial_closed,
     member_payload_key,
@@ -219,6 +221,7 @@ def _dissolve_group_for_single_close(id_documento: str, id_riga: str, data, poli
         active_group.GroupUid,
         id_documento=id_documento,
         id_riga=id_riga,
+        time_exports=[],
     )
     return active_group.GroupUid, None
 
@@ -251,10 +254,12 @@ def _activate_order_or_lct_group(ordine, policy, stato):
         return None
     if stato != "attivo":
         try:
-            group = try_activate_lct_group([ordine], policy)
+            time_exports = []
+            group = try_activate_lct_group([ordine], policy, time_exports=time_exports)
             if group is not None:
                 payload = _group_response_payload(group, policy, message="Ordine preso in carico nel gruppo LCT.")
                 db.session.commit()
+                payload.update(_esito_export_tempi_gruppo(time_exports))
                 return jsonify(payload)
         except Exception:
             db.session.rollback()
@@ -280,9 +285,10 @@ def api_ordini_gruppi_disponibili():
 def api_apri_gruppo_multiplo():
     data = request.get_json(silent=True) or {}
     policy = active_policy()
+    time_exports = []
 
     try:
-        group = create_multiplo_group(data.get("orders") or [], policy)
+        group = create_multiplo_group(data.get("orders") or [], policy, time_exports=time_exports)
         db.session.commit()
 
     except ValueError as exc:
@@ -308,6 +314,7 @@ def api_apri_gruppo_multiplo():
             policy,
             message="Gruppo multiplo aperto correttamente.",
         )
+        | _esito_export_tempi_gruppo(time_exports)
     )
 
 
@@ -410,6 +417,7 @@ def _operator_active_block_response(exc: ValueError):
 
 def _sospendi_gruppo_ordini_response(group_uid: str, data: dict):
     policy = active_policy()
+    time_exports = []
 
     tempo_non_funzionamento_raw = data.get("tempo_non_funzionamento_minuti")
     if tempo_non_funzionamento_raw is None:
@@ -425,6 +433,7 @@ def _sospendi_gruppo_ordini_response(group_uid: str, data: dict):
             group_uid,
             causale=_norm_text(data.get("causale")),
             minuti_non_funzionamento=minuti_non_funzionamento,
+            time_exports=time_exports,
         )
         db.session.commit()
 
@@ -439,20 +448,19 @@ def _sospendi_gruppo_ordini_response(group_uid: str, data: dict):
             {"ok": False, "error": f"Errore sospensione gruppo ordini: {exc}"}
         ), 500
 
+    export_result = _esito_export_tempi_gruppo(time_exports)
     return jsonify(
-        _group_response_payload(
-            group,
-            policy,
-            message="Gruppo ordini sospeso correttamente.",
-        )
+        _group_response_payload(group, policy, message="Gruppo ordini sospeso correttamente.")
+        | export_result
     )
 
 
 def _riattiva_gruppo_ordini_response(group_uid: str):
     policy = active_policy()
+    time_exports = []
 
     try:
-        group = reactivate_group(group_uid, policy=policy)
+        group = reactivate_group(group_uid, policy=policy, time_exports=time_exports)
         db.session.commit()
 
     except ValueError as exc:
@@ -478,6 +486,7 @@ def _riattiva_gruppo_ordini_response(group_uid: str):
             policy,
             message="Gruppo ordini riattivato correttamente.",
         )
+        | _esito_export_tempi_gruppo(time_exports)
     )
 
 
@@ -526,11 +535,13 @@ def api_sciogli_gruppo_per_chiusura_singola(group_uid=None):
         return jsonify({"ok": False, "error": "Gruppo ordini non valido."}), 400
     policy = active_policy()
 
+    time_exports = []
     try:
         group = dissolve_group_for_single_member_close(
             group_uid,
             id_documento=_norm_text(data.get("id_documento")),
             id_riga=_norm_text(data.get("id_riga")),
+            time_exports=time_exports,
         )
         db.session.commit()
 
@@ -560,6 +571,7 @@ def api_sciogli_gruppo_per_chiusura_singola(group_uid=None):
                 "singola; gli altri ordini sono stati messi in sospeso."
             ),
         )
+        | _esito_export_tempi_gruppo(time_exports)
     )
 
 
@@ -571,7 +583,11 @@ def api_chiudi_membro_gruppo(group_uid=None):
     group_uid = group_uid or _group_uid_from_payload(data)
     if not group_uid:
         return jsonify({"ok": False, "message": "Gruppo ordini non valido."}), 400
-    policy = active_policy()
+    return _chiudi_membro_gruppo(group_uid, data, active_policy())
+
+
+def _chiudi_membro_gruppo(group_uid, data, policy, *, allow_partial=False):
+    time_exports = []
     order_payload = data.get("order") or data.get("ordine") or data
     if not isinstance(order_payload, dict):
         return jsonify({"ok": False, "message": "Payload ordine non valido."}), 400
@@ -591,23 +607,27 @@ def api_chiudi_membro_gruppo(group_uid=None):
         min_time_error = _check_group_member_minimum_time(id_documento, id_riga, order_payload, policy)
         if min_time_error:
             return min_time_error
-        group, member = prepare_group_member_for_single_closure(
+        group, member, avp = prepare_group_member_for_single_closure(
             group_uid,
             id_documento=id_documento,
             id_riga=id_riga,
             minuti_non_funzionamento=minuti_non_funzionamento,
+            time_exports=time_exports,
         )
 
         member_payload = dict(order_payload)
         member_payload["id_documento"] = member.IdDocumento
         member_payload["id_riga"] = member.IdRiga
         member_payload["note"] = _norm_text(member_payload.get("note") or data.get("note") or "")
-        member_payload["chiusura_parziale"] = False
+        member_payload["chiusura_parziale"] = (
+            allow_partial and _parse_bool_flag(member_payload.get("chiusura_parziale"))
+        )
         member_payload["tempo_non_funzionamento_minuti"] = 0
         group_close_context = {
             "group_uid": group_uid,
             "member_id": member.id,
             "single_member": True,
+            **avp,
         }
         if data.get("data_registrazione") and not member_payload.get("data_registrazione"):
             member_payload["data_registrazione"] = data.get("data_registrazione")
@@ -658,11 +678,10 @@ def api_chiudi_membro_gruppo(group_uid=None):
             or _norm_text(result_payload.get("stato_ordine")).lower()
             == "in sospeso"
         )
-        if is_partial_member_closure:
+        if is_partial_member_closure and not allow_partial:
             raise ValueError("La chiusura del singolo ordine deve essere totale.")
 
-        mark_group_member_closed(
-            member,
+        member_quantities = dict(
             q_ok=(
                 member_payload.get("quantita_conforme")
                 or member_payload.get("qta_conforme")
@@ -675,9 +694,14 @@ def api_chiudi_membro_gruppo(group_uid=None):
             ),
             note=member_payload.get("note") or "",
         )
-        finalize_group_after_single_member_closure(
-            group, member, lct=uses_lct_home(policy, _home_reparto_config_for_ordine(ordine_member)),
-        )
+        if is_partial_member_closure:
+            mark_group_member_partial_closed(member, **member_quantities)
+            detach_lct_group_member(group, member)
+        else:
+            mark_group_member_closed(member, **member_quantities)
+            finalize_group_after_single_member_closure(
+                group, member, lct=uses_lct_home(policy, _home_reparto_config_for_ordine(ordine_member)),
+            )
 
         fragment_order = first_order_for_group(group) or ordine_member
         fragments = {}
@@ -702,6 +726,8 @@ def api_chiudi_membro_gruppo(group_uid=None):
         db.session.commit()
         return jsonify(
             {
+                **(result_payload if avp else {}),
+                **_esito_export_tempi_gruppo(time_exports),
                 "ok": True,
                 "message": "Ordine avanzato correttamente. " + group_outcome_message(group),
                 "group": group_to_dict(group),
@@ -765,9 +791,10 @@ def api_chiudi_gruppo_ordini(group_uid=None):
             tempo_non_funzionamento_raw
         )
 
-        group = prepare_group_for_full_closure(
+        group, avp = prepare_group_for_full_closure(
             group_uid,
             minuti_non_funzionamento=minuti_non_funzionamento,
+            time_exports=[],
         )
         members = group_members_for_close_payload(group)
 
@@ -842,6 +869,7 @@ def api_chiudi_gruppo_ordini(group_uid=None):
                 "group_type": group.GroupType,
                 "member_role": member.Role,
                 "time_share_mode": member.TimeShareMode,
+                **avp.get((member.IdDocumento, member.IdRiga), {}),
             }
 
             if is_machine:
@@ -1324,12 +1352,16 @@ def _runtime_ereditato_dal_gruppo(stato) -> bool:
     # Lo scioglimento può lasciare un membro attivo per consuntivare il tempo del gruppo.
     if stato is None or not stato.data_ultima_attivazione:
         return False
-    return OdpWorkGroupMember.query.filter_by(
+    member = OdpWorkGroupMember.query.filter_by(
         IdDocumento=stato.IdDocumento,
         IdRiga=stato.IdRiga,
         Status="Sciolto",
         DissolvedAt=stato.data_ultima_attivazione,
-    ).first() is not None
+    ).order_by(OdpWorkGroupMember.id.desc()).first()
+    if member is None:
+        return False
+    group = OdpWorkGroup.query.filter_by(GroupUid=member.GroupUid).first()
+    return group is None or not is_pure_multiple(group)
 
 
 def _blocca_runtime_attivo(stato) -> bool:
@@ -1365,6 +1397,22 @@ def _esito_export_sospensione(outbox_id: int | None) -> dict:
     return {"outbox_id": outbox_id}
 
 
+def _esito_export_tempi_gruppo(time_exports: list[int]) -> dict:
+    if not time_exports:
+        return {}
+    failed = [
+        str(outbox_id) for outbox_id in time_exports
+        if _esito_export_sospensione(outbox_id).get("export_error")
+    ]
+    result = {"time_outbox_ids": time_exports}
+    if failed:
+        result["export_error"] = (
+            "Documenti AVP tempo da recuperare con Ricrea AVP nella cartella predefinita: "
+            + ", ".join(failed)
+        )
+    return result
+
+
 @main_bp.post("/api/ordini/sospendi")
 @operator_perm_required("home")
 def api_sospendi_ordine():
@@ -1396,6 +1444,13 @@ def api_sospendi_ordine():
     policy = active_policy()
     ordine = _get_visible_odp_by_key(policy, id_documento, id_riga)
 
+    active_group = get_active_group_for_order(id_documento, id_riga)
+    if active_group is not None and is_pure_multiple(active_group) and (
+        not uses_lct_home(policy, _home_reparto_config_for_ordine(ordine))
+        or _norm_text(ordine.GestioneMatricola).lower() == "si"
+    ):
+        return _sospendi_gruppo_ordini_response(active_group.GroupUid, data)
+
     stato_attuale = _norm_text(ordine.StatoOrdine)
     stato_norm = stato_attuale.lower()
 
@@ -1404,6 +1459,7 @@ def api_sospendi_ordine():
     elapsed_seconds = 0
     tempo_funzionamento = "0"
     outbox_id = None
+    time_exports = []
 
     if stato_norm == "attivo":
         now_dt = _now_rome_dt()
@@ -1436,12 +1492,15 @@ def api_sospendi_ordine():
         group = _lct_group_for_order(ordine, policy)
         if group is not None:
             try:
-                group, member = prepare_group_member_for_single_closure(
+                group, member, _ = prepare_group_member_for_single_closure(
                     group.GroupUid,
                     id_documento=id_documento,
                     id_riga=id_riga,
                     minuti_non_funzionamento=minuti_non_funzionamento,
                     lct_active_only=True,
+                    time_exports=time_exports,
+                    close_member=False,
+                    causale=causale,
                 )
             except ValueError as exc:
                 db.session.rollback()
@@ -1514,7 +1573,7 @@ def api_sospendi_ordine():
     else:
         message = f"Ordine non sospendibile: stato attuale '{stato_attuale}'"
 
-    export_result = _esito_export_sospensione(outbox_id)
+    export_result = _esito_export_sospensione(outbox_id) | _esito_export_tempi_gruppo(time_exports)
     tab, fragments = _fragments_for_ordine_tab(policy, ordine)
 
     return (
@@ -1587,6 +1646,13 @@ def api_sospendi_ordine_montaggio_macchina():
             ),
             400,
         )
+
+    active_group = get_active_group_for_order(id_documento, id_riga)
+    if active_group is not None and is_pure_multiple(active_group) and (
+        not uses_lct_home(policy, _home_reparto_config_for_ordine(ordine))
+        or _norm_text(ordine.GestioneMatricola).lower() == "si"
+    ):
+        return _sospendi_gruppo_ordini_response(active_group.GroupUid, data)
 
     stato_attuale = _norm_text(ordine.StatoOrdine)
     stato_norm = stato_attuale.lower()
@@ -2444,6 +2510,10 @@ def _chiudi_ordine_da_payload(
             db.session.rollback()
             return jsonify({"ok": False, "error": str(exc)}), 400
 
+    if "tempo_multiplo" in group_close_context:
+        tempo_finale = group_close_context["tempo_multiplo"]
+        tempo_avanzamento_minuti = tempo_avanzamento_ore = None
+
     if chiusura_parziale:
         if stato is None:
             db.session.rollback()
@@ -2476,7 +2546,7 @@ def _chiudi_ordine_da_payload(
         registrazione_data=registration_date_text,
         chiusura_parziale=chiusura_parziale,
         tipo_documento=ordine.CodTipoDoc,
-        risorsa=ordine.RisorsaAttiva,
+        risorsa=group_close_context.get("risorsa_export", ordine.RisorsaAttiva),
         magazzino=ordine.CodMagPrincipale,
         variante=ordine.VarianteArt,
         tempo_avanzamento_minuti=tempo_avanzamento_minuti,
@@ -2740,10 +2810,14 @@ def api_chiudi_ordine():
     ordine = _get_visible_odp_by_key(policy, id_documento, id_riga)
     group = _lct_group_for_order(ordine, policy)
     if group is None:
+        active_group = get_active_group_for_order(id_documento, id_riga)
+        if active_group is not None and is_pure_multiple(active_group):
+            return _chiudi_membro_gruppo(active_group.GroupUid, data, policy, allow_partial=True)
         return _chiudi_ordine_da_payload(data, policy=policy, commit=True)
     if ordine.StatoOrdine != "Attivo":
         return jsonify({"ok": False, "error": "Riprendere l'ordine prima di chiuderlo."}), 409
 
+    time_exports = []
     try:
         # La preparazione del gruppo azzera il riferimento dell'ultima attivazione.
         min_time_error = _check_group_member_minimum_time(id_documento, id_riga, data, policy)
@@ -2755,17 +2829,21 @@ def api_chiudi_ordine():
         if stop is None:
             stop = data.get("tempo_macchina_ferma")
         minutes = _parse_minuti_non_funzionamento(stop)
-        group, member = prepare_group_member_for_single_closure(
+        group, member, avp = prepare_group_member_for_single_closure(
             group.GroupUid, id_documento=id_documento, id_riga=id_riga,
             minuti_non_funzionamento=minutes,
             lct_active_only=True,
+            time_exports=time_exports,
         )
         result = _chiudi_ordine_da_payload(
             {**data, "tempo_non_funzionamento_minuti": 0},
             policy=policy,
             commit=False,
             skip_min_active_time=True,
-            group_close_context={"group_uid": group.GroupUid, "member_id": member.id, "single_member": True, "lct": True},
+            group_close_context={
+                "group_uid": group.GroupUid, "member_id": member.id, "single_member": True, "lct": True,
+                **avp,
+            },
             consenti_sovrapproduzione=True,
         )
         if _response_status_code(result) >= 400:
@@ -2787,6 +2865,7 @@ def api_chiudi_ordine():
         payload["active_tab"], payload["fragments"] = _fragments_for_ordine_tab(policy, ordine)
         payload["last_event_id"] = _last_log_token()
         db.session.commit()
+        payload.update(_esito_export_tempi_gruppo(time_exports))
         return jsonify(payload)
     except ValueError as exc:
         db.session.rollback()
@@ -3068,6 +3147,10 @@ def _chiudi_ordine_montaggio_macchina_da_payload(
                 elapsed_seconds = _accumulate_runtime_until(stato, now_dt)
             tempo_finale = _norm_text(stato.Tempo_funzionamento) or "0"
 
+    if "tempo_multiplo" in group_close_context:
+        tempo_finale = group_close_context["tempo_multiplo"]
+        tempo_avanzamento_minuti = tempo_avanzamento_ore = None
+
     q_lavorata = q_ok + q_nok
 
     distinta_base_export = _build_export_distinta_base(
@@ -3094,7 +3177,7 @@ def _chiudi_ordine_montaggio_macchina_da_payload(
         chiusura_parziale=chiusura_parziale,
         registrazione_data=registration_date_text,
         tipo_documento=ordine.CodTipoDoc,
-        risorsa=ordine.RisorsaAttiva,
+        risorsa=group_close_context.get("risorsa_export", ordine.RisorsaAttiva),
         magazzino=ordine.CodMagPrincipale,
         variante=ordine.VarianteArt,
         tempo_avanzamento_minuti=tempo_avanzamento_minuti,
@@ -3297,6 +3380,12 @@ def _chiudi_ordine_montaggio_macchina_da_payload(
 @operator_perm_required("home")
 def api_chiudi_ordine_montaggio_macchina():
     data = request.get_json(silent=True) or {}
+    id_documento = _norm_text(data.get("id_documento"))
+    id_riga = _norm_text(data.get("id_riga"))
+    if id_documento and id_riga:
+        group = get_active_group_for_order(id_documento, id_riga)
+        if group is not None and is_pure_multiple(group):
+            return _chiudi_membro_gruppo(group.GroupUid, data, active_policy(), allow_partial=True)
     return _chiudi_ordine_montaggio_macchina_da_payload(data, commit=True)
 
 

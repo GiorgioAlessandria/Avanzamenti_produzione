@@ -29,6 +29,7 @@ from app_odp.models import (
     OdpRuntimeLog,
     OdpWorkGroup,
     OdpWorkGroupMember,
+    Risorse,
 )
 from app_odp.services.session_helpers import (
     _current_user_id,
@@ -40,6 +41,7 @@ from app_odp.services.priorita_service import (
 )
 from app_odp.services.ordini_runtime_service import (
     _accumulate_runtime_until,
+    _consuntiva_intervallo_singolo,
     _ensure_stop_minutes_within_elapsed,
     _ensure_stato_attivo,
     _ensure_operator_can_activate_group,
@@ -48,7 +50,11 @@ from app_odp.services.ordini_runtime_service import (
 from app_odp.services.ordini_query_service import _base_odp_query
 from app_odp.services.home_service import _get_visible_odp_by_key, _home_reparto_config_for_ordine
 from app_odp.services.lct_service import uses_lct_home
-from app_odp.services.erp_export_service import _build_operation_group_id, _get_blocking_outbox_for_phase
+from app_odp.services.erp_export_service import (
+    _build_operation_group_id,
+    _get_blocking_outbox_for_phase,
+    _queue_suspension_export,
+)
 from app_odp.services.ordini_log_service import (
     _add_input_odp_suspend_log,
     _add_input_odp_takeover_log,
@@ -213,7 +219,9 @@ def _create_member(
     )
 
 
-def _activate_order_for_group(ordine, *, group_uid: str, now_dt: datetime, lct: bool = False) -> None:
+def _activate_order_for_group(
+    ordine, *, group_uid: str, now_dt: datetime, lct: bool = False, time_exports: list | None = None,
+) -> None:
     fase_corrente = _fase_corrente_for_export(ordine)
     now_iso = now_dt.isoformat(timespec="seconds")
 
@@ -235,7 +243,19 @@ def _activate_order_for_group(ordine, *, group_uid: str, now_dt: datetime, lct: 
 
     elapsed_pre_group = 0
     if stato is not None and _norm_text(stato.Stato_odp).lower().startswith("attiv"):
-        elapsed_pre_group = _accumulate_runtime_until(stato, now_dt, precision=4 if lct else 2)
+        if time_exports is None:
+            elapsed_pre_group = _accumulate_runtime_until(stato, now_dt, precision=4 if lct else 2)
+        else:
+            if stato.data_ultima_attivazione:
+                elapsed_pre_group, _, tempo_pre_group = _consuntiva_intervallo_singolo(stato, now_dt)
+            else:
+                tempo_pre_group = _norm_text(stato.Tempo_funzionamento)
+                stato.Tempo_funzionamento = "0"
+            if _tempo_to_seconds(tempo_pre_group):
+                outbox = _queue_suspension_export(
+                    ordine, fase_corrente, tempo_pre_group, "Ingresso nel gruppo multiplo", now_dt,
+                )
+                time_exports.append(outbox.outbox_id)
 
     stato = _ensure_stato_attivo(
         ordine=ordine,
@@ -411,7 +431,9 @@ def _append_group_state_log(
     )
 
 
-def create_multiplo_group(order_keys: list[dict], policy, *, lct_at: datetime | None = None) -> OdpWorkGroup:
+def create_multiplo_group(
+    order_keys: list[dict], policy, *, time_exports: list, lct_at: datetime | None = None,
+) -> OdpWorkGroup:
     if not isinstance(order_keys, list) or len(order_keys) < (1 if lct_at is not None else 2):
         raise ValueError("Selezionare almeno 2 ordini per un gruppo multiplo.")
     if len(order_keys) > 4:
@@ -425,6 +447,9 @@ def create_multiplo_group(order_keys: list[dict], policy, *, lct_at: datetime | 
         )
         for item in order_keys
     ]
+
+    if lct_at is None:
+        _lock_lct_order_runtime(_order_key(ordini[0]))
 
     seen = set()
     for ordine in ordini:
@@ -468,7 +493,9 @@ def create_multiplo_group(order_keys: list[dict], policy, *, lct_at: datetime | 
     db.session.add(group)
 
     for ordine in ordini:
-        _activate_order_for_group(ordine, group_uid=group_uid, now_dt=now_dt, lct=lct_at is not None)
+        _activate_order_for_group(
+            ordine, group_uid=group_uid, now_dt=now_dt, lct=lct_at is not None, time_exports=time_exports,
+        )
         db.session.add(
             _create_member(
                 group_uid,
@@ -687,7 +714,7 @@ def _lock_lct_order_runtime(key):
     db.session.expire_all()
 
 
-def try_activate_lct_group(orders, policy, *, suspended_group=None):
+def try_activate_lct_group(orders, policy, *, time_exports: list, suspended_group=None):
     """Riunisce le attività LCT dello stesso operatore in un'unica transazione."""
     if not orders or not uses_lct_home(policy, _home_reparto_config_for_ordine(orders[0])):
         return None
@@ -748,7 +775,9 @@ def try_activate_lct_group(orders, policy, *, suspended_group=None):
         members = _members_for_closure(group)
         if any((m.IdDocumento, m.IdRiga) not in candidates for m in members):
             raise ValueError("Il gruppo contiene altri ordini aperti. Riprendere o chiudere il gruppo prima di ricomporlo.")
-        if group.Status == GROUP_STATUS_ATTIVO:
+        if group.Status == GROUP_STATUS_ATTIVO and is_pure_multiple(group):
+            _consuntiva_intervallo_multiplo(group, now, time_exports=time_exports, lct=True)
+        elif group.Status == GROUP_STATUS_ATTIVO:
             assign_elapsed_group_runtime(group, now_dt=now, lct=True)
         for member in members:
             key = (member.IdDocumento, member.IdRiga)
@@ -771,7 +800,7 @@ def try_activate_lct_group(orders, policy, *, suspended_group=None):
     if masters:
         master = masters[0]
         return create_mascherato_group(keys[master], [item for key, item in keys.items() if key != master], policy, lct_at=now)
-    return create_multiplo_group(list(keys.values()), policy, lct_at=now)
+    return create_multiplo_group(list(keys.values()), policy, lct_at=now, time_exports=time_exports)
 
 
 def _assigned_seconds_for_member(
@@ -804,12 +833,87 @@ def _group_active_members(group: OdpWorkGroup) -> list[OdpWorkGroupMember]:
     return [m for m in group.members if _norm_text(m.Status) == GROUP_STATUS_ATTIVO]
 
 
+def is_pure_multiple(group: OdpWorkGroup) -> bool:
+    return (
+        group.GroupType == GROUP_TYPE_MULTIPLO
+        and group.Note != "MISTO"
+        and all(m.TimeShareMode == SHARE_SPLIT for m in group.members)
+    )
+
+
+def _risorsa_divisore_multiplo(risorsa: str, count: int, available: set[str]) -> tuple[str, int]:
+    candidate = f"{risorsa}MUL{count}"
+    if count > 1 and candidate in available:
+        return candidate, 1
+    return risorsa, count
+
+
+def _consuntiva_intervallo_multiplo(
+    group, now_dt, *, time_exports, closing=None, close_all=False,
+    minuti_non_funzionamento=0, lct=False, causale="",
+):
+    # Il gruppo e il suo intervallo devono essere ancora quelli letti dal chiamante.
+    result = db.session.execute(
+        update(OdpWorkGroup).where(
+            OdpWorkGroup.GroupUid == group.GroupUid,
+            OdpWorkGroup.Status == group.Status,
+            OdpWorkGroup.LastActivationAt == group.LastActivationAt,
+        ).values(Status=OdpWorkGroup.Status).execution_options(synchronize_session=False)
+    )
+    if result.rowcount != 1:
+        raise ValueError("Il gruppo è cambiato. Aggiornare la pagina e riprovare.")
+
+    active = group.Status == GROUP_STATUS_ATTIVO
+    members = _group_active_members(group) if active else _members_for_closure(group)
+
+    orders = []
+    for member in members:
+        ordine, runtime = _order_for_member(member), _runtime_for_member(member)
+        if ordine is None or runtime is None:
+            raise ValueError("Impossibile consuntivare un membro del gruppo senza ordine e runtime.")
+        orders.append((ordine, runtime, _norm_text(ordine.RisorsaAttiva)))
+
+    count = len(orders)
+    candidates = {f"{risorsa}MUL{count}" for _, _, risorsa in orders if count > 1 and risorsa}
+    available = {
+        codice for (codice,) in db.session.query(Risorse.Codice).filter(Risorse.Codice.in_(candidates)).all()
+    } if candidates else set()
+    rates = {
+        _order_key(ordine): _risorsa_divisore_multiplo(risorsa, count, available)
+        for ordine, _, risorsa in orders
+    }
+    if active:
+        elapsed = assign_elapsed_group_runtime(
+            group, now_dt=now_dt, minuti_non_funzionamento=minuti_non_funzionamento, lct=lct,
+            multiple_rates=rates,
+        )
+    else:
+        _ensure_stop_minutes_within_elapsed(minuti_non_funzionamento, 0)
+        elapsed = 0
+
+    closing_rates = {}
+    for ordine, runtime, _ in orders:
+        key = _order_key(ordine)
+        risorsa, divisor = rates[key]
+        tempo = _seconds_to_tempo_text(Decimal(elapsed) / divisor)
+        runtime.Tempo_funzionamento = "0"
+        runtime.data_ultima_attivazione = None
+        if close_all or key == closing:
+            closing_rates[key] = {"risorsa_export": risorsa, "tempo_multiplo": tempo}
+        elif active:
+            fase = _fase_corrente_for_export(ordine, stato=runtime)
+            outbox = _queue_suspension_export(ordine, fase, tempo, causale, now_dt, risorsa=risorsa)
+            time_exports.append(outbox.outbox_id)
+    return closing_rates
+
+
 def assign_elapsed_group_runtime(
     group: OdpWorkGroup,
     now_dt: datetime | None = None,
     *,
     minuti_non_funzionamento: int = 0,
     lct: bool = False,
+    multiple_rates: dict | None = None,
 ) -> int:
     """
     Attribuisce ai membri il tempo maturato dall'ultima attivazione gruppo.
@@ -865,6 +969,9 @@ def assign_elapsed_group_runtime(
             split_assignments[member.id] if lct and member.id in split_assignments
             else _assigned_seconds_for_member(group, member, elapsed_seconds)
         )
+        rate = multiple_rates.get((member.IdDocumento, member.IdRiga)) if multiple_rates else None
+        if rate is not None:
+            assigned = _round_seconds(Decimal(elapsed_seconds) / rate[1])
 
         member.RuntimeSecondsAssigned = (
             int(member.RuntimeSecondsAssigned or 0) + assigned
@@ -892,6 +999,7 @@ def assign_elapsed_group_runtime(
                     "time_share_mode": member.TimeShareMode,
                     "group_type": group.GroupType,
                     "runtime_seconds_assigned": assigned,
+                    **({"risorsa_export": rate[0]} if rate is not None else {}),
                 },
             )
 
@@ -940,7 +1048,7 @@ def _deduct_suspended_group_stop(group: OdpWorkGroup, minutes: int) -> None:
 
 
 def suspend_group(
-    group_uid: str, *, causale: str = "", minuti_non_funzionamento: int = 0
+    group_uid: str, *, causale: str = "", minuti_non_funzionamento: int = 0, time_exports: list
 ) -> OdpWorkGroup:
     group = _get_group_or_error(group_uid)
 
@@ -948,11 +1056,13 @@ def suspend_group(
         raise ValueError(f"Gruppo non sospendibile: stato attuale '{group.Status}'.")
 
     now_dt = _now_rome_dt()
-    elapsed = assign_elapsed_group_runtime(
-        group,
-        now_dt=now_dt,
-        minuti_non_funzionamento=minuti_non_funzionamento,
-    )
+    if is_pure_multiple(group):
+        _consuntiva_intervallo_multiplo(
+            group, now_dt, time_exports=time_exports,
+            minuti_non_funzionamento=minuti_non_funzionamento, causale=causale,
+        )
+    else:
+        assign_elapsed_group_runtime(group, now_dt=now_dt, minuti_non_funzionamento=minuti_non_funzionamento)
     now_iso = now_dt.isoformat(timespec="seconds")
 
     stop_seconds = max(0, int(minuti_non_funzionamento or 0)) * 60
@@ -993,7 +1103,7 @@ def suspend_group(
     return group
 
 
-def reactivate_group(group_uid: str, *, policy=None) -> OdpWorkGroup:
+def reactivate_group(group_uid: str, *, time_exports: list, policy=None) -> OdpWorkGroup:
     group = _get_group_or_error(group_uid)
 
     if _norm_text(group.Status) != GROUP_STATUS_SOSPESO:
@@ -1003,7 +1113,7 @@ def reactivate_group(group_uid: str, *, policy=None) -> OdpWorkGroup:
     first = _order_for_member(members[0]) if members and policy is not None else None
     if first is not None and uses_lct_home(policy, _home_reparto_config_for_ordine(first)):
         orders = [_get_visible_odp_by_key(policy, m.IdDocumento, m.IdRiga) for m in members]
-        regrouped = try_activate_lct_group(orders, policy, suspended_group=group)
+        regrouped = try_activate_lct_group(orders, policy, time_exports=time_exports, suspended_group=group)
         if regrouped is not None:
             return regrouped
 
@@ -1059,7 +1169,7 @@ def reactivate_group(group_uid: str, *, policy=None) -> OdpWorkGroup:
 
 
 def dissolve_group_for_single_member_close(
-    group_uid: str, *, id_documento: str, id_riga: str
+    group_uid: str, *, id_documento: str, id_riga: str, time_exports: list
 ) -> OdpWorkGroup:
     """
     Scioglie il gruppo per consentire la chiusura singola di un membro.
@@ -1082,7 +1192,13 @@ def dissolve_group_for_single_member_close(
     now_dt = _now_rome_dt()
     now_iso = now_dt.isoformat(timespec="seconds")
 
-    if _norm_text(group.Status) == GROUP_STATUS_ATTIVO:
+    if is_pure_multiple(group):
+        if group.Status not in (GROUP_STATUS_ATTIVO, GROUP_STATUS_SOSPESO):
+            raise ValueError("Il gruppo è già terminato.")
+        if target.Status not in (GROUP_STATUS_ATTIVO, GROUP_STATUS_SOSPESO):
+            raise ValueError("L'ordine selezionato non è più aperto nel gruppo.")
+        _consuntiva_intervallo_multiplo(group, now_dt, time_exports=time_exports)
+    elif _norm_text(group.Status) == GROUP_STATUS_ATTIVO:
         assign_elapsed_group_runtime(group, now_dt=now_dt)
 
     for member in group.members:
@@ -1148,7 +1264,10 @@ def prepare_group_member_for_single_closure(
     id_riga: str,
     minuti_non_funzionamento: int | float | None = 0,
     lct_active_only: bool = False,
-) -> tuple[OdpWorkGroup, OdpWorkGroupMember]:
+    time_exports: list,
+    close_member: bool = True,
+    causale: str = "",
+) -> tuple[OdpWorkGroup, OdpWorkGroupMember, dict]:
     open_statuses = {GROUP_STATUS_ATTIVO, GROUP_STATUS_SOSPESO}
     if lct_active_only:
         _lock_lct_order_runtime((id_documento, id_riga))
@@ -1174,7 +1293,18 @@ def prepare_group_member_for_single_closure(
         raise ValueError("Ordine non presente tra i membri aperti del gruppo.")
 
     now_dt = _now_rome_dt()
-    if _norm_text(group.Status) == GROUP_STATUS_ATTIVO:
+    avp = {}
+    if is_pure_multiple(group):
+        key = (id_documento_norm, id_riga_norm)
+        rates = _consuntiva_intervallo_multiplo(
+            group, now_dt, time_exports=time_exports, closing=key if close_member else None,
+            minuti_non_funzionamento=minuti_non_funzionamento or 0, lct=lct_active_only,
+            causale=causale,
+        )
+        avp = rates.get(key, {})
+        if group.Status == GROUP_STATUS_ATTIVO:
+            group.LastActivationAt = now_dt.isoformat(timespec="seconds")
+    elif _norm_text(group.Status) == GROUP_STATUS_ATTIVO:
         assign_elapsed_group_runtime(
             group,
             now_dt=now_dt,
@@ -1193,7 +1323,7 @@ def prepare_group_member_for_single_closure(
     if ordine is not None:
         ordine.StatoOrdine = GROUP_STATUS_ATTIVO
 
-    return group, target
+    return group, target, avp
 
 
 def _set_open_member_state(
@@ -1224,7 +1354,8 @@ def finalize_group_after_single_member_closure(
     *,
     lct=False,
 ) -> OdpWorkGroup:
-    now_iso = _now_iso()
+    pure_multiple = is_pure_multiple(group)
+    now_iso = (group.LastActivationAt if pure_multiple else None) or _now_iso()
     open_members = [
         member
         for member in sorted(group.members, key=lambda item: item.id or 0)
@@ -1234,6 +1365,17 @@ def finalize_group_after_single_member_closure(
     if not open_members:
         group.Status = GROUP_STATUS_CHIUSO
         group.ClosedAt = now_iso
+        group.LastActivationAt = None
+        return group
+
+    if pure_multiple and len(open_members) == 1:
+        member = open_members[0]
+        status = _norm_text(member.Status)
+        _set_open_member_state(member, status, activation_iso=now_iso)
+        member.Status = GROUP_STATUS_SCIOLTO
+        member.DissolvedAt = now_iso
+        group.Status = GROUP_STATUS_SCIOLTO
+        group.DissolvedAt = now_iso
         group.LastActivationAt = None
         return group
 
@@ -1380,7 +1522,8 @@ def prepare_group_for_full_closure(
     group_uid: str,
     *,
     minuti_non_funzionamento: int = 0,
-) -> OdpWorkGroup:
+    time_exports: list,
+) -> tuple[OdpWorkGroup, dict]:
     """
     Prepara il gruppo alla chiusura completa:
     - richiede gruppo Attivo;
@@ -1395,7 +1538,13 @@ def prepare_group_for_full_closure(
         raise ValueError(f"Gruppo non chiudibile: stato attuale '{group.Status}'.")
 
     now_dt = _now_rome_dt()
-    if group_status == GROUP_STATUS_ATTIVO:
+    rates = {}
+    if is_pure_multiple(group):
+        rates = _consuntiva_intervallo_multiplo(
+            group, now_dt, time_exports=time_exports, close_all=True,
+            minuti_non_funzionamento=minuti_non_funzionamento,
+        )
+    elif group_status == GROUP_STATUS_ATTIVO:
         assign_elapsed_group_runtime(
             group,
             now_dt=now_dt,
@@ -1416,7 +1565,7 @@ def prepare_group_for_full_closure(
 
     group.Status = GROUP_STATUS_ATTIVO
     group.SuspendedAt = None
-    return group
+    return group, rates
 
 
 def member_payload_key(member: OdpWorkGroupMember) -> str:
