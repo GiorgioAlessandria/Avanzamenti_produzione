@@ -74,7 +74,7 @@ from app_odp.services.ordini_gruppi_service import (
     get_active_group_for_order,
     group_members_for_close_payload,
     group_to_dict,
-    is_pure_multiple,
+    uses_group_interval_export,
     mark_group_member_closed,
     mark_group_member_partial_closed,
     member_payload_key,
@@ -327,6 +327,7 @@ def api_apri_gruppo_misto():
     if not policy.can("ordini_mascherati"):
         return jsonify({"ok": False, "error": "Permesso ordini mascherati mancante."}), 403
 
+    time_exports = []
     try:
         masked_payload = data.get("mascherati")
         if masked_payload is None:
@@ -336,6 +337,7 @@ def api_apri_gruppo_misto():
             data.get("condivisi") or data.get("orders") or [],
             masked_payload,
             policy,
+            time_exports=time_exports,
         )
         db.session.commit()
 
@@ -362,6 +364,7 @@ def api_apri_gruppo_misto():
             policy,
             message="Gruppo misto aperto correttamente.",
         )
+        | _esito_export_tempi_gruppo(time_exports)
     )
 
 
@@ -370,6 +373,7 @@ def api_apri_gruppo_misto():
 def api_apri_gruppo_mascherato():
     data = request.get_json(silent=True) or {}
     policy = active_policy()
+    time_exports = []
 
     try:
         masked_payload = data.get("mascherati")
@@ -380,6 +384,7 @@ def api_apri_gruppo_mascherato():
             data.get("principale") or {},
             masked_payload,
             policy,
+            time_exports=time_exports,
         )
         db.session.commit()
 
@@ -400,6 +405,7 @@ def api_apri_gruppo_mascherato():
             policy,
             message="Gruppo mascherato aperto correttamente.",
         )
+        | _esito_export_tempi_gruppo(time_exports)
     )
 
 
@@ -1361,7 +1367,7 @@ def _runtime_ereditato_dal_gruppo(stato) -> bool:
     if member is None:
         return False
     group = OdpWorkGroup.query.filter_by(GroupUid=member.GroupUid).first()
-    return group is None or not is_pure_multiple(group)
+    return group is None or not uses_group_interval_export(group)
 
 
 def _blocca_runtime_attivo(stato) -> bool:
@@ -1445,7 +1451,7 @@ def api_sospendi_ordine():
     ordine = _get_visible_odp_by_key(policy, id_documento, id_riga)
 
     active_group = get_active_group_for_order(id_documento, id_riga)
-    if active_group is not None and is_pure_multiple(active_group) and (
+    if active_group is not None and uses_group_interval_export(active_group) and (
         not uses_lct_home(policy, _home_reparto_config_for_ordine(ordine))
         or _norm_text(ordine.GestioneMatricola).lower() == "si"
     ):
@@ -1648,7 +1654,7 @@ def api_sospendi_ordine_montaggio_macchina():
         )
 
     active_group = get_active_group_for_order(id_documento, id_riga)
-    if active_group is not None and is_pure_multiple(active_group) and (
+    if active_group is not None and uses_group_interval_export(active_group) and (
         not uses_lct_home(policy, _home_reparto_config_for_ordine(ordine))
         or _norm_text(ordine.GestioneMatricola).lower() == "si"
     ):
@@ -2510,8 +2516,8 @@ def _chiudi_ordine_da_payload(
             db.session.rollback()
             return jsonify({"ok": False, "error": str(exc)}), 400
 
-    if "tempo_multiplo" in group_close_context:
-        tempo_finale = group_close_context["tempo_multiplo"]
+    if "tempo_gruppo" in group_close_context:
+        tempo_finale = group_close_context["tempo_gruppo"]
         tempo_avanzamento_minuti = tempo_avanzamento_ore = None
 
     if chiusura_parziale:
@@ -2811,7 +2817,7 @@ def api_chiudi_ordine():
     group = _lct_group_for_order(ordine, policy)
     if group is None:
         active_group = get_active_group_for_order(id_documento, id_riga)
-        if active_group is not None and is_pure_multiple(active_group):
+        if active_group is not None and uses_group_interval_export(active_group):
             return _chiudi_membro_gruppo(active_group.GroupUid, data, policy, allow_partial=True)
         return _chiudi_ordine_da_payload(data, policy=policy, commit=True)
     if ordine.StatoOrdine != "Attivo":
@@ -3147,8 +3153,8 @@ def _chiudi_ordine_montaggio_macchina_da_payload(
                 elapsed_seconds = _accumulate_runtime_until(stato, now_dt)
             tempo_finale = _norm_text(stato.Tempo_funzionamento) or "0"
 
-    if "tempo_multiplo" in group_close_context:
-        tempo_finale = group_close_context["tempo_multiplo"]
+    if "tempo_gruppo" in group_close_context:
+        tempo_finale = group_close_context["tempo_gruppo"]
         tempo_avanzamento_minuti = tempo_avanzamento_ore = None
 
     q_lavorata = q_ok + q_nok
@@ -3384,7 +3390,7 @@ def api_chiudi_ordine_montaggio_macchina():
     id_riga = _norm_text(data.get("id_riga"))
     if id_documento and id_riga:
         group = get_active_group_for_order(id_documento, id_riga)
-        if group is not None and is_pure_multiple(group):
+        if group is not None and uses_group_interval_export(group):
             return _chiudi_membro_gruppo(group.GroupUid, data, active_policy(), allow_partial=True)
     return _chiudi_ordine_montaggio_macchina_da_payload(data, commit=True)
 

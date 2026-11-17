@@ -412,6 +412,15 @@
                                    class="btn btn-sm btn-outline-primary">
                                     Apri
                                 </a>
+                                {% if row.stato == "COMPLETATA" %}
+                                    <a href="{{ operator_url_for(
+                                            'main.manutenzioni_evento_report',
+                                            evento_id=row.id
+                                        ) }}"
+                                       class="btn btn-sm btn-outline-secondary">
+                                        Scarica PDF
+                                    </a>
+                                {% endif %}
                             </td>
                         </tr>
 

@@ -283,11 +283,7 @@
                                 <th>Data esecuzione</th>
                                 <th>Operatore</th>
                                 <th>Esito</th>
-                                {% if can_execute_events %}
-                                    <th class="text-end">
-                                        Azioni
-                                    </th>
-                                {% endif %}
+                                <th class="text-end">Azioni</th>
                             </tr>
                             </thead>
 
@@ -362,8 +358,17 @@
                                     <td>
                                         {{ evento.esito or "-" }}
                                     </td>
-                                    {% if can_execute_events %}
-                                        <td class="text-end">
+                                    <td class="text-end">
+                                        {% if evento.stato == "COMPLETATA" %}
+                                            <a href="{{ operator_url_for(
+                                                    'main.manutenzioni_evento_report',
+                                                    evento_id=evento.id
+                                                ) }}"
+                                               class="btn btn-sm btn-outline-secondary">
+                                                Scarica PDF
+                                            </a>
+                                        {% endif %}
+                                        {% if can_execute_events %}
                                             {% if evento.straordinaria_id %}
                                                 <a href="{{ operator_url_for(
                                                 'main.manutenzioni_macchinario_detail',
@@ -394,17 +399,13 @@
                                                         </button>
                                                     {% endif %}
                                                 </div>
-                                            {% else %}
-                                                <span class="text-muted">
-                                        -
-                                        </span>
                                             {% endif %}
-                                        </td>
-                                    {% endif %}
+                                        {% endif %}
+                                    </td>
                                 </tr>
                             {% else %}
                                 <tr>
-                                    <td colspan="{{ 8 if can_execute_events else 7 }}"
+                                    <td colspan="8"
                                         class="text-center text-muted py-4">
                                         Nessun evento generato.
                                     </td>

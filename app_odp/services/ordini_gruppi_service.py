@@ -253,7 +253,7 @@ def _activate_order_for_group(
                 stato.Tempo_funzionamento = "0"
             if _tempo_to_seconds(tempo_pre_group):
                 outbox = _queue_suspension_export(
-                    ordine, fase_corrente, tempo_pre_group, "Ingresso nel gruppo multiplo", now_dt,
+                    ordine, fase_corrente, tempo_pre_group, "Ingresso nel gruppo ordini", now_dt,
                 )
                 time_exports.append(outbox.outbox_id)
 
@@ -510,7 +510,7 @@ def create_multiplo_group(
     return group
 
 
-def create_misto_group(shared_keys: list[dict], masked_keys, policy) -> OdpWorkGroup:
+def create_misto_group(shared_keys: list[dict], masked_keys, policy, *, time_exports: list) -> OdpWorkGroup:
     if not isinstance(shared_keys, list) or len(shared_keys) != 2:
         raise ValueError(
             "Selezionare esattamente 2 ordini con tempo condiviso per il gruppo misto."
@@ -541,6 +541,7 @@ def create_misto_group(shared_keys: list[dict], masked_keys, policy) -> OdpWorkG
         raise ValueError("Selezione ordini mascherati non valida.")
 
     ordini = [*shared_ordini, *masked_ordini]
+    _lock_lct_order_runtime(_order_key(shared_ordini[0]))
     seen = set()
     for ordine in ordini:
         key = _order_key(ordine)
@@ -584,7 +585,7 @@ def create_misto_group(shared_keys: list[dict], masked_keys, policy) -> OdpWorkG
     db.session.add(group)
 
     for ordine in shared_ordini:
-        _activate_order_for_group(ordine, group_uid=group_uid, now_dt=now_dt)
+        _activate_order_for_group(ordine, group_uid=group_uid, now_dt=now_dt, time_exports=time_exports)
         db.session.add(
             _create_member(
                 group_uid,
@@ -596,7 +597,7 @@ def create_misto_group(shared_keys: list[dict], masked_keys, policy) -> OdpWorkG
         )
 
     for masked in masked_ordini:
-        _activate_order_for_group(masked, group_uid=group_uid, now_dt=now_dt)
+        _activate_order_for_group(masked, group_uid=group_uid, now_dt=now_dt, time_exports=time_exports)
         db.session.add(
             _create_member(
                 group_uid,
@@ -607,11 +608,14 @@ def create_misto_group(shared_keys: list[dict], masked_keys, policy) -> OdpWorkG
             )
         )
 
+    _validate_mask_resources(ordine.RisorsaAttiva for ordine in masked_ordini)
     db.session.flush()
     return group
 
 
-def create_mascherato_group(main_key: dict, masked_keys, policy, *, lct_at: datetime | None = None) -> OdpWorkGroup:
+def create_mascherato_group(
+    main_key: dict, masked_keys, policy, *, time_exports: list, lct_at: datetime | None = None,
+) -> OdpWorkGroup:
     if isinstance(masked_keys, dict):
         masked_keys = [masked_keys]
     if not isinstance(masked_keys, list) or not masked_keys:
@@ -635,6 +639,8 @@ def create_mascherato_group(main_key: dict, masked_keys, policy, *, lct_at: date
         raise ValueError("Selezionare almeno un ordine mascherato.")
 
     ordini = [main, *masked_ordini]
+    if lct_at is None:
+        _lock_lct_order_runtime(_order_key(main))
     seen = set()
     for ordine in ordini:
         key = _order_key(ordine)
@@ -683,7 +689,9 @@ def create_mascherato_group(main_key: dict, masked_keys, policy, *, lct_at: date
     )
     db.session.add(group)
 
-    _activate_order_for_group(main, group_uid=group_uid, now_dt=now_dt, lct=lct_at is not None)
+    _activate_order_for_group(
+        main, group_uid=group_uid, now_dt=now_dt, lct=lct_at is not None, time_exports=time_exports,
+    )
     db.session.add(
         _create_member(
             group_uid, main, role=ROLE_MAIN, share_mode=SHARE_FULL, now_iso=now_iso
@@ -691,7 +699,9 @@ def create_mascherato_group(main_key: dict, masked_keys, policy, *, lct_at: date
     )
 
     for masked in masked_ordini:
-        _activate_order_for_group(masked, group_uid=group_uid, now_dt=now_dt, lct=lct_at is not None)
+        _activate_order_for_group(
+            masked, group_uid=group_uid, now_dt=now_dt, lct=lct_at is not None, time_exports=time_exports,
+        )
         db.session.add(
             _create_member(
                 group_uid,
@@ -702,6 +712,7 @@ def create_mascherato_group(main_key: dict, masked_keys, policy, *, lct_at: date
             )
         )
 
+    _validate_mask_resources(ordine.RisorsaAttiva for ordine in masked_ordini)
     db.session.flush()
     return group
 
@@ -775,8 +786,8 @@ def try_activate_lct_group(orders, policy, *, time_exports: list, suspended_grou
         members = _members_for_closure(group)
         if any((m.IdDocumento, m.IdRiga) not in candidates for m in members):
             raise ValueError("Il gruppo contiene altri ordini aperti. Riprendere o chiudere il gruppo prima di ricomporlo.")
-        if group.Status == GROUP_STATUS_ATTIVO and is_pure_multiple(group):
-            _consuntiva_intervallo_multiplo(group, now, time_exports=time_exports, lct=True)
+        if group.Status == GROUP_STATUS_ATTIVO and uses_group_interval_export(group):
+            _consuntiva_intervallo_gruppo(group, now, time_exports=time_exports, lct=True)
         elif group.Status == GROUP_STATUS_ATTIVO:
             assign_elapsed_group_runtime(group, now_dt=now, lct=True)
         for member in members:
@@ -799,7 +810,10 @@ def try_activate_lct_group(orders, policy, *, time_exports: list, suspended_grou
     keys = {key: {"id_documento": key[0], "id_riga": key[1]} for key in candidates}
     if masters:
         master = masters[0]
-        return create_mascherato_group(keys[master], [item for key, item in keys.items() if key != master], policy, lct_at=now)
+        return create_mascherato_group(
+            keys[master], [item for key, item in keys.items() if key != master],
+            policy, lct_at=now, time_exports=time_exports,
+        )
     return create_multiplo_group(list(keys.values()), policy, lct_at=now, time_exports=time_exports)
 
 
@@ -834,11 +848,41 @@ def _group_active_members(group: OdpWorkGroup) -> list[OdpWorkGroupMember]:
 
 
 def is_pure_multiple(group: OdpWorkGroup) -> bool:
+    recomposed = _norm_text(getattr(group, "GroupUid", "")).startswith(("MASK", "MIX"))
     return (
         group.GroupType == GROUP_TYPE_MULTIPLO
         and group.Note != "MISTO"
-        and all(m.TimeShareMode == SHARE_SPLIT for m in group.members)
+        and all(
+            m.TimeShareMode == SHARE_SPLIT
+            for m in (_members_for_closure(group) if recomposed else group.members)
+        )
     )
+
+
+def uses_group_interval_export(group: OdpWorkGroup) -> bool:
+    return (
+        group.GroupType == GROUP_TYPE_MASCHERATO
+        or is_pure_multiple(group)
+        or (
+            group.GroupType == GROUP_TYPE_MULTIPLO
+            and (group.Note == "MISTO" or _norm_text(group.GroupUid).startswith("MIX"))
+        )
+    )
+
+
+def _resource_codes_available(candidates: set[str]) -> set[str]:
+    if not candidates:
+        return set()
+    return {
+        code for (code,) in db.session.query(Risorse.Codice).filter(Risorse.Codice.in_(candidates)).all()
+    }
+
+
+def _validate_mask_resources(resources) -> None:
+    base_codes = {_norm_text(code) for code in resources}
+    required = {f"{code}MAS" for code in base_codes if code}
+    if "" in base_codes or required - _resource_codes_available(required):
+        raise ValueError("Manca risorsa mascherata, segnalarlo all'ufficio tecnico")
 
 
 def _risorsa_divisore_multiplo(risorsa: str, count: int, available: set[str]) -> tuple[str, int]:
@@ -848,7 +892,7 @@ def _risorsa_divisore_multiplo(risorsa: str, count: int, available: set[str]) ->
     return risorsa, count
 
 
-def _consuntiva_intervallo_multiplo(
+def _consuntiva_intervallo_gruppo(
     group, now_dt, *, time_exports, closing=None, close_all=False,
     minuti_non_funzionamento=0, lct=False, causale="",
 ):
@@ -871,35 +915,44 @@ def _consuntiva_intervallo_multiplo(
         ordine, runtime = _order_for_member(member), _runtime_for_member(member)
         if ordine is None or runtime is None:
             raise ValueError("Impossibile consuntivare un membro del gruppo senza ordine e runtime.")
-        orders.append((ordine, runtime, _norm_text(ordine.RisorsaAttiva)))
+        orders.append((member, ordine, runtime, _norm_text(ordine.RisorsaAttiva)))
 
-    count = len(orders)
-    candidates = {f"{risorsa}MUL{count}" for _, _, risorsa in orders if count > 1 and risorsa}
-    available = {
-        codice for (codice,) in db.session.query(Risorse.Codice).filter(Risorse.Codice.in_(candidates)).all()
-    } if candidates else set()
-    rates = {
-        _order_key(ordine): _risorsa_divisore_multiplo(risorsa, count, available)
-        for ordine, _, risorsa in orders
-    }
+    _validate_mask_resources(risorsa for member, _, _, risorsa in orders if member.Role == ROLE_MASKED)
+    shared = [
+        item for item in orders
+        if item[0].TimeShareMode == SHARE_SPLIT and item[0].Role != ROLE_MASKED
+    ]
+    count = len(shared)
+    available = _resource_codes_available({
+        f"{risorsa}MUL{count}" for _, _, _, risorsa in shared if count > 1 and risorsa
+    })
+    rates = {}
+    for member, ordine, _, risorsa in orders:
+        if member.Role == ROLE_MASKED:
+            rate = f"{risorsa}MAS", 1
+        elif member.TimeShareMode == SHARE_SPLIT:
+            rate = _risorsa_divisore_multiplo(risorsa, count, available)
+        else:
+            rate = risorsa, 1
+        rates[_order_key(ordine)] = rate
     if active:
         elapsed = assign_elapsed_group_runtime(
             group, now_dt=now_dt, minuti_non_funzionamento=minuti_non_funzionamento, lct=lct,
-            multiple_rates=rates,
+            export_rates=rates,
         )
     else:
         _ensure_stop_minutes_within_elapsed(minuti_non_funzionamento, 0)
         elapsed = 0
 
     closing_rates = {}
-    for ordine, runtime, _ in orders:
+    for _, ordine, runtime, _ in orders:
         key = _order_key(ordine)
         risorsa, divisor = rates[key]
         tempo = _seconds_to_tempo_text(Decimal(elapsed) / divisor)
         runtime.Tempo_funzionamento = "0"
         runtime.data_ultima_attivazione = None
         if close_all or key == closing:
-            closing_rates[key] = {"risorsa_export": risorsa, "tempo_multiplo": tempo}
+            closing_rates[key] = {"risorsa_export": risorsa, "tempo_gruppo": tempo}
         elif active:
             fase = _fase_corrente_for_export(ordine, stato=runtime)
             outbox = _queue_suspension_export(ordine, fase, tempo, causale, now_dt, risorsa=risorsa)
@@ -913,7 +966,7 @@ def assign_elapsed_group_runtime(
     *,
     minuti_non_funzionamento: int = 0,
     lct: bool = False,
-    multiple_rates: dict | None = None,
+    export_rates: dict | None = None,
 ) -> int:
     """
     Attribuisce ai membri il tempo maturato dall'ultima attivazione gruppo.
@@ -969,7 +1022,7 @@ def assign_elapsed_group_runtime(
             split_assignments[member.id] if lct and member.id in split_assignments
             else _assigned_seconds_for_member(group, member, elapsed_seconds)
         )
-        rate = multiple_rates.get((member.IdDocumento, member.IdRiga)) if multiple_rates else None
+        rate = export_rates.get((member.IdDocumento, member.IdRiga)) if export_rates else None
         if rate is not None:
             assigned = _round_seconds(Decimal(elapsed_seconds) / rate[1])
 
@@ -1056,8 +1109,8 @@ def suspend_group(
         raise ValueError(f"Gruppo non sospendibile: stato attuale '{group.Status}'.")
 
     now_dt = _now_rome_dt()
-    if is_pure_multiple(group):
-        _consuntiva_intervallo_multiplo(
+    if uses_group_interval_export(group):
+        _consuntiva_intervallo_gruppo(
             group, now_dt, time_exports=time_exports,
             minuti_non_funzionamento=minuti_non_funzionamento, causale=causale,
         )
@@ -1110,6 +1163,11 @@ def reactivate_group(group_uid: str, *, time_exports: list, policy=None) -> OdpW
         raise ValueError(f"Gruppo non riattivabile: stato attuale '{group.Status}'.")
 
     members = [m for m in group.members if m.Status == GROUP_STATUS_SOSPESO]
+    if uses_group_interval_export(group):
+        _validate_mask_resources(
+            getattr(_order_for_member(member), "RisorsaAttiva", "")
+            for member in members if member.Role == ROLE_MASKED
+        )
     first = _order_for_member(members[0]) if members and policy is not None else None
     if first is not None and uses_lct_home(policy, _home_reparto_config_for_ordine(first)):
         orders = [_get_visible_odp_by_key(policy, m.IdDocumento, m.IdRiga) for m in members]
@@ -1192,12 +1250,12 @@ def dissolve_group_for_single_member_close(
     now_dt = _now_rome_dt()
     now_iso = now_dt.isoformat(timespec="seconds")
 
-    if is_pure_multiple(group):
+    if uses_group_interval_export(group):
         if group.Status not in (GROUP_STATUS_ATTIVO, GROUP_STATUS_SOSPESO):
             raise ValueError("Il gruppo è già terminato.")
         if target.Status not in (GROUP_STATUS_ATTIVO, GROUP_STATUS_SOSPESO):
             raise ValueError("L'ordine selezionato non è più aperto nel gruppo.")
-        _consuntiva_intervallo_multiplo(group, now_dt, time_exports=time_exports)
+        _consuntiva_intervallo_gruppo(group, now_dt, time_exports=time_exports)
     elif _norm_text(group.Status) == GROUP_STATUS_ATTIVO:
         assign_elapsed_group_runtime(group, now_dt=now_dt)
 
@@ -1294,9 +1352,9 @@ def prepare_group_member_for_single_closure(
 
     now_dt = _now_rome_dt()
     avp = {}
-    if is_pure_multiple(group):
+    if uses_group_interval_export(group):
         key = (id_documento_norm, id_riga_norm)
-        rates = _consuntiva_intervallo_multiplo(
+        rates = _consuntiva_intervallo_gruppo(
             group, now_dt, time_exports=time_exports, closing=key if close_member else None,
             minuti_non_funzionamento=minuti_non_funzionamento or 0, lct=lct_active_only,
             causale=causale,
@@ -1354,8 +1412,8 @@ def finalize_group_after_single_member_closure(
     *,
     lct=False,
 ) -> OdpWorkGroup:
-    pure_multiple = is_pure_multiple(group)
-    now_iso = (group.LastActivationAt if pure_multiple else None) or _now_iso()
+    interval_export = uses_group_interval_export(group)
+    now_iso = (group.LastActivationAt if interval_export else None) or _now_iso()
     open_members = [
         member
         for member in sorted(group.members, key=lambda item: item.id or 0)
@@ -1368,7 +1426,7 @@ def finalize_group_after_single_member_closure(
         group.LastActivationAt = None
         return group
 
-    if pure_multiple and len(open_members) == 1:
+    if interval_export and len(open_members) == 1:
         member = open_members[0]
         status = _norm_text(member.Status)
         _set_open_member_state(member, status, activation_iso=now_iso)
@@ -1379,8 +1437,15 @@ def finalize_group_after_single_member_closure(
         group.LastActivationAt = None
         return group
 
+    if interval_export and all(member.Role == ROLE_MASKED for member in open_members):
+        for member in open_members:
+            member.Role = ROLE_MEMBER
+            member.TimeShareMode = SHARE_SPLIT
+
     lct = lct and closed_member.Fase in ("1", "2")
-    only_buratti = lct and all(member.Fase == "2" for member in open_members)
+    only_buratti = (
+        lct and not interval_export and all(member.Fase == "2" for member in open_members)
+    )
     if lct and not only_buratti:
         if len(open_members) == 1:
             member = open_members[0]
@@ -1488,6 +1553,8 @@ def finalize_group_after_single_member_closure(
         for member in timed_members:
             member.Role = ROLE_MEMBER
             member.TimeShareMode = SHARE_SPLIT
+    if interval_export:
+        group.Note = "MISTO" if group.GroupType == GROUP_TYPE_MULTIPLO and zero_members else ""
 
     should_reactivate = any(
         _norm_text(member.Status) == GROUP_STATUS_ATTIVO for member in open_members
@@ -1539,8 +1606,8 @@ def prepare_group_for_full_closure(
 
     now_dt = _now_rome_dt()
     rates = {}
-    if is_pure_multiple(group):
-        rates = _consuntiva_intervallo_multiplo(
+    if uses_group_interval_export(group):
+        rates = _consuntiva_intervallo_gruppo(
             group, now_dt, time_exports=time_exports, close_all=True,
             minuti_non_funzionamento=minuti_non_funzionamento,
         )
@@ -1695,8 +1762,10 @@ def group_outcome_message(group: OdpWorkGroup) -> str:
         return "Gruppo sciolto. Gli ordini residui sono gestibili singolarmente."
     if group.Status == GROUP_STATUS_CHIUSO:
         return "Gruppo terminato. Ogni ordine ha il proprio avanzamento."
-    timed = sum(_norm_text(m.TimeShareMode).upper() != SHARE_ZERO for m in remaining)
     state = "attivo" if group.Status == GROUP_STATUS_ATTIVO else "sospeso"
+    if uses_group_interval_export(group):
+        return f"Il gruppo resta {state} con {len(remaining)} ordini."
+    timed = sum(_norm_text(m.TimeShareMode).upper() != SHARE_ZERO for m in remaining)
     return (
         f"Il gruppo resta {state} con {len(remaining)} ordini: "
         f"{timed} con tempo attribuito e {len(remaining) - timed} mascherati a tempo zero."

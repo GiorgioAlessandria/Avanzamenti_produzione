@@ -5,11 +5,13 @@ from __future__ import annotations
 from typing import Any
 
 from flask import (
+    abort,
     current_app,
     jsonify,
     redirect,
     render_template,
     request,
+    send_file,
     url_for,
 )
 from datetime import date, datetime, timedelta
@@ -66,6 +68,7 @@ from app_odp.services.manutenzioni_eventi_service import (
     sync_eventi_piano,
     today_rome,
 )
+from app_odp.services.manutenzioni_report_service import build_manutenzione_pdf
 from app_odp.services.giorni_lavorativi_service import (
     giorni_non_lavorativi_nel_periodo,
 )
@@ -1037,6 +1040,38 @@ def api_manutenzioni_evento_get(
 
     except Exception as exc:
         return _service_error_response(exc)
+
+
+@main_bp.get("/manutenzioni/eventi/<int:evento_id>/report")
+@require_active_any_perm(
+    "manutenzioni_visualizza",
+    "manutenzioni_amministrazione",
+)
+def manutenzioni_evento_report(evento_id: int):
+    try:
+        evento = get_evento_manutenzione(evento_id, active_policy())
+    except (
+        ManutenzioniServiceError,
+        PermessoManutenzioniError,
+        RepartoNonAutorizzatoError,
+    ) as exc:
+        return _service_error_response(exc)
+
+    if evento.stato != "COMPLETATA":
+        abort(404)
+
+    report = build_manutenzione_pdf(
+        serialize_evento_manutenzione(evento),
+        _serialize_single_macchinario(evento.manutenzione_ricorrente.macchinario),
+    )
+    response = send_file(
+        report,
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name=f"manutenzione-{evento_id}.pdf",
+    )
+    response.cache_control.no_store = True
+    return response
 
 
 @main_bp.delete("/api/manutenzioni/eventi/<int:evento_id>")
