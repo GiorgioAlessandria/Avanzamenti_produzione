@@ -1,11 +1,13 @@
+from datetime import datetime
 from decimal import Decimal
 import json
 from pathlib import Path
 
 from flask import current_app
 import re
+from sqlalchemy import update
 from app_odp.models import db, ErpOutbox, InputOdp, InputOdpLog
-from app_odp.odp_output import _load_distinta_base
+from app_odp.odp_output import _load_distinta_base, txt_generator
 from app_odp.services.session_helpers import _current_username
 from app_odp.services.order_helpers import (
     _norm_text,
@@ -18,6 +20,8 @@ from app_odp.services.order_helpers import (
     _component_udm,
     _decimal_to_text_for_udm,
 )
+
+SUSPENSION_KIND = "sospensione"
 
 
 def _safe_txt_suffix(value: str, fallback: str = "export") -> str:
@@ -71,8 +75,10 @@ def _build_export_txt_path(
     prefix: str = "AVPB",
     suffix: str = "",
     output_dir: str | Path | None = None,
+    *,
+    when: datetime | None = None,
 ) -> Path:
-    now_txt = _now_rome_dt().strftime("%Y%m%d_%H%M%S")
+    now_txt = (when or _now_rome_dt()).strftime("%Y%m%d_%H%M%S")
     safe_prefix = _safe_txt_prefix(prefix, "AVPB")
     safe_suffix = _safe_txt_suffix(suffix, "export")
     file_name = f"{safe_prefix}_{safe_suffix}_{now_txt}.txt"
@@ -356,7 +362,7 @@ def _build_phase_payload(
 
 def _queue_phase_export(ordine, fase_corrente: str, payload: dict):
     outbox = ErpOutbox(
-        kind="consuntivo_fase",
+        kind=SUSPENSION_KIND if payload.get("kind") == SUSPENSION_KIND else "consuntivo_fase",
         status="pending",
         IdDocumento=ordine.IdDocumento,
         IdRiga=ordine.IdRiga,
@@ -368,6 +374,65 @@ def _queue_phase_export(ordine, fase_corrente: str, payload: dict):
     db.session.add(outbox)
     db.session.flush()
     return outbox
+
+
+def _queue_suspension_export(ordine, fase_corrente: str, tempo: str, causale: str, now_dt: datetime):
+    payload = _build_phase_payload(
+        ordine=ordine,
+        distinta_base=[],
+        fase_corrente=fase_corrente,
+        q_ok=Decimal("0"),
+        q_nok=Decimal("0"),
+        tempo_finale=tempo,
+        lotti_input=[],
+        lotto_prodotto=None,
+        note=causale,
+        now_iso=now_dt.isoformat(timespec="seconds"),
+        chiusura_parziale=True,
+        tipo_documento=ordine.CodTipoDoc,
+        risorsa=ordine.RisorsaAttiva,
+        magazzino=ordine.CodMagPrincipale,
+        variante=ordine.VarianteArt,
+        emit_product_line=False,
+    )
+    payload["kind"] = SUSPENSION_KIND
+    return _queue_phase_export(ordine, fase_corrente, payload)
+
+
+def _publish_suspension_export(outbox_id: int) -> Path:
+    # Il lock SQLite serializza l'invio automatico e il recupero dalla utility.
+    scope = update(ErpOutbox).where(
+        ErpOutbox.outbox_id == outbox_id, ErpOutbox.kind == SUSPENSION_KIND,
+    )
+    try:
+        db.session.execute(scope.values(status=ErpOutbox.status))
+        outbox = db.session.get(ErpOutbox, outbox_id, populate_existing=True)
+        payload = _get_outbox_payload(outbox)
+        path = _build_export_txt_path(
+            suffix=f"sospensione_{outbox_id}",
+            when=datetime.fromisoformat(payload["created_at"]),
+        )
+        if outbox.status != "exported":
+            if not path.is_file():
+                lines = txt_generator([{"payload": payload}])
+                staging = path.with_suffix(".tmp")
+                staging.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\r\n")
+                staging.replace(path)
+            outbox.status = "exported"
+            outbox.exported_at = _now_rome_dt().isoformat(timespec="seconds")
+            outbox.last_error = None
+            outbox.attempts = int(outbox.attempts or 0) + 1
+        db.session.commit()
+        return path
+    except Exception as exc:
+        db.session.rollback()
+        db.session.execute(scope.where(ErpOutbox.status.in_(("pending", "error"))).values(
+            status="error",
+            last_error=str(exc),
+            attempts=ErpOutbox.attempts + 1,
+        ))
+        db.session.commit()
+        raise
 
 
 def _build_export_distinta_base(

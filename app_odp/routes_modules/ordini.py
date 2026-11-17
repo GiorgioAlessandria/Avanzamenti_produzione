@@ -4,6 +4,7 @@ from datetime import datetime
 import json
 
 from flask import current_app, jsonify, request, url_for
+from sqlalchemy import update
 
 from app_odp.services.operator_identity import order_log_actor
 from app_odp.models import (
@@ -12,6 +13,7 @@ from app_odp.models import (
     InputOdpRuntime,
     InputOdpLog,
     OdpRuntimeLog,
+    OdpWorkGroupMember,
 )
 from decimal import Decimal, ROUND_HALF_UP
 from app_odp.operator_session import active_policy, active_token, operator_perm_required
@@ -91,6 +93,7 @@ from app_odp.services.ordini_runtime_service import (
     _runtime_snapshot,
     _apply_stop_minutes_to_runtime,
     _accumulate_runtime_until,
+    _consuntiva_intervallo_singolo,
     _delete_closed_order_from_runtime_db,
     _ensure_min_active_time_before_chiusura,
     _ensure_ordine_attivo_per_chiusura,
@@ -112,6 +115,8 @@ from app_odp.services.erp_export_service import (
     _build_phase_payload,
     _phase_export_flags,
     _queue_phase_export,
+    _queue_suspension_export,
+    _publish_suspension_export,
     _serbatoi_export_fase_1_error,
 )
 from app_odp.services.home_service import (
@@ -1315,6 +1320,51 @@ def api_prendi_ordine():
     )
 
 
+def _runtime_ereditato_dal_gruppo(stato) -> bool:
+    # Lo scioglimento può lasciare un membro attivo per consuntivare il tempo del gruppo.
+    if stato is None or not stato.data_ultima_attivazione:
+        return False
+    return OdpWorkGroupMember.query.filter_by(
+        IdDocumento=stato.IdDocumento,
+        IdRiga=stato.IdRiga,
+        Status="Sciolto",
+        DissolvedAt=stato.data_ultima_attivazione,
+    ).first() is not None
+
+
+def _blocca_runtime_attivo(stato) -> bool:
+    result = db.session.execute(
+        update(InputOdpRuntime)
+        .where(
+            InputOdpRuntime.IdDocumento == stato.IdDocumento,
+            InputOdpRuntime.IdRiga == stato.IdRiga,
+            InputOdpRuntime.Stato_odp == "Attivo",
+            InputOdpRuntime.data_ultima_attivazione == stato.data_ultima_attivazione,
+        )
+        .values(Stato_odp=InputOdpRuntime.Stato_odp)
+        .execution_options(synchronize_session=False)
+    )
+    return result.rowcount == 1
+
+
+def _esito_export_sospensione(outbox_id: int | None) -> dict:
+    if outbox_id is None:
+        return {}
+    try:
+        _publish_suspension_export(outbox_id)
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("Errore export sospensione AVP %s", outbox_id)
+        return {
+            "outbox_id": outbox_id,
+            "export_error": (
+                f"Ordine sospeso. Il documento AVP {outbox_id} è da recuperare "
+                "tramite la funzione Ricrea AVP nella cartella di export predefinita."
+            ),
+        }
+    return {"outbox_id": outbox_id}
+
+
 @main_bp.post("/api/ordini/sospendi")
 @operator_perm_required("home")
 def api_sospendi_ordine():
@@ -1353,6 +1403,7 @@ def api_sospendi_ordine():
     message = None
     elapsed_seconds = 0
     tempo_funzionamento = "0"
+    outbox_id = None
 
     if stato_norm == "attivo":
         now_dt = _now_rome_dt()
@@ -1396,17 +1447,30 @@ def api_sospendi_ordine():
                 db.session.rollback()
                 return jsonify({"ok": False, "error": str(exc)}), 400
 
+        ordine_singolo = (
+            group is None
+            and get_active_group_for_order(id_documento, id_riga) is None
+            and not _runtime_ereditato_dal_gruppo(stato)
+        )
+        if ordine_singolo and not _blocca_runtime_attivo(stato):
+            db.session.rollback()
+            return jsonify(ok=False, error="Lo stato dell'ordine è cambiato. Aggiornare la pagina."), 409
+
         stato.Stato_odp = "In Sospeso"
         stato.Utente_operazione = _current_username()
 
-        elapsed_seconds = _accumulate_runtime_until(stato, now_dt)
-
         try:
-            removed_seconds, tempo_funzionamento = _apply_stop_minutes_to_runtime(
-                stato,
-                0 if group is not None else minuti_non_funzionamento,
-                max_removable_seconds=elapsed_seconds,
-            )
+            if ordine_singolo:
+                elapsed_seconds, removed_seconds, tempo_funzionamento = _consuntiva_intervallo_singolo(
+                    stato, now_dt, minuti_non_funzionamento,
+                )
+            else:
+                elapsed_seconds = _accumulate_runtime_until(stato, now_dt)
+                removed_seconds, tempo_funzionamento = _apply_stop_minutes_to_runtime(
+                    stato,
+                    0 if group is not None else minuti_non_funzionamento,
+                    max_removable_seconds=elapsed_seconds,
+                )
         except ValueError as exc:
             db.session.rollback()
             return jsonify({"ok": False, "error": str(exc)}), 400
@@ -1433,6 +1497,13 @@ def api_sospendi_ordine():
         )
         if group is not None:
             detach_lct_group_member(group, member)
+        if ordine_singolo:
+            fase_corrente = _fase_corrente_for_export(ordine, stato=stato)
+            outbox = _queue_suspension_export(
+                ordine, fase_corrente, tempo_funzionamento, causale, now_dt,
+            )
+            outbox_id = outbox.outbox_id
+
         db.session.commit()
         changed = True
         message = "Ordine sospeso"
@@ -1443,6 +1514,7 @@ def api_sospendi_ordine():
     else:
         message = f"Ordine non sospendibile: stato attuale '{stato_attuale}'"
 
+    export_result = _esito_export_sospensione(outbox_id)
     tab, fragments = _fragments_for_ordine_tab(policy, ordine)
 
     return (
@@ -1458,6 +1530,7 @@ def api_sospendi_ordine():
                 "stato_ordine": ordine.StatoOrdine,
                 "tempo_funzionamento": tempo_funzionamento,
                 "elapsed_seconds": elapsed_seconds,
+                **export_result,
                 "active_tab": tab,
                 "last_event_id": _last_log_token(),
                 "fragments": fragments,
@@ -1522,6 +1595,7 @@ def api_sospendi_ordine_montaggio_macchina():
     message = None
     elapsed_seconds = 0
     tempo_funzionamento = "0"
+    outbox_id = None
 
     if stato_norm == "attivo":
         now_dt = _now_rome_dt()
@@ -1551,11 +1625,22 @@ def api_sospendi_ordine_montaggio_macchina():
                 409,
             )
 
+        ordine_singolo = (
+            get_active_group_for_order(id_documento, id_riga) is None
+            and not _runtime_ereditato_dal_gruppo(stato)
+        )
+        if ordine_singolo and not _blocca_runtime_attivo(stato):
+            db.session.rollback()
+            return jsonify(ok=False, error="Lo stato dell'ordine è cambiato. Aggiornare la pagina."), 409
+
         stato.Stato_odp = "In Sospeso"
         stato.Utente_operazione = _current_username()
 
-        elapsed_seconds = _accumulate_runtime_until(stato, now_dt)
-        tempo_funzionamento = _norm_text(stato.Tempo_funzionamento) or "0"
+        if ordine_singolo:
+            elapsed_seconds, _, tempo_funzionamento = _consuntiva_intervallo_singolo(stato, now_dt)
+        else:
+            elapsed_seconds = _accumulate_runtime_until(stato, now_dt)
+            tempo_funzionamento = _norm_text(stato.Tempo_funzionamento) or "0"
 
         operation_group_id = _build_operation_group_id(
             ordine=ordine,
@@ -1578,6 +1663,13 @@ def api_sospendi_ordine_montaggio_macchina():
             note_evento="Sospensione ordine",
         )
 
+        if ordine_singolo:
+            fase_corrente = _fase_corrente_for_export(ordine, stato=stato)
+            outbox = _queue_suspension_export(
+                ordine, fase_corrente, tempo_funzionamento, causale, now_dt,
+            )
+            outbox_id = outbox.outbox_id
+
         db.session.commit()
         changed = True
         message = "Ordine macchina sospeso"
@@ -1588,6 +1680,7 @@ def api_sospendi_ordine_montaggio_macchina():
     else:
         message = f"Ordine macchina non sospendibile: stato attuale '{stato_attuale}'"
 
+    export_result = _esito_export_sospensione(outbox_id)
     tab, fragments = _fragments_for_ordine_tab(policy, ordine)
     return (
         jsonify(
@@ -1602,6 +1695,7 @@ def api_sospendi_ordine_montaggio_macchina():
                 "stato_ordine": ordine.StatoOrdine,
                 "tempo_funzionamento": tempo_funzionamento,
                 "elapsed_seconds": elapsed_seconds,
+                **export_result,
                 "active_tab": tab,
                 "last_event_id": _last_log_token(),
                 "fragments": fragments,
@@ -2330,15 +2424,22 @@ def _chiudi_ordine_da_payload(
     qty_pre = _qty_da_lavorare_text(ordine)
 
     if stato is not None:
-        if _norm_text(stato.Stato_odp).lower().startswith("attiv"):
-            elapsed_seconds = _accumulate_runtime_until(stato, now_dt)
-
         try:
-            removed_seconds, tempo_finale = _apply_stop_minutes_to_runtime(
-                stato,
-                minuti_non_funzionamento,
-                max_removable_seconds=elapsed_seconds,
-            )
+            if not group_close_context.get("group_uid") and not _runtime_ereditato_dal_gruppo(stato):
+                if not _blocca_runtime_attivo(stato):
+                    db.session.rollback()
+                    return jsonify(ok=False, error="Lo stato dell'ordine è cambiato. Aggiornare la pagina."), 409
+                elapsed_seconds, removed_seconds, tempo_finale = _consuntiva_intervallo_singolo(
+                    stato, now_dt, minuti_non_funzionamento,
+                )
+            else:
+                if _norm_text(stato.Stato_odp).lower().startswith("attiv"):
+                    elapsed_seconds = _accumulate_runtime_until(stato, now_dt)
+                removed_seconds, tempo_finale = _apply_stop_minutes_to_runtime(
+                    stato,
+                    minuti_non_funzionamento,
+                    max_removable_seconds=elapsed_seconds,
+                )
         except ValueError as exc:
             db.session.rollback()
             return jsonify({"ok": False, "error": str(exc)}), 400
@@ -2957,9 +3058,15 @@ def _chiudi_ordine_montaggio_macchina_da_payload(
 
     tempo_finale = "0"
     if stato is not None:
-        if _norm_text(stato.Stato_odp).lower().startswith("attiv"):
-            elapsed_seconds = _accumulate_runtime_until(stato, now_dt)
-        tempo_finale = _norm_text(stato.Tempo_funzionamento) or "0"
+        if not group_close_context.get("group_uid") and not _runtime_ereditato_dal_gruppo(stato):
+            if not _blocca_runtime_attivo(stato):
+                db.session.rollback()
+                return jsonify(ok=False, error="Lo stato dell'ordine è cambiato. Aggiornare la pagina."), 409
+            elapsed_seconds, _, tempo_finale = _consuntiva_intervallo_singolo(stato, now_dt)
+        else:
+            if _norm_text(stato.Stato_odp).lower().startswith("attiv"):
+                elapsed_seconds = _accumulate_runtime_until(stato, now_dt)
+            tempo_finale = _norm_text(stato.Tempo_funzionamento) or "0"
 
     q_lavorata = q_ok + q_nok
 

@@ -291,6 +291,16 @@ def _accumulate_runtime_until(stato, end_dt: datetime, *, precision: int = 2) ->
     return elapsed_seconds
 
 
+def _consuntiva_intervallo_singolo(stato, end_dt: datetime, minuti_fermo: int = 0):
+    start_dt = _parse_iso_dt(stato.data_ultima_attivazione)
+    elapsed_seconds = max(0, int((end_dt - start_dt).total_seconds())) if start_dt else 0
+    _ensure_stop_minutes_within_elapsed(minuti_fermo, elapsed_seconds)
+    removed_seconds = minuti_fermo * 60
+    stato.data_ultima_attivazione = None
+    stato.Tempo_funzionamento = "0"
+    return elapsed_seconds, removed_seconds, _seconds_to_tempo_text(elapsed_seconds - removed_seconds)
+
+
 def _delete_closed_order_from_runtime_db(ordine, stato=None) -> None:
     """
     Elimina l'ordine dal DB runtime principale dopo aver già salvato tutto nel db_log.

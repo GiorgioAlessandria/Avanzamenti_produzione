@@ -10,8 +10,7 @@
     <div class="mb-3">
         <h1 class="h4 mb-1">Ricrea file di avanzamento</h1>
         <p class="text-muted mb-0">
-            Utility amministrativa: rigenera un file AVP con la logica attuale,
-            senza modificare ordine e outbox originali.
+            Rigenera un file AVP oppure recupera una sospensione nella cartella di export configurata.
         </p>
     </div>
 
@@ -126,7 +125,7 @@
                     <td>${esc(row.id_documento)} / ${esc(row.id_riga)}</td>
                     <td>${esc(row.articolo)}</td>
                     <td>${esc(row.fase)}</td>
-                    <td>${esc(row.status)}</td>
+                    <td>${esc(row.status)}${row.kind === "sospensione" ? ` · sospensione #${esc(row.outbox_id)}` : ""}</td>
                     <td>${esc(row.exported_at || "-")}</td>
                     <td class="text-end">
                         <button type="button"

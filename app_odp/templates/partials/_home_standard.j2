@@ -1307,6 +1307,7 @@
             return;
         }
 
+        if (data.export_error) alert(data.export_error);
         bootstrap.Toast.getOrCreateInstance(document.getElementById("toast-2")).hide();
 
         if (data.fragments && window.applyHomeFragments) {

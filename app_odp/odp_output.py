@@ -306,7 +306,8 @@ def txt_generator(export_rows: list[dict]) -> list[str]:
     )
     lines.append(head_line)
 
-    emit_product_line = _should_emit_product_line(payload)
+    sospensione = payload.get("kind") == "sospensione"
+    emit_product_line = not sospensione and _should_emit_product_line(payload)
 
     if emit_product_line:
         product_line = row_writer(
@@ -352,6 +353,9 @@ def txt_generator(export_rows: list[dict]) -> list[str]:
         ore_lavorate=str(tempo_avanzamento),
     )
     lines.append(product_time_line)
+
+    if sospensione:
+        return lines
 
     for fallback_row_index, component in enumerate(distinta_base, start=1):
         if not isinstance(component, dict):

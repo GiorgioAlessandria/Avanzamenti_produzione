@@ -1,5 +1,7 @@
 # app_odp/routes_modules/erp.py
 
+from pathlib import Path
+
 from sqlalchemy import or_
 
 from app_odp.models import ErpOutbox, db
@@ -13,9 +15,11 @@ from app_odp.policy.decorator import require_active_perm
 from flask import jsonify, render_template, request
 from app_odp.routes_blueprint import main_bp
 from app_odp.services.erp_export_service import (
+    SUSPENSION_KIND,
     _get_outbox_payload,
     _get_erp_export_dir,
     _get_pending_avp_export_rows,
+    _publish_suspension_export,
     _write_txt_content,
 )
 from app_odp.services.order_helpers import _norm_text, _now_rome_dt
@@ -119,7 +123,7 @@ def admin_ricrea_avp_page():
 def api_admin_avanzamenti():
     q = _norm_text(request.args.get("q"))
     ordine_filter = parse_ordine_ref_display(q)
-    query = ErpOutbox.query.filter(ErpOutbox.kind == "consuntivo_fase")
+    query = ErpOutbox.query.filter(ErpOutbox.kind.in_(("consuntivo_fase", SUSPENSION_KIND)))
 
     if ordine_filter:
         query = query.filter(ErpOutbox.RifRegistraz == ordine_filter[0])
@@ -158,6 +162,7 @@ def api_admin_avanzamenti():
                     "id_riga": _norm_text(row.IdRiga),
                     "articolo": _norm_text(row.CodArt),
                     "fase": _norm_text(row.Fase),
+                    "kind": row.kind,
                     "status": _norm_text(row.status),
                     "exported_at": _norm_text(row.exported_at),
                 }
@@ -177,23 +182,32 @@ def api_admin_ricrea_avp():
     except (TypeError, ValueError):
         return jsonify({"ok": False, "error": "Avanzamento non valido."}), 400
 
-    outbox = ErpOutbox.query.filter_by(
-        outbox_id=outbox_id,
-        kind="consuntivo_fase",
+    outbox = ErpOutbox.query.filter(
+        ErpOutbox.outbox_id == outbox_id,
+        ErpOutbox.kind.in_(("consuntivo_fase", SUSPENSION_KIND)),
     ).first()
     if outbox is None:
         return jsonify({"ok": False, "error": "Avanzamento non trovato."}), 404
 
     try:
-        payload = _get_outbox_payload(outbox)
-        lines = txt_generator([{"outbox": outbox, "payload": payload}])
-        path_txt = _write_txt_content(
-            lines,
-            prefix="AVPB",
-            suffix=f"ricreato_{outbox_id}",
-            encoding="utf-8",
-            output_dir=output_dir or None,
-        )
+        if (
+            outbox.kind == SUSPENSION_KIND
+            and (
+                not output_dir
+                or Path(output_dir).expanduser().resolve() == _get_erp_export_dir().resolve()
+            )
+        ):
+            path_txt = _publish_suspension_export(outbox_id)
+        else:
+            payload = _get_outbox_payload(outbox)
+            lines = txt_generator([{"outbox": outbox, "payload": payload}])
+            path_txt = _write_txt_content(
+                lines,
+                prefix="AVPB",
+                suffix=f"ricreato_{outbox_id}",
+                encoding="utf-8",
+                output_dir=output_dir or None,
+            )
     except Exception as exc:
         return jsonify(
             {"ok": False, "error": f"Errore ricreazione file AVP: {exc}"}
