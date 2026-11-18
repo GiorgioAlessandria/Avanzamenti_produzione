@@ -2301,9 +2301,15 @@
             const ACTIONS = {
                 "btn-conferma-sospensione-sl": {
                     action: "sospendi",
-                    idSelectors: ["#toast2-iddocumento", "#toast-sosp-iddocumento"],
-                    causaleSelectors: ["#causale_attivita_sl", "#causale_attivita"],
+                    idSelectors: ["#toast2-iddocumento"],
+                    causaleSelectors: ["#causale_attivita_sl"],
                     tempoSelectors: ["#toast-sosp-sl-tempo-fermo-macchina"],
+                    toastSelector: "#toast-2"
+                },
+                "btn-conferma-sospensione": {
+                    action: "sospendi",
+                    idSelectors: ["#toast-sosp-iddocumento"],
+                    causaleSelectors: ["#causale_attivita"],
                     toastSelector: "#toast-2"
                 },
                 "btn-conferma-riattivazione-sl": {

@@ -143,15 +143,22 @@
         const anchor = main?.order || selected[0]?.order;
         const timed = selected.filter(s => s.input.dataset.role !== "mask");
         const masks = selected.filter(s => s.input.dataset.role === "mask");
+        const multiplo = timed.find(s => s.order.group_uid);
+        const selectedCount = selected.length + (multiplo ? multiplo.order.member_count - 1 : 0);
         const valid = currentMode === "multiplo" ? selected.length >= 2 && selected.length <= 4
-            : currentMode === "misto" ? timed.length === 2 && masks.length >= 1 && masks.length <= 3
+            : currentMode === "misto" ? timed.length === (multiplo ? 1 : 2) && masks.length >= 1 && masks.length <= 3
             : timed.length === 1 && masks.length >= 1;
         document.querySelectorAll("#modal-workgroup-body input").forEach(input => {
             const order = orders[Number(input.value)];
             const otherRole = selected.some(s => key(s.order) === key(order) && s.input !== input);
             let reason = order.motivo_blocco || "";
-            if (!reason && anchor && (order.reparto !== anchor.reparto || order.kind !== anchor.kind)) reason = "Reparto o tipo di ordine incompatibile con la selezione";
+            if (!reason && anchor && (
+                (order.reparto && anchor.reparto && order.reparto !== anchor.reparto)
+                || (order.kind && anchor.kind && order.kind !== anchor.kind)
+            )) reason = "Reparto o tipo di ordine incompatibile con la selezione";
             if (!reason && otherRole) reason = "Ordine già selezionato con un altro ruolo";
+            if (!reason && !input.checked && currentMode === "misto" && input.dataset.role === "shared"
+                && (multiplo || (order.group_uid && timed.length))) reason = "Seleziona un multiplo oppure due ordini singoli";
             if (!reason && !input.checked && currentMode === "multiplo" && selected.length >= 4) reason = "Massimo 4 ordini";
             if (!reason && !input.checked && currentMode === "misto" && input.dataset.role === "shared" && timed.length >= 2) reason = "Sono già selezionati i 2 ordini a tempo condiviso";
             if (!reason && !input.checked && currentMode === "misto" && input.dataset.role === "mask" && masks.length >= 3) reason = "Massimo 3 mascherati";
@@ -168,8 +175,52 @@
         });
         const validSelection = valid && selected.every(s => !s.order.motivo_blocco);
         document.getElementById("btn-workgroup-confirm").disabled = submitting || !validSelection;
-        document.getElementById("wg-open-count").textContent = `${selected.length} ordini selezionati${currentMode === "multiplo" ? " · da 2 a 4" : ""}`;
-        document.getElementById("wg-open-preview").innerHTML = selected.length ? `<div class="wg-preview-count">${selected.length}<span> ordini</span></div><ul class="list-unstyled mb-3">${selected.map(s => `<li><strong>${esc(s.order.ordine)}</strong><span>${s.input.dataset.role === "mask" ? "Mascherato" : s.input.dataset.role === "main" ? "Principale" : "Membro"}</span></li>`).join("")}</ul><p class="small mb-0">Quantità, lotti e avanzamenti restano separati per ciascun ordine.</p>` : '<p class="text-muted mb-0">Seleziona gli ordini da lavorare insieme.</p>';
+        document.getElementById("wg-open-count").textContent = `${selectedCount} ordini selezionati${currentMode === "multiplo" ? " · da 2 a 4" : ""}`;
+        document.getElementById("wg-open-preview").innerHTML = selected.length ? `<div class="wg-preview-count">${selectedCount}<span> ordini</span></div><ul class="list-unstyled mb-3">${selected.map(s => `<li><strong>${esc(s.order.ordine)}</strong><span>${s.order.group_uid ? "Multiplo" : s.input.dataset.role === "mask" ? "Mascherato" : s.input.dataset.role === "main" ? "Principale" : "Membro"}</span></li>`).join("")}</ul><p class="small mb-0">Quantità, lotti e avanzamenti restano separati per ciascun ordine.</p>` : '<p class="text-muted mb-0">Seleziona gli ordini da lavorare insieme.</p>';
+    }
+
+    function ordersForPicker(available, homeRows, includeMultipli) {
+        const visibleSingles = new Set(homeRows.filter(row =>
+            row.offsetParent !== null && row.dataset.isWorkGroup !== "1"
+        ).map(row => `${row.dataset.iddocumento}|${row.dataset.idriga}`));
+        const singles = available.filter(order => !order.group_uid && visibleSingles.has(key(order)));
+        if (!includeMultipli) return singles;
+
+        const availableMultipli = new Map(available.filter(order => order.group_uid)
+            .map(order => [order.group_uid, order]));
+        const multipli = new Map();
+        const username = String(window.AVP_ACTIVE_USERNAME || "").trim().toLowerCase();
+        for (const row of homeRows) {
+            const {groupUid, groupType, groupLabel, groupDetail, stato, operatore} = row.dataset;
+            if (!groupUid || groupType !== "MULTIPLO" || multipli.has(groupUid)) continue;
+
+            const registered = availableMultipli.get(groupUid);
+            if (registered) {
+                multipli.set(groupUid, registered);
+                continue;
+            }
+
+            let members = [];
+            try {
+                const detail = JSON.parse(groupDetail || "[]");
+                if (Array.isArray(detail)) members = detail;
+            } catch { /* La riga rimane visibile con la selezione disabilitata. */ }
+
+            let motivo = "";
+            if (members.length < 2 || members.length > 4) {
+                motivo = "Composizione del multiplo non disponibile. Aggiorna la pagina.";
+            } else if (!username || String(operatore || "").trim().toLowerCase() !== username) {
+                motivo = "Solo l'operatore assegnato può creare il misto da questo multiplo.";
+            }
+            multipli.set(groupUid, {
+                group_uid: groupUid, member_count: members.length,
+                id_documento: row.dataset.iddocumento, id_riga: row.dataset.idriga,
+                ordine: `Multiplo · ${groupLabel || row.dataset.ordine || groupUid}`,
+                cod_art: row.dataset.codice, quantita: "—", fase: "", stato, operatore,
+                motivo_blocco: motivo,
+            });
+        }
+        return [...multipli.values(), ...singles];
     }
 
     async function openFrom(button) {
@@ -177,12 +228,11 @@
         currentMode = button.classList.contains("js-open-gruppo-multiplo") ? "multiplo" : button.classList.contains("js-open-gruppo-misto") ? "misto" : "mascherato";
         const selector = button.dataset.workgroupTable;
         const related = {"#ordini_da_eseguire": "#ordini_in_corso", "#ordini_da_eseguire_sl": "#ordini_in_corso_sl", "#ordini_da_eseguire_m": "#ordini_in_corso_m"};
-        const visible = new Set([selector, related[selector]].filter(Boolean).flatMap(s => Array.from(document.querySelectorAll(`${s} tbody tr[data-iddocumento][data-idriga]`)))
-            .filter(row => row.offsetParent !== null && row.dataset.isWorkGroup !== "1")
-            .map(row => `${row.dataset.iddocumento}|${row.dataset.idriga}`));
+        const homeRows = [selector, related[selector]].filter(Boolean)
+            .flatMap(s => Array.from(document.querySelectorAll(`${s} tbody tr[data-iddocumento][data-idriga]`)));
         const modal = document.getElementById("modalWorkgroupOpen");
         document.getElementById("modalWorkgroupOpenTitle").textContent = {multiplo: "Crea gruppo multiplo", misto: "Crea gruppo misto", mascherato: "Crea gruppo mascherato"}[currentMode];
-        document.getElementById("wg-open-help").textContent = {multiplo: "Seleziona da 2 a 4 ordini dello stesso reparto e tipo.", misto: "Seleziona 2 ordini e da 1 a 3 ordini mascherati.", mascherato: "Scegli un ordine principale e almeno un ordine mascherato."}[currentMode];
+        document.getElementById("wg-open-help").textContent = {multiplo: "Seleziona da 2 a 4 ordini dello stesso reparto e tipo.", misto: "Seleziona due ordini singoli oppure un multiplo aperto, poi aggiungi da 1 a 3 mascherati.", mascherato: "Scegli un ordine principale e almeno un ordine mascherato."}[currentMode];
         document.getElementById("wg-order-search").value = "";
         document.getElementById("modal-workgroup-body").innerHTML = '<tr><td>Caricamento ordini...</td></tr>';
         document.getElementById("modal-workgroup-head").innerHTML = "";
@@ -192,13 +242,14 @@
         feedback("");
         bootstrap.Modal.getOrCreateInstance(modal).show();
         try {
-            const response = await window.avpFetch("/api/ordini/gruppi/disponibili", {credentials: "same-origin"});
+            const response = await window.avpFetch(`/api/ordini/gruppi/disponibili?modo=${currentMode}`, {credentials: "same-origin"});
             const data = await response.json();
             if (!response.ok || data.ok === false) throw new Error(data.error || "Impossibile caricare gli ordini");
-            orders = data.orders.filter(order => visible.has(key(order)));
+            orders = ordersForPicker(data.orders, homeRows, currentMode === "misto");
             const controls = order => {
                 const index = orders.indexOf(order);
                 const input = (role, type="checkbox") => `<input class="form-check-input" type="${type}" ${type === "radio" ? 'name="wg-main"' : ""} data-role="${role}" value="${index}" aria-label="${esc(role === "mask" ? "Mascherato" : role === "main" ? "Principale" : "Tempo condiviso")} ${esc(order.ordine)}">`;
+                if (order.group_uid) return `<td>${input("shared")}</td><td>—</td>`;
                 return currentMode === "multiplo" ? `<td>${input("shared")}</td>` : currentMode === "misto" ? `<td>${input("shared")}</td><td>${input("mask")}</td>` : `<td>${input("main", "radio")}</td><td>${input("mask")}</td>`;
             };
             document.getElementById("modal-workgroup-head").innerHTML = `<tr>${currentMode === "multiplo" ? '<th scope="col">Scegli</th>' : `<th scope="col">${currentMode === "misto" ? "Condiviso" : "Principale"}</th><th scope="col">Mascherato</th>`}<th scope="col">Ordine / articolo</th><th scope="col" class="d-none d-md-table-cell">Residuo</th><th scope="col" class="d-none d-md-table-cell">Fase / stato</th></tr>`;
@@ -219,15 +270,20 @@
         const timed = selected.filter(s => s.input.dataset.role !== "mask").map(s => orderKey(s.order));
         const masked = selected.filter(s => s.input.dataset.role === "mask").map(s => orderKey(s.order));
         if (document.getElementById("btn-workgroup-confirm").disabled) return;
-        const payload = currentMode === "multiplo" ? {orders: timed} : currentMode === "misto" ? {condivisi: timed, mascherati: masked} : {principale: timed[0], mascherati: masked};
+        const multiplo = selected.find(s => s.order.group_uid);
+        const action = multiplo ? "misto/da-multiplo" : `${currentMode}/apri`;
+        const payload = multiplo ? {multiplo_uid: multiplo.order.group_uid, mascherati: masked}
+            : currentMode === "multiplo" ? {orders: timed}
+            : currentMode === "misto" ? {condivisi: timed, mascherati: masked}
+            : {principale: timed[0], mascherati: masked};
         submitting = true;
         updateOpen();
         feedback("");
         try {
-            const response = await window.avpFetch(`/api/ordini/gruppi/${currentMode}/apri`, {method: "POST", credentials: "same-origin", headers: {"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"}, body: JSON.stringify(payload)});
+            const response = await window.avpFetch(`/api/ordini/gruppi/${action}`, {method: "POST", credentials: "same-origin", headers: {"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"}, body: JSON.stringify(payload)});
             const data = await response.json();
-            if (!response.ok || data.ok === false) throw new Error(data.error || "Errore apertura gruppo");
             if (data.fragments && window.applyHomeFragments) window.applyHomeFragments(data.fragments);
+            if (!response.ok || data.ok === false) throw new Error(data.error || "Errore apertura gruppo");
             bootstrap.Modal.getOrCreateInstance(document.getElementById("modalWorkgroupOpen")).hide();
             alert([data.message || "Gruppo avviato correttamente", data.export_error].filter(Boolean).join("\n"));
         } catch (error) { feedback(error.message || "Errore di comunicazione con il server"); }

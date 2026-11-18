@@ -5,6 +5,7 @@ import json
 
 from flask import current_app, jsonify, request, url_for
 from sqlalchemy import update
+from werkzeug.exceptions import HTTPException
 
 from app_odp.services.operator_identity import order_log_actor
 from app_odp.models import (
@@ -79,6 +80,7 @@ from app_odp.services.ordini_gruppi_service import (
     mark_group_member_partial_closed,
     member_payload_key,
     prepare_group_for_full_closure,
+    prepare_misto_selection,
     prepare_group_member_for_single_closure,
     reactivate_group,
     suspend_group,
@@ -272,10 +274,15 @@ def _activate_order_or_lct_group(ordine, policy, stato):
 @operator_perm_required("home")
 def api_ordini_gruppi_disponibili():
     policy = active_policy()
+    include_multipli = (
+        request.args.get("modo") == "misto"
+        and policy.can("ordini_multipli")
+        and policy.can("ordini_mascherati")
+    )
     return jsonify(
         {
             "ok": True,
-            "orders": available_orders_payload(policy, only_pianificata=False),
+            "orders": available_orders_payload(policy, only_pianificata=False, include_multipli=include_multipli),
         }
     )
 
@@ -319,25 +326,53 @@ def api_apri_gruppo_multiplo():
 
 
 @main_bp.post("/api/ordini/gruppi/misto/apri")
+@main_bp.post("/api/ordini/gruppi/misto/da-multiplo")
 @operator_perm_required("ordini_multipli")
 def api_apri_gruppo_misto():
     data = request.get_json(silent=True) or {}
     policy = active_policy()
 
+    if not isinstance(data, dict):
+        return jsonify({"ok": False, "error": "Selezione ordini non valida."}), 400
     if not policy.can("ordini_mascherati"):
         return jsonify({"ok": False, "error": "Permesso ordini mascherati mancante."}), 403
 
     time_exports = []
+    source_group_uid = None
     try:
         masked_payload = data.get("mascherati")
         if masked_payload is None:
             masked_payload = data.get("mascherato") or {}
 
+        shared_keys = data.get("condivisi") or data.get("orders") or []
+        if request.path.endswith("/da-multiplo"):
+            source_group_uid = _norm_text(data.get("multiplo_uid"))
+            if not source_group_uid:
+                raise ValueError("Seleziona il multiplo da trasformare.")
+            multiplo, condivisi, _ = prepare_misto_selection(
+                [], masked_payload, policy, source_group_uid=source_group_uid,
+            )
+            shared_keys = [(_norm_text(ordine.IdDocumento), _norm_text(ordine.IdRiga)) for ordine in condivisi]
+            if multiplo.Status == "Attivo":
+                previous_exports = []
+                suspend_group(
+                    source_group_uid, causale="Passaggio a gruppo misto", time_exports=previous_exports,
+                )
+                db.session.commit()
+                previous_result = _esito_export_tempi_gruppo(previous_exports)
+                if previous_result.get("export_error"):
+                    return jsonify({
+                        "ok": False,
+                        "error": "Il multiplo resta sospeso. " + previous_result["export_error"],
+                        "fragments": _group_response_payload(multiplo, policy)["fragments"],
+                    }), 409
+
         group = create_misto_group(
-            data.get("condivisi") or data.get("orders") or [],
+            shared_keys,
             masked_payload,
             policy,
             time_exports=time_exports,
+            source_group_uid=source_group_uid,
         )
         db.session.commit()
 
@@ -347,6 +382,15 @@ def api_apri_gruppo_misto():
             "Errore validazione apertura gruppo misto: %s", exc
         )
         return jsonify({"ok": False, "error": str(exc)}), 400
+
+    except HTTPException as exc:
+        db.session.rollback()
+        if source_group_uid and exc.code in (403, 404):
+            return jsonify({
+                "ok": False,
+                "error": "Uno o più ordini selezionati sono cambiati o non sono accessibili. Aggiorna la pagina.",
+            }), exc.code
+        raise
 
     except Exception:
         db.session.rollback()

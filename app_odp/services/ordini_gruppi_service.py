@@ -4,6 +4,7 @@ from __future__ import annotations
 from app_odp.services.operator_identity import encode_payload_operators, order_log_actor
 from app_odp.services.order_helpers import (
     _norm_text,
+    _active_value_for_phase,
     _now_rome_dt,
     _parse_iso_dt,
     _first_code_from_cell,
@@ -19,6 +20,7 @@ from app_odp.services.order_helpers import (
 from app_odp.services.ordini_service import _fase_corrente_for_export
 from datetime import datetime
 from sqlalchemy import update
+from werkzeug.exceptions import HTTPException
 from decimal import Decimal, ROUND_HALF_UP
 import json
 from uuid import uuid4
@@ -510,24 +512,50 @@ def create_multiplo_group(
     return group
 
 
-def create_misto_group(shared_keys: list[dict], masked_keys, policy, *, time_exports: list) -> OdpWorkGroup:
-    if not isinstance(shared_keys, list) or len(shared_keys) != 2:
-        raise ValueError(
-            "Selezionare esattamente 2 ordini con tempo condiviso per il gruppo misto."
-        )
+def _multiplo_members_for_misto(group, policy) -> list:
+    if (
+        group.Status not in (GROUP_STATUS_ATTIVO, GROUP_STATUS_SOSPESO)
+        or not is_pure_multiple(group)
+    ):
+        raise ValueError("Il multiplo non è più disponibile per il gruppo misto.")
+    members = _members_for_closure(group)
+    if not 2 <= len(members) <= 4 or any(m.Status != group.Status for m in members):
+        raise ValueError("Il multiplo non ha una composizione valida per il gruppo misto.")
+    ordini = [_get_visible_odp_by_key(policy, m.IdDocumento, m.IdRiga) for m in members]
+    if any(_norm_text(ordine.StatoOrdine) != group.Status for ordine in ordini):
+        raise ValueError("Lo stato degli ordini del multiplo è cambiato. Aggiorna la pagina.")
+    return ordini
+
+
+def prepare_misto_selection(shared_keys, masked_keys, policy, *, source_group_uid=None):
+    source_group = None
+    if source_group_uid is not None:
+        source_group = _get_group_or_error(source_group_uid)
+        members = _members_for_closure(source_group)
+        if not members:
+            raise ValueError("Il multiplo non ha ordini aperti.")
+        _lock_lct_order_runtime((members[0].IdDocumento, members[0].IdRiga))
+        shared_ordini = _multiplo_members_for_misto(source_group, policy)
+        if source_group.OperatoreUsername != _current_username():
+            raise ValueError("Solo l'operatore assegnato può creare il misto da questo multiplo.")
+        if shared_keys and set(shared_keys) != {_order_key(ordine) for ordine in shared_ordini}:
+            raise ValueError("La composizione del multiplo è cambiata. Ripeti la selezione.")
+    else:
+        if not isinstance(shared_keys, list) or len(shared_keys) != 2 or not all(
+            isinstance(item, dict) for item in shared_keys
+        ):
+            raise ValueError("Selezionare esattamente 2 ordini con tempo condiviso per il gruppo misto.")
+        shared_ordini = [
+            _get_visible_odp_by_key(policy, _norm_text(item.get("id_documento")), _norm_text(item.get("id_riga")))
+            for item in shared_keys
+        ]
+        _lock_lct_order_runtime(_order_key(shared_ordini[0]))
+
     if isinstance(masked_keys, dict):
         masked_keys = [masked_keys]
     if not isinstance(masked_keys, list) or not 1 <= len(masked_keys) <= 3:
         raise ValueError("Selezionare da 1 a 3 ordini mascherati per il gruppo misto.")
 
-    shared_ordini = [
-        _get_visible_odp_by_key(
-            policy,
-            _norm_text(item.get("id_documento")),
-            _norm_text(item.get("id_riga")),
-        )
-        for item in shared_keys
-    ]
     masked_ordini = [
         _get_visible_odp_by_key(
             policy,
@@ -541,7 +569,6 @@ def create_misto_group(shared_keys: list[dict], masked_keys, policy, *, time_exp
         raise ValueError("Selezione ordini mascherati non valida.")
 
     ordini = [*shared_ordini, *masked_ordini]
-    _lock_lct_order_runtime(_order_key(shared_ordini[0]))
     seen = set()
     for ordine in ordini:
         key = _order_key(ordine)
@@ -556,15 +583,42 @@ def create_misto_group(shared_keys: list[dict], masked_keys, policy, *, time_exp
 
     expected_reparto = _order_reparto(shared_ordini[0])
     expected_kind = _order_kind(shared_ordini[0])
-    for ordine in ordini:
+    for ordine in (ordini if source_group is None else masked_ordini):
         _ensure_order_can_enter_group(
             ordine,
             expected_reparto=expected_reparto,
             expected_kind=expected_kind,
         )
+    if source_group is not None:
+        for ordine in ordini:
+            if _get_blocking_outbox_for_phase(*_order_key(ordine), _fase_corrente_for_export(ordine)):
+                raise ValueError("Completa l'export AVP in attesa prima di creare il gruppo misto.")
+        _validate_mask_resources(
+            _active_value_for_phase(ordine.CodRisorsaProd, ordine.NumFase, _fase_corrente_for_export(ordine))
+            for ordine in masked_ordini
+        )
+    return source_group, shared_ordini, masked_ordini
+
+
+def create_misto_group(
+    shared_keys: list, masked_keys, policy, *, time_exports: list, source_group_uid=None,
+) -> OdpWorkGroup:
+    source_group, shared_ordini, masked_ordini = prepare_misto_selection(
+        shared_keys, masked_keys, policy, source_group_uid=source_group_uid,
+    )
+    ordini = [*shared_ordini, *masked_ordini]
 
     now_dt = _now_rome_dt()
     now_iso = now_dt.isoformat(timespec="seconds")
+    if source_group is not None:
+        if source_group.Status != GROUP_STATUS_SOSPESO:
+            raise ValueError("Il multiplo è stato riattivato. Ripeti la selezione.")
+        for member in _members_for_closure(source_group):
+            member.Status = GROUP_STATUS_SCIOLTO
+            member.DissolvedAt = now_iso
+        source_group.Status = GROUP_STATUS_SCIOLTO
+        source_group.DissolvedAt = now_iso
+        source_group.LastActivationAt = None
     group_uid = _group_uid("MIX", ordini)
 
     group = OdpWorkGroup(
@@ -576,7 +630,7 @@ def create_misto_group(shared_keys: list[dict], masked_keys, policy, *, time_exp
         LastActivationAt=now_iso,
         OperatoreId=_current_user_id(),
         OperatoreUsername=_current_username(),
-        Reparto=expected_reparto,
+        Reparto=_order_reparto(shared_ordini[0]),
         Fase="",
         Note="MISTO",
         InitialMemberCount=len(shared_ordini),
@@ -851,7 +905,7 @@ def is_pure_multiple(group: OdpWorkGroup) -> bool:
     recomposed = _norm_text(getattr(group, "GroupUid", "")).startswith(("MASK", "MIX"))
     return (
         group.GroupType == GROUP_TYPE_MULTIPLO
-        and group.Note != "MISTO"
+        and (recomposed or group.Note != "MISTO")
         and all(
             m.TimeShareMode == SHARE_SPLIT
             for m in (_members_for_closure(group) if recomposed else group.members)
@@ -1780,7 +1834,7 @@ def first_order_for_group(group: OdpWorkGroup):
     return None
 
 
-def available_orders_payload(policy, *, only_pianificata: bool = True) -> list[dict]:
+def available_orders_payload(policy, *, only_pianificata: bool = True, include_multipli=False) -> list[dict]:
     # Usa la query base e poi verifica singolarmente l'accesso con _get_visible_odp_by_key.
     out = []
     for ordine in _base_odp_query().all():
@@ -1834,6 +1888,34 @@ def available_orders_payload(policy, *, only_pianificata: bool = True) -> list[d
             x.get("cod_art", ""),
         )
     )
+    if include_multipli:
+        username = _current_username()
+        multipli = []
+        for group in OdpWorkGroup.query.filter_by(
+            GroupType=GROUP_TYPE_MULTIPLO,
+        ).filter(OdpWorkGroup.Status.in_((GROUP_STATUS_ATTIVO, GROUP_STATUS_SOSPESO))).all():
+            try:
+                ordini = _multiplo_members_for_misto(group, policy)
+            except (ValueError, HTTPException):
+                continue
+            multipli.append({
+                "id_documento": f"GROUP:{group.GroupUid}",
+                "id_riga": "GROUP",
+                "group_uid": group.GroupUid,
+                "member_count": len(ordini),
+                "ordine": "Multiplo · " + " + ".join(_order_label(ordine) for ordine in ordini),
+                "reparto": _order_reparto(ordini[0]),
+                "kind": _order_kind(ordini[0]),
+                "stato": group.Status,
+                "operatore": group.OperatoreUsername,
+                "motivo_blocco": (
+                    "Solo l'operatore assegnato può creare il misto da questo multiplo."
+                    if group.OperatoreUsername != username else ""
+                ),
+                "quantita": "—",
+                "fase": "",
+            })
+        return sorted(multipli, key=lambda item: item["ordine"]) + out
     return out
 
 
