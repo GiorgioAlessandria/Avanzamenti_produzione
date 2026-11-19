@@ -24,7 +24,8 @@ import os
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 from sqlalchemy import event, inspect
-from sqlalchemy.engine import Engine
+from sqlalchemy.engine import Engine, URL
+from app_odp.production_sandbox import install_production_sandbox
 
 CONFIG_PATH = Path("app_odp/static/config.toml")
 
@@ -765,7 +766,7 @@ def _ensure_builtin_permissions() -> None:
     db.session.commit()
 
 
-def create_app():
+def create_app(*, sandbox_db_paths=None):
     app = Flask(
         __name__,
         instance_relative_config=True,
@@ -773,7 +774,7 @@ def create_app():
         template_folder="templates",
     )
     # setup_request_logging(app)
-    app.debug = True
+    app.debug = sandbox_db_paths is None
 
     # chiave segreta per sessioni e Flask-Login
     app.config["SECRET_KEY"] = "Berserk"
@@ -793,6 +794,15 @@ def create_app():
         "logistica": f"sqlite:///{logistica_db_path}",
     }
     app.config["ERP_EXPORT_DIR"] = configurazione["Percorsi"]["percorso_file_output"]
+    app.config["PRODUCTION_SANDBOX"] = sandbox_db_paths is not None
+    if sandbox_db_paths is not None:
+        app.config["SQLALCHEMY_DATABASE_URI"] = URL.create(
+            "sqlite", database=str(sandbox_db_paths[None]),
+        )
+        app.config["SQLALCHEMY_BINDS"] = {
+            key: URL.create("sqlite", database=str(path))
+            for key, path in sandbox_db_paths.items() if key is not None
+        }
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.config["VENDITE_GEOCODER_URL"] = os.environ.get(
         "VENDITE_GEOCODER_URL",
@@ -906,23 +916,26 @@ def create_app():
         for eng in db.engines.values():
             _apply_sqlite_pragmas(eng)
 
-        db.create_all()
-        _ensure_serbatoi_schema()
-        _ensure_priorita_schema()
-        db.create_all(bind_key="log")
-        _ensure_order_log_schema()
-        db.create_all(bind_key="acq")
-        _ensure_acquisti_schema()
-        db.create_all(bind_key="manutenzioni")
-        db.create_all(bind_key="rifiuti")
-        _ensure_rifiuti_schema()
-        db.create_all(bind_key="logistica")
-        _ensure_vendite_schema()
-        _ensure_logistica_schema()
-        _ensure_manutenzioni_schema()
-        _ensure_builtin_permissions()
+        if sandbox_db_paths is None:
+            db.create_all()
+            _ensure_serbatoi_schema()
+            _ensure_priorita_schema()
+            db.create_all(bind_key="log")
+            _ensure_order_log_schema()
+            db.create_all(bind_key="acq")
+            _ensure_acquisti_schema()
+            db.create_all(bind_key="manutenzioni")
+            db.create_all(bind_key="rifiuti")
+            _ensure_rifiuti_schema()
+            db.create_all(bind_key="logistica")
+            _ensure_vendite_schema()
+            _ensure_logistica_schema()
+            _ensure_manutenzioni_schema()
+            _ensure_builtin_permissions()
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(main_bp)
+    if sandbox_db_paths is None:
+        install_production_sandbox(app, create_app)
 
     return app

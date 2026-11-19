@@ -62,6 +62,7 @@ from app_odp.services.order_helpers import (
     _resolve_registration_datetime,
 )
 from app_odp.services.ordini_gruppi_service import (
+    ROLE_MASKED,
     available_orders_payload,
     group_outcome_message,
     create_mascherato_group,
@@ -177,6 +178,18 @@ def _parse_tempo_avanzamento_override(
         rounding=ROUND_HALF_UP,
     )
     return minutes, format(hours, ".2f")
+
+
+def _tempo_chiusura_mascherato_ore(raw_minuti, quantita: Decimal) -> str:
+    errore = "Il tempo ciclo dell'ordine mascherato deve essere in minuti interi maggiori di zero."
+    try:
+        minuti = _parse_minuti_non_funzionamento(raw_minuti, "Tempo ciclo")
+    except ValueError as exc:
+        raise ValueError(errore) from exc
+    if minuti <= 0:
+        raise ValueError(errore)
+    totale_minuti = (minuti * quantita).to_integral_value(rounding=ROUND_HALF_UP)
+    return _seconds_to_tempo_text(totale_minuti * 60, precision=4)
 
 
 def _check_group_member_minimum_time(id_documento, id_riga, data, policy):
@@ -676,6 +689,7 @@ def _chiudi_membro_gruppo(group_uid, data, policy, *, allow_partial=False):
         group_close_context = {
             "group_uid": group_uid,
             "member_id": member.id,
+            "member_role": member.Role,
             "single_member": True,
             **avp,
         }
@@ -816,6 +830,7 @@ def api_chiudi_gruppo_ordini(group_uid=None):
           "id_riga": "...",
           "quantita_conforme": "1",
           "quantita_non_conforme": "0",
+          "tempo_ciclo_minuti": "10",
           "lotti": [...],
           "note": "nota ordine opzionale",
           "chiusura_parziale": false
@@ -2560,7 +2575,11 @@ def _chiudi_ordine_da_payload(
             db.session.rollback()
             return jsonify({"ok": False, "error": str(exc)}), 400
 
-    if "tempo_gruppo" in group_close_context:
+    masked = group_close_context.get("member_role") == ROLE_MASKED
+    if masked:
+        tempo_finale = _tempo_chiusura_mascherato_ore(data.get("tempo_ciclo_minuti"), q_lavorata)
+        tempo_avanzamento_minuti = tempo_avanzamento_ore = None
+    elif "tempo_gruppo" in group_close_context:
         tempo_finale = group_close_context["tempo_gruppo"]
         tempo_avanzamento_minuti = tempo_avanzamento_ore = None
 
@@ -2588,7 +2607,7 @@ def _chiudi_ordine_da_payload(
         q_ok=q_ok,
         q_nok=Decimal("0") if solo_tempo else q_nok,
         tempo_finale=_seconds_to_tempo_text(_tempo_to_seconds(tempo_finale))
-        if export_serbatoi or group_close_context.get("lct") else tempo_finale,
+        if not masked and (export_serbatoi or group_close_context.get("lct")) else tempo_finale,
         lotti_input=lotti_input,
         lotto_prodotto=lotto_prodotto,
         note=note,
@@ -2892,6 +2911,7 @@ def api_chiudi_ordine():
             skip_min_active_time=True,
             group_close_context={
                 "group_uid": group.GroupUid, "member_id": member.id, "single_member": True, "lct": True,
+                "member_role": member.Role,
                 **avp,
             },
             consenti_sovrapproduzione=True,
@@ -3197,11 +3217,13 @@ def _chiudi_ordine_montaggio_macchina_da_payload(
                 elapsed_seconds = _accumulate_runtime_until(stato, now_dt)
             tempo_finale = _norm_text(stato.Tempo_funzionamento) or "0"
 
-    if "tempo_gruppo" in group_close_context:
+    q_lavorata = q_ok + q_nok
+    if group_close_context.get("member_role") == ROLE_MASKED:
+        tempo_finale = _tempo_chiusura_mascherato_ore(data.get("tempo_ciclo_minuti"), q_lavorata)
+        tempo_avanzamento_minuti = tempo_avanzamento_ore = None
+    elif "tempo_gruppo" in group_close_context:
         tempo_finale = group_close_context["tempo_gruppo"]
         tempo_avanzamento_minuti = tempo_avanzamento_ore = None
-
-    q_lavorata = q_ok + q_nok
 
     distinta_base_export = _build_export_distinta_base(
         ordine=ordine,

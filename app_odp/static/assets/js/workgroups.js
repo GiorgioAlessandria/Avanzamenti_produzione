@@ -8,6 +8,15 @@
     const key = row => `${row.id_documento}|${row.id_riga}`;
     const mode = row => String(row.time_share_mode || "SPLIT").toUpperCase();
     const machine = row => row.is_macchina === true || row.gestione_matricola === true || row.modalita_lotti === "m";
+    function cycleField(row) {
+        if (row.ruolo !== "MASKED") return "";
+        const minutes = Number(row.tempo_ciclo_teorico_minuti);
+        return `<div class="mt-2"><label class="form-label">Tempo ciclo (min/pezzo)
+            <input class="form-control form-control-sm" type="number" inputmode="numeric"
+                   data-field="tempo_ciclo_minuti" min="1" step="1" required
+                   value="${Number.isInteger(minutes) && minutes > 0 ? minutes : ""}">
+        </label></div>`;
+    }
     function singleOutcome(rows, target) {
         const rest = rows.filter(row => key(row) !== key(target));
         const timed = rest.filter(row => mode(row) !== "ZERO");
@@ -99,7 +108,7 @@
             delete input.dataset.wasDisabled;
         });
     }
-    window.AvpWorkgroups = {singleOutcome, mountClose, stopMinutes, validateStop, beginClose, endClose};
+    window.AvpWorkgroups = {singleOutcome, cycleField, mountClose, stopMinutes, validateStop, beginClose, endClose};
 
     let currentMode = "", orders = [], submitting = false;
     function ensureOpenModal() {

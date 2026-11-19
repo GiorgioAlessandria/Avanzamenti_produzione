@@ -3874,6 +3874,7 @@
                 chiusura_parziale: singleClose ? false : (!isMacchina && getGroupRowChecked(key, "chiusura_parziale")),
                 data_registrazione: getGroupRowValue(key, "data_registrazione"),
                 tempo_avanzamento_minuti: getGroupRowValue(key, "tempo_avanzamento_minuti"),
+                tempo_ciclo_minuti: groupOrderEl(key)?.querySelector('[data-field="tempo_ciclo_minuti"]')?.valueAsNumber,
                 lotti: workgroupCloseState.lottiByOrder[key] || []
             };
         }
@@ -3881,6 +3882,7 @@
         function validateGroupQuantities() {
             for (const row of workgroupCloseState.detail) {
                 const key = orderKey(row);
+                if (groupOrderEl(key)?.querySelector('[data-field="tempo_ciclo_minuti"]')?.reportValidity() === false) return false;
                 const isMacchina = row.is_macchina === true
                     || row.gestione_matricola === true
                     || row.modalita_lotti === "m";
@@ -4006,6 +4008,7 @@
                 </div>
 
                 ${closeFields}
+                ${window.AvpWorkgroups.cycleField(row)}
                 ${registrationFields}
                 <div class="d-flex justify-content-end mt-2">
                     <button type="button" class="btn btn-outline-danger btn-sm js-workgroup-close-single" data-order-key="${escHtml(key)}">Chiudi solo questo ordine</button>
@@ -4178,6 +4181,7 @@
             }
 
             showGroupCloseFeedback("");
+            if (groupOrderEl(rowKey)?.querySelector('[data-field="tempo_ciclo_minuti"]')?.reportValidity() === false) return;
             if (!validateGroupSingleTotalQuantity(row)) return;
             if (row.richiede_lotti === true && !collectGroupLotti(row)) return;
             const enhanced = document.getElementById("modalWorkgroupClose").dataset.enhancedWorkgroup === "1";
@@ -4273,29 +4277,7 @@
             }
 
             const groupNote = document.getElementById("modal-workgroup-close-note")?.value?.trim() || "";
-            const orders = workgroupCloseState.detail.map(row => {
-                const key = orderKey(row);
-                const isMacchina = row.is_macchina === true
-                    || row.gestione_matricola === true
-                    || row.modalita_lotti === "m";
-                const qConf = isMacchina ? "" : String(parseIntQty(getGroupRowValue(key, "quantita_conforme")));
-                const qKo = isMacchina ? "" : String(parseIntQty(getGroupRowValue(key, "quantita_non_conforme")));
-
-                return {
-                    id_documento: row.id_documento,
-                    id_riga: row.id_riga,
-                    num_progr_riga: row.num_progr_riga || "",
-                    fase: row.fase || row.fase_attiva || "",
-                    matricola: row.matricola || "",
-                    modalita_lotti: row.modalita_lotti || (isMacchina ? "m" : "sl"),
-                    quantita_conforme: qConf,
-                    quantita_non_conforme: qKo,
-                    chiusura_parziale: !isMacchina && getGroupRowChecked(key, "chiusura_parziale"),
-                    data_registrazione: getGroupRowValue(key, "data_registrazione"),
-                    tempo_avanzamento_minuti: getGroupRowValue(key, "tempo_avanzamento_minuti"),
-                    lotti: workgroupCloseState.lottiByOrder[key] || []
-                };
-            });
+            const orders = workgroupCloseState.detail.map(row => buildGroupClosePayloadForRow(row));
 
             const partialFlags = orders.map(row => row.chiusura_parziale === true);
             if (partialFlags.some(Boolean) && !partialFlags.every(Boolean)) {
@@ -4355,6 +4337,7 @@
 </script>
 <script>
     async function exportAvpTxt({suffix = "montaggio", outboxId} = {}) {
+        if (window.AVP_SANDBOX_ROOT) return {ok: true};
         if (!outboxId) {
             return {
                 ok: false,

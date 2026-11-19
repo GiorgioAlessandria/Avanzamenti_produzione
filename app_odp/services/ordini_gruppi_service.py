@@ -18,6 +18,7 @@ from app_odp.services.order_helpers import (
     _ordine_ref_label,
 )
 from app_odp.services.ordini_service import _fase_corrente_for_export
+from app_odp.services.kpi_service import _kpi_active_value_from_list
 from datetime import datetime
 from sqlalchemy import update
 from werkzeug.exceptions import HTTPException
@@ -257,7 +258,8 @@ def _activate_order_for_group(
                 outbox = _queue_suspension_export(
                     ordine, fase_corrente, tempo_pre_group, "Ingresso nel gruppo ordini", now_dt,
                 )
-                time_exports.append(outbox.outbox_id)
+                if outbox.outbox_id is not None:
+                    time_exports.append(outbox.outbox_id)
 
     stato = _ensure_stato_attivo(
         ordine=ordine,
@@ -971,7 +973,10 @@ def _consuntiva_intervallo_gruppo(
             raise ValueError("Impossibile consuntivare un membro del gruppo senza ordine e runtime.")
         orders.append((member, ordine, runtime, _norm_text(ordine.RisorsaAttiva)))
 
-    _validate_mask_resources(risorsa for member, _, _, risorsa in orders if member.Role == ROLE_MASKED)
+    _validate_mask_resources(
+        risorsa for member, ordine, _, risorsa in orders
+        if member.Role == ROLE_MASKED and (close_all or _order_key(ordine) == closing)
+    )
     shared = [
         item for item in orders
         if item[0].TimeShareMode == SHARE_SPLIT and item[0].Role != ROLE_MASKED
@@ -999,18 +1004,20 @@ def _consuntiva_intervallo_gruppo(
         elapsed = 0
 
     closing_rates = {}
-    for _, ordine, runtime, _ in orders:
+    for member, ordine, runtime, _ in orders:
         key = _order_key(ordine)
         risorsa, divisor = rates[key]
-        tempo = _seconds_to_tempo_text(Decimal(elapsed) / divisor)
+        masked = member.Role == ROLE_MASKED
+        tempo = "0" if masked else _seconds_to_tempo_text(Decimal(elapsed) / divisor)
         runtime.Tempo_funzionamento = "0"
         runtime.data_ultima_attivazione = None
         if close_all or key == closing:
             closing_rates[key] = {"risorsa_export": risorsa, "tempo_gruppo": tempo}
-        elif active:
+        elif active and not masked:
             fase = _fase_corrente_for_export(ordine, stato=runtime)
             outbox = _queue_suspension_export(ordine, fase, tempo, causale, now_dt, risorsa=risorsa)
-            time_exports.append(outbox.outbox_id)
+            if outbox.outbox_id is not None:
+                time_exports.append(outbox.outbox_id)
     return closing_rates
 
 
@@ -1077,7 +1084,7 @@ def assign_elapsed_group_runtime(
             else _assigned_seconds_for_member(group, member, elapsed_seconds)
         )
         rate = export_rates.get((member.IdDocumento, member.IdRiga)) if export_rates else None
-        if rate is not None:
+        if rate is not None and member.Role != ROLE_MASKED:
             assigned = _round_seconds(Decimal(elapsed_seconds) / rate[1])
 
         member.RuntimeSecondsAssigned = (
@@ -1919,6 +1926,19 @@ def available_orders_payload(policy, *, only_pianificata: bool = True, include_m
     return out
 
 
+def _tempo_ciclo_teorico_minuti(ordine, fase: str) -> int | None:
+    raw = _kpi_active_value_from_list(
+        getattr(ordine, "TempoPrevistoLavoraz", ""), getattr(ordine, "NumFase", ""), fase,
+    )
+    try:
+        minuti = _parse_qty_decimal(raw)
+    except ValueError:
+        return None
+    if minuti.is_finite() and minuti > 0:
+        return max(1, int(minuti.to_integral_value(rounding=ROUND_HALF_UP)))
+    return None
+
+
 class WorkGroupHomeRow:
     """
     Riga virtuale per visualizzare un gruppo ordini come una sola riga nella home.
@@ -2075,6 +2095,10 @@ class WorkGroupHomeRow:
                     "richiede_lotti": gestione_lotto or gestione_matricola,
                     "modalita_lotti": "m" if gestione_matricola else "sl",
                     "ruolo": _norm_text(getattr(member, "Role", "")),
+                    "tempo_ciclo_teorico_minuti": (
+                        _tempo_ciclo_teorico_minuti(ordine, fase_attiva)
+                        if getattr(member, "Role", None) == ROLE_MASKED else None
+                    ),
                     "time_share_mode": _norm_text(getattr(member, "TimeShareMode", "")),
                     "group_status": self.WorkGroupStatus,
                 }

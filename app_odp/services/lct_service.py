@@ -17,8 +17,17 @@ def lct_home_rows(rows):
     result = []
     for row in rows:
         if getattr(row, "IsWorkGroup", False):
-            result.extend(row.WorkGroupOrdini)
+            mascherati = {
+                (item["id_documento"], item["id_riga"]): item["tempo_ciclo_teorico_minuti"]
+                for item in row.DettaglioGruppoVisuale if item["ruolo"] == "MASKED"
+            }
+            for ordine in row.WorkGroupOrdini:
+                key = (ordine.IdDocumento, ordine.IdRiga)
+                ordine.LctMascherato = key in mascherati
+                ordine.LctTempoCicloMinuti = mascherati.get(key)
+                result.append(ordine)
         else:
+            row.LctMascherato = False
             result.append(row)
     return result
 

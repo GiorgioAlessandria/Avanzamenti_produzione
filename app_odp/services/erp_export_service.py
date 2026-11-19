@@ -3,7 +3,7 @@ from decimal import Decimal
 import json
 from pathlib import Path
 
-from flask import current_app
+from flask import current_app, has_app_context
 import re
 from sqlalchemy import update
 from app_odp.models import db, ErpOutbox, InputOdp, InputOdpLog
@@ -78,6 +78,8 @@ def _build_export_txt_path(
     *,
     when: datetime | None = None,
 ) -> Path:
+    if has_app_context() and current_app.config.get("PRODUCTION_SANDBOX"):
+        raise RuntimeError("Generazione AVP disattivata nella sandbox.")
     now_txt = (when or _now_rome_dt()).strftime("%Y%m%d_%H%M%S")
     safe_prefix = _safe_txt_prefix(prefix, "AVPB")
     safe_suffix = _safe_txt_suffix(suffix, "export")
@@ -361,6 +363,8 @@ def _build_phase_payload(
 
 
 def _queue_phase_export(ordine, fase_corrente: str, payload: dict):
+    if has_app_context() and current_app.config.get("PRODUCTION_SANDBOX"):
+        return ErpOutbox(status="simulato")
     outbox = ErpOutbox(
         kind=SUSPENSION_KIND if payload.get("kind") == SUSPENSION_KIND else "consuntivo_fase",
         status="pending",
@@ -402,6 +406,8 @@ def _queue_suspension_export(
 
 
 def _publish_suspension_export(outbox_id: int) -> Path:
+    if has_app_context() and current_app.config.get("PRODUCTION_SANDBOX"):
+        raise RuntimeError("Invio AVP disattivato nella sandbox.")
     # Il lock SQLite serializza l'invio automatico e il recupero dalla utility.
     scope = update(ErpOutbox).where(
         ErpOutbox.outbox_id == outbox_id, ErpOutbox.kind == SUSPENSION_KIND,

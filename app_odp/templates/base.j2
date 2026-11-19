@@ -71,6 +71,20 @@
 
 
 <body>
+{% if config.get('PRODUCTION_SANDBOX') %}
+    <div class="sticky-top alert alert-warning rounded-0 mb-0 d-flex align-items-center justify-content-between gap-2"
+         role="status">
+        <span><strong>Modalità tester</strong> · Le prove verranno scartate tornando alla modalità normale.</span>
+        <form method="post" action="{{ url_for('production_sandbox_stop') }}" data-sandbox-stop>
+            <input type="hidden" name="tab_session" value="{{ tab_session }}">
+            <div class="form-check form-switch text-nowrap">
+                <input class="form-check-input" type="checkbox" role="switch" id="sandbox-mode" checked
+                       onchange="this.form.requestSubmit()">
+                <label class="form-check-label" for="sandbox-mode">Modalità sandbox</label>
+            </div>
+        </form>
+    </div>
+{% endif %}
 <script id="avp-phase-labels">
     window.AVP_PHASE_LABELS = {{ phase_labels|default({})|tojson }};
     /* Solo etichette: non modifica payload, data-* o value dei controlli. */
@@ -181,6 +195,18 @@
                  style="width: auto;height: auto;">
                 {% set visible_user = operator_user if operator_user else current_user %}
                 {% set visible_policy = operator_policy if operator_policy else policy %}
+                {% if request.endpoint == 'main.home' and visible_policy and visible_policy.has_direct_admin_role
+                      and tab_session and not config.get('PRODUCTION_SANDBOX') %}
+                    <form method="post" action="{{ url_for('production_sandbox_start') }}" data-sandbox-start>
+                        <input type="hidden" name="tab_session" value="{{ tab_session }}">
+                        <input type="hidden" name="tab" value="{{ active_tab|default('', true) }}">
+                        <div class="form-check form-switch text-nowrap">
+                            <input class="form-check-input" type="checkbox" role="switch" id="sandbox-mode"
+                                   onchange="this.form.requestSubmit()">
+                            <label class="form-check-label" for="sandbox-mode">Modalità sandbox</label>
+                        </div>
+                    </form>
+                {% endif %}
                 {% set visible_role = (
                     visible_user.roles[0]
                     if visible_user and visible_user.roles
@@ -196,6 +222,7 @@
                     and (
                         visible_user.has_role('responsabile_produzione')
                         or visible_user.has_role('responsabile_acquisti')
+                        or visible_user.has_role('responsabile_IT')
                         or visible_user.has_role('admin')
                 ) %}
 
@@ -640,6 +667,7 @@
 </div>
 <script>
     window.AVP_TAB_SESSION = "{{ tab_session|default('') }}";
+    window.AVP_SANDBOX_ROOT = {{ (request.script_root if config.get('PRODUCTION_SANDBOX') else '')|tojson }};
     window.AVP_ACTIVE_USERNAME = {{ (operator_user.username if operator_user else (current_user.username if current_user.is_authenticated else ""))|tojson }};
     window.AVP_ACTIVE_OPERATOR_BLOCK_MESSAGE = "Operatore gia impegnato su un altro ordine attivo. Sospendere o chiudere l'ordine prima di aprirne uno nuovo.";
 
@@ -773,6 +801,17 @@
 
         const token = window.AVP_TAB_SESSION || "";
 
+        if (window.AVP_SANDBOX_ROOT) {
+            const url = new URL(urlValue, window.location.origin);
+            if (url.origin !== window.location.origin) {
+                return Promise.reject(new Error("Richiesta esterna disattivata nella sandbox."));
+            }
+            if (!url.pathname.startsWith(window.AVP_SANDBOX_ROOT + "/")) {
+                url.pathname = window.AVP_SANDBOX_ROOT + url.pathname;
+            }
+            urlValue = url.toString();
+        }
+
         if (token) {
             options.headers["X-Tab-Session"] = token;
             urlValue = window.avpAddTabSessionToUrl(urlValue);
@@ -780,6 +819,43 @@
 
         return fetch(urlValue, options);
     };
+</script>
+<script id="avp-sandbox-toggle">
+    (() => {
+        const storageKey = "avp-sandbox-return";
+        document.querySelector("[data-sandbox-start]")?.addEventListener("submit", event => {
+            try {
+                sessionStorage.setItem(storageKey, window.location.href);
+                event.target.querySelector('[role="switch"]').disabled = true;
+            } catch (error) {
+                event.preventDefault();
+                event.target.querySelector('[role="switch"]').checked = false;
+                alert("Abilita la memoria della scheda nel browser per utilizzare la modalità sandbox.");
+            }
+        });
+        document.querySelector("[data-sandbox-stop]")?.addEventListener("submit", async event => {
+            event.preventDefault();
+            const toggle = event.target.querySelector('[role="switch"]');
+            toggle.disabled = true;
+            try {
+                const savedUrl = sessionStorage.getItem(storageKey);
+                if (!savedUrl) throw new Error("Riferimento alla modalità normale mancante. Accedi nuovamente dalla home di produzione.");
+                const returnUrl = new URL(savedUrl, window.location.origin);
+                if (returnUrl.origin !== window.location.origin || returnUrl.pathname.includes("/sandbox/")) {
+                    throw new Error("Riferimento alla modalità normale non valido.");
+                }
+                const response = await window.avpFetch(event.target.action, {method: "POST"});
+                const result = await response.json();
+                if (!response.ok || !result.ok) throw new Error("Impossibile disattivare la sandbox. Riprova.");
+                sessionStorage.removeItem(storageKey);
+                window.location.replace(returnUrl.toString());
+            } catch (error) {
+                toggle.checked = true;
+                toggle.disabled = false;
+                alert(error.message);
+            }
+        });
+    })();
 </script>
 {% set can_scorta_segnalazione_libera = visible_policy and visible_policy.can('scorte_segnalazione_libera') %}
 {% if visible_policy and visible_policy.can('home') %}
