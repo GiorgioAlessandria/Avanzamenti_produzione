@@ -552,6 +552,24 @@ def quote_future(p):
     return quote
 
 
+STATI_CLIENTE_CONSOLIDATI = ("Lavorato", "In controllo CQ", "Ossidato", "Spedito")
+
+
+def cliente_lavorato(c):
+    # Include i lotti esauriti: il passaggio ai DDT non deve riaprire le assegnazioni.
+    return Lotto.query.filter_by(cliente_id=c.id, tipo="Materiale").filter(
+        Lotto.stato.in_(STATI_CLIENTE_CONSOLIDATI)
+    ).first() is not None
+
+
+def produzione_cliente_lavorato(p):
+    clienti = db.session.query(Impegno.cliente_id).filter_by(produzione_id=p.id).union(
+        db.session.query(Lotto.cliente_id).filter(Lotto.produzione_id == p.id, Lotto.cliente_id.is_not(None))
+    )
+    return Lotto.query.filter(Lotto.cliente_id.in_(clienti), Lotto.tipo == "Materiale",
+                              Lotto.stato.in_(STATI_CLIENTE_CONSOLIDATI)).first() is not None
+
+
 def copertura(c):
     q = sum(l.quantita for l in Lotto.query.filter_by(cliente_id=c.id, tipo="Materiale")
             if l.stato not in ("Scarto", "Consumato"))
@@ -888,6 +906,21 @@ def collega_ddt_spezzone(lotto_id, ddt):
     taglio.ddt = _ddt_alfanumerico(ddt)
 
 
+def segna_barre_esaurite(barre_id, utente):
+    b = blocca(record(Barre, barre_id))
+    residuo_totale = 0
+    for lotto in Lotto.query.filter_by(barre_id=b.id, tipo="Barra", stato="Disponibile").order_by(Lotto.id):
+        lotto = blocca(lotto)
+        residuo = disponibilita_barra_mm(lotto, b.lunghezza_mm)
+        if residuo <= 0:
+            continue
+        lotto.stato = "Esaurito"
+        residuo_totale += residuo
+        movimento("ESAURIMENTO_BARRE_MM", residuo, utente, origine=lotto,
+                   note=f"Ordine {b.riferimento}: esaurimento reale; residuo teorico escluso dalla disponibilità, conservato per tracciabilità.")
+    return residuo_totale
+
+
 def ricevi_barre(barre_id, quantita, ddt, utente):
     b = blocca(record(Barre, barre_id))
     if not corrisponde_barre(b,parametri()):
@@ -1082,3 +1115,5 @@ def riconcilia_cliente(cliente_id, quantita, note, utente):
     c.quantita = q
     c.anomalia = ""
     movimento("RICONCILIA_CLIENTE", q, utente, note=f"Ordine {c.riferimento}, riga {c.id_riga}: {note}")
+
+

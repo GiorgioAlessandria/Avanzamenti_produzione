@@ -76,6 +76,7 @@
    <div class="card"><h2 class="h6 card-header mb-0">Dettaglio del controllo</h2><div class="card-body">
     {% if selezione %}
      {% set cq, cliente, lotto = selezione %}
+     {% if can_piani %}<p><a class="btn btn-outline-secondary btn-sm" href="{{ operator_url_for('main.serbatoi_page', tab='clienti', id=cliente.id) }}">Torna all'ordine cliente</a></p>{% endif %}
      <p><strong>{{ cliente.riferimento }} · riga {{ cliente.id_riga }}</strong><br>{{ lotto.riferimento }}{% if ddt %} · DDT {{ ddt.ddt }}{% endif %} · {{ cq.quantita }} pezzi rientrati</p>
      {% if cq.risultati is none %}
      {% if piano_selezionato %}
@@ -152,3 +153,4 @@
 </script>
 {% endif %}
 {% endblock %}
+

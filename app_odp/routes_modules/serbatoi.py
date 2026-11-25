@@ -62,6 +62,70 @@ SPEDIZIONI_PER_STATO = {(f["stato"], f["ubicazione"]): f for f in FASI_SPEDIZION
 STOCK_INTERNO = {"colore": "blu", "testo": "Stock interno"}
 PRIORITA_SCADENZA = {colore: i for i, colore in enumerate(("verde", "grigio", "giallo", "arancione", "rosso"))}
 
+PASSAGGI_CLIENTE = {
+    ("Lavorato", "Bernardi"): ("gaser", "Invia a Gaser", "Numero DDT di uscita"),
+    ("Lavorato", "Gaser"): ("rientro", "Registra rientro da Gaser", "Numero DDT di rientro"),
+    ("Ossidato", "Bernardi"): ("spedisci", "Spedisci al cliente", "Numero DDT di spedizione"),
+}
+
+
+def _operazioni_cliente(cliente, produzioni_collegate):
+    controlli = {c.lotto_id: c for c in cq.Controllo.query.filter_by(cliente_id=cliente.id, fase="rientro")}
+    lotti = []
+    for lotto in s.Lotto.query.filter_by(cliente_id=cliente.id, tipo="Materiale").filter(
+        s.Lotto.quantita > 0, s.Lotto.stato.not_in(("Scarto", "Consumato"))
+    ).order_by(s.Lotto.id.desc()):
+        passaggio = PASSAGGI_CLIENTE.get((lotto.stato, lotto.ubicazione))
+        lotti.append(dict(lotto=lotto, passaggio=passaggio, controllo=controlli.get(lotto.id),
+                          in_controllo=lotto.stato == cq.STATO_CQ,
+                          origine_completa=s.origine_completa(lotto) if passaggio else True))
+    ids = db.session.query(s.Lotto.id).filter_by(cliente_id=cliente.id)
+    documenti = s.Movimento.query.filter(
+        (s.Movimento.origine_id.in_(ids)) | (s.Movimento.destinazione_id.in_(ids))
+    ).order_by(s.Movimento.id.desc()).all()
+    return dict(lotti=lotti, documenti=documenti, lavorato=s.cliente_lavorato(cliente),
+                produzioni=s.Produzione.query.filter(s.Produzione.id.in_(produzioni_collegate)).order_by(s.Produzione.id).all())
+
+
+def _contesto_cliente(data, action):
+    azioni = {"assegna_odp", "assegna_magazzino", "libera_impegno", "libera_materiale",
+              "avanza", "consuma", "libera_lotto_spezzoni", "riconcilia", "riconcilia_cliente"}
+    if data.get("tab") != "clienti" or action not in azioni:
+        return None
+    cliente = s.record(s.Cliente, data.get("id"))
+    if action in {"assegna_odp", "assegna_magazzino", "riconcilia_cliente"}:
+        valido = s.intero(data.get("cliente_id"), "Ordine cliente") == cliente.id
+    elif action == "libera_impegno":
+        valido = s.record(s.Impegno, data.get("impegno_id")).cliente_id == cliente.id
+    elif action in {"avanza", "libera_materiale"}:
+        valido = s.record(s.Lotto, data.get("lotto_id")).cliente_id == cliente.id
+    else:
+        produzione_id = s.intero(data.get("produzione_id"), "ODP")
+        valido = bool(s.Impegno.query.filter_by(cliente_id=cliente.id, produzione_id=produzione_id).first()
+                      or s.Lotto.query.filter_by(cliente_id=cliente.id, produzione_id=produzione_id).filter(
+                          s.Lotto.quantita > 0, s.Lotto.stato.not_in(("Scarto", "Consumato"))
+                      ).first())
+    if not valido:
+        raise s.SerbatoiError("Il materiale o l'ODP non appartiene all'ordine cliente selezionato. Ricaricare la scheda.")
+    return cliente.id
+
+
+def _verifica_sezioni_modificabili(data, action):
+    cliente = None
+    if action in {"assegna_odp", "assegna_magazzino", "riconcilia_cliente"}:
+        cliente = s.record(s.Cliente, data.get("cliente_id"))
+    elif action == "libera_impegno":
+        cliente = s.record(s.Cliente, s.record(s.Impegno, data.get("impegno_id")).cliente_id)
+    elif action == "libera_materiale":
+        lotto = s.record(s.Lotto, data.get("lotto_id"))
+        cliente = s.record(s.Cliente, lotto.cliente_id) if lotto.cliente_id else None
+    if cliente is not None and s.cliente_lavorato(cliente):
+        raise s.SerbatoiError("Ordine già lavorato: copertura e materiali di origine sono in sola lettura. Sono disponibili le operazioni DDT.")
+    if action in {"consuma", "consuma_da_spezzoni", "libera_lotto_spezzoni", "riconcilia"}:
+        produzione = s.record(s.Produzione, data.get("produzione_id"))
+        if s.produzione_cliente_lavorato(produzione):
+            raise s.SerbatoiError("ODP collegato a un ordine cliente già lavorato: i materiali di origine non sono più modificabili.")
+
 
 def _fasi_produzione(p, ordine):
     fasi = {f["codice"]: 0 for f in FASI_ODP}
@@ -274,8 +338,13 @@ def _riga_barre(b, lotti, prezzo=None):
     residuo_mm = sum(s.disponibilita_barra_mm(l, b.lunghezza_mm) for l in lotti
                      if l.barre_id == b.id and l.tipo == "Barra" and l.stato == "Disponibile")
     remaining = s.barre_equivalenti(residuo_mm, b.lunghezza_mm)
+    esclusi_mm = sum(s.disponibilita_barra_mm(l, b.lunghezza_mm) for l in lotti
+                     if l.barre_id == b.id and l.tipo == "Barra" and l.stato == "Esaurito")
+    esclusi = s.barre_equivalenti(esclusi_mm, b.lunghezza_mm)
+    consumate = received - remaining - esclusi
     return dict(id=b.id, titolo=b.riferimento, codice=b.codice, info=b.fornitore_nome,
-                stato=f"{s.formatta_barre(received - remaining)} consumate · {s.formatta_barre(remaining)} disponibili", quantita=b.quantita,
+                stato=f"{s.formatta_barre(consumate)} consumate · {s.formatta_barre(remaining)} disponibili" + (" · Esaurito" if esclusi and not remaining else ""), quantita=b.quantita,
+                consumate=consumate, residuo_escluso=esclusi,
                 oggetto=b, ricevute=received, residue=remaining, fuori_parametri=False, prezzo=prezzo,
                 scadenza={"colore": "blu", "testo": "Approvvigionamento"})
 
@@ -585,6 +654,7 @@ def serbatoi_page():
     trace, docs, impegni, disponibilita, stati, avvisi = [], [], [], [], {}, []
     provenienza_ddt, odp_per_spezzone, prelievi_spezzone, ddt_ricezioni = [], [], [], {}
     produzioni_collegate = set()
+    clienti_produzione = []
     documenti_spezzone = None
     origine_barra = riferimento_dettaglio = scostamento_prezzo = None
     data_prezzo_proposta = oggi
@@ -597,6 +667,10 @@ def serbatoi_page():
     elif tab == "produzione" and detail:
         impegni = s.Impegno.query.filter_by(produzione_id=detail.id).all()
         produzioni_collegate.add(detail.id)
+        destinazioni = {i.cliente_id for i in impegni}
+        destinazioni.update(l.cliente_id for l in lotti if l.produzione_id == detail.id and l.cliente_id
+                            and l.stato not in ("Scarto", "Consumato"))
+        clienti_produzione = [clienti_by_id[key] for key in sorted(destinazioni) if key in clienti_by_id]
     elif tab == "barre" and detail:
         disponibilita = [l for l in lotti if l.barre_id == detail.id and l.tipo == "Barra" and l.stato == "Disponibile"]
         ricezioni = db.session.query(s.Lotto.riferimento, s.Movimento.ddt, s.Lotto.id).join(
@@ -625,7 +699,7 @@ def serbatoi_page():
                 for p in produzioni:
                     if p.articolo_id not in articoli_compatibili or not s.odp_aperto_per_spezzoni(
                         odp_by_key.get((p.id_documento, p.id_riga))
-                    ):
+                    ) or s.produzione_cliente_lavorato(p):
                         continue
                     previsti = s.disponibilita_prelievo_spezzoni(p)
                     impegno = impegni_spezzoni.get(p.id)
@@ -669,7 +743,10 @@ def serbatoi_page():
             if (o.IdDocumento, o.IdRiga) not in acquisiti and s._norm_text(o.CodArt).upper() in (articolo.codice_lav, articolo.codice_oss):
                 odp_esclusi.append(dict(riferimento=f"{o.RifRegistraz or o.IdDocumento} · riga {o.IdRiga}",
                                         motivo="ODP presente nella cache ma non ancora acquisito in Serbatoi. Aggiorna e verifica gli avvisi su articolo e fasi del ciclo."))
+    gestione_cliente = _operazioni_cliente(detail, produzioni_collegate) if tab == "clienti" and detail else None
     return render_template("serbatoi.j2", tab=tab, tabs=tabs, rows=rows, selected=selected, detail=detail,
+                           gestione_cliente=gestione_cliente,
+                           clienti_produzione=clienti_produzione,
                            odp_assegnabili=odp_assegnabili, odp_esclusi=odp_esclusi,
                            articoli=articoli, clienti=clienti, produzioni=produzioni, lotti=lotti, barre=barre,
                            fornitori=lista_fornitori, trace=trace, docs=docs, impegni=impegni,
@@ -712,6 +789,7 @@ def serbatoi_azione():
     production_actions = {"sync", "avanza", "assegna_odp", "assegna_magazzino", "libera_impegno",
                           "libera_materiale", "consuma", "libera_lotto_spezzoni", "riconcilia", "riconcilia_cliente"}
     all_actions = {"articolo", "catalogo_precedente", "attivo", "fasi", "parametri", "tempistiche",
+                   "esaurisci_barre",
                    "barre", "ricevi", "taglia", "collega_barre_erp", "conferma_barre_manuali",
                    "prezzo_barre", "riferimento_prezzo_barre", "ddt_spezzone", "consuma_da_spezzoni"}
     azioni_rettifica = {"completa_rettifica", "ripristina_fase_odp"}
@@ -725,6 +803,7 @@ def serbatoi_azione():
     ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
     changed, notices = 0, []
     lotto_avanzato = None
+    cliente_operativo = None
     try:
         uid = s.testo(data.get("richiesta"), "Richiesta", 64)
         key = hashlib.sha256(f"{active_user().id}:{uid}".encode()).hexdigest()
@@ -736,6 +815,8 @@ def serbatoi_azione():
         else:
             db.session.add(SerbatoiRichiesta(chiave=key, dati=digest))
             db.session.flush()
+            cliente_operativo = _contesto_cliente(data, action)
+            _verifica_sezioni_modificabili(data, action)
             user = _current_username()
             if action == "sync":
                 changed, notices = s.sincronizza(includi_barre=can_all)
@@ -785,6 +866,10 @@ def serbatoi_azione():
                 s.salva_prezzo_barre(s.record(s.Barre, data.get("barre_id")), data, user)
             elif action == "riferimento_prezzo_barre":
                 s.salva_riferimento_barre(data, user)
+            elif action == "esaurisci_barre":
+                if data.get("esaurito") != "1":
+                    raise s.SerbatoiError("Attivare il comando Esaurito per confermare la disponibilità reale a zero.")
+                s.segna_barre_esaurite(data.get("barre_id"), user)
             elif action == "ricevi":
                 s.ricevi_barre(data.get("barre_id"), data.get("quantita"), data.get("ddt"), user)
             elif action == "collega_barre_erp":
@@ -828,6 +913,10 @@ def serbatoi_azione():
             return redirect(_url(tab="produzione", id=data.get("produzione_id"),
                                  fase="", q=""))
         flash("Operazione registrata." + (" " + " ".join(notices) if notices else ""), "success")
+        if cliente_operativo is not None or (data.get("tab") == "clienti" and old):
+            if lotto_avanzato is not None and lotto_avanzato.stato == cq.STATO_CQ:
+                flash("Rientro registrato: completa il controllo qualità dal lotto nella scheda cliente.", "info")
+            return redirect(_url(tab="clienti", id=cliente_operativo or data.get("id"), fase="", ubicazione="", q=""))
         if lotto_avanzato is not None:
             if lotto_avanzato.stato == cq.STATO_CQ:
                 controllo = cq.Controllo.query.filter_by(lotto_id=lotto_avanzato.id).one()
@@ -848,3 +937,6 @@ def serbatoi_azione():
     return redirect(_url(tab=data.get("tab") if data.get("tab") in (TABS if can_all else TABS_PRODUZIONE) else "clienti", id=data.get("id", ""),
                          fase=data.get("fase", ""), ubicazione=data.get("ubicazione", ""), q=data.get("q", ""),
                          fornitore=data.get("fornitore_filtro", "")))
+
+
+
