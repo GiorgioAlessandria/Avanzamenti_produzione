@@ -26,7 +26,7 @@ def _now_rome():
 
 
 def _last_7_days_range():
-    end_dt = _now_rome()
+    end_dt = _now_rome().replace(hour=0, minute=0, second=0, microsecond=0)
     start_dt = end_dt - timedelta(days=7)
     return start_dt, end_dt
 
@@ -61,8 +61,8 @@ def report_settimanale_page():
         "report_settimanale.j2",
         can_select_user=can_tot,
         default_user_id=user.id,
-        period_start=start_dt.strftime("%d/%m/%Y %H:%M"),
-        period_end=end_dt.strftime("%d/%m/%Y %H:%M"),
+        period_start=start_dt.strftime("%d/%m/%Y"),
+        period_end=(end_dt - timedelta(days=1)).strftime("%d/%m/%Y"),
         tab_session=tab_session,
     )
 
@@ -99,3 +99,4 @@ def api_report_settimanale_bridge():
     status_code = 200 if result.get("ok") else 400
 
     return jsonify(result), status_code
+

@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
+from math import isfinite
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import and_, or_, select
 
@@ -13,6 +15,7 @@ from app_odp.models import (
     InputOdpLog,
     OdpRuntimeLog,
     InputOdpRuntime,
+    OdpWorkGroupMember,
     ProductionCapacityCalendar,
     User,
 )
@@ -37,7 +40,8 @@ def _to_float(value: Any) -> float:
         return 0.0
 
     try:
-        return float(raw)
+        number = float(raw)
+        return number if isfinite(number) else 0.0
     except (TypeError, ValueError):
         return 0.0
 
@@ -96,6 +100,12 @@ def _format_dt(value: Any) -> str:
     return _norm(value)
 
 
+def _utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=ZoneInfo("Europe/Rome"))
+    return value.astimezone(timezone.utc)
+
+
 def _num_progr_riga(row) -> str:
     return _norm(getattr(row, "NumProgrRiga", "")) or _norm(getattr(row, "IdRiga", ""))
 
@@ -131,13 +141,13 @@ def _phase_value(row) -> str:
     - "[1]"   -> "1"
     """
     raw = (
-        _norm(getattr(row, "NumFase", ""))
+        _norm(getattr(row, "FaseConsuntivata", ""))
         or _norm(getattr(row, "FaseAttiva", ""))
-        or _norm(getattr(row, "FaseConsuntivata", ""))
         or _norm(getattr(row, "FasePost", ""))
         or _norm(getattr(row, "FasePre", ""))
         or _norm(getattr(row, "Fase", ""))
         or _norm(getattr(row, "NumeroFase", ""))
+        or _norm(getattr(row, "NumFase", ""))
     )
 
     if not raw:
@@ -278,11 +288,11 @@ def _is_runtime_log_deleted(row: OdpRuntimeLog) -> bool:
 
 
 def _is_activation_input_log(row: InputOdpLog) -> bool:
-    return _norm_l(row.StatoOrdinePost) in ACTIVE_STATES
+    return not _norm(getattr(row, "FaseConsuntivata", "")) and _norm_l(row.StatoOrdinePost) in ACTIVE_STATES
 
 
 def _is_stop_input_log(row: InputOdpLog) -> bool:
-    return _norm_l(row.StatoOrdinePost) in STOP_STATES
+    return bool(_norm(getattr(row, "FaseConsuntivata", ""))) or _norm_l(row.StatoOrdinePost) in STOP_STATES
 
 
 def _is_closed_log(row) -> bool:
@@ -307,7 +317,7 @@ def _runtime_by_operation_group(
     actual_by_event = {
         _runtime_event_key(row): row
         for row in runtime_logs
-        if _runtime_delta_hours(row) > 0
+        if _runtime_delta_hours(row) > 0 or _norm_l(getattr(row, "Azione", "")) == "runtime_gruppo"
     }
     group_runtime_by_order: dict[tuple[str, str], list[OdpRuntimeLog]] = (
         defaultdict(list)
@@ -404,7 +414,12 @@ def _input_interval_hours(
         else end_dt
     )
 
-    if active_at is None or stop_at is None or stop_at <= active_at:
+    if active_at is None or stop_at is None:
+        return 0.0
+
+    active_at, stop_at = _utc(active_at), _utc(stop_at)
+    start_dt, end_dt = _utc(start_dt), _utc(end_dt)
+    if stop_at <= active_at:
         return 0.0
 
     overlap_start = max(active_at, start_dt)
@@ -418,7 +433,9 @@ def _input_interval_hours(
     else:
         actual_seconds = actual_hours * 3600.0
 
-    return min(max(actual_seconds, 0.0), overlap_seconds) / 3600.0
+    interval_seconds = (stop_at - active_at).total_seconds()
+    # shortcut: i fermi non hanno orari propri; sui confini del periodo il netto è ripartito proporzionalmente.
+    return min(max(actual_seconds, 0.0), interval_seconds) * overlap_seconds / interval_seconds / 3600.0
 
 
 def _final_close_hours(input_log: InputOdpLog) -> float:
@@ -452,6 +469,7 @@ def _worked_hours_with_fallback(
     runtime_map: dict[str, OdpRuntimeLog],
     start_dt: datetime,
     end_dt: datetime,
+    group_hours: dict | None = None,
 ) -> float:
     """
     Usa l'intervallo runtime; per i log storici ricava l'intervallo
@@ -461,6 +479,8 @@ def _worked_hours_with_fallback(
     actual_hours = (
         _runtime_delta_hours(runtime_row) if runtime_row is not None else None
     )
+    if group_hours is not None and runtime_row is not None:
+        actual_hours = group_hours.get(id(runtime_row), actual_hours)
 
     return _input_interval_hours(
         active_log,
@@ -857,12 +877,99 @@ def _load_input_logs_for_orders(order_keys: set[tuple[str, str]]) -> list[InputO
     return rows
 
 
+def _is_masked_work(row, runtime_row, members, assigned_runtime=None) -> bool:
+    for runtime in (runtime_row, assigned_runtime):
+        try:
+            payload = json.loads(getattr(runtime, "PayloadJson", "") or "{}")
+        except (TypeError, ValueError):
+            payload = {}
+        if isinstance(payload, dict):
+            if payload.get("member_role"):
+                return _norm_l(payload["member_role"]) == "masked"
+            if payload.get("time_share_mode"):
+                return _norm_l(payload["time_share_mode"]) == "zero"
+    when = _norm(getattr(row, "ClosedAt", ""))
+    for member in members:
+        if _order_key(member) != _order_key(row) or _phase_value(member) != _phase_value(row):
+            continue
+        end = _norm(member.ClosedAt) or _norm(member.DissolvedAt)
+        if _norm(member.CreatedAt) <= when and (not end or when <= end):
+            return _norm_l(member.Role) == "masked"
+    return False
+
+
+def _group_report_hours(runtime_rows):
+    groups = defaultdict(list)
+    for row in {id(row): row for row in runtime_rows}.values():
+        try:
+            payload = json.loads(getattr(row, "PayloadJson", "") or "{}")
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(payload, dict) or _norm_l(payload.get("time_share_mode")) != "split":
+            continue
+        net = _to_float(payload.get("elapsed_lavorato_gruppo_seconds")) / 3600
+        if payload.get("group_uid") and net > 0:
+            groups[(payload["group_uid"], row.EventAt)].append((row, net))
+    hours = {}
+    for rows in groups.values():
+        assigned = sum(_runtime_delta_hours(row) for row, _ in rows)
+        if assigned > 0:
+            for row, net in rows:
+                hours[id(row)] = _runtime_delta_hours(row) * net / assigned
+    return hours
+
+
+def _produced_quantities(input_logs, runtime_events, start_dt, end_dt):
+    quantities = defaultdict(lambda: defaultdict(float))
+    finished = defaultdict(lambda: defaultdict(float))
+    operators = {}
+    for row in input_logs:
+        key = _order_key(row)
+        if _is_activation_input_log(row):
+            operators[key] = _norm(display_username(getattr(row, "ActorPublicId", None), row.ClosedBy))
+        if not _norm(getattr(row, "FaseConsuntivata", "")):
+            continue
+        when = _parse_iso(row.ClosedAt)
+        if when is None or not (_utc(start_dt) <= _utc(when) < _utc(end_dt)):
+            continue
+        username = operators.get(key) or _norm(display_username(getattr(row, "ActorPublicId", None), row.ClosedBy))
+        phase_key = _phase_key(row)
+        quantity = max(0.0, _qta_prodotta(row))
+        # Una chiusura parziale macchina riguarda i componenti, non una macchina finita.
+        if _is_macchina(row) and _norm_l(getattr(row, "ChiusuraParziale", "")) == "true":
+            quantity = 0.0
+        if not username or quantity <= 0:
+            continue
+        quantities[username][phase_key] += quantity
+        runtime = runtime_events.get(_norm(row.OperationGroupId))
+        try:
+            payload = json.loads(getattr(runtime, "PayloadJson", "") or "{}")
+        except (TypeError, ValueError):
+            payload = {}
+        if isinstance(payload, dict) and isinstance(payload.get("is_last_phase"), bool):
+            last = payload["is_last_phase"]
+        else:
+            raw = _norm(getattr(row, "NumFase", ""))
+            try:
+                phases = json.loads(raw)
+            except (TypeError, ValueError):
+                phases = None
+            last_phase = phases[-1] if isinstance(phases, list) and phases else raw
+            last = _phase_number_from_value(last_phase) == _phase_number_from_value(phase_key[2])
+        if last:
+            finished[username][phase_key] += quantity
+    return quantities, finished
+
+
 def _calculate_worked_hours_by_user_phase(
     *,
     input_logs: list[InputOdpLog],
     runtime_map: dict[str, OdpRuntimeLog],
     start_dt: datetime,
     end_dt: datetime,
+    masked_hours: dict | None = None,
+    masked_members=(),
+    runtime_events: dict | None = None,
 ) -> dict[str, dict[tuple[str, str, str], float]]:
     """
     Calcola le ore lavorate per utente e per fase.
@@ -871,7 +978,8 @@ def _calculate_worked_hours_by_user_phase(
     - l'utente viene preso dal log di attivazione/presa in carico;
     - il tempo viene letto dal runtime log collegato via OperationGroupId;
     - il delta è TempoFunzionamentoPost - TempoFunzionamentoPre;
-    - la fase entra nella chiave, quindi fase 1 e fase 2 restano separate.
+    - la fase entra nella chiave, quindi fase 1 e fase 2 restano separate;
+    - le chiusure mascherate espongono il tempo teorico separato dai totali.
     """
     result: dict[str, dict[tuple[str, str, str], float]] = defaultdict(
         lambda: defaultdict(float)
@@ -880,9 +988,16 @@ def _calculate_worked_hours_by_user_phase(
     active_by_operation: dict[
         str, tuple[str, tuple[str, str, str], InputOdpLog]
     ] = {}
+    latest_activation = {}
+    activation_for_stop = {}
 
     for row in input_logs:
         operation_group_id = _norm(row.OperationGroupId)
+
+        if _is_activation_input_log(row):
+            latest_activation[_order_key(row)] = row
+        elif _is_stop_input_log(row):
+            activation_for_stop[id(row)] = latest_activation.get(_order_key(row))
 
         if operation_group_id and _is_activation_input_log(row):
             active_by_operation[operation_group_id] = (
@@ -892,6 +1007,24 @@ def _calculate_worked_hours_by_user_phase(
             )
 
     consumed_operations: set[str] = set()
+    consumed_masked_rows: set[int] = set()
+    members_by_order = defaultdict(list)
+    for member in masked_members:
+        members_by_order[_order_key(member)].append(member)
+    group_hours = _group_report_hours([*runtime_map.values(), *(runtime_events or {}).values()])
+
+    def is_masked(row):
+        operation = _norm(row.OperationGroupId)
+        return _is_masked_work(
+            row, (runtime_events or {}).get(operation),
+            members_by_order.get(_order_key(row), ()), runtime_map.get(operation),
+        )
+
+    def add_hours(username, phase_key, hours, masked=False):
+        result[username][phase_key] += hours
+        if masked and masked_hours is not None:
+            user_hours = masked_hours.setdefault(username, {})
+            user_hours[phase_key] = user_hours.get(phase_key, 0.0) + hours
 
     for row in input_logs:
         if not _is_stop_input_log(row):
@@ -899,6 +1032,29 @@ def _calculate_worked_hours_by_user_phase(
 
         operation_group_id = _norm(row.OperationGroupId)
         active_data = active_by_operation.get(operation_group_id)
+
+        if is_masked(row):
+            active_log = active_data[2] if active_data else activation_for_stop.get(id(row))
+            username = _norm(display_username(
+                getattr(active_log or row, "ActorPublicId", None), (active_log or row).ClosedBy,
+            ))
+            closed_at = _parse_iso(row.ClosedAt)
+            hours = 0.0
+            if closed_at is not None and _utc(start_dt) <= _utc(closed_at) < _utc(end_dt):
+                hours = _final_close_hours(row)
+                if hours <= 0 and active_log is not None:
+                    hours = _worked_hours_with_fallback(
+                        active_log=active_log, input_log=row, runtime_map=runtime_map,
+                        start_dt=start_dt, end_dt=end_dt,
+                        group_hours=group_hours,
+                    )
+            if username and hours > 0:
+                phase_key = _phase_key(row)
+                if _is_unknown_phase(phase_key) and active_log is not None:
+                    phase_key = _phase_key(active_log)
+                add_hours(username, phase_key, hours, masked=True)
+            consumed_masked_rows.add(id(row))
+            continue
 
         if not active_data:
             continue
@@ -910,6 +1066,7 @@ def _calculate_worked_hours_by_user_phase(
             runtime_map=runtime_map,
             start_dt=start_dt,
             end_dt=end_dt,
+            group_hours=group_hours,
         )
 
         if worked_hours <= 0:
@@ -942,6 +1099,9 @@ def _calculate_worked_hours_by_user_phase(
             operation_group_id = _norm(row.OperationGroupId)
 
             if _is_activation_input_log(row):
+                when = _parse_iso(row.ClosedAt)
+                if when is not None and _utc(when) >= _utc(end_dt):
+                    break
                 active_username = _norm(display_username(getattr(row, "ActorPublicId", None), row.ClosedBy))
                 active_phase_key = _phase_key(row)
                 active_log = row
@@ -950,7 +1110,7 @@ def _calculate_worked_hours_by_user_phase(
             if not _is_stop_input_log(row):
                 continue
 
-            if operation_group_id in consumed_operations:
+            if operation_group_id in consumed_operations or id(row) in consumed_masked_rows:
                 active_username = None
                 active_phase_key = None
                 active_log = None
@@ -968,6 +1128,7 @@ def _calculate_worked_hours_by_user_phase(
                 runtime_map=runtime_map,
                 start_dt=start_dt,
                 end_dt=end_dt,
+                group_hours=group_hours,
             )
 
             if worked_hours > 0:
@@ -992,7 +1153,19 @@ def _calculate_worked_hours_by_user_phase(
             )
 
             if worked_hours > 0:
-                result[active_username][active_phase_key] += worked_hours
+                member = next((member for member in members_by_order.get(_order_key(active_log), ())
+                               if _phase_value(member) == _phase_value(active_log)
+                               and member.CreatedAt <= active_log.ClosedAt
+                               and (not (member.ClosedAt or member.DissolvedAt)
+                                    or active_log.ClosedAt <= (member.ClosedAt or member.DissolvedAt))), None)
+                if member is not None and _norm_l(getattr(member, "TimeShareMode", "")) == "split":
+                    shared = sum(1 for item in masked_members if item.GroupUid == member.GroupUid
+                                 and _norm_l(item.TimeShareMode) == "split"
+                                 and item.CreatedAt <= active_log.ClosedAt
+                                 and (not (item.ClosedAt or item.DissolvedAt)
+                                      or active_log.ClosedAt <= (item.ClosedAt or item.DissolvedAt)))
+                    worked_hours /= max(1, shared)
+                add_hours(active_username, active_phase_key, worked_hours, masked=is_masked(active_log))
 
     return {username: dict(values) for username, values in result.items()}
 
@@ -1032,7 +1205,9 @@ def build_report_settimanale_for_user(
     selected_username = _username(selected_user)
 
     start_iso = start_dt.isoformat(timespec="seconds")
-    end_iso = end_dt.isoformat(timespec="seconds")
+    # Gli arresti di oggi servono a ricostruire gli intervalli iniziati ieri.
+    history_end = max(_utc(end_dt), datetime.now(timezone.utc)).astimezone(ZoneInfo("Europe/Rome"))
+    end_iso = history_end.isoformat(timespec="seconds")
 
     deleted_keys = _load_deleted_order_keys()
 
@@ -1070,19 +1245,36 @@ def build_report_settimanale_for_user(
 
     runtime_map = _runtime_by_operation_group(runtime_logs_in_period)
 
+    masked_members = []
+    for chunk in _chunks(sorted(candidate_order_keys)):
+        masked_members.extend(db.session.execute(select(OdpWorkGroupMember).where(or_(*[
+            and_(OdpWorkGroupMember.IdDocumento == document, OdpWorkGroupMember.IdRiga == line)
+            for document, line in chunk
+        ]))).scalars().all())
+    masked_hours = {}
+
     worked_by_user_phase = _calculate_worked_hours_by_user_phase(
         input_logs=input_logs_for_candidate_orders,
         runtime_map=runtime_map,
         start_dt=start_dt,
         end_dt=end_dt,
+        masked_hours=masked_hours,
+        masked_members=masked_members,
+        runtime_events={_norm(row.OperationGroupId): row for row in runtime_logs_in_period},
     )
 
     selected_worked_phases = dict(worked_by_user_phase.get(selected_username, {}))
-
-    selected_phase_keys = set(selected_worked_phases)
+    produced, finished = _produced_quantities(
+        input_logs_for_candidate_orders,
+        {_norm(row.OperationGroupId): row for row in runtime_logs_in_period}, start_dt, end_dt,
+    )
+    selected_produced = produced.get(selected_username, {})
+    selected_finished = finished.get(selected_username, {})
+    selected_phase_keys = set(selected_worked_phases) | set(selected_produced)
 
     snapshot_by_order, snapshot_by_phase = _build_snapshots(
-        input_logs_for_candidate_orders
+        [row for row in input_logs_for_candidate_orders
+         if (when := _parse_iso(row.ClosedAt)) is not None and _utc(when) < _utc(end_dt)]
     )
 
     ordini_lavorati_by_key: dict[tuple[str, str, str], dict[str, Any]] = {}
@@ -1104,11 +1296,12 @@ def build_report_settimanale_for_user(
             "cod_art": _norm(snapshot.CodArt),
             "descrizione": _norm(snapshot.DesArt),
             "tipo": tipo,
-            "qta_finale": _round2(_qta_finale(snapshot)),
+            "qta_finale": _round2(selected_produced.get(phase_key, 0.0)),
             "stato": _latest_state(snapshot),
             "ultimo_evento": _format_dt(getattr(snapshot, "ClosedAt", "")),
             "fase": _phase_label_from_key(phase_key),
             "ore_impiegate": 0.0,
+            "ore_mascherate": masked_hours.get(selected_username, {}).get(phase_key, 0.0),
         }
 
     for phase_key in sorted(selected_phase_keys, key=_phase_sort_key):
@@ -1138,15 +1331,15 @@ def build_report_settimanale_for_user(
     ):
         worked = row_data["ore_impiegate"]
 
-        if worked <= 0:
+        if worked <= 0 and row_data["qta_finale"] <= 0:
             continue
 
         if row_data["tipo"] == "Macchina":
-            total_macchine += row_data["qta_finale"]
+            total_macchine += selected_finished.get(phase_key, 0.0)
         else:
-            total_semilavorati += row_data["qta_finale"]
+            total_semilavorati += selected_finished.get(phase_key, 0.0)
 
-        total_worked += worked
+        total_worked += max(0.0, worked - row_data["ore_mascherate"])
         worked_order_keys.add(
             (row_data["id_documento"], row_data["id_riga"])
         )
@@ -1155,6 +1348,7 @@ def build_report_settimanale_for_user(
             {
                 "fasi_lavorate": row_data.get("fase") or "-",
                 "ore_impiegate": _round2(worked),
+                "ore_mascherate": _round2(row_data["ore_mascherate"]),
             }
         )
 
@@ -1181,9 +1375,12 @@ def build_report_settimanale_for_user(
         "selected_user_id": selected_user_id,
         "users": users,
         "periodo": {
-            "start": start_dt.strftime("%d/%m/%Y %H:%M"),
-            "end": end_dt.strftime("%d/%m/%Y %H:%M"),
+            "start": start_dt.strftime("%d/%m/%Y"),
+            "end": (end_dt - timedelta(microseconds=1)).strftime("%d/%m/%Y"),
         },
         "kpi": kpi,
         "ordini_lavorati": ordini_lavorati,
     }
+
+
+

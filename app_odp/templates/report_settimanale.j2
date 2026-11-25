@@ -2,6 +2,48 @@
 
 {% block title %}Report settimanale{% endblock %}
 
+{% block styles %}
+    {{ super() }}
+    <style>
+        body:has(> #report-settimanale-page) {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            height: 100dvh;
+            overflow: hidden;
+        }
+
+        body:has(> #report-settimanale-page) > .app-header,
+        body:has(> #report-settimanale-page) > .alert,
+        #report-settimanale-page > :not(.report-orders-card),
+        .report-orders-card > .card-header {
+            flex: 0 0 auto;
+        }
+
+        #report-settimanale-page,
+        #report-settimanale-page .report-orders-card {
+            display: flex;
+            flex-direction: column;
+            flex: 1 1 0;
+            min-height: 0;
+            overflow: hidden;
+        }
+
+        #report-settimanale-page .report-orders-scroll {
+            flex: 1 1 0;
+            min-height: 0;
+            overflow: auto;
+        }
+
+        .report-orders-scroll thead th {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+            background-color: var(--bs-tertiary-bg, #f8f9fa);
+        }
+    </style>
+{% endblock %}
+
 {% block content %}
     <main class="container-fluid py-3"
           id="report-settimanale-page"
@@ -13,7 +55,7 @@
             <div>
                 <h1 class="h4 mb-1">Report settimanale</h1>
                 <div class="text-muted small">
-                    Ultimi 7 giorni mobili: {{ period_start }} - {{ period_end }}
+                    Ultimi 7 giorni completi (oggi escluso): <span id="report-period">{{ period_start }} - {{ period_end }}</span>
                 </div>
             </div>
         </div>
@@ -115,40 +157,45 @@
                 </div>
             </div>
         </section>
+        <p class="small text-muted">
+            Le ore mascherate sono visibili nel dettaglio ma escluse dalle ore lavorate totali
+            e dal coefficiente di impiego.
+            I contatori dei pezzi includono conformi e scarti consuntivati nell'ultima fase;
+            la quantità in tabella riguarda la singola fase nel periodo.
+        </p>
 
-        <div class="row g-3">
-            <div class="col-12">
-                <div class="card shadow-sm h-100">
-                    <div class="card-header fw-semibold">
-                        Ordini lavorati dall'utente
-                    </div>
+        <div class="card shadow-sm report-orders-card">
+            <div class="card-header fw-semibold">
+                Ordini lavorati dall'utente
+            </div>
 
-                    <div class="table-responsive">
-                        <table class="table table-sm table-hover align-middle mb-0">
-                            <thead class="table-light">
-                            <tr>
-                                <th>Ordine</th>
-                                <th>Num. riga</th>
-                                <th>Articolo</th>
-                                <th>Tipo</th>
-                                <th>Fasi</th>
-                                <th>Stato</th>
-                                <th>Ultimo evento</th>
-                                <th class="text-end">Q.tà</th>
-                                <th class="text-end">Ore lavorate</th>
-                            </tr>
-                            </thead>
-                            <tbody id="report-worked-orders-body">
-                            <tr>
-                                <td colspan="9"
-                                    class="text-center text-muted py-3">
-                                    Caricamento...
-                                </td>
-                            </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+            <div class="table-responsive report-orders-scroll"
+                 tabindex="0"
+                 role="region"
+                 aria-label="Tabella degli ordini lavorati, scorribile">
+                <table class="table table-sm table-hover align-middle mb-0">
+                    <thead class="table-light">
+                    <tr>
+                        <th>Ordine</th>
+                        <th>Num. riga</th>
+                        <th>Articolo</th>
+                        <th>Tipo</th>
+                        <th>Fasi</th>
+                        <th>Stato</th>
+                        <th>Ultimo evento</th>
+                        <th class="text-end">Q.tà prodotta</th>
+                        <th class="text-end">Ore lavorate</th>
+                    </tr>
+                    </thead>
+                    <tbody id="report-worked-orders-body">
+                    <tr>
+                        <td colspan="9"
+                            class="text-center text-muted py-3">
+                            Caricamento...
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
             </div>
         </div>
     </main>
@@ -261,7 +308,7 @@
                     workedOrdersBody.innerHTML = `
                         <tr>
                             <td colspan="9" class="text-center text-muted py-3">
-                                Nessun ordine lavorato dall'utente negli ultimi 7 giorni.
+                                Nessun ordine lavorato dall'utente nei 7 giorni completi precedenti a oggi.
                             </td>
                         </tr>
                     `;
@@ -279,7 +326,13 @@
                     appendTextCell(tr, row.stato);
                     appendTextCell(tr, row.ultimo_evento);
                     appendTextCell(tr, formatNumber(row.qta_finale, 2), "text-end");
-                    appendTextCell(tr, formatNumber(row.ore_impiegate, 2), "text-end");
+                    const hoursCell = appendTextCell(tr, formatNumber(row.ore_impiegate, 2), "text-end");
+                    if (Number(row.ore_mascherate || 0) > 0) {
+                        const note = document.createElement("div");
+                        note.className = "small text-muted";
+                        note.textContent = `${formatNumber(row.ore_mascherate, 2)} mascherate · escluse dal totale`;
+                        hoursCell.appendChild(note);
+                    }
 
                     workedOrdersBody.appendChild(tr);
                 }
@@ -346,6 +399,9 @@
                 }
 
                 populateUserSelect(data.users || [], data.selected_user_id);
+                if (data.periodo) {
+                    document.getElementById("report-period").textContent = `${data.periodo.start} - ${data.periodo.end}`;
+                }
                 renderKpi(data.kpi || {});
                 renderWorkedOrders(data.ordini_lavorati || []);
             }
@@ -374,3 +430,7 @@
         })();
     </script>
 {% endblock %}
+
+
+
+
