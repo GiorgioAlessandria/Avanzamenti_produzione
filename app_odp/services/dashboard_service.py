@@ -4,6 +4,7 @@ from datetime import date, datetime, timedelta
 import re
 import json
 from statistics import median
+from math import ceil, isfinite
 from flask import request
 from openpyxl.styles import Font, Alignment
 from openpyxl.utils import get_column_letter
@@ -31,6 +32,7 @@ from app_odp.services.order_helpers import (
     _first_code_from_cell,
     _ordine_ref_label,
     _qty_da_lavorare_text,
+    _phase_sequence_for_ordine,
 )
 
 from app_odp.services.kpi_service import (
@@ -1308,6 +1310,7 @@ def _dashboard_build_cruscotto_payload(policy: RbacPolicy) -> dict:
     payload["cards"]["criticita_totali"] = len(criticita)
     payload["filter_options"] = _dashboard_finalize_filter_options(filter_options)
 
+    payload["smaltimento"] = _dashboard_smaltimento_payload(ordini, policy, filters)
     payload["collaudo"] = collaudo_rows[:100]
     payload["capacity_calendar"] = _capacity_calendar_payload()
     payload["details"] = sorted(
@@ -1320,6 +1323,137 @@ def _dashboard_build_cruscotto_payload(policy: RbacPolicy) -> dict:
     )[:500]
 
     return payload
+
+
+def _dashboard_giorni_produttivi(ore: float, capacity: dict[int, float], today: date, production_days):
+    if ore <= 0:
+        return 0.0
+    weekly = sum(capacity.values())
+    if weekly <= 0:
+        return None
+    weeks = max(0, ceil(ore / weekly) - 1)
+    remaining = max(0.0, ore - weeks * weekly)
+    days = float(weeks * len(production_days))
+    for offset in range(7):
+        weekday = (today.weekday() + offset) % 7
+        if weekday not in production_days:
+            continue
+        hours = capacity.get(weekday, 0.0)
+        days += min(1.0, remaining / hours) if hours > 0 else 1.0
+        remaining -= hours
+        if remaining <= 0:
+            break
+    return round(days, 2)
+
+
+def _dashboard_smaltimento_payload(ordini, policy, filters):
+    open_orders = {
+        (_norm_text(ordine.IdDocumento), _norm_text(ordine.IdRiga)): ordine
+        for ordine in ordini
+        if not _dashboard_is_chiusa(ordine)
+        and any(state in _dashboard_stato_norm(ordine).lower() for state in ("attiv", "sospes", "pianificat"))
+    }
+    partial_good = {}
+    if open_orders:
+        logs = InputOdpLog.query.with_entities(
+            InputOdpLog.IdDocumento, InputOdpLog.IdRiga, InputOdpLog.RifRegistraz,
+            InputOdpLog.FaseConsuntivata, InputOdpLog.QuantitaConforme,
+        ).filter(
+            InputOdpLog.IdDocumento.in_({key[0] for key in open_orders}),
+            InputOdpLog.ChiusuraParziale == "true",
+        ).all()
+        for document, line, reference, phase, quantity in logs:
+            key = (_norm_text(document), _norm_text(line), _norm_text(reference), str(_fase_to_int(phase)))
+            quantity = _safe_float(quantity)
+            if isfinite(quantity) and quantity > 0:
+                partial_good[key] = partial_good.get(key, 0.0) + quantity
+
+    labels = _dashboard_reparti_label_map()
+    allowed = set(getattr(policy, "allowed_reparti", [])) if not policy.can("odp.read_all") else set()
+    departments = {}
+    unknown_phases = 0
+    for key, ordine in open_orders.items():
+        runtime = getattr(ordine, "runtime_row", None)
+        active = str(_fase_to_int(_dashboard_fase_attiva(ordine)) or 1)
+        phases = list(dict.fromkeys(_phase_sequence_for_ordine(ordine)))
+        base = _dashboard_order_payload(ordine)
+        if active not in phases:
+            if _dashboard_row_matches_filters(base, filters):
+                unknown_phases += 1
+            continue
+        quantity = _safe_float(_qty_da_lavorare_text(ordine, stato=runtime))
+        if not isfinite(quantity) or quantity < 0:
+            unknown_phases += 1
+            continue
+        future_quantity = quantity
+        if _norm_text(getattr(ordine, "GestioneMatricola", "")).lower() != "si":
+            future_quantity += partial_good.get((*key, _norm_text(getattr(ordine, "RifRegistraz", "")), active), 0.0)
+        for phase in phases[phases.index(active):]:
+            phase_quantity = quantity if phase == active else future_quantity
+            if phase_quantity <= 0:
+                continue
+            reparto = _first_code_from_cell(_kpi_active_value_from_list(
+                getattr(ordine, "CodReparto", ""), getattr(ordine, "NumFase", ""), phase,
+            )) or "-"
+            if allowed and reparto not in allowed:
+                continue
+            phase_row = dict(base, reparto=reparto)
+            for field, attribute in (("risorsa", "CodRisorsaProd"), ("lavorazione", "CodLavorazione")):
+                phase_row[field] = base[field] if phase == active else _first_code_from_cell(_kpi_active_value_from_list(
+                    getattr(ordine, attribute, ""), getattr(ordine, "NumFase", ""), phase,
+                ))
+            if not _dashboard_row_matches_filters(phase_row, filters):
+                continue
+            bucket = departments.setdefault(reparto, {
+                "reparto": reparto, "label": _dashboard_reparto_label(reparto, labels),
+                "ore": 0.0, "fasi": 0, "fasi_senza_tempo": 0,
+                "capacity": {day: 0.0 for day in range(7)},
+            })
+            bucket["fasi"] += 1
+            minutes = _safe_float(_kpi_active_value_from_list(
+                getattr(ordine, "TempoPrevistoLavoraz", ""), getattr(ordine, "NumFase", ""), phase,
+            ))
+            if not isfinite(minutes) or minutes <= 0:
+                bucket["fasi_senza_tempo"] += 1
+            else:
+                hours = minutes / 60.0 * phase_quantity
+                if isfinite(hours):
+                    bucket["ore"] += hours
+                else:
+                    bucket["fasi_senza_tempo"] += 1
+
+    production_days = set()
+    for user in _dashboard_capacity_users(policy, filters):
+        reparto = _norm_text(getattr(user, "RepartoPrinc", ""))
+        for day, hours in _dashboard_capacity_for_operator(user).items():
+            if isfinite(hours) and hours > 0:
+                production_days.add(day)
+                if reparto in departments:
+                    departments[reparto]["capacity"][day] += hours
+
+    today = _dashboard_today()
+    rows = []
+    for bucket in departments.values():
+        capacity = bucket.pop("capacity")
+        days = _dashboard_giorni_produttivi(bucket["ore"], capacity, today, production_days)
+        rows.append({
+            **bucket, "ore": round(bucket["ore"], 2),
+            "giorni": None if bucket["fasi_senza_tempo"] else days,
+            "senza_capacita": sum(capacity.values()) <= 0,
+        })
+    rows.sort(key=lambda row: (row["giorni"] is not None, -(row["giorni"] or 0), row["label"]))
+    incomplete = unknown_phases or any(row["giorni"] is None or row["senza_capacita"] for row in rows)
+    limiting = max(rows, key=lambda row: row["giorni"] or 0, default=None)
+    return {
+        "giorni": None if incomplete else max((row["giorni"] for row in rows), default=0.0),
+        "ore": round(sum(row["ore"] for row in rows), 2),
+        "fasi": sum(row["fasi"] for row in rows),
+        "fasi_senza_tempo": sum(row["fasi_senza_tempo"] for row in rows),
+        "fasi_non_identificate": unknown_phases,
+        "reparti_senza_capacita": sum(row["senza_capacita"] for row in rows),
+        "reparto_vincolante": limiting["label"] if limiting and not incomplete else "",
+        "reparti": rows,
+    }
 
 
 def _dashboard_kpi_empty_payload() -> dict:

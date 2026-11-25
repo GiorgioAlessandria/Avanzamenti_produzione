@@ -1,6 +1,7 @@
 # app_odp/routes_modules/acquisti.py
 
 from io import BytesIO
+import secrets
 
 from flask import (
     abort,
@@ -10,6 +11,7 @@ from flask import (
     redirect,
     render_template,
     request,
+    session,
     send_file,
     url_for,
 )
@@ -39,8 +41,13 @@ from app_odp.models import (
     AcqScortaSegnalata,
     db,
 )
-from app_odp.operator_session import active_policy, active_user
+from app_odp.operator_session import active_policy, active_user, active_token, get_operator_token
 from app_odp.policy.decorator import require_active_perm
+from app_odp.services.acquisti_mail_service import (
+    PURCHASE_MAIL_FIELDS,
+    purchase_mail_template,
+    validate_purchase_mail_template,
+)
 
 
 @main_bp.get("/acquisti")
@@ -73,7 +80,44 @@ def acquisti_ordini_fornitore():
         rows=rows,
         groups=groups,
         calendar_events=_build_acquisti_calendar_events(groups),
+        mail_template=purchase_mail_template(active_user()),
+        mail_fields=PURCHASE_MAIL_FIELDS,
+        mail_template_csrf=session.setdefault("purchase_mail_csrf", secrets.token_urlsafe(32)),
     )
+
+
+@main_bp.post("/acquisti/ordini-fornitore/testo-sollecito")
+@require_active_perm("home_acquisti")
+def acquisti_testo_sollecito_update():
+    if get_operator_token() and get_operator_token() != active_token():
+        abort(403)
+    csrf = session.get("purchase_mail_csrf", "")
+    if not csrf or not secrets.compare_digest(csrf.encode(), request.form.get("csrf_token", "").encode()):
+        abort(400)
+    back = url_for("main.acquisti_ordini_fornitore", tab_session=active_token() or None, _anchor="purchase-mail-template")
+    try:
+        template = validate_purchase_mail_template(
+            request.form.get("subject", "").strip(), request.form.get("body", "").strip(),
+        )
+    except ValueError as exc:
+        flash(str(exc), "danger")
+        return redirect(back, code=303)
+    user = active_user()
+    preferences = user.preferences
+    if not isinstance(preferences, dict):
+        abort(400, description="Le preferenze dell'utente non sono valide.")
+    preferences = dict(preferences)
+    preferences["purchase_reminder_mail"] = template
+    user.preferences = preferences
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("Errore salvataggio testo email sollecito")
+        flash("Salvataggio del testo non riuscito. Riprova.", "danger")
+    else:
+        flash("Testo email sollecito salvato per il tuo utente.", "success")
+    return redirect(back, code=303)
 
 
 @main_bp.post("/acquisti/ordini-fornitore")
@@ -138,7 +182,7 @@ def acquisti_ordine_fornitore_update():
                 }
             )
         flash(message, "success")
-    return redirect(url_for("main.acquisti_ordini_fornitore"))
+    return redirect(url_for("main.acquisti_ordini_fornitore", tab_session=active_token() or None))
 
 
 @main_bp.get("/api/acquisti/export/<section>")

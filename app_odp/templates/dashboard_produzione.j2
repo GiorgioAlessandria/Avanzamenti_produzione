@@ -284,6 +284,31 @@
                     </div>
                 </div>
 
+                <div class="card shadow-sm mb-3">
+                    <div class="card-header">Smaltimento del carico attuale · tutte le fasi residue</div>
+                    <div class="card-body">
+                        <div class="row g-3 align-items-center">
+                            <div class="col-12 col-lg-4">
+                                <div class="kpi-card-value" data-smaltimento="giorni">—</div>
+                                <div class="fw-semibold">giorni produttivi stimati</div>
+                                <p class="small text-muted mt-2 mb-1" data-smaltimento="base">Dati non caricati.</p>
+                                <p class="small mb-0" data-smaltimento="stato" role="status"></p>
+                            </div>
+                            <div class="col-12 col-lg-8">
+                                <div class="dashboard-chart-box-sm">
+                                    <canvas id="chart-cruscotto-smaltimento" aria-label="Giorni produttivi necessari per reparto" role="img"></canvas>
+                                    <div class="dashboard-empty" data-empty-for="chart-cruscotto-smaltimento">Dati non caricati.</div>
+                                </div>
+                            </div>
+                        </div>
+                        <p class="small text-muted mb-0 mt-3">
+                            Ore standard delle fasi residue confrontate con i calendari settimanali degli operatori.
+                            Il totale è determinato dal reparto che richiede più giorni, considerando i reparti in parallelo.
+                            La stima assume capacità disponibile per questo carico e nessun nuovo ordine, senza pianificare le attese tra le fasi.
+                        </p>
+                    </div>
+                </div>
+
                 <!-- Grafici Carico prossimo mese + Stati ODP -->
                 <div class="row g-3 mb-3">
                     <div class="col-12 col-xl-8">
@@ -1001,6 +1026,40 @@
                 return COLORS.gray;
             }
 
+            function renderSmaltimento(data) {
+                data = data || {};
+                const formatDays = value => Number(value).toLocaleString("it-IT", {maximumFractionDigits: 2});
+                setCard("data-smaltimento", "giorni", data.giorni == null ? "Non calcolabile" : formatDays(data.giorni));
+                setCard("data-smaltimento", "base", `${formatHours(data.ore)} · ${data.fasi ?? 0} fasi residue nei filtri selezionati`);
+                const missing = [];
+                if (data.fasi_senza_tempo) missing.push(`${data.fasi_senza_tempo} fasi senza tempo standard`);
+                if (data.fasi_non_identificate) missing.push(`${data.fasi_non_identificate} ordini con fasi o quantità da verificare`);
+                if (data.reparti_senza_capacita) missing.push(`${data.reparti_senza_capacita} reparti senza capacità configurata`);
+                setCard("data-smaltimento", "stato", missing.length
+                    ? missing.join(" · ")
+                    : data.reparto_vincolante ? `Reparto determinante: ${data.reparto_vincolante}` : "Nessun carico residuo nei filtri selezionati.");
+                const rows = (data.reparti || []).filter(row => row.giorni != null);
+                renderChart("cruscotto_smaltimento", "chart-cruscotto-smaltimento", {
+                    type: "bar",
+                    data: {
+                        labels: rows.map(row => row.label),
+                        datasets: [{
+                            label: "Giorni produttivi",
+                            data: rows.map(row => row.giorni),
+                            backgroundColor: COLORS.blue,
+                        }],
+                    },
+                    options: baseOptions({
+                        indexAxis: "y",
+                        scales: {x: {beginAtZero: true, title: {display: true, text: "Giorni produttivi"}}},
+                        plugins: {
+                            legend: {display: false},
+                            tooltip: {callbacks: {label: context => `${formatDays(rows[context.dataIndex].giorni)} giorni · ${formatHours(rows[context.dataIndex].ore)} residue`}},
+                        },
+                    }),
+                }, rows.length > 0);
+            }
+
             function renderCruscottoCarico(rows) {
                 rows = rows || [];
                 const labels = rows.map(x => x.label);
@@ -1425,6 +1484,7 @@
 
                 const data = payload.data || {};
 
+                renderSmaltimento(data.smaltimento);
                 updateFilterSelects(
                     "dashboard-produzione-cruscotto",
                     data.filter_options || {}
