@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, date, timedelta, time, timezone
 import json
 
-from sqlalchemy import and_, case, desc, func, or_
+from sqlalchemy import and_, case, desc, func, or_, select, tuple_
 
 from app_odp.services.operator_identity import actor_matches, display_username
 from app_odp.models import (
@@ -458,6 +458,7 @@ def _event_entry(entries: dict, row):
             "num_progr_righe": set(),
             "id_riga": _norm_text(row.IdRiga),
             "articles": set(),
+            "matricole": set(),
             "risorse": set(),
             "operatori": set(),
             "eventi": set(),
@@ -474,6 +475,9 @@ def _add_entry_event(entry: dict, row, event_label: str, user: str = "") -> None
     entry["orders"].add(order_ref)
     entry["num_progr_righe"].add(_norm_text(getattr(row, "NumProgrRiga", "")))
     entry["articles"].add(_norm_text(getattr(row, "CodArt", "")))
+    payload = _payload(row)
+    entry["matricole"].add(_norm_text(getattr(row, "CodMatricola", "")))
+    entry["matricole"].add(_norm_text(payload.get("matricola") or payload.get("cod_matricola")))
     entry["operatori"].add(_norm_text(user))
     entry["eventi"].add(event_label)
     entry["risorse"].add(
@@ -515,6 +519,24 @@ def _filter_order_search(query, model, value):
     ))
 
 
+def _ordini_matricola(value):
+    matricola = _norm_text(value).lower()
+    payload = case((func.json_valid(OdpRuntimeLog.PayloadJson), OdpRuntimeLog.PayloadJson), else_="{}")
+    return select(InputOdpLog.IdDocumento, InputOdpLog.IdRiga).where(
+        func.lower(func.trim(InputOdpLog.CodMatricola)) == matricola
+    ).union(select(OdpRuntimeLog.IdDocumento, OdpRuntimeLog.IdRiga).where(or_(
+        func.lower(func.trim(func.json_extract(payload, "$.matricola"))) == matricola,
+        func.lower(func.trim(func.json_extract(payload, "$.cod_matricola"))) == matricola,
+    )))
+
+
+def _filter_matricola(query, model, value):
+    if not _norm_text(value):
+        return query
+    # Il collegamento vale per l'intero ordine, anche prima della registrazione della matricola.
+    return query.filter(tuple_(model.IdDocumento, model.IdRiga).in_(_ordini_matricola(value)))
+
+
 def _filtered_runtime_query(params, start_dt, end_dt):
     query = OdpRuntimeLog.query
     if start_dt is not None:
@@ -527,6 +549,7 @@ def _filtered_runtime_query(params, start_dt, end_dt):
         )
 
     query = _filter_order_search(query, OdpRuntimeLog, params.get("q"))
+    query = _filter_matricola(query, OdpRuntimeLog, params.get("matricola"))
 
     for field, column in (
         ("articolo", OdpRuntimeLog.CodArt),
@@ -554,6 +577,7 @@ def _filtered_input_query(params, start_dt, end_dt):
         )
 
     query = _filter_order_search(query, InputOdpLog, params.get("q"))
+    query = _filter_matricola(query, InputOdpLog, params.get("matricola"))
 
     for field, column in (
         ("articolo", InputOdpLog.CodArt),
@@ -639,6 +663,7 @@ def build_storico_ordini_list(params) -> dict:
                 or _norm_text(input_log.CodRisorsaProd)
             )
             entry["articles"].add(_norm_text(input_log.CodArt))
+            entry["matricole"].add(_norm_text(input_log.CodMatricola))
 
     for row in input_event_rows:
         payload = {}
@@ -667,6 +692,7 @@ def build_storico_ordini_list(params) -> dict:
             "orders",
             "num_progr_righe",
             "articles",
+            "matricole",
             "risorse",
             "operatori",
             "eventi",

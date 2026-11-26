@@ -1,6 +1,6 @@
 <details class="border rounded p-3 mb-3" id="serbatoi-cliente-materiali">
  <summary class="fw-semibold">2. Materiali di origine e tracciabilità</summary>
- {% if gestione_cliente.lavorato %}<p class="small text-body-secondary">Materiali di origine consolidati: sezione in sola lettura perché l'ordine è già lavorato.</p>{% endif %}
+ {% if gestione_cliente.lavorato %}<p class="small text-body-secondary">Gli ODP già lavorati sono in sola lettura; è consentito completare i prelievi spezzoni mancanti. Gli spezzoni degli ODP ancora da completare restano assegnabili fino a Lavorato.</p>{% endif %}
  {% for produzione in gestione_cliente.produzioni %}
  <div class="border-bottom pb-2 mb-3">
   <h3 class="h6">ODP {{ produzione.riferimento }}</h3>
@@ -17,17 +17,19 @@
  {% for riga in gestione_cliente.lotti %}{% set lotto = riga.lotto %}{% set passaggio = riga.passaggio %}
  <article class="border rounded p-3 mb-2" id="serbatoi-lotto-{{ lotto.id }}">
   <h3 class="h6">{{ lotto.riferimento }}</h3>
-  <p class="mb-2"><strong>{{ lotto.quantita }} pezzi</strong> · {{ lotto.stato }} / {{ lotto.ubicazione }}</p>
+  <p class="mb-2"><strong>{{ lotto.quantita }} pezzi</strong> · {{ servizio.stato_visuale(lotto.stato) }} / {{ lotto.ubicazione }}</p>
   {% if passaggio and not riga.origine_completa %}<div class="alert alert-warning small">Provenienza incompleta: verifica e assegna i materiali di origine dell'ODP prima di proseguire.</div>{% endif %}
   {% if can_produzione and passaggio %}
   <details id="serbatoi-avanzamento-{{ lotto.id }}"><summary class="fw-semibold">{{ passaggio[1] }} · quantità e DDT</summary>
    <form class="row g-2 mt-1" method="post" action="{{ operator_url_for('main.serbatoi_azione') }}">
     {{ hidden('avanza') }}<input type="hidden" name="lotto_id" value="{{ lotto.id }}"><input type="hidden" name="passaggio" value="{{ passaggio[0] }}">
-    {{ field('quantita','Pezzi rientrati' if passaggio[0] == 'rientro' else 'Quantità conforme','number') }}
+    {{ field('quantita','Pezzi rientrati' if passaggio[0] == 'rientro' else 'Quantità conforme','number',lotto.quantita) }}
     {% if passaggio[0] == 'rientro' %}<p class="col-12 small mb-0">I pezzi rientrati saranno disponibili per il controllo qualità. I KO si registrano in quella schermata.</p>
     {% else %}{{ field('scarti','Scarti','number','0','0') }}{% endif %}
     {{ field('ddt',passaggio[2]) }}
-    <div class="col-12"><button class="btn btn-primary">{{ passaggio[1] }}</button></div>
+    <div class="col-12 d-flex flex-wrap gap-2"><button class="btn btn-primary">{{ passaggio[1] }}</button>
+     {% if passaggio[0] == 'spedisci' %}<a class="btn btn-outline-primary" href="{{ operator_url_for('main.serbatoi_cqc', cliente_id=detail.id) }}">Genera CQC</a>{% endif %}
+    </div>
    </form>
   </details>
   {% elif riga.controllo and riga.in_controllo %}
@@ -45,4 +47,7 @@
  </details>
 </details>
 {% endif %}
+
+
+
 

@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from flask import jsonify, render_template, request
+from flask import jsonify, render_template, request, send_file
 
 from app_odp.operator_session import active_token
 from app_odp.policy.decorator import require_active_perm
 from app_odp.routes_blueprint import main_bp
+from app_odp.services.storico_matricole_export import build_matricole_excel
 from app_odp.services.storico_ordini_service import (
     EVENT_FILTERS,
     build_storico_ordini_detail,
@@ -32,6 +33,17 @@ def storico_ordini_page():
 @require_active_perm("storico_ordini")
 def api_storico_ordini():
     return jsonify(build_storico_ordini_list(request.args)), 200
+
+
+@main_bp.post("/api/storico-ordini/matricole/export")
+@require_active_perm("storico_ordini")
+def api_storico_matricole_export():
+    try:
+        output = build_matricole_excel(request.form.get("matricole", ""))
+    except ValueError as exc:
+        return jsonify(ok=False, error=str(exc)), 400
+    return send_file(output, as_attachment=True, download_name="storico_matricole.xlsx",
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 
 @main_bp.get("/api/storico-ordini/detail")

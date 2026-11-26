@@ -1,0 +1,15 @@
+<p class="small text-body-secondary">Archivio completo delle spedizioni, comprese quelle parziali. Cerca per ordine cliente, ODP, ordine barre, lotto o DDT. Seleziona una riga per vedere la provenienza e tutti i movimenti.</p>
+<div class="table-responsive serbatoi-list"><table class="table table-hover align-middle mb-0">
+ <thead><tr><th>Ordine cliente / riga</th><th>Codice</th><th>Codice ossidato</th><th class="text-end">Quantità spedita</th><th>Consegna</th><th>Spedizione</th><th>ODP</th><th>Ordini barre</th><th>DDT della provenienza</th></tr></thead>
+ <tbody>{% for row in rows %}
+  {% set lotto = row.oggetto %}{% set articolo = servizio.record(servizio.Articolo, lotto.articolo_id) if lotto.articolo_id else none %}
+  {% set cliente = servizio.record(servizio.Cliente, lotto.cliente_id) if lotto.cliente_id else none %}
+  <tr class="{{ 'table-active' if selected and selected.id == row.id }}" data-serbatoi-row tabindex="0" aria-label="Apri spedizione {{ row.titolo }}">
+   <td><a href="{{ serbatoi_url(tab='spediti', id=row.id) }}">{{ row.titolo }}</a><div class="small text-body-secondary">{{ cliente.cliente if cliente else '' }} · {{ lotto.riferimento }}</div></td>
+   <td>{{ articolo.codice_lav if articolo else lotto.codice }}</td><td>{{ articolo.codice_oss if articolo else '—' }}</td>
+   <td class="text-end">{{ row.quantita }}</td><td>{{ cliente.consegna.split('-')|reverse|join('/') if cliente and cliente.consegna else '—' }}</td>
+   <td>{{ row.data_spedizione[:16]|replace('T', ' ') or '—' }}</td>
+   <td>{{ row.riferimenti.odp|join(', ') or '—' }}</td><td>{{ row.riferimenti.ordini_barre|join(', ') or '—' }}</td><td>{{ row.riferimenti.ddt|join(', ') or '—' }}</td>
+  </tr>
+ {% else %}<tr><td colspan="9" class="text-body-secondary">Nessuna spedizione trovata.</td></tr>{% endfor %}</tbody>
+</table></div>

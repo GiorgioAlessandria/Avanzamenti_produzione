@@ -20,6 +20,13 @@ CAMPI_CONTROLLO = {"descrizione": 500, "frequenza": 30, "strumento": 200,
                   "valore": 300, "reazione": 300, "note": 300}
 
 
+def conteggio_controlli_da_eseguire():
+    return Controllo.query.join(s.Lotto, s.Lotto.id == Controllo.lotto_id).join(
+        s.Cliente, s.Cliente.id == Controllo.cliente_id
+    ).filter(Controllo.fase == "rientro", Controllo.data.is_(None),
+             s.Lotto.stato == STATO_CQ, s.Lotto.quantita > 0).count()
+
+
 def normalizza_controllo(riga, etichetta):
     controllo = {campo: s._norm_text(riga[campo]) for campo in CAMPI_CONTROLLO}
     for campo, massimo in CAMPI_CONTROLLO.items():
@@ -95,6 +102,8 @@ def piano_codice(codice):
         return None
     contenuto = dict(codice=piano.codice, revisione=piano.revisione, controlli=piano.controlli)
     contenuto["versione"] = hashlib.sha256(json.dumps(contenuto, sort_keys=True).encode()).hexdigest()
+    articolo = s.Articolo.query.filter((s.Articolo.codice_lav == piano.codice) | (s.Articolo.codice_oss == piano.codice)).first()
+    contenuto["codice_oss"] = articolo.codice_oss if articolo else piano.codice
     return contenuto
 
 
@@ -236,3 +245,5 @@ def dati_cqc(cliente):
             raise s.SerbatoiError("Il controllo Fresatura non copre tutti i pezzi conformi rientrati.")
         fresature.extend(controlli)
     return fresature, conclusi
+
+

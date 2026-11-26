@@ -33,11 +33,17 @@ from app_odp.services.manutenzioni_service import (
     filter_eventi_per_operatore,
 )
 from app_odp.routes_blueprint import main_bp
+from app_odp.policy.serbatoi import SERBATOI_QUALITA
+from app_odp.services.serbatoi_cq_service import conteggio_controlli_da_eseguire
 from app_odp.vendite_models import (
     VenditeNotaImballoLettura,
     VenditeOrdineClienteRiga,
     _rome_iso_now,
 )
+
+
+def _controlli_qualita_da_eseguire(policy):
+    return conteggio_controlli_da_eseguire() if any(policy.can(code) for code in SERBATOI_QUALITA) else 0
 
 
 def _is_lct_preview(policy):
@@ -156,6 +162,7 @@ def home():
         odp = _home_rows_for_config(policy, config, lct_preview=True) if config else []
         return render_template(
             "home.j2", lct_preview=True, lct_home=True, lct_configs=configs,
+            controlli_qualita_da_eseguire=_controlli_qualita_da_eseguire(policy),
             lct_sections=lct_sections(odp), active_partial="partials/_home_lct.j2" if config else None,
             active_tab=config.tab_code if config else None, home_config=config,
             policy=policy, operator_user=user, operator_policy=policy, tab_session=active_token(),
@@ -222,10 +229,12 @@ def home():
     preferences = getattr(user, "preferences", {})
     production_notice = preferences.get("production_notice") if isinstance(preferences, dict) else None
     from app_odp.services.lct_service import uses_lct_home, lct_sections, lct_fresa_busy
+    lct_home = uses_lct_home(policy, config)
 
     return render_template(
         "home.j2",
-        lct_home=uses_lct_home(policy, config),
+        lct_home=lct_home,
+        controlli_qualita_da_eseguire=_controlli_qualita_da_eseguire(policy) if lct_home else 0,
         lct_sections=lct_sections(odp) if uses_lct_home(policy, config) else {},
         lct_fresa_busy=lct_fresa_busy(odp, user.username) if uses_lct_home(policy, config) else False,
         active_partial=template,
@@ -263,3 +272,4 @@ def home():
         manutenzioni_da_eseguire=manutenzioni_da_eseguire,
         oggi_manutenzioni=oggi_manutenzioni.isoformat(),
     )
+

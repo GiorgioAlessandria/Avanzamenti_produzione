@@ -2,6 +2,7 @@ import hashlib
 import json
 from collections import Counter, defaultdict
 from functools import cache
+from io import BytesIO
 from pathlib import Path
 import secrets
 from uuid import uuid4
@@ -10,6 +11,8 @@ from flask import abort, current_app, flash, jsonify, redirect, render_template,
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy import func
 from werkzeug.utils import secure_filename
+from openpyxl import Workbook
+from openpyxl.cell import WriteOnlyCell
 
 from app_odp.models import db, InputOdp, AcqOrdineClienteAperto, AcqOrdineFornitoreAperto
 from app_odp.operator_session import active_policy, active_user, active_token
@@ -27,22 +30,22 @@ from app_odp.services.serbatoi_mercato_service import mercato_alluminio
 
 TABS = {"clienti": "Ordini cliente", "produzione": "ODP e stock", "barre": "Ordini barre",
         "spezzoni": "Spezzoni", "magazzino": "Magazzino materiale", "storico": "Spedizioni",
+        "spediti": "Ordini spediti",
         "cqc": "Stampa CQC", "articoli": "Parametri"}
 
-TABS_PRODUZIONE = {key: TABS[key] for key in ("clienti", "produzione", "storico")}
+TABS_PRODUZIONE = {key: TABS[key] for key in ("clienti", "produzione", "storico", "spediti")}
 
 FASI = (
     {"codice": "grezzo", "nome": "Grezzo", "stato": "Grezzo", "ubicazione": "Bernardi"},
     {"codice": "in_lavorazione", "nome": "In lavorazione", "stato": "In lavorazione", "ubicazione": "Bernardi"},
     {"codice": "lavorato", "nome": "Lavorato", "stato": "Lavorato", "ubicazione": "Bernardi"},
     {"codice": "gaser", "nome": "Gaser", "stato": "Lavorato", "ubicazione": "Gaser"},
-    {"codice": "ossidato", "nome": "Ossidato", "stato": "Ossidato", "ubicazione": "Bernardi"},
+    {"codice": "cq", "nome": "In controllo", "stato": cq.STATO_CQ, "ubicazione": "Bernardi"},
+    {"codice": "ossidato", "nome": "Controllato", "stato": "Ossidato", "ubicazione": "Bernardi"},
     {"codice": "spedito", "nome": "Spedito", "stato": "Spedito", "ubicazione": "Cliente"},
 )
 
-FASI_MAGAZZINO = (*FASI[:4],
-                  {"codice": "cq", "nome": "Controllo qualità", "stato": cq.STATO_CQ, "ubicazione": "Bernardi"},
-                  FASI[4])
+FASI_MAGAZZINO = FASI[:-1]
 
 FASI_ODP = (
     {"codice": "grezzo", "nome": "Grezzo", "stato": "Grezzo", "ubicazione": "Bernardi"},
@@ -54,8 +57,9 @@ FASI_ODP = (
 FASI_SPEDIZIONI = (
     dict(FASI[2], nome="Lavorato Bernardi"),
     dict(FASI[3], nome="Gaser · conto terzi"),
-    dict(FASI[4], nome="Ossidato · da spedire"),
-    FASI[5],
+    FASI[4],
+    dict(FASI[5], nome="Controllato · da spedire"),
+    FASI[6],
 )
 SPEDIZIONI_PER_STATO = {(f["stato"], f["ubicazione"]): f for f in FASI_SPEDIZIONI}
 
@@ -123,8 +127,11 @@ def _verifica_sezioni_modificabili(data, action):
         raise s.SerbatoiError("Ordine già lavorato: copertura e materiali di origine sono in sola lettura. Sono disponibili le operazioni DDT.")
     if action in {"consuma", "consuma_da_spezzoni", "libera_lotto_spezzoni", "riconcilia"}:
         produzione = s.record(s.Produzione, data.get("produzione_id"))
-        if s.produzione_cliente_lavorato(produzione):
-            raise s.SerbatoiError("ODP collegato a un ordine cliente già lavorato: i materiali di origine non sono più modificabili.")
+        lavorato = (not s.spezzoni_assegnabili(produzione) if action in {"consuma", "consuma_da_spezzoni"}
+                    else s.produzione_cliente_lavorato(produzione) if action == "riconcilia"
+                    else s.produzione_lavorata(produzione))
+        if lavorato:
+            raise s.SerbatoiError("ODP già lavorato: i materiali di origine non sono più modificabili.")
 
 
 def _fasi_produzione(p, ordine):
@@ -150,7 +157,6 @@ def _fasi_produzione(p, ordine):
 def _fasi_da_stati(stati):
     result = {f["codice"]: stati.get(f'{f["stato"]} · {f["ubicazione"]}', 0) for f in FASI}
     result["grezzo"] += stati.get("Da produrre · ODP", 0)
-    result["in_lavorazione"] += stati.get(f"{cq.STATO_CQ} · Bernardi", 0)
     return result
 
 
@@ -176,9 +182,96 @@ def _ordini_per_fase(rows, tab, ubicazione, fasi):
                                    tab=target_tab, id=target_id, quantita=0,
                                    rettifica=bool(row.get("pezzi_rettificati")) and fase["codice"] == "lavorati",
                                    scadenza=row.get("scadenza") if tab != "clienti" or fase["codice"] != "spedito" else None)
+                gruppi[key]["ultima_spedizione"] = row.get("ultima_spedizione", ("", 0))
             gruppi[key]["quantita"] += q
         result[fase["codice"]] = list(gruppi.values())
+        if fase["codice"] == "spedito":
+            result["spedito"] = sorted(result["spedito"], key=lambda r: r["ultima_spedizione"], reverse=True)[:10]
     return result
+
+
+def _riferimenti_spediti(lotti, produzioni, barre):
+    """Carica una volta la provenienza, inclusi i lotti ormai esauriti."""
+    by_id = {lotto.id: lotto for lotto in s.Lotto.query.all()}
+    prelievi, documenti = defaultdict(list), defaultdict(dict)
+    for consumo in s.Consumo.query.all():
+        prelievi[consumo.produzione_id].append(consumo.lotto_id)
+    for movimento in s.Movimento.query.order_by(s.Movimento.id):
+        documenti[movimento.destinazione_id][movimento.id] = movimento
+        if movimento.tipo not in ("CONSUMO_BARRE_MM", "TAGLIO"):
+            documenti[movimento.origine_id][movimento.id] = movimento
+    result = {}
+    barre_by_id = {b.id: b for b in barre}
+    for lotto in lotti:
+        if lotto.tipo != "Materiale" or lotto.stato != "Spedito":
+            continue
+        stack, seen, docs = [lotto.id], set(), {}
+        while stack:
+            key = stack.pop()
+            if key in seen or key not in by_id:
+                continue
+            seen.add(key)
+            origine = by_id[key]
+            docs.update(documenti[key])
+            if origine.padre_id:
+                stack.append(origine.padre_id)
+            stack.extend(prelievi[origine.produzione_id])
+        nodi = [by_id[key] for key in sorted(seen)]
+        odp = sorted({produzioni[n.produzione_id].riferimento for n in nodi if n.produzione_id in produzioni})
+        ordini_barre = sorted({barre_by_id[n.barre_id].riferimento for n in nodi if n.barre_id in barre_by_id})
+        ddt = sorted({m.ddt for m in docs.values() if m.ddt})
+        result[lotto.id] = dict(odp=odp, ordini_barre=ordini_barre, ddt=ddt,
+                               ricerca=" ".join(odp + ordini_barre + ddt + [n.riferimento for n in nodi]))
+    return result
+
+
+def _esporta_ordini(rows, tab, fase, ubicazione, fasi, articoli, clienti):
+    book = Workbook(write_only=True)
+    sheet = book.create_sheet("Ordini")
+    sheet.append(["Ordine", "Riga", "Codice", "Codice ossidato", "Quantità", "Data di consegna", "Fase"])
+    nomi = {f["codice"]: f["nome"] for f in fasi}
+    nomi["da_assegnare"] = "Da assegnare"
+    consegne_odp = defaultdict(set)
+    if tab == "produzione":
+        destinazioni = db.session.query(s.Impegno.produzione_id, s.Impegno.cliente_id).union(
+            db.session.query(s.Lotto.produzione_id, s.Lotto.cliente_id).filter(s.Lotto.cliente_id.is_not(None))
+        )
+        for produzione_id, cliente_id in destinazioni:
+            cliente = clienti.get(cliente_id)
+            if cliente and cliente.consegna:
+                consegne_odp[produzione_id].add(cliente.consegna)
+    for row in rows:
+        obj = row["oggetto"]
+        cliente = obj if tab == "clienti" else clienti.get(getattr(obj, "cliente_id", None))
+        articolo = articoli.get(getattr(obj, "articolo_id", None))
+        consegne = sorted(consegne_odp[obj.id]) if tab == "produzione" else [cliente.consegna] if cliente and cliente.consegna else []
+        consegna = s._parse_acquisti_date(consegne[0]) if len(consegne) == 1 else ", ".join(consegne) or None
+        quote = row.get("fasi", {})
+        if not any(quote.values()) and not fase:
+            quote = {row["stato"]: row["quantita"]}
+        for codice, quantita in quote.items():
+            if not quantita or (fase and codice != fase):
+                continue
+            if ubicazione and not any(f["codice"] == codice and f["ubicazione"] == ubicazione for f in fasi):
+                continue
+            values = [getattr(cliente or obj, "riferimento", row["titolo"]), getattr(cliente or obj, "id_riga", ""),
+                      articolo.codice_lav if articolo else row["codice"], articolo.codice_oss if articolo else "",
+                      quantita, consegna,
+                      nomi.get(codice, codice)]
+            cells = []
+            for value in values:
+                cell = WriteOnlyCell(sheet, value=value)
+                if isinstance(value, str):
+                    cell.data_type = "s"
+                if cell.is_date:
+                    cell.number_format = "DD/MM/YYYY"
+                cells.append(cell)
+            sheet.append(cells)
+    data = BytesIO()
+    book.save(data)
+    data.seek(0)
+    return send_file(data, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                     as_attachment=True, download_name=f"serbatoi_{tab}.xlsx")
 
 
 @main_bp.app_errorhandler(s.SerbatoiError)
@@ -276,7 +369,9 @@ def serbatoi_qualita():
     ddt = s.Movimento.query.filter_by(tipo="RIENTRO", destinazione_id=selezione[2].id).first() if selezione else None
     codice_piano = request.args.get("piano")
     piano_in_modifica = cq.piano_codice(codice_piano) if can_piani and codice_piano else None
+    codici_oss = {a.id: a.codice_oss for a in s.Articolo.query.all()}
     return render_template("serbatoi_qualita.j2", righe=righe, selezione=selezione, giacenze=giacenze,
+                           codici_oss=codici_oss,
                            piani=cq.Piano.query.order_by(cq.Piano.codice).all() if can_piani else (), can_piani=can_piani,
                            piano_in_modifica=piano_in_modifica, piano_selezionato=piano_selezionato,
                            can_contabilizza=can_contabilizza, csrf=session["serbatoi_csrf"], url_cq=_url_cq, ddt=ddt)
@@ -304,7 +399,7 @@ def serbatoi_cqc(cliente_id):
     odp = [(f, s.record(s.Produzione, f.produzione_id).riferimento) for f in fresature]
     return send_file(build_cqc_pdf(cliente, articolo, odp, lotti), mimetype="application/pdf",
                      as_attachment=not stampa, download_name=secure_filename(
-                         f"CQC_{cliente.cliente}_{cliente.riferimento}_riga_{cliente.id_riga}.pdf"
+                         f"{cliente.riferimento}_{cliente.id_riga}.pdf"
                      ))
 
 
@@ -325,9 +420,10 @@ def _riassunto_cliente(c, tempistiche, oggi):
     stati = s.stati_cliente(c)
     fasi = _fasi_da_stati(stati)
     fasi["da_assegnare"] = max(0, c.quantita - q)
+    stati = {s.stato_visuale(label): quantita for label, quantita in stati.items()}
     codice = s.record(s.Articolo, c.articolo_id).codice_oss
     scadenza = s.scadenza_cliente(c.consegna, codice, fasi, tempistiche, oggi) if fasi["spedito"] < c.quantita else None
-    return {"id": c.id, "titolo": f"{c.riferimento} · riga {c.id_riga}", "codice": codice, "scadenza": scadenza,
+    return {"id": c.id, "titolo": s.riferimento_cliente(c), "codice": codice, "scadenza": scadenza,
             "info": f"{c.cliente} · {status}", "copertura": status,
             "stato": "; ".join(f"{label}: {qty}" for label, qty in stati.items()) or "In attesa di assegnazione",
             "quantita": f"{q} / {c.quantita}", "oggetto": c, "stati": stati, "fasi": fasi}
@@ -395,6 +491,7 @@ def serbatoi_page():
     config_tempi = s.tempistiche() if con_fasi or tab == "articoli" else None
     descrizioni = s.descrizioni_articoli()
     articoli = s.Articolo.query.order_by(s.Articolo.codice_oss).all()
+    articoli_by_id = {a.id: a for a in articoli}
     clienti = s.Cliente.query.order_by(s.Cliente.consegna, s.Cliente.id).all()
     produzioni = s.Produzione.query.order_by(s.Produzione.id.desc()).all()
     clienti_by_id = {c.id: c for c in clienti}
@@ -410,6 +507,15 @@ def serbatoi_page():
         if lotto_storico and lotto_storico.tipo == "Spezzone" and lotto_storico.stato == "Disponibile" and not lotto_storico.quantita:
             lotti.append(lotto_storico)
     barre = s.Barre.query.order_by(s.Barre.id.desc()).all()
+    date_spedizione = {lotto_id: data for lotto_id, data in db.session.query(
+        s.Movimento.destinazione_id, func.max(s.Movimento.data)
+    ).filter(s.Movimento.tipo == "SPEDISCI").group_by(s.Movimento.destinazione_id)}
+    ultime_spedizioni_cliente = {}
+    for lotto in lotti:
+        if lotto.tipo == "Materiale" and lotto.stato == "Spedito":
+            ultima = (date_spedizione.get(lotto.id, ""), lotto.id)
+            ultime_spedizioni_cliente[lotto.cliente_id] = max(ultime_spedizioni_cliente.get(lotto.cliente_id, ("", 0)), ultima)
+    riferimenti_spediti = _riferimenti_spediti(lotti, produzioni_by_id, barre) if tab == "spediti" else {}
     oggi = s._now_rome_dt().date()
     impegni_spezzoni = {i.produzione_id: i for i in s.ImpegnoSpezzone.query.all()} if tab in (
         "clienti", "produzione", "spezzoni", "magazzino"
@@ -420,7 +526,9 @@ def serbatoi_page():
 
     @cache
     def riepilogo_cliente(cliente_id):
-        return _riassunto_cliente(clienti_by_id[cliente_id], config_tempi, oggi)
+        row = _riassunto_cliente(clienti_by_id[cliente_id], config_tempi, oggi)
+        row["ultima_spedizione"] = ultime_spedizioni_cliente.get(cliente_id, ("", 0))
+        return row
 
     scadenze_odp = {}
     stock_odp = set()
@@ -492,17 +600,19 @@ def serbatoi_page():
         serie_prezzi.sort(key=lambda punto: (punto["data"], punto["id"]))
         if serie_prezzi and riferimento_prezzo:
             scostamento_ultimo = s.scostamento_prezzo_barre(prezzi_barre[serie_prezzi[-1]["id"]], riferimento_prezzo)
-    elif tab in ("spezzoni", "magazzino", "storico"):
+    elif tab in ("spezzoni", "magazzino", "storico", "spediti"):
         for l in lotti:
-            fase_spedizione = SPEDIZIONI_PER_STATO.get((l.stato, l.ubicazione)) if tab == "storico" else None
+            fase_spedizione = SPEDIZIONI_PER_STATO.get((l.stato, l.ubicazione)) if tab in ("storico", "spediti") else None
             visible = ((tab == "spezzoni" and l.tipo == "Spezzone" and l.stato == "Disponibile")
                        or (tab == "magazzino" and l.tipo == "Materiale" and l.stato not in ("Spedito", "Scarto", "Consumato"))
-                       or (fase_spedizione and l.tipo == "Materiale" and (l.cliente_id in clienti_by_id or l.stato == "Spedito")))
+                       or (tab in ("storico", "spediti") and fase_spedizione and l.tipo == "Materiale"
+                           and (tab != "spediti" or l.stato == "Spedito")
+                           and (l.cliente_id in clienti_by_id or l.stato == "Spedito")))
             if visible:
                 c, p = clienti_by_id.get(l.cliente_id), produzioni_by_id.get(l.produzione_id)
                 titolo = l.riferimento
-                stato = f"{l.stato if l.quantita else 'Esaurito'} · {l.ubicazione}"
-                info = f"{c.riferimento} · {c.cliente}" if c else f"{p.riferimento} · Lavorazione ODP" if p and l.stato == "In lavorazione" else f"Stock · {p.riferimento}" if p else "Stock libero"
+                stato = f"{s.stato_visuale(l.stato) if l.quantita else 'Esaurito'} · {l.ubicazione}"
+                info = f"{s.riferimento_cliente(c)} · {c.cliente}" if c else f"{p.riferimento} · Lavorazione ODP" if p and l.stato == "In lavorazione" else f"Stock · {p.riferimento}" if p else "Stock libero"
                 if tab == "magazzino":
                     if c:
                         scadenza = riepilogo_cliente(c.id)["scadenza"]
@@ -516,10 +626,10 @@ def serbatoi_page():
                         stato = f"{impegnati_per_lotto[l.id]} impegnati · {l.quantita - impegnati_per_lotto[l.id]} liberi"
                 else:
                     if c:
-                        titolo = f"{c.riferimento} · riga {c.id_riga}"
+                        titolo = s.riferimento_cliente(c)
                         info = f"{c.cliente} · {l.riferimento}"
                     scadenza = {"colore": "grigio", "testo": "Spedizione registrata"} if l.stato == "Spedito" else riepilogo_cliente(c.id)["scadenza"]
-                    stato = "Da spedire" if l.stato == "Ossidato" else fase_spedizione["nome"]
+                    stato = fase_spedizione["nome"]
                 fasi_lotto = _fasi_da_stati({f"{l.stato} · {l.ubicazione}": l.quantita})
                 assegnati = l.quantita if l.cliente_id else 0
                 if tab == "magazzino":
@@ -534,6 +644,10 @@ def serbatoi_page():
                                  info=info, scadenza=scadenza,
                                  stato=stato, quantita=l.quantita, oggetto=l,
                                  fasi=fasi_lotto, assegnati=assegnati))
+                rows[-1]["ultima_spedizione"] = (date_spedizione.get(l.id, ""), l.id)
+                if tab == "spediti":
+                    refs = riferimenti_spediti[l.id]
+                    rows[-1].update(riferimenti=refs, ricerca=refs["ricerca"], data_spedizione=date_spedizione.get(l.id, ""))
         if tab == "magazzino":
             for p in produzioni:
                 ordine = odp_by_key.get((p.id_documento, p.id_riga))
@@ -545,7 +659,7 @@ def serbatoi_page():
                         continue
                     c = clienti_by_id[clienti_per_impegno[impegno_id]]
                     rows.append(dict(
-                        id=f"grezzo-cliente-{impegno_id}", titolo=f"{c.riferimento} · riga {c.id_riga}",
+                        id=f"grezzo-cliente-{impegno_id}", titolo=s.riferimento_cliente(c),
                         codice=ordine.CodArt, descrizione=ordine.DesArt, info=f"{c.cliente} · ODP {p.riferimento}",
                         scadenza=riepilogo_cliente(c.id)["scadenza"], stato="Grezzo · Pianificato",
                         quantita=quantita, oggetto=p, fasi={"grezzo": quantita}, assegnati=quantita,
@@ -565,16 +679,21 @@ def serbatoi_page():
                      stato="Attivo" if a.attivo else "Escluso", quantita="—", oggetto=a) for a in articoli]
     for row in rows:
         obj = row["oggetto"]
+        articolo = articoli_by_id.get(getattr(obj, "articolo_id", None))
+        if articolo:
+            row["ricerca"] = " ".join((row.get("ricerca", ""), articolo.codice_lav, articolo.codice_oss))
         source = clienti_erp_by_key.get((obj.id_documento,obj.id_riga)) if tab == "clienti" else odp_by_key.get((obj.id_documento,obj.id_riga)) if tab == "produzione" else None
         row["descrizione"] = s._norm_text(row.get("descrizione") or getattr(source,"DesArt",None)) or descrizioni.get(row["codice"], "Descrizione non disponibile")
     filtro = request.args.get("q", "").strip().casefold()
     if filtro:
-        rows = [r for r in rows if filtro in " ".join(str(r[k]) for k in ("titolo", "codice", "descrizione", "info", "stato")).casefold()]
+        rows = [r for r in rows if filtro in " ".join(str(r.get(k, "")) for k in ("titolo", "codice", "descrizione", "info", "stato", "ricerca")).casefold()]
     if ubicazione:
         rows = [r for r in rows if any(r.get("fasi", {}).get(f["codice"], 0) for f in fasi_vista if f["ubicazione"] == ubicazione)]
     totali_fasi = {f["codice"]: sum(r.get("fasi", {}).get(f["codice"], 0) for r in rows)
                    if not ubicazione or f["ubicazione"] == ubicazione else 0 for f in fasi_vista}
     ordini_per_fase = _ordini_per_fase(rows, tab, ubicazione, fasi_vista) if con_fasi and tab != "magazzino" else {}
+    if "spedito" in ordini_per_fase:
+        totali_fasi["spedito"] = sum(r["quantita"] for r in ordini_per_fase["spedito"])
     riepilogo_magazzino = {}
     scorte_materiali = {"Barra": Counter(), "Spezzone": Counter()}
     spezzoni_impegnati_magazzino = 0
@@ -624,6 +743,7 @@ def serbatoi_page():
             righe=len(aperti),
             grezzo=len(id_per_fase["grezzo"]),
             in_lavorazione=len(id_per_fase["in_lavorazione"]),
+            in_controllo=len(id_per_fase["cq"]),
             lavorati=len(id_per_fase["lavorato"] | id_per_fase["gaser"]),
             ossidati=len(id_per_fase["ossidato"]),
             per_ubicazione={
@@ -638,7 +758,23 @@ def serbatoi_page():
     if fase:
         matches_place = not ubicazione or any(f["codice"] == fase and f["ubicazione"] == ubicazione for f in fasi_vista)
         rows = [r for r in rows if matches_place and r.get("fasi", {}).get(fase, 0) > 0]
+    if tab == "clienti" and fase != "spedito":
+        rows = [r for r in rows if r["fasi"]["spedito"] < r["oggetto"].quantita]
+    if tab in ("clienti", "storico"):
+        recenti = {r["id"] for r in ordini_per_fase["spedito"]}
+        rows = [r for r in rows if not r.get("fasi", {}).get("spedito") or r["id"] in recenti
+                or (tab == "clienti" and fase != "spedito")]
+    if tab == "spediti" or fase == "spedito":
+        rows.sort(key=lambda r: r["ultima_spedizione"], reverse=True)
+    if request.args.get("export") == "xlsx":
+        if tab not in ("clienti", "produzione", "magazzino", "storico", "spediti"):
+            abort(400)
+        return _esporta_ordini(rows, tab, fase, ubicazione, fasi_vista, articoli_by_id, clienti_by_id)
     selected = next((r for r in rows if not r.get("tab_dettaglio") and str(r["id"]) == request.args.get("id")), None)
+    if tab == "clienti" and selected is None:
+        storico_cliente = next((c for c in clienti if str(c.id) == request.args.get("id")), None)
+        if storico_cliente and riepilogo_cliente(storico_cliente.id)["fasi"]["spedito"] >= storico_cliente.quantita:
+            selected = riepilogo_cliente(storico_cliente.id)
     if tab == "barre" and selected is None and request.args.get("id"):
         try:
             historical = db.session.get(s.Barre,s.intero(request.args["id"],"Riferimento"))
@@ -687,7 +823,7 @@ def serbatoi_page():
         )
         if selected["prezzo"] and riferimento_dettaglio:
             scostamento_prezzo = s.scostamento_prezzo_barre(selected["prezzo"], riferimento_dettaglio)
-    elif tab in ("magazzino", "spezzoni", "storico") and detail:
+    elif tab in ("magazzino", "spezzoni", "storico", "spediti") and detail:
         trace, docs = s.tracciabilita(detail)
         if tab == "spezzoni":
             documenti_spezzone = s.documenti_spezzone(detail)
@@ -699,7 +835,7 @@ def serbatoi_page():
                 for p in produzioni:
                     if p.articolo_id not in articoli_compatibili or not s.odp_aperto_per_spezzoni(
                         odp_by_key.get((p.id_documento, p.id_riga))
-                    ) or s.produzione_cliente_lavorato(p):
+                    ) or not s.spezzoni_assegnabili(p):
                         continue
                     previsti = s.disponibilita_prelievo_spezzoni(p)
                     impegno = impegni_spezzoni.get(p.id)
@@ -748,7 +884,8 @@ def serbatoi_page():
                            gestione_cliente=gestione_cliente,
                            clienti_produzione=clienti_produzione,
                            odp_assegnabili=odp_assegnabili, odp_esclusi=odp_esclusi,
-                           articoli=articoli, clienti=clienti, produzioni=produzioni, lotti=lotti, barre=barre,
+                           articoli=articoli, clienti=[c for c in clienti if riepilogo_cliente(c.id)["fasi"]["spedito"] < c.quantita] if tab == "clienti" else clienti,
+                           produzioni=produzioni, lotti=lotti, barre=barre,
                            fornitori=lista_fornitori, trace=trace, docs=docs, impegni=impegni,
                            disponibilita=disponibilita, stati=stati, esclusi=avvisi,
                            provenienza_ddt=provenienza_ddt, documenti_spezzone=documenti_spezzone,
@@ -937,6 +1074,10 @@ def serbatoi_azione():
     return redirect(_url(tab=data.get("tab") if data.get("tab") in (TABS if can_all else TABS_PRODUZIONE) else "clienti", id=data.get("id", ""),
                          fase=data.get("fase", ""), ubicazione=data.get("ubicazione", ""), q=data.get("q", ""),
                          fornitore=data.get("fornitore_filtro", "")))
+
+
+
+
 
 
 

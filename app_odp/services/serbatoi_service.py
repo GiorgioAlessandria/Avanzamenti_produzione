@@ -120,7 +120,7 @@ def scadenza_cliente(consegna, codice, fasi, cfg, oggi):
     lotto = cfg.lotti.get(codice)
     residui = {
         "grezzo": (fasi["grezzo"] + fasi["da_assegnare"], 2 * giorni["trasporto_bernardi"]),
-        "in_lavorazione": (fasi["in_lavorazione"], 2 * giorni["trasporto_bernardi"]),
+        "in_lavorazione": (fasi["in_lavorazione"] + fasi.get("cq", 0), 2 * giorni["trasporto_bernardi"]),
         "lavorato": (fasi["lavorato"], 2 * giorni["trasporto_bernardi"]),
         "gaser": (fasi["gaser"], giorni["trasporto_gaser"]),
         "ossidato": (fasi["ossidato"], 0),
@@ -562,6 +562,20 @@ def cliente_lavorato(c):
     ).first() is not None
 
 
+def produzione_lavorata(p):
+    return Lotto.query.filter_by(produzione_id=p.id, tipo="Materiale").filter(
+        Lotto.stato.in_(STATI_CLIENTE_CONSOLIDATI)
+    ).first() is not None
+
+
+def spezzoni_mancanti_consuntivo(p):
+    return max(0, _pezzi_consuntivati(p) - _spezzoni_prelevati(p))
+
+
+def spezzoni_assegnabili(p):
+    return not produzione_lavorata(p) or spezzoni_mancanti_consuntivo(p) > 0
+
+
 def produzione_cliente_lavorato(p):
     clienti = db.session.query(Impegno.cliente_id).filter_by(produzione_id=p.id).union(
         db.session.query(Lotto.cliente_id).filter(Lotto.produzione_id == p.id, Lotto.cliente_id.is_not(None))
@@ -570,12 +584,23 @@ def produzione_cliente_lavorato(p):
                               Lotto.stato.in_(STATI_CLIENTE_CONSOLIDATI)).first() is not None
 
 
+def riferimento_cliente(c):
+    raw = _norm_text(c.consegna)
+    data = _parse_acquisti_date(raw)
+    consegna = data.strftime("%d/%m/%Y") if data else raw or "non indicata"
+    return f"{c.riferimento} · riga {c.id_riga} · Consegna {consegna}"
+
+
 def copertura(c):
     q = sum(l.quantita for l in Lotto.query.filter_by(cliente_id=c.id, tipo="Materiale")
             if l.stato not in ("Scarto", "Consumato"))
     for i in Impegno.query.filter_by(cliente_id=c.id):
         q += quote_future(record(Produzione, i.produzione_id)).get(i.id, 0)
     return q
+
+
+def stato_visuale(stato):
+    return stato.replace("In controllo CQ", "In controllo").replace("Ossidato", "Controllato")
 
 
 def stati_cliente(c):
@@ -686,6 +711,8 @@ def odp_aperto_per_spezzoni(ordine):
 
 def impegna_spezzoni(produzione_id, lotto_id, utente, *, solo_odp_aperti=False):
     p = blocca(record(Produzione, produzione_id))
+    if not spezzoni_assegnabili(p):
+        raise SerbatoiError("ODP già lavorato: non è più possibile modificare l'assegnazione degli spezzoni.")
     l = blocca(record(Lotto, lotto_id))
     _verifica_lotto_spezzoni(p, l)
     aperto = odp_aperto_per_spezzoni(db.session.get(InputOdp, (p.id_documento, p.id_riga)))
@@ -702,8 +729,8 @@ def impegna_spezzoni(produzione_id, lotto_id, utente, *, solo_odp_aperti=False):
         db.session.add(impegno)
     impegno.lotto_id = l.id
     impegno.quantita = quantita
-    if not aperto:
-        _scarica_spezzoni_impegnati(p, utente, finale=True)
+    if not aperto or produzione_lavorata(p):
+        _scarica_spezzoni_impegnati(p, utente, finale=not aperto)
 
 
 def _verifica_lotto_spezzoni(p, l):
@@ -1115,5 +1142,8 @@ def riconcilia_cliente(cliente_id, quantita, note, utente):
     c.quantita = q
     c.anomalia = ""
     movimento("RICONCILIA_CLIENTE", q, utente, note=f"Ordine {c.riferimento}, riga {c.id_riga}: {note}")
+
+
+
 
 

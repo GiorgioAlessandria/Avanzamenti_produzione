@@ -1,9 +1,11 @@
-{% if can_produzione and not servizio.produzione_cliente_lavorato(produzione) %}
+{% set lavorata = servizio.produzione_lavorata(produzione) %}
+{% if can_produzione and servizio.spezzoni_assegnabili(produzione) %}
 {% set impegno = impegni_spezzoni.get(produzione.id) %}
-<details class="mb-3"><summary class="fw-semibold">{{ 'Cambia lotto spezzoni' if impegno else 'Assegna lotto spezzoni' }}</summary>
+<details class="mb-3" {% if lavorata %}open{% endif %}><summary class="fw-semibold">{{ 'Completa provenienza spezzoni' if lavorata else 'Cambia lotto spezzoni' if impegno else 'Assegna lotto spezzoni' }}</summary>
  <form class="row g-2 mt-1" method="post" action="{{ operator_url_for('main.serbatoi_azione') }}">
   {{ hidden('consuma') }}<input type="hidden" name="produzione_id" value="{{ produzione.id }}">
   <p class="col-12 small text-body-secondary mb-0">L'assegnazione riguarda l'intero ODP, comprese eventuali quote per altri ordini cliente o per stock.</p>
+  {% if lavorata %}<p class="col-12 small mb-0">Manca il collegamento degli spezzoni per {{ servizio.spezzoni_mancanti_consuntivo(produzione) }} pezzi già consuntivati. Il collegamento registra soltanto i prelievi mancanti e conserva quelli esistenti.</p>{% endif %}
   <div class="col-12"><label class="form-label w-100">Lotto spezzoni
    <select class="form-select mt-1" name="lotto_id" required><option value="">Seleziona</option>
     {% set codice_spezzone = servizio.record(servizio.Articolo,produzione.articolo_id).codice_spezzone %}
@@ -15,11 +17,11 @@
   <div class="col-12"><button class="btn btn-primary">Assegna lotto</button></div>
  </form>
 </details>
-{% if impegno %}<form class="mb-3" method="post" action="{{ operator_url_for('main.serbatoi_azione') }}">
+{% if impegno and not lavorata %}<form class="mb-3" method="post" action="{{ operator_url_for('main.serbatoi_azione') }}">
  {{ hidden('libera_lotto_spezzoni') }}<input type="hidden" name="produzione_id" value="{{ produzione.id }}">
  <button class="btn btn-outline-secondary btn-sm">Libera l'impegno residuo spezzoni</button>
 </form>{% endif %}
-{% if produzione.anomalia %}<details><summary class="fw-semibold">Riconcilia quantità pregresse ODP</summary>
+{% if produzione.anomalia and not lavorata %}<details><summary class="fw-semibold">Riconcilia quantità pregresse ODP</summary>
  <form class="row g-2 mt-1" method="post" action="{{ operator_url_for('main.serbatoi_azione') }}">
   {{ hidden('riconcilia') }}<input type="hidden" name="produzione_id" value="{{ produzione.id }}">
   {{ field('quantita','Quantità totale verificata','number',produzione.quantita) }}{{ field('note','Esito della verifica') }}
@@ -27,5 +29,7 @@
   <div class="col-12"><button class="btn btn-outline-primary">Conferma verifica</button></div>
  </form>
 </details>{% endif %}
+{% elif can_produzione %}<p class="small text-body-secondary">ODP già lavorato: l'assegnazione degli spezzoni è consolidata. Se manca la provenienza, verifica prima i consuntivi registrati.</p>
 {% endif %}
+
 

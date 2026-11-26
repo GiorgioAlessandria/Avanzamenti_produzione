@@ -324,6 +324,17 @@
                 aria-label="Nascondi avviso tarature scadute"></button>
     </div>
 {% endif %}
+{% if lct_home|default(false) and controlli_qualita_da_eseguire|default(0) %}
+    <div class="alert alert-warning alert-dismissible rounded-0 border-0 mb-0 py-2 text-center"
+         role="alert" id="serbatoi-cq-avviso-lct">
+        <strong>{{ controlli_qualita_da_eseguire }} controll{{ 'o' if controlli_qualita_da_eseguire == 1 else 'i' }}
+            qualità Serbatoi da eseguire.</strong>
+        <a class="alert-link ms-2"
+           href="{{ operator_url_for('main.serbatoi_qualita') }}">Apri controlli qualità</a>
+        <button type="button" class="btn-close py-2" data-bs-dismiss="alert"
+                aria-label="Nascondi avviso controlli qualità"></button>
+    </div>
+{% endif %}
 <div class="modal fade"
      id="modalRicercaArticolo"
      tabindex="-1"
@@ -2728,3 +2739,4 @@
 <script src="{{ url_for('static', filename='assets/js/bs-init.js') }}"></script>
 </body>
 </html>
+

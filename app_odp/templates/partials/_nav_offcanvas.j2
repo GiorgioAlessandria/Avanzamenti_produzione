@@ -42,6 +42,7 @@
         <div class="container ms-2 ps-3 me-0"
              style="width: auto;height: auto;">
             {% set nav_policy = operator_policy if operator_policy else policy %}
+            {% set is_serbatoi = request.endpoint in ['main.serbatoi_page', 'main.serbatoi_qualita', 'main.serbatoi_cqc', 'main.serbatoi_mercato_alluminio'] %}
             {% if nav_policy and nav_policy.has_direct_admin_role %}
                 <a href="{{ operator_url_for('main.home', vista='lct') }}" class="d-flex align-items-center gap-2 text-dark" style="font-size: 25px;">
                     <svg xmlns="http://www.w3.org/2000/svg" class="flex-shrink-0" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -51,7 +52,9 @@
                     <span>Vista LCT</span>
                 </a>
             {% endif %}
-            {% if nav_policy and (nav_policy.can('all_serbatoi') or nav_policy.can('produzione_serbatoi')) %}
+            {% if is_serbatoi and nav_policy and nav_policy.can('home') %}
+                {{ torna_produzione() }}
+            {% elif nav_policy and (nav_policy.can('all_serbatoi') or nav_policy.can('produzione_serbatoi')) %}
                 <div class="d-flex">
                     <a href="{{ operator_url_for('main.serbatoi_page') }}" class="text-dark fs-4">
                         <span class="d-flex align-items-center gap-2" style="font-size: 25px;">
@@ -64,7 +67,7 @@
                     </a>
                 </div>
             {% endif %}
-            {% if nav_policy and nav_policy.can('fresa_serbatoi') and not (nav_policy.can('all_serbatoi') or nav_policy.can('produzione_serbatoi')) %}
+            {% if nav_policy and nav_policy.can('fresa_serbatoi') and not (nav_policy.can('all_serbatoi') or nav_policy.can('produzione_serbatoi')) and not (is_serbatoi and nav_policy.can('home')) %}
                 <a href="{{ operator_url_for('main.serbatoi_qualita') }}" class="d-flex align-items-center gap-2 text-dark" style="font-size: 25px;">
                     <svg xmlns="http://www.w3.org/2000/svg" class="flex-shrink-0" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                         <path d="M9 4H6a2 2 0 0 0-2 2v14h16V6a2 2 0 0 0-2-2h-3M9 3h6v4H9zM8 13l3 3 5-6"/>
@@ -697,3 +700,5 @@
         </div>
     </div>
 </div>
+
+

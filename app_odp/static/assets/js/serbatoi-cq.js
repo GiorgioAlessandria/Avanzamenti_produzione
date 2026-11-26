@@ -37,7 +37,7 @@
             scheda.className = "border rounded p-3 mb-3";
             const titolo = document.createElement("legend");
             titolo.className = "fs-6 fw-semibold";
-            titolo.textContent = `${piano.codice} · ${ordine.riferimento_cq || ordine.id_documento + "/" + ordine.id_riga} · ${conformi} OK / ${ko} KO`;
+            titolo.textContent = `${piano.codice_oss || piano.codice} · ${ordine.riferimento_cq || ordine.id_documento + "/" + ordine.id_riga} · ${conformi} OK / ${ko} KO`;
             scheda.append(titolo);
             const righe = piano.controlli.map(controllo => {
                 const riga = document.createElement("div");
@@ -83,7 +83,7 @@
                     const ko = Number(ordine.quantita_non_conforme);
                     if (difetti.some((n, i) => n > Number(righe[i].verificati.input.value)) ||
                         Math.max(...difetti) > ko || difetti.reduce((tot, n) => tot + n, 0) < ko) {
-                        errore.textContent = `${piano.codice}: verifica i KO rilevati. Il totale dell’avanzamento è ${ko} pezzi KO distinti.`;
+                        errore.textContent = `${piano.codice_oss || piano.codice}: verifica i KO rilevati. Il totale dell’avanzamento è ${ko} pezzi KO distinti.`;
                         return;
                     }
                 }
@@ -119,3 +119,4 @@
         return !piani.some(Boolean) || compila(piani, controllabili);
     };
 })();
+

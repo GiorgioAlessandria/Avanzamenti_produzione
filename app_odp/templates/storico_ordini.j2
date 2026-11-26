@@ -58,6 +58,20 @@
             </div>
         </div>
 
+        <details class="card shadow-sm mb-3 storico-filter-card" id="storico-matricole-export">
+            <summary class="card-header fw-semibold">Estrai storico di più matricole · Excel</summary>
+            <div class="card-body">
+                <form id="storico-matricole-export-form" method="post" action="{{ operator_url_for('main.api_storico_matricole_export') }}">
+                    <label class="form-label" for="storico-matricole-elenco">Elenco matricole</label>
+                    <textarea class="form-control" id="storico-matricole-elenco" name="matricole" rows="5" required
+                              placeholder="Una matricola per riga" aria-describedby="storico-matricole-help"></textarea>
+                    <p class="small text-muted mt-2" id="storico-matricole-help">Incolla una colonna da Excel oppure separa le matricole con punto e virgola o virgola. Le ripetizioni vengono rimosse. Un unico foglio contiene tutte le matricole, con la colonna Tipo record per distinguere riepiloghi, passaggi, avanzamenti e lotti. L’estrazione comprende tutto lo storico registrato degli ordini collegati, senza i filtri di periodo della pagina, e segnala le matricole non trovate.</p>
+                    <button class="btn btn-success" type="submit">Scarica storico Excel</button>
+                    <p class="small mt-2 mb-0" id="storico-matricole-export-stato" role="status" aria-live="polite"></p>
+                </form>
+            </div>
+        </details>
+
         <details class="card shadow-sm mb-3 storico-filter-card" id="storico-operatori">
             <summary class="card-header fw-semibold">Timeline operatori</summary>
             <div class="card-body">
@@ -182,6 +196,14 @@
                                id="storico-q"
                                placeholder="Es. 2026.1.610 2,00" autocomplete="off"
                                title="Cerca per numero ODP, con o senza riga. Se il periodo è quello predefinito, la ricerca include tutto lo storico.">
+                    </div>
+                    <div class="col-12 col-md-2">
+                        <label class="form-label"
+                               for="storico-matricola">Matricola</label>
+                        <input class="form-control"
+                               id="storico-matricola" autocomplete="off"
+                               placeholder="Matricola completa"
+                               title="Cerca la matricola esatta. Se il periodo è quello predefinito, la ricerca include tutto lo storico.">
                     </div>
                     <div class="col-12 col-md-2">
                         <label class="form-label"
@@ -374,6 +396,7 @@
                     date_from: value("storico-date-from"),
                     date_to: value("storico-date-to"),
                     q: value("storico-q"),
+                    matricola: value("storico-matricola"),
                     articolo: value("storico-articolo"),
                     risorsa: value("storico-risorsa"),
                     operatore: value("storico-operatore"),
@@ -438,6 +461,7 @@
                         <td>${esc(row.group_type_label || "—")}</td>
                         <td>
                             <div class="fw-semibold">${esc(row.label)}</div>
+                            ${row.matricole?.length ? `<div class="small text-muted">Matricola: ${shortList(row.matricole)}</div>` : ""}
                         </td>
                         <td>${shortList(row.num_progr_righe.length ? row.num_progr_righe : [row.id_riga])}</td>
                         <td>${shortList(row.articles)}</td>
@@ -901,9 +925,40 @@
                 }
             }
 
+            async function exportMatricole(event) {
+                event.preventDefault();
+                const form = event.currentTarget;
+                const button = form.querySelector('button[type="submit"]');
+                const status = document.getElementById("storico-matricole-export-stato");
+                button.disabled = true;
+                status.textContent = "Preparazione dello storico Excel in corso…";
+                try {
+                    const response = await window.avpFetch(form.action, {method: "POST", body: new FormData(form)});
+                    if (!response.ok || !response.headers.get("Content-Type")?.includes("spreadsheetml.sheet")) {
+                        const data = await response.json().catch(() => ({}));
+                        throw new Error(data.error || "Impossibile estrarre lo storico. Verifica la sessione e riprova.");
+                    }
+                    const url = URL.createObjectURL(await response.blob());
+                    const link = document.createElement("a");
+                    link.href = url;
+                    link.download = "storico_matricole.xlsx";
+                    link.hidden = true;
+                    document.body.appendChild(link);
+                    link.click();
+                    link.remove();
+                    setTimeout(() => URL.revokeObjectURL(url), 60000);
+                    status.textContent = "Excel pronto: tutte le matricole in un unico foglio. Usa i filtri Matricola richiesta e Tipo record.";
+                } catch (error) {
+                    status.textContent = error.message || "Errore durante l’estrazione. Riprova.";
+                } finally {
+                    button.disabled = false;
+                }
+            }
+            document.getElementById("storico-matricole-export-form").addEventListener("submit", exportMatricole);
+
             document.getElementById("storico-filters").addEventListener("submit", event => {
                 event.preventDefault();
-                if (value("storico-q")) {
+                if (value("storico-q") || value("storico-matricola")) {
                     const dates = ["storico-date-from", "storico-date-to"].map(id => document.getElementById(id));
                     if (dates.every(input => input.value === input.defaultValue)) {
                         dates.forEach(input => { input.value = ""; });

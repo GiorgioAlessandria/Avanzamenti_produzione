@@ -11,6 +11,7 @@
     const views = new Map();
     history.scrollRestoration = 'manual';
     let navigation;
+    let submitting = false;
     let restoring = false;
     let graficoPrezzi;
     let richiestaMercato;
@@ -45,6 +46,12 @@
         window.scrollTo({left: view.x || 0, top: view.y || 0, behavior: 'instant'});
         restoring = false;
     };
+    const liveStatus = message => {
+        const target = document.getElementById('serbatoi-live-stato');
+        if (target) target.textContent = message;
+    };
+    const editing = () => !!document.querySelector('.serbatoi form[data-dirty="true"], .modal.show')
+        || !!document.activeElement?.closest('.serbatoi form');
     const formatoMese = new Intl.DateTimeFormat('it-IT', {timeZone: 'UTC', year: 'numeric', month: 'short'});
     const formatoData = new Intl.DateTimeFormat('it-IT', {timeZone: 'UTC'});
     const formatoPrezzo = new Intl.NumberFormat('it-IT', {minimumFractionDigits: 2, maximumFractionDigits: 2});
@@ -205,38 +212,63 @@
             details.addEventListener('toggle', () => link.setAttribute('aria-expanded', String(details.open)));
         });
     };
-    const navigate = async (url, push = true, view) => {
+    const navigate = async (url, push = true, view, automatic = false) => {
         if (push) remember();
         const targetView = view || views.get(context(url)) || snapshot();
         navigation?.abort();
         const controller = new AbortController();
         navigation = controller;
         const main = document.getElementById('serbatoi-app');
-        main.setAttribute('aria-busy', 'true');
+        if (!automatic) main.setAttribute('aria-busy', 'true');
+        const timeout = setTimeout(() => controller.abort(), 15000);
         try {
-            const response = await fetch(url, {signal: controller.signal});
+            const response = await fetch(url, {signal: controller.signal, cache: 'no-store'});
             const html = new DOMParser().parseFromString(await response.text(), 'text/html');
             const replacement = html.getElementById('serbatoi-app');
             if (!response.ok || !replacement) {
+                if (automatic) throw new Error('Aggiornamento non disponibile');
                 location.assign(response.redirected ? response.url : url);
                 return;
             }
             if (controller.signal.aborted) return;
+            if (automatic && (document.hidden || submitting || editing() || location.href !== url)) return;
+            const currentView = automatic ? snapshot() : targetView;
+            const panels = automatic ? [...main.querySelectorAll('details')].map(el => el.open) : [];
+            if (automatic) replacement.querySelectorAll('details').forEach((el, i) => {
+                if (i < panels.length) el.open = panels[i];
+            });
             if (push) history.pushState({...history.state, serbatoiView: targetView}, '', url);
             main.replaceWith(replacement);
             initialize();
-            restore(targetView);
+            restore(currentView);
+            liveStatus('Aggiornato alle ' + new Date().toLocaleTimeString('it-IT') + ' · aggiornamento automatico ogni 10 secondi.');
         } catch (error) {
-            if (error.name !== 'AbortError') {
+            if (automatic) {
+                if (navigation === controller) liveStatus('Aggiornamento non riuscito. Nuovo tentativo automatico tra 10 secondi; se persiste, ricarica la pagina.');
+            } else if (error.name !== 'AbortError') {
                 const warning = document.getElementById('serbatoi-avvisi');
                 warning.textContent = 'Impossibile aprire il dettaglio. Riprova o aggiorna la pagina.';
                 warning.classList.remove('d-none');
             }
         } finally {
-            if (navigation === controller) navigation = null;
-            document.getElementById('serbatoi-app')?.removeAttribute('aria-busy');
+            clearTimeout(timeout);
+            if (navigation === controller) {
+                navigation = null;
+                document.getElementById('serbatoi-app')?.removeAttribute('aria-busy');
+            }
         }
     };
+    const refresh = () => {
+        if (document.hidden || navigation || submitting) return;
+        if (editing()) {
+            liveStatus('Aggiornamento automatico sospeso durante la compilazione. Salva o ricarica la pagina per riprenderlo.');
+            return;
+        }
+        return navigate(location.href, false, undefined, true);
+    };
+    setInterval(refresh, 10000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
+    window.addEventListener('pageshow', () => { submitting = false; });
     initialize();
     let initialView = history.state?.serbatoiView;
     try {
@@ -284,7 +316,7 @@
             const data = await response.json();
             if (!data.ok) throw new Error(data.error);
             if (data.avvisi?.length) show(data.avvisi.join(' '));
-            if (data.changed && !document.querySelector('form[data-dirty="true"]')) { remember(); location.reload(); }
+            if (data.changed) refresh();
         }).catch(error => show(error.message));
     const formatoBarre = new Intl.NumberFormat('it-IT', {minimumFractionDigits: 2, maximumFractionDigits: 6});
     const calcolaBarre = form => {
@@ -301,6 +333,8 @@
     };
     document.addEventListener('change', event => {
         const select = event.target;
+        const form = select.closest('.serbatoi form:not(#serbatoi-sync)');
+        if (form) form.dataset.dirty = 'true';
         if (!select.matches('select[data-serbatoi-lunghezza-spezzone]')) return;
         const descrizione = select.selectedOptions[0]?.dataset.descrizione || '';
         const cifre = descrizione.trim().match(/(?:^|\D)(\d{2,3})$/)?.[1];
@@ -315,10 +349,13 @@
         }
     });
     document.addEventListener('submit', event => {
+        if (event.defaultPrevented) return;
         const form = event.target.closest('.serbatoi form:not(#serbatoi-sync)');
         if (!form) return;
         remember();
         if (form.method.toLowerCase() === 'post') {
+            submitting = true;
+            navigation?.abort();
             form.querySelectorAll('button').forEach(button => { button.disabled = true; });
         }
     });
