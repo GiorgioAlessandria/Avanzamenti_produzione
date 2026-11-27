@@ -360,6 +360,12 @@ def _ensure_serbatoi_schema() -> None:
         columns = {column["name"] for column in inspect(connection).get_columns("serbatoi_lotti")}
         if "residuo_barra_mm" not in columns:
             connection.exec_driver_sql("ALTER TABLE serbatoi_lotti ADD COLUMN residuo_barra_mm INTEGER")
+        for table, column, definition in (
+            ("serbatoi_clienti_ordini", "archiviato", "BOOLEAN NOT NULL DEFAULT 0"),
+            ("serbatoi_produzioni", "avviso_sgancio", "TEXT NOT NULL DEFAULT ''"),
+        ):
+            if column not in {c["name"] for c in inspect(connection).get_columns(table)}:
+                connection.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
 
 def _ensure_vendite_schema() -> None:

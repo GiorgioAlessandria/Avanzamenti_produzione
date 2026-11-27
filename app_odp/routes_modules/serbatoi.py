@@ -31,9 +31,10 @@ from app_odp.services.serbatoi_mercato_service import mercato_alluminio
 TABS = {"clienti": "Ordini cliente", "produzione": "ODP e stock", "barre": "Ordini barre",
         "spezzoni": "Spezzoni", "magazzino": "Magazzino materiale", "storico": "Spedizioni",
         "spediti": "Ordini spediti",
+        "archivio_clienti": "Ordini archiviati",
         "cqc": "Stampa CQC", "articoli": "Parametri"}
 
-TABS_PRODUZIONE = {key: TABS[key] for key in ("clienti", "produzione", "storico", "spediti")}
+TABS_PRODUZIONE = {key: TABS[key] for key in ("clienti", "produzione", "storico", "spediti", "archivio_clienti")}
 
 FASI = (
     {"codice": "grezzo", "nome": "Grezzo", "stato": "Grezzo", "ubicazione": "Bernardi"},
@@ -183,6 +184,7 @@ def _ordini_per_fase(rows, tab, ubicazione, fasi):
                                    rettifica=bool(row.get("pezzi_rettificati")) and fase["codice"] == "lavorati",
                                    scadenza=row.get("scadenza") if tab != "clienti" or fase["codice"] != "spedito" else None)
                 gruppi[key]["ultima_spedizione"] = row.get("ultima_spedizione", ("", 0))
+                gruppi[key]["avviso_sgancio"] = row.get("avviso_sgancio", "")
             gruppi[key]["quantita"] += q
         result[fase["codice"]] = list(gruppi.values())
         if fase["codice"] == "spedito":
@@ -242,7 +244,7 @@ def _esporta_ordini(rows, tab, fase, ubicazione, fasi, articoli, clienti):
                 consegne_odp[produzione_id].add(cliente.consegna)
     for row in rows:
         obj = row["oggetto"]
-        cliente = obj if tab == "clienti" else clienti.get(getattr(obj, "cliente_id", None))
+        cliente = obj if isinstance(obj, s.Cliente) else clienti.get(getattr(obj, "cliente_id", None))
         articolo = articoli.get(getattr(obj, "articolo_id", None))
         consegne = sorted(consegne_odp[obj.id]) if tab == "produzione" else [cliente.consegna] if cliente and cliente.consegna else []
         consegna = s._parse_acquisti_date(consegne[0]) if len(consegne) == 1 else ", ".join(consegne) or None
@@ -422,7 +424,7 @@ def _riassunto_cliente(c, tempistiche, oggi):
     fasi["da_assegnare"] = max(0, c.quantita - q)
     stati = {s.stato_visuale(label): quantita for label, quantita in stati.items()}
     codice = s.record(s.Articolo, c.articolo_id).codice_oss
-    scadenza = s.scadenza_cliente(c.consegna, codice, fasi, tempistiche, oggi) if fasi["spedito"] < c.quantita else None
+    scadenza = s.scadenza_cliente(c.consegna, codice, fasi, tempistiche, oggi) if not c.archiviato and fasi["spedito"] < c.quantita else None
     return {"id": c.id, "titolo": s.riferimento_cliente(c), "codice": codice, "scadenza": scadenza,
             "info": f"{c.cliente} · {status}", "copertura": status,
             "stato": "; ".join(f"{label}: {qty}" for label, qty in stati.items()) or "In attesa di assegnazione",
@@ -488,7 +490,7 @@ def serbatoi_page():
     if fase not in ("", "da_assegnare", *(f["codice"] for f in fasi_vista)) or ubicazione not in ("", "Bernardi", "Gaser", "Cliente"):
         abort(400)
     cfg = s.parametri()
-    config_tempi = s.tempistiche() if con_fasi or tab == "articoli" else None
+    config_tempi = s.tempistiche() if con_fasi or tab in ("articoli", "archivio_clienti") else None
     descrizioni = s.descrizioni_articoli()
     articoli = s.Articolo.query.order_by(s.Articolo.codice_oss).all()
     articoli_by_id = {a.id: a for a in articoli}
@@ -558,8 +560,8 @@ def serbatoi_page():
     rows = []
     prezzi_barre, serie_prezzi = {}, []
     riferimento_prezzo = scostamento_ultimo = None
-    if tab == "clienti":
-        rows = [riepilogo_cliente(c.id) for c in clienti]
+    if tab in ("clienti", "archivio_clienti"):
+        rows = [riepilogo_cliente(c.id) for c in clienti if tab == "clienti" or c.archiviato]
     elif tab == "produzione":
         rettifiche = {r.produzione_id: r for r in SerbatoiRettificaVista.query.all()}
         for p in produzioni:
@@ -582,6 +584,7 @@ def serbatoi_page():
             rows.append(dict(id=p.id, titolo=p.riferimento, codice=s.record(s.Articolo, p.articolo_id).codice_lav,
                              info=p.riferimento_stock, stato=status, quantita=p.quantita, oggetto=p,
                              fasi=quantita_fasi, avviso_fase=warning, scadenza=scadenza,
+                             avviso_sgancio=p.avviso_sgancio,
                              rettifica=rettifica, pezzi_rettificati=pezzi_rettificati,
                              residuo_rettifica=residuo_rettifica))
     elif tab == "barre":
@@ -682,16 +685,18 @@ def serbatoi_page():
         articolo = articoli_by_id.get(getattr(obj, "articolo_id", None))
         if articolo:
             row["ricerca"] = " ".join((row.get("ricerca", ""), articolo.codice_lav, articolo.codice_oss))
-        source = clienti_erp_by_key.get((obj.id_documento,obj.id_riga)) if tab == "clienti" else odp_by_key.get((obj.id_documento,obj.id_riga)) if tab == "produzione" else None
+        source = clienti_erp_by_key.get((obj.id_documento,obj.id_riga)) if tab in ("clienti", "archivio_clienti") else odp_by_key.get((obj.id_documento,obj.id_riga)) if tab == "produzione" else None
         row["descrizione"] = s._norm_text(row.get("descrizione") or getattr(source,"DesArt",None)) or descrizioni.get(row["codice"], "Descrizione non disponibile")
     filtro = request.args.get("q", "").strip().casefold()
     if filtro:
-        rows = [r for r in rows if filtro in " ".join(str(r.get(k, "")) for k in ("titolo", "codice", "descrizione", "info", "stato", "ricerca")).casefold()]
+        rows = [r for r in rows if filtro in " ".join(str(r.get(k, "")) for k in ("titolo", "codice", "descrizione", "info", "stato", "ricerca", "avviso_sgancio")).casefold()]
     if ubicazione:
         rows = [r for r in rows if any(r.get("fasi", {}).get(f["codice"], 0) for f in fasi_vista if f["ubicazione"] == ubicazione)]
-    totali_fasi = {f["codice"]: sum(r.get("fasi", {}).get(f["codice"], 0) for r in rows)
+    rows_fasi = [dict(r, fasi={"spedito": r["fasi"].get("spedito", 0)})
+                 if tab == "clienti" and r["oggetto"].archiviato else r for r in rows]
+    totali_fasi = {f["codice"]: sum(r.get("fasi", {}).get(f["codice"], 0) for r in rows_fasi)
                    if not ubicazione or f["ubicazione"] == ubicazione else 0 for f in fasi_vista}
-    ordini_per_fase = _ordini_per_fase(rows, tab, ubicazione, fasi_vista) if con_fasi and tab != "magazzino" else {}
+    ordini_per_fase = _ordini_per_fase(rows_fasi, tab, ubicazione, fasi_vista) if con_fasi and tab != "magazzino" else {}
     if "spedito" in ordini_per_fase:
         totali_fasi["spedito"] = sum(r["quantita"] for r in ordini_per_fase["spedito"])
     riepilogo_magazzino = {}
@@ -731,7 +736,7 @@ def serbatoi_page():
             assegnati = sum(r["assegnati"] for r in rows if r["fasi"].get(codice))
             riepilogo_magazzino[codice] = dict(assegnati=assegnati, stock=totali_fasi[codice] - assegnati)
     elif tab == "clienti":
-        aperti = [r for r in rows if r["fasi"]["spedito"] < r["oggetto"].quantita]
+        aperti = [r for r in rows if not r["oggetto"].archiviato and r["fasi"]["spedito"] < r["oggetto"].quantita]
         id_aperti = {r["id"] for r in aperti}
         id_per_fase = {
             codice: {ordine["id"] for ordine in ordini} & id_aperti
@@ -759,7 +764,7 @@ def serbatoi_page():
         matches_place = not ubicazione or any(f["codice"] == fase and f["ubicazione"] == ubicazione for f in fasi_vista)
         rows = [r for r in rows if matches_place and r.get("fasi", {}).get(fase, 0) > 0]
     if tab == "clienti" and fase != "spedito":
-        rows = [r for r in rows if r["fasi"]["spedito"] < r["oggetto"].quantita]
+        rows = [r for r in rows if not r["oggetto"].archiviato and r["fasi"]["spedito"] < r["oggetto"].quantita]
     if tab in ("clienti", "storico"):
         recenti = {r["id"] for r in ordini_per_fase["spedito"]}
         rows = [r for r in rows if not r.get("fasi", {}).get("spedito") or r["id"] in recenti
@@ -767,7 +772,7 @@ def serbatoi_page():
     if tab == "spediti" or fase == "spedito":
         rows.sort(key=lambda r: r["ultima_spedizione"], reverse=True)
     if request.args.get("export") == "xlsx":
-        if tab not in ("clienti", "produzione", "magazzino", "storico", "spediti"):
+        if tab not in ("clienti", "produzione", "magazzino", "storico", "spediti", "archivio_clienti"):
             abort(400)
         return _esporta_ordini(rows, tab, fase, ubicazione, fasi_vista, articoli_by_id, clienti_by_id)
     selected = next((r for r in rows if not r.get("tab_dettaglio") and str(r["id"]) == request.args.get("id")), None)
@@ -784,7 +789,7 @@ def serbatoi_page():
             selected = _riga_barre(historical, lotti, prezzi_barre.get(historical.id))
             selected.update(fuori_parametri=True,descrizione=descrizioni.get(historical.codice,"Descrizione non disponibile"))
     detail = selected["oggetto"] if selected else None
-    cqc_presente = bool(tab == "clienti" and detail and cq.Controllo.query.filter_by(
+    cqc_presente = bool(tab in ("clienti", "archivio_clienti") and detail and cq.Controllo.query.filter_by(
         cliente_id=detail.id, fase="rientro"
     ).first())
     trace, docs, impegni, disponibilita, stati, avvisi = [], [], [], [], {}, []
@@ -794,7 +799,7 @@ def serbatoi_page():
     documenti_spezzone = None
     origine_barra = riferimento_dettaglio = scostamento_prezzo = None
     data_prezzo_proposta = oggi
-    if tab == "clienti" and detail:
+    if tab in ("clienti", "archivio_clienti") and detail:
         impegni = s.Impegno.query.filter_by(cliente_id=detail.id).all()
         disponibilita = [l for l in lotti if l.cliente_id == detail.id and l.tipo == "Materiale"]
         stati = s.stati_cliente(detail)
@@ -879,12 +884,12 @@ def serbatoi_page():
             if (o.IdDocumento, o.IdRiga) not in acquisiti and s._norm_text(o.CodArt).upper() in (articolo.codice_lav, articolo.codice_oss):
                 odp_esclusi.append(dict(riferimento=f"{o.RifRegistraz or o.IdDocumento} · riga {o.IdRiga}",
                                         motivo="ODP presente nella cache ma non ancora acquisito in Serbatoi. Aggiorna e verifica gli avvisi su articolo e fasi del ciclo."))
-    gestione_cliente = _operazioni_cliente(detail, produzioni_collegate) if tab == "clienti" and detail else None
+    gestione_cliente = _operazioni_cliente(detail, produzioni_collegate) if tab in ("clienti", "archivio_clienti") and detail else None
     return render_template("serbatoi.j2", tab=tab, tabs=tabs, rows=rows, selected=selected, detail=detail,
                            gestione_cliente=gestione_cliente,
                            clienti_produzione=clienti_produzione,
                            odp_assegnabili=odp_assegnabili, odp_esclusi=odp_esclusi,
-                           articoli=articoli, clienti=[c for c in clienti if riepilogo_cliente(c.id)["fasi"]["spedito"] < c.quantita] if tab == "clienti" else clienti,
+                           articoli=articoli, clienti=[c for c in clienti if not c.archiviato and riepilogo_cliente(c.id)["fasi"]["spedito"] < c.quantita] if tab == "clienti" else clienti,
                            produzioni=produzioni, lotti=lotti, barre=barre,
                            fornitori=lista_fornitori, trace=trace, docs=docs, impegni=impegni,
                            disponibilita=disponibilita, stati=stati, esclusi=avvisi,
@@ -910,7 +915,7 @@ def serbatoi_page():
                            barra_manuale=db.session.get(s.BarreManuale,detail.id) if tab == "barre" and detail else None,
                            forn_barre_label=next((f.RagioneSociale or f.CodCliFor for f in lista_fornitori if (f.TipoAnagrafica,f.CodCliFor)==(cfg.fornitore_barre_tipo,cfg.fornitore_barre_codice)),"Non configurato"),
                            forn_spezzoni_label=next((f.RagioneSociale or f.CodCliFor for f in lista_fornitori if (f.TipoAnagrafica,f.CodCliFor)==(cfg.fornitore_spezzoni_tipo,cfg.fornitore_spezzoni_codice)),"Non configurato"),
-                           can_produzione=True, can_acquisti=can_all,
+                           can_produzione=not (tab in ("clienti", "archivio_clienti") and detail and detail.archiviato), can_acquisti=can_all,
                            rientro_cq=rientro_cq, cqc_presente=cqc_presente,
                            can_rettifica_vista=active_policy().has_direct_admin_role)
 
@@ -1074,10 +1079,3 @@ def serbatoi_azione():
     return redirect(_url(tab=data.get("tab") if data.get("tab") in (TABS if can_all else TABS_PRODUZIONE) else "clienti", id=data.get("id", ""),
                          fase=data.get("fase", ""), ubicazione=data.get("ubicazione", ""), q=data.get("q", ""),
                          fornitore=data.get("fornitore_filtro", "")))
-
-
-
-
-
-
-

@@ -61,6 +61,19 @@
 }
 .serbatoi .serbatoi-list tr[data-scadenza] a { color: #084298; }
 .serbatoi .serbatoi-phase-order[data-scadenza] { background: var(--serbatoi-scadenza-bg); color: #212529; --bs-secondary-color: #495057; }
+.serbatoi .serbatoi-list tr[data-sganciato] > td {
+  --bs-table-bg: #df0024;
+  --bs-table-color: #fff;
+  --bs-table-color-state: #fff;
+  --bs-table-bg-state: transparent;
+  --bs-secondary-color: #fff;
+}
+.serbatoi .serbatoi-list tr[data-sganciato] a { color: #fff; }
+.serbatoi .serbatoi-phase-order[data-sganciato] {
+  background: #df0024;
+  color: #fff;
+  --bs-secondary-color: #fff;
+}
 .serbatoi [data-scadenza]:is(.table-active, .is-selected) { outline: 2px solid #495057; outline-offset: -2px; }
 .serbatoi-scadenza-campione { display: inline-block; width: .75em; height: .75em; background: var(--serbatoi-scadenza-bg); border: 1px solid #6c757d; }
 .serbatoi .serbatoi-phase-order-head { display: flex; justify-content: space-between; gap: .65rem; font-size: .85rem; }
@@ -112,4 +125,3 @@
 @media (max-width: 767px) {
  .serbatoi .serbatoi-advance-controls { grid-template-columns: 1fr; }
 }
-

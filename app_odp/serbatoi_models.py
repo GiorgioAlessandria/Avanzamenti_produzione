@@ -49,6 +49,7 @@ class SerbatoiCliente(db.Model):
     saldo_erp = db.Column(db.Integer, nullable=False)
     consegna = db.Column(db.Text, nullable=False, default="")
     anomalia = db.Column(db.Text, nullable=False, default="")
+    archiviato = db.Column(db.Boolean, nullable=False, default=False)
     __table_args__ = (db.UniqueConstraint("id_documento", "id_riga"), db.CheckConstraint("quantita > 0"))
 
 
@@ -65,6 +66,7 @@ class SerbatoiProduzione(db.Model):
     fase_fine = db.Column(db.String(20), nullable=False)
     avviata = db.Column(db.Boolean, nullable=False, default=False)
     anomalia = db.Column(db.Text, nullable=False, default="")
+    avviso_sgancio = db.Column(db.Text, nullable=False, default="")
     __table_args__ = (db.UniqueConstraint("id_documento", "id_riga"), db.CheckConstraint("quantita > 0"))
 
 

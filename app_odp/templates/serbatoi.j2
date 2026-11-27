@@ -1,7 +1,7 @@
 {% extends 'base.j2' %}
 {% block title %}Serbatoi{% endblock %}
 {% block styles %}{{ super() }}
-<link rel="stylesheet" href="{{ url_for('static', filename='assets/css/serbatoi.css', v='fasi-controllo-1') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='assets/css/serbatoi.css', v='sgancio-cliente-1') }}">
 {% endblock %}
 {% macro hidden(action) %}{% autoescape true %}
 <input type="hidden" name="azione" value="{{ action }}"><input type="hidden" name="csrf" value="{{ csrf }}">
@@ -20,10 +20,11 @@
 {% macro elenco_ordini(ordini, fase) %}{% autoescape true %}
 <ul class="serbatoi-phase-orders" aria-label="Ordini nella fase {{ fase }}" {% if ordini %}tabindex="0"{% endif %}>
  {% for o in ordini %}<li data-ordine-id="{{ o.id }}" data-ordine-tab="{{ o.tab }}" data-quantita="{{ o.quantita }}">
-  <a href="{{ serbatoi_url(tab=o.tab,id=o.id,fase=o.fase,ubicazione=ubicazione_filtro) }}" class="serbatoi-phase-order {{ 'is-selected' if selected and tab == o.tab and selected.id == o.id and (not fase_filtro or fase_filtro == fase) }}" {% if o.scadenza %}data-scadenza="{{ o.scadenza.colore }}"{% endif %}>
+  <a href="{{ serbatoi_url(tab=o.tab,id=o.id,fase=o.fase,ubicazione=ubicazione_filtro) }}" class="serbatoi-phase-order {{ 'is-selected' if selected and tab == o.tab and selected.id == o.id and (not fase_filtro or fase_filtro == fase) }}" {% if o.scadenza %}data-scadenza="{{ o.scadenza.colore }}"{% endif %} {% if o.avviso_sgancio %}data-sganciato="true"{% endif %}>
    <span class="serbatoi-phase-order-head"><span>{{ o.titolo }}</span><strong>{{ o.quantita }} <small>pz</small></strong></span>
    <span class="serbatoi-phase-order-meta">{{ o.codice }} · {{ o.descrizione }}</span>
    {% if o.rettifica %}<span class="serbatoi-phase-order-meta">Rettifica visiva</span>{% endif %}
+   {% if o.avviso_sgancio %}<span class="serbatoi-phase-order-meta fw-semibold">{{ o.avviso_sgancio }}</span>{% endif %}
    {% if o.tab == 'storico' and o.info %}<span class="visually-hidden">{{ o.info }}</span>{% endif %}
    {% if o.scadenza %}<span class="visually-hidden">{{ o.scadenza.testo }}</span>{% endif %}
   </a>
@@ -67,7 +68,8 @@
  <p class="small text-body-secondary mb-2" id="serbatoi-live-stato" role="status" aria-live="polite">Aggiornamento automatico ogni 10 secondi.</p>
  {% if not articoli %}<div class="alert alert-info">{% if 'articoli' in tabs %}Configura gli <a href="{{ serbatoi_url(tab='articoli') }}">articoli gestiti</a> per attivare il filtro degli ordini.{% else %}Il catalogo Serbatoi è in attesa di configurazione.{% endif %} Il magazzino Serbatoi è distinto da quello del gestionale.</div>{% endif %}
  {% include 'partials/_serbatoi_nav.j2' %}
- {% if con_fasi or tab == 'spediti' %}<p class="mb-3"><a class="btn btn-outline-success btn-sm" href="{{ serbatoi_url(tab=tab,export='xlsx',id='') }}" download>Esporta ordini visualizzati · Excel</a></p>{% endif %}
+ {% if con_fasi or tab in ['spediti', 'archivio_clienti'] %}<p class="mb-3"><a class="btn btn-outline-success btn-sm" href="{{ serbatoi_url(tab=tab,export='xlsx',id='') }}" download>Esporta ordini visualizzati · Excel</a></p>{% endif %}
+ {% if tab == 'archivio_clienti' %}<p class="small text-body-secondary">Ordini non più presenti nel gestionale, conservati perché già controllati o spediti. Quantità, stati e documenti riportano quanto registrato, senza avanzamenti simulati.</p>{% endif %}
  {% if tab == 'barre' %}<div class="alert alert-{{ 'info' if parametri.codice_barre else 'warning' }}">Ordini barre: <strong>{{ forn_barre_label }}</strong> · <strong>{{ parametri.codice_barre or 'codice da configurare' }}</strong>. Sono acquisiti dal gestionale solo gli ordini di questo fornitore e codice. <a href="{{ serbatoi_url(tab='articoli') }}">Parametri</a></div>{% endif %}
  {% if tab == 'barre' and parametri.codice_barre %}
  <section class="card mb-3" aria-labelledby="serbatoi-prezzi-titolo">
@@ -237,10 +239,11 @@
    {% include 'partials/_serbatoi_spediti.j2' %}
    {% else %}
    <div class="table-responsive serbatoi-list"><table class="table table-hover align-middle mb-0"><thead><tr><th scope="col"><span class="d-none d-md-inline">Riferimento / codice</span><span class="d-md-none">Riferimento, stato e quantità</span></th><th scope="col" class="d-none d-md-table-cell">Stato</th><th scope="col" class="text-end d-none d-md-table-cell">{{ 'Coperti / richiesti' if tab == 'clienti' else 'Quantità' }}</th></tr></thead><tbody>
-   {% for row in rows %}<tr class="{{ 'table-active' if selected and selected.id == row.id }}" {% if row.scadenza %}data-scadenza="{{ row.scadenza.colore }}"{% endif %} data-serbatoi-row tabindex="0" aria-label="Apri dettaglio {{ row.titolo }}">
+   {% for row in rows %}<tr class="{{ 'table-active' if selected and selected.id == row.id }}" {% if row.scadenza %}data-scadenza="{{ row.scadenza.colore }}"{% endif %} {% if row.avviso_sgancio %}data-sganciato="true"{% endif %} data-serbatoi-row tabindex="0" aria-label="Apri dettaglio {{ row.titolo }}">
     <td><a class="fw-semibold" href="{{ serbatoi_url(tab=row.tab_dettaglio,id=row.id_dettaglio,fase=row.fase_dettaglio) if row.tab_dettaglio else serbatoi_url(tab=tab,id=row.id) }}" {% if selected and selected.id == row.id %}aria-current="true"{% endif %}>{{ row.titolo }}</a><div>{{ row.codice }}</div><div class="small text-body-secondary">{{ row.descrizione }}</div><small class="text-body-secondary">{{ row.info }}</small>
     {% if tab == 'barre' and row.prezzo %}<div class="small fw-semibold">{{ servizio.formatta_centesimi(row.prezzo.centesimi_kg) }} €/kg</div>{% endif %}
     {% if row.scadenza %}<div class="small{% if tab != 'clienti' or row.scadenza.consegna %} mt-1{% endif %}"><span class="{{ 'visually-hidden' if tab == 'clienti' }}">{{ row.scadenza.testo }}</span>{% if tab != 'clienti' and row.scadenza.consegna %} · Consegna {{ row.scadenza.consegna.strftime('%d/%m/%Y') }}{% endif %}</div>{% endif %}
+    {% if row.avviso_sgancio %}<div class="small fw-semibold mt-1">{{ row.avviso_sgancio }}</div>{% endif %}
     <div class="d-md-none mt-2">{{ row.stato }}<div class="fw-semibold mt-1">{{ row.quantita }} {{ 'coperti / richiesti' if tab == 'clienti' else 'pezzi' }}</div></div></td>
     <td class="d-none d-md-table-cell">{% if row.stati is defined and row.stati %}{% for stato,q in row.stati.items() %}<div class="serbatoi-state-line"><span>{{ stato }}</span><strong>{{ q }}</strong></div>{% endfor %}{% else %}{{ row.stato }}{% endif %}</td><td class="text-end text-nowrap d-none d-md-table-cell">{{ row.quantita }}</td></tr>
    {% else %}<tr><td colspan="3" class="text-body-secondary py-4">Nessuna riga presente{% if request.args.get('q') or fase_filtro or ubicazione_filtro %} con questi filtri{% endif %}.</td></tr>{% endfor %}
@@ -266,7 +269,8 @@
  {% endif %}
  <section class="{{ 'col-12' if tab in ['magazzino', 'spediti'] else 'col-lg-7' }}" aria-label="Dettaglio selezionato"><div class="card serbatoi-detail"><div class="card-header"><h2 class="h5 mb-0">{{ selected.titolo if selected else 'Dettaglio' }}</h2></div><div class="card-body">
  {% if not detail %}<p class="text-body-secondary mb-0">Seleziona una riga dell’elenco per visualizzare il dettaglio e le operazioni disponibili.</p>
- {% elif tab == 'clienti' %}
+ {% elif tab in ['clienti', 'archivio_clienti'] %}
+  {% if detail.archiviato %}<div class="alert alert-info">Ordine archiviato: non più presente nel gestionale. Dati e documenti sono disponibili in sola lettura.</div>{% endif %}
   {% if cqc_presente %}<p><a class="btn btn-outline-primary btn-sm" href="{{ operator_url_for('main.serbatoi_cqc', cliente_id=detail.id) }}">Scarica CQC</a></p>{% endif %}
   {% if selected.scadenza %}
    {% set scadenza = selected.scadenza %}
@@ -323,7 +327,8 @@
   <p><strong>Stock lavorato disponibile:</strong> {{ servizio.lotti_produzione(detail,'Lavorato')|rejectattr('cliente_id')|map(attribute='quantita')|sum }} pezzi.<br><strong>Capacità futura non impegnata:</strong> {{ servizio.capacita_produzione(detail)-servizio.quote_future(detail).values()|sum }} pezzi.</p>
   <div class="alert alert-info">Le quantità senza cliente rimangono stock. Si fermano a Lavorato presso Bernardi e non possono essere inviate a Gaser o spedite.</div>
   {% if detail.anomalia %}<div class="alert alert-warning">{{ detail.anomalia }}</div>{% endif %}
-  <h3 class="h6">Destinazioni cliente</h3><ul class="list-group mb-3">{% for i in impegni %}{% set c=servizio.record(servizio.Cliente,i.cliente_id) %}<li class="list-group-item"><a href="{{ serbatoi_url(tab='clienti',id=c.id) }}">{{ servizio.riferimento_cliente(c) }} · {{ c.cliente }}</a> · {{ i.quantita }} richiesti, {{ i.realizzata }} prodotti</li>{% else %}<li class="list-group-item">{{ 'Clienti collegati tramite materiale di magazzino.' if clienti_produzione else 'Produzione per stock.' }}</li>{% endfor %}</ul>
+  {% if detail.avviso_sgancio %}<div class="alert alert-danger fw-semibold" style="white-space: pre-wrap">{{ detail.avviso_sgancio }}</div>{% endif %}
+  <h3 class="h6">Destinazioni cliente</h3><ul class="list-group mb-3">{% for i in impegni %}{% set c=servizio.record(servizio.Cliente,i.cliente_id) %}<li class="list-group-item"><a href="{{ serbatoi_url(tab='archivio_clienti' if c.archiviato else 'clienti',id=c.id) }}">{{ servizio.riferimento_cliente(c) }} · {{ c.cliente }}</a> · {{ i.quantita }} richiesti, {{ i.realizzata }} prodotti</li>{% else %}<li class="list-group-item">{{ 'Clienti collegati tramite materiale di magazzino.' if clienti_produzione else 'Produzione per stock.' }}</li>{% endfor %}</ul>
   <h3 class="h6">Spezzoni impegnati e prelevati</h3>{{ tabella_provenienza_ddt(provenienza_ddt) }}
   {% if clienti_produzione %}<p class="small text-body-secondary">Le altre operazioni sull'ordine cliente sono disponibili dalla sua scheda:</p><ul>{% for cliente in clienti_produzione %}<li><a href="{{ serbatoi_url(tab='clienti',id=cliente.id,fase='',ubicazione='',q='') }}">{{ servizio.riferimento_cliente(cliente) }} · {{ cliente.cliente }}</a></li>{% endfor %}</ul>
   {% endif %}{% set produzione = detail %}{% include 'partials/_serbatoi_spezzoni_odp.j2' %}
@@ -424,9 +429,3 @@
 </main>
 {% endautoescape %}{% endblock %}
 {% block extra_js %}{{ super() }}<script src="{{ url_for('static',filename='vendor/chartjs/chart.umd.min.js') }}" defer></script><script src="{{ url_for('static',filename='assets/js/serbatoi.js',v='aggiornamento-live-1') }}" defer></script>{% endblock %}
-
-
-
-
-
-

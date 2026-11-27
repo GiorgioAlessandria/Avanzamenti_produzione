@@ -472,9 +472,66 @@ def acquisisci_odp(ordine):
     return p
 
 
+def _avviso_cliente_assente(cliente):
+    return f"Ordine di vendita {riferimento_cliente(cliente)} non più presente nel gestionale: collegamenti conservati per DDT e controlli qualità."
+
+
+def _clienti_assenti_dal_gestionale(presenti):
+    from app_odp.serbatoi_models import SerbatoiControlloCQ
+    count, avvisi = 0, []
+    for cliente in Cliente.query.all():
+        if (cliente.id_documento, cliente.id_riga) in presenti or cliente.archiviato:
+            continue
+        cliente = blocca(cliente)
+        lotti = Lotto.query.filter_by(cliente_id=cliente.id).all()
+        impegni = Impegno.query.filter_by(cliente_id=cliente.id).all()
+        produzioni = {i.produzione_id for i in impegni} | {l.produzione_id for l in lotti if l.produzione_id}
+        if any(l.stato in ("Ossidato", "Spedito") for l in lotti):
+            cliente.archiviato = True
+            message = _avviso_cliente_assente(cliente)
+            cliente.anomalia = "\n".join(line for line in cliente.anomalia.splitlines() if line != message)
+            for key in produzioni:
+                p = record(Produzione, key)
+                p.avviso_sgancio = "\n".join(line for line in p.avviso_sgancio.splitlines() if line != message)
+            count += 1
+            continue
+        riferimento = riferimento_cliente(cliente)
+        da_conservare = (any(l.ubicazione == "Gaser" or l.stato == "In controllo CQ" for l in lotti)
+                        or SerbatoiControlloCQ.query.filter_by(cliente_id=cliente.id).first() is not None)
+        if da_conservare:
+            message = _avviso_cliente_assente(cliente)
+            if message not in cliente.anomalia:
+                cliente.anomalia = "\n".join(filter(None, (cliente.anomalia, message)))
+                avvisi.append(message)
+                count += 1
+            for key in produzioni:
+                p = record(Produzione, key)
+                if message not in p.avviso_sgancio:
+                    p.avviso_sgancio = "\n".join(filter(None, (p.avviso_sgancio, message)))
+            continue
+        if impegni or lotti:
+            message = f"Ordine sganciato dall'ordine di vendita {riferimento}, non più presente nel gestionale. Materiale e capacità tornati a stock."
+            for key in produzioni:
+                p = record(Produzione, key)
+                p.avviso_sgancio = "\n".join(filter(None, (p.avviso_sgancio, message)))
+                quantita = sum(max(0, i.quantita - i.realizzata) for i in impegni if i.produzione_id == key)
+                quantita += sum(l.quantita for l in lotti if l.produzione_id == key and l.tipo == "Materiale")
+                movimento("SGANCIO_CLIENTE_ERP", quantita, "Sincronizzazione gestionale", produzione=p, note=message)
+            avvisi.append(message)
+        for impegno in impegni:
+            db.session.delete(impegno)
+        for lotto in lotti:
+            lotto.cliente_id = None
+        db.session.flush()
+        db.session.delete(cliente)
+        count += 1
+    return count, avvisi
+
+
 def sincronizza(*, includi_barre=True):
     count, avvisi = acquisisci_barre_erp(parametri()) if includi_barre else (0, [])
-    for row in AcqOrdineClienteAperto.query.all():
+    sorgenti = AcqOrdineClienteAperto.query.all()
+    for row in sorgenti:
         a = articolo_per_codice(row.CodArt)
         if not a:
             continue
@@ -486,6 +543,20 @@ def sincronizza(*, includi_barre=True):
             avvisi.append(f"Riga cliente {row.IdDocumento}/{row.IdRigaDoc}: quantità non valida.")
             continue
         c = Cliente.query.filter_by(id_documento=row.IdDocumento, id_riga=row.IdRigaDoc).first()
+        if c is not None and _avviso_cliente_assente(c) in c.anomalia.splitlines():
+            message = _avviso_cliente_assente(c)
+            c.anomalia = "\n".join(line for line in c.anomalia.splitlines() if line != message)
+            collegati = db.session.query(Impegno.produzione_id).filter_by(cliente_id=c.id).union(
+                db.session.query(Lotto.produzione_id).filter_by(cliente_id=c.id)
+            )
+            for key, in collegati:
+                if key:
+                    p = record(Produzione, key)
+                    p.avviso_sgancio = "\n".join(line for line in p.avviso_sgancio.splitlines() if line != message)
+            count += 1
+        if c is not None and c.archiviato:
+            c.archiviato = False
+            count += 1
         consegna = _norm_text(row.DataConsegna)
         if c is not None and c.articolo_id == a.id and c.consegna != consegna:
             c.consegna = consegna
@@ -525,6 +596,9 @@ def sincronizza(*, includi_barre=True):
                 p.anomalia = message
         except SerbatoiError as exc:
             avvisi.append(f"ODP {row.IdDocumento}/{row.IdRiga}: {exc}")
+    rimossi, notifiche = _clienti_assenti_dal_gestionale({(r.IdDocumento, r.IdRigaDoc) for r in sorgenti})
+    count += rimossi
+    avvisi.extend(notifiche)
     db.session.flush()
     return count, avvisi
 
@@ -617,6 +691,8 @@ def stati_cliente(c):
 
 
 def verifica_assegnazione_produzione(c, p):
+    if c.archiviato:
+        raise SerbatoiError("Ordine cliente archiviato: disponibile soltanto per consultazione.")
     q = c.quantita
     live = db.session.get(InputOdp, (p.id_documento,p.id_riga))
     if live is None:
@@ -644,11 +720,14 @@ def assegna_produzione(cliente_id, produzione_id, utente):
     verifica_assegnazione_produzione(c, p)
     q = c.quantita
     db.session.add(Impegno(cliente_id=c.id, produzione_id=p.id, quantita=q, realizzata=0))
+    p.avviso_sgancio = ""
     movimento("IMPEGNO_ODP", q, utente, produzione=p, note=f"Cliente #{c.id}")
 
 
 def assegna_magazzino(cliente_id, lotto_id, quantita, utente):
     c = blocca(record(Cliente, cliente_id))
+    if c.archiviato:
+        raise SerbatoiError("Ordine cliente archiviato: disponibile soltanto per consultazione.")
     l = blocca(record(Lotto, lotto_id))
     q = intero(quantita)
     if l.tipo != "Materiale" or l.articolo_id != c.articolo_id or l.cliente_id is not None:
@@ -657,13 +736,18 @@ def assegna_magazzino(cliente_id, lotto_id, quantita, utente):
         raise SerbatoiError("Lo stato del materiale non consente l'assegnazione diretta.")
     if q > c.quantita - copertura(c):
         raise SerbatoiError("Quantità superiore al fabbisogno ancora da coprire.")
-    return sposta(l, q, l.stato, l.ubicazione, utente, "ASSEGNAZIONE", cliente_id=c.id)
+    result = sposta(l, q, l.stato, l.ubicazione, utente, "ASSEGNAZIONE", cliente_id=c.id)
+    if l.produzione_id:
+        record(Produzione, l.produzione_id).avviso_sgancio = ""
+    return result
 
 
 def libera_impegno(impegno_id, quantita, utente):
     i = blocca(record(Impegno, impegno_id))
     p = blocca(record(Produzione, i.produzione_id))
     c = blocca(record(Cliente, i.cliente_id))
+    if c.archiviato:
+        raise SerbatoiError("Ordine cliente archiviato: disponibile soltanto per consultazione.")
     q = intero(quantita)
     if q > i.quantita - i.realizzata:
         raise SerbatoiError("È possibile liberare soltanto la quota non ancora prodotta.")
@@ -675,6 +759,8 @@ def libera_impegno(impegno_id, quantita, utente):
 
 def libera_materiale(lotto_id, quantita, utente):
     l = blocca(record(Lotto, lotto_id))
+    if l.cliente_id and record(Cliente, l.cliente_id).archiviato:
+        raise SerbatoiError("Ordine cliente archiviato: disponibile soltanto per consultazione.")
     if l.tipo != "Materiale" or not l.cliente_id or (l.stato, l.ubicazione) != ("Lavorato", "Bernardi"):
         raise SerbatoiError("Può tornare a stock solo il materiale lavorato presso Bernardi, prima dell'invio al terzista.")
     return sposta(l, intero(quantita), "Lavorato", "Bernardi", utente, "RITORNO_STOCK")
@@ -1049,6 +1135,8 @@ def avanza_materiale(lotto_id, quantita, azione, ddt, scarti, utente):
     if l.cliente_id is None:
         raise SerbatoiError("Materiale di stock: assegnare prima la quantità a un ordine cliente. Invio a Gaser e spedizione non consentiti.")
     c = record(Cliente, l.cliente_id)
+    if c.archiviato:
+        raise SerbatoiError("Ordine cliente archiviato: disponibile soltanto per consultazione.")
     if c.anomalia:
         raise SerbatoiError(c.anomalia)
     if l.produzione_id and record(Produzione, l.produzione_id).anomalia:
@@ -1130,6 +1218,8 @@ def riconcilia_produzione(produzione_id, quantita, note, utente):
 
 def riconcilia_cliente(cliente_id, quantita, note, utente):
     c = blocca(record(Cliente, cliente_id))
+    if c.archiviato:
+        raise SerbatoiError("Ordine cliente archiviato: disponibile soltanto per consultazione.")
     q = intero(quantita)
     sorgente = db.session.get(AcqOrdineClienteAperto, (c.id_documento, c.id_riga))
     if sorgente:
@@ -1142,8 +1232,3 @@ def riconcilia_cliente(cliente_id, quantita, note, utente):
     c.quantita = q
     c.anomalia = ""
     movimento("RICONCILIA_CLIENTE", q, utente, note=f"Ordine {c.riferimento}, riga {c.id_riga}: {note}")
-
-
-
-
-
